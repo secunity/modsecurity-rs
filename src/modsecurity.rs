@@ -100,10 +100,9 @@ fn new_collection(name: &str) -> Box<dyn Collection> {
 impl ModSecurity {
     pub fn new() -> Self {
         crate::unique_id::UniqueId::unique_id();
-        // `srand(time(NULL))`: seeds libc rand(), used for the audit log
-        // boundaries.
-        // SAFETY: srand/time have no preconditions (time accepts NULL).
-        unsafe { libc::srand(libc::time(std::ptr::null_mut()) as libc::c_uint) };
+        // (C++ calls `srand(time(NULL))` here to seed libc `rand()` for the
+        // audit log boundaries; those now come from the `rand` crate, see
+        // `audit_log::writer::writer::generate_boundary`.)
         #[cfg(feature = "libxml2")]
         crate::request_body_processor::xml::init_parser();
         ModSecurity {

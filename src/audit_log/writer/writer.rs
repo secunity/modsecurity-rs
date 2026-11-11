@@ -21,14 +21,17 @@ pub trait Writer: Send + Sync {
 }
 
 /// `Writer::generateBoundary`: `SERIAL_AUDIT_LOG_BOUNDARY_LENGTH` random
-/// alphanumeric characters, from the C library `rand()` as in C++.
+/// alphanumeric characters. The C++ code uses the C library `rand()` (seeded
+/// with `srand(time(NULL))` by the `ModSecurity` constructor); the `rand`
+/// crate's thread local generator is used instead, so creating an engine no
+/// longer reseeds the host process's `rand()`.
 pub fn generate_boundary(boundary: &mut String) {
+    use rand::Rng;
     const ALPHANUM: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
+    let mut rng = rand::rng();
     for _ in 0..SERIAL_AUDIT_LOG_BOUNDARY_LENGTH {
-        // SAFETY: rand() has no preconditions.
-        let r = unsafe { libc::rand() } as usize;
-        boundary.push(ALPHANUM[r % ALPHANUM.len()] as char);
+        boundary.push(ALPHANUM[rng.random_range(0..ALPHANUM.len())] as char);
     }
 }
 

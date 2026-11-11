@@ -68,6 +68,9 @@ maxminddb = { version = "0.32", optional = true }
 lmdb-master-sys = { version = "0.2", optional = true }
 # libcurl binding (SecRemoteRules, HTTPS audit log writer, remote pm/ip files).
 curl = { version = "0.4", optional = true }
+# Random numbers (transaction id suffix, audit log boundaries); replaces the
+# C++ <random> engine and libc rand()/srand().
+rand = "0.9"
 
 [profile.dev]
 opt-level = 1
