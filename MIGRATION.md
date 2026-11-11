@@ -66,7 +66,17 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
 - **Shared mutable state.** Persistent collections, the debug log, the
   shared-files registry and the GeoIP database are shared across
   transactions/threads, so they synchronise internally (`Mutex`/`RwLock`),
-  as the C++ code does with mutexes. Nothing else uses interior mutability.
+  as the C++ code does with mutexes. The only other interior mutability is
+  a per-thread cache of PCRE2 match data/contexts (`utils::regex`; C++
+  allocates them for every match).
+- **Resolved values.** C++ resolution hands out heap-allocated
+  `VariableValue` copies; here a `VariableValue` shares its data behind an
+  `Arc` (copy-on-write for the rare changes), so resolving `ARGS` & co.
+  for every rule does not copy the strings. `ARGS*` entries also keep their
+  `ARGS*_NAMES` value, built when the argument is set instead of on every
+  resolution of the proxy, and rule evaluation reuses per-transaction
+  buffers (`Transaction::eval_scratch`). Results are unchanged (checked by
+  the differential run); these only remove allocations.
 - **Container iteration order.** `ARGS`, headers, cookies, ... and the
   in-memory `TX`/`IP`/... collections are C++
   `std::unordered_multimap<string, T, MyHash, MyEqual>`; their iteration
