@@ -221,7 +221,8 @@ impl Regex {
 
     /// `searchAll`
     pub fn search_all(&self, s: &[u8]) -> Vec<SMatch> {
-        // std::list with push_front: build reversed.
+        // std::list with push_front: pushed in match order and reversed at
+        // the end (front insertion into a Vec would be quadratic).
         let mut ret: Vec<SMatch> = Vec::new();
         if self.has_error() {
             return ret;
@@ -239,7 +240,7 @@ impl Regex {
                 }
                 let len = end - start;
                 offset = start + len;
-                ret.insert(0, SMatch::new(&s[start..end], start));
+                ret.push(SMatch::new(&s[start..end], start));
                 if len == 0 {
                     rc = 0;
                     break;
@@ -250,6 +251,7 @@ impl Regex {
                 break;
             }
         }
+        ret.reverse();
         ret
     }
 

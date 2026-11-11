@@ -22,7 +22,7 @@ use lmdb_master_sys::{MDB_dbi, MDB_env, MDB_txn, MDB_val};
 use crate::collection::backend::collection_data::CollectionData;
 use crate::collection::collection::Collection;
 use crate::utils::regex::Regex;
-use crate::variable_value::VariableValue;
+use crate::variable_value::{VariableValue, prepend_each};
 use crate::variables::variable::KeyExclusions;
 
 /// The C++ `#undef LMDB_STDOUT_COUT`: the LMDB failures are not printed.
@@ -497,21 +497,24 @@ impl Collection for Lmdb {
     /// `var` selects every key it prefixes.
     fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, _ke: &KeyExclusions) {
         let name = self.name.as_bytes();
+        let mut front = Vec::new();
         if var.is_empty() {
             self.walk("resolveMultiMatches", ffi::MDB_NEXT, None, |k, d| {
-                l.insert(0, VariableValue::with_collection(name, k, d.value()));
+                front.push(VariableValue::with_collection(name, k, d.value()));
             });
         } else {
             self.walk("resolveMultiMatches", ffi::MDB_NEXT, None, |k, d| {
                 if key_matches_prefix(var, k) {
-                    l.insert(0, VariableValue::with_collection(name, k, d.value()));
+                    front.push(VariableValue::with_collection(name, k, d.value()));
                 }
             });
         }
+        prepend_each(l, front);
     }
 
     fn resolve_regular_expression(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let r = Regex::with_options(var, true, true);
+        let mut front = Vec::new();
         self.walk("resolveRegularExpression", ffi::MDB_NEXT, None, |k, d| {
             if r.search(k) <= 0 {
                 return;
@@ -519,8 +522,9 @@ impl Collection for Lmdb {
             if ke.to_omit(k) {
                 return;
             }
-            l.insert(0, VariableValue::new(k, d.value()));
+            front.push(VariableValue::new(k, d.value()));
         });
+        prepend_each(l, front);
     }
 }
 

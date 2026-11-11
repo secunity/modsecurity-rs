@@ -7,7 +7,7 @@ use crate::collection::backend::collection_data::CollectionData;
 use crate::collection::collection::Collection;
 use crate::utils::regex::Regex;
 use crate::utils::unordered_multimap::UnorderedMultimap;
-use crate::variable_value::VariableValue;
+use crate::variable_value::{VariableValue, prepend_each};
 use crate::variables::variable::KeyExclusions;
 
 /// Process local collection: a case insensitive multimap guarded by a
@@ -125,6 +125,7 @@ impl Collection for InMemoryPerProcess {
 
     fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let mut expired = Vec::new();
+        let mut front = Vec::new();
         {
             let m = self.read();
             if var.is_empty() {
@@ -135,7 +136,7 @@ impl Collection for InMemoryPerProcess {
                     if d.is_expired() {
                         expired.push(k.to_vec());
                     } else if d.has_value() {
-                        l.insert(0, VariableValue::with_collection(self.name.as_bytes(), k, d.value()));
+                        front.push(VariableValue::with_collection(self.name.as_bytes(), k, d.value()));
                     }
                 }
             } else {
@@ -146,17 +147,19 @@ impl Collection for InMemoryPerProcess {
                     if d.is_expired() {
                         expired.push(k.to_vec());
                     } else if d.has_value() {
-                        l.insert(0, VariableValue::with_collection(self.name.as_bytes(), var, d.value()));
+                        front.push(VariableValue::with_collection(self.name.as_bytes(), var, d.value()));
                     }
                 }
             }
         }
+        prepend_each(l, front);
         self.purge(expired);
     }
 
     fn resolve_regular_expression(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let r = Regex::with_options(var, true, true);
         let mut expired = Vec::new();
+        let mut front = Vec::new();
         {
             let m = self.read();
             for (k, d) in m.iter() {
@@ -169,10 +172,11 @@ impl Collection for InMemoryPerProcess {
                 if d.is_expired() {
                     expired.push(k.to_vec());
                 } else if d.has_value() {
-                    l.insert(0, VariableValue::with_collection(self.name.as_bytes(), k, d.value()));
+                    front.push(VariableValue::with_collection(self.name.as_bytes(), k, d.value()));
                 }
             }
         }
+        prepend_each(l, front);
         self.purge(expired);
     }
 }

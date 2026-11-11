@@ -11,7 +11,7 @@ use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
 use crate::utils::unordered_multimap::UnorderedMultimap;
 use crate::variable_origin::VariableOrigin;
-use crate::variable_value::VariableValue;
+use crate::variable_value::{VariableValue, prepend_each};
 use crate::variables::variable::KeyExclusions;
 
 #[derive(Debug, Clone)]
@@ -64,20 +64,20 @@ impl AnchoredSetVariable {
     /// `resolve(l)`: note the C++ code inserts at the front of `l`, so the
     /// result is in reverse container order.
     pub fn resolve(&self, l: &mut Vec<VariableValue>) {
-        for (_, v) in self.map.iter() {
-            l.insert(0, v.clone());
-        }
+        prepend_each(l, self.map.iter().map(|(_, v)| v.clone()).collect());
     }
 
     /// `resolve(l, ke)`
     pub fn resolve_with_exclusions(&self, l: &mut Vec<VariableValue>, ke: &KeyExclusions, t: Option<&Transaction<'_>>) {
+        let mut front = Vec::new();
         for (k, v) in self.map.iter() {
             if !ke.to_omit(k) {
-                l.insert(0, v.clone());
+                front.push(v.clone());
             } else {
                 crate::ms_dbg_opt!(t, 7, "Excluding key: {} from target value.", String::from_utf8_lossy(k));
             }
         }
+        prepend_each(l, front);
     }
 
     /// `resolve(key, l)`
@@ -94,12 +94,14 @@ impl AnchoredSetVariable {
 
     /// `resolveRegularExpression(r, l)`
     pub fn resolve_regular_expression(&self, r: &Regex, l: &mut Vec<VariableValue>) {
+        let mut front = Vec::new();
         for (k, v) in self.map.iter() {
             if r.search(k) <= 0 {
                 continue;
             }
-            l.insert(0, v.clone());
+            front.push(v.clone());
         }
+        prepend_each(l, front);
     }
 
     /// `resolveRegularExpression(r, l, ke)`
@@ -110,15 +112,17 @@ impl AnchoredSetVariable {
         ke: &KeyExclusions,
         t: Option<&Transaction<'_>>,
     ) {
+        let mut front = Vec::new();
         for (k, v) in self.map.iter() {
             if r.search(k) <= 0 {
                 continue;
             }
             if !ke.to_omit(k) {
-                l.insert(0, v.clone());
+                front.push(v.clone());
             } else {
                 crate::ms_dbg_opt!(t, 7, "Excluding key: {} from target value.", String::from_utf8_lossy(k));
             }
         }
+        prepend_each(l, front);
     }
 }

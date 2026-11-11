@@ -5,6 +5,21 @@
 
 use crate::variable_origin::VariableOrigin;
 
+/// Inserts `items` at the front of `l` one after the other, in order, as the
+/// C++ code does with `l->insert(l->begin(), ...)` in a loop: the result is
+/// `items` reversed, followed by the previous contents of `l`.
+///
+/// The C++ vector holds pointers, so its repeated front insertion is cheap
+/// per element; with owned values it must be done in one splice to stay
+/// linear (resolving `ARGS` with hundreds of arguments for every rule
+/// otherwise dominates the evaluation time).
+pub fn prepend_each(l: &mut Vec<VariableValue>, items: Vec<VariableValue>) {
+    if items.is_empty() {
+        return;
+    }
+    l.splice(0..0, items.into_iter().rev());
+}
+
 pub type Origins = Vec<VariableOrigin>;
 
 /// A resolved variable: collection name, key and value, plus where the value
@@ -76,5 +91,27 @@ impl VariableValue {
 
     pub fn reserve_origin(&mut self, additional: usize) {
         self.origin.reserve(additional);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prepend_each_matches_repeated_front_insertion() {
+        let v = |s: &str| VariableValue::new(s.as_bytes(), b"");
+        let existing = vec![v("x"), v("y")];
+        let items = vec![v("a"), v("b"), v("c")];
+
+        let mut expected = existing.clone();
+        for it in items.clone() {
+            expected.insert(0, it);
+        }
+        let mut got = existing;
+        prepend_each(&mut got, items);
+        assert_eq!(got, expected);
+        let keys: Vec<&[u8]> = got.iter().map(|x| x.key()).collect();
+        assert_eq!(keys, [b"c".as_slice(), b"b", b"a", b"x", b"y"]);
     }
 }
