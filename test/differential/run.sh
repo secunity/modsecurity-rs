@@ -23,6 +23,8 @@ work=$(mktemp -d "$root/target/differential.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
 (cd "$root" && cargo build --release --lib)
+# The cdylib's SONAME is libmodsecurity.so.3 (as with the C++ build).
+ln -sf libmodsecurity.so "$root/target/release/libmodsecurity.so.3"
 gcc -O1 -I"$CPP_TREE/headers" -o "$work/harness_cpp" "$here/harness.c" \
     -L"$CPP_TREE/src/.libs" -lmodsecurity -Wl,-rpath,"$CPP_TREE/src/.libs"
 gcc -O1 -I"$CPP_TREE/headers" -o "$work/harness_rs" "$here/harness.c" \

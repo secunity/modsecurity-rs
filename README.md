@@ -16,7 +16,9 @@ cargo build --release
 ```
 
 This produces `target/release/libmodsecurity.{so,a}` (C API) and the Rust
-library. Optional components are cargo features mirroring the C++ `configure`
+library. The shared library's SONAME is `libmodsecurity.so.3`, as for the C++
+library: install it under that name (e.g. `libmodsecurity.so.3` → the built
+file) to replace the C++ library under an existing connector. Optional components are cargo features mirroring the C++ `configure`
 options; all are on by default:
 
 | feature | C++ option | needs |
@@ -72,7 +74,10 @@ cargo run --bin unit_tests        # from test/: operator/transformation cases
 `cargo test` runs the C++ project's regression suite (788 cases) and its
 operator/transformation unit suite (4336 cases) through the ported test
 utilities. `test/differential/run.sh` compares this library with a built C++
-libmodsecurity on the OWASP CRS (see the script header).
+libmodsecurity on the OWASP CRS (see the script header), and `test/crs/run.sh`
+runs the OWASP CRS regression suite (go-ftw) through a real nginx with the
+ModSecurity-nginx connector on top of a given library (or with a prebuilt
+module such as the Rust connector port).
 
 `tools/rules-check` is the port of `modsec-rules-check`.
 

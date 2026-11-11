@@ -147,6 +147,15 @@ Faithfully *kept* C++ quirks are documented at their site (e.g.
     through OWASP CRS v4.8.0 at paranoia level 4: interventions, matched rule
     ids and error-log lines are identical, and the 582,672-line level-9 debug
     logs are identical up to the UTF-8 rendering noted above.
+  - `test/crs/run.sh`: the OWASP CRS v4.8.0 regression suite (go-ftw 1.0.3,
+    CRS's `nginx-overrides.yaml`, the configuration of CRS's own
+    `modsec3-nginx` CI service) through nginx 1.28.0 and the unchanged
+    ModSecurity-nginx C connector: 3876/3876 pass with this library, as with
+    the C++ one. The ModSecurity alerts of the two full runs (27,230 lines)
+    are identical except for one `@detectXSS` verdict (an argument name
+    `pay=div style="` flagged by C libinjection, not by the Rust detector;
+    the CRS test passes either way). The same suite also passes through the
+    Rust port of the connector (`../modsecurity-nginx-rust`).
   - During the port: all 36 transformations on ~836k random inputs (output and
     "changed" flag), ~20k generated operator cases, the parser on all
     regression rule sets, CRS and ~19k mutated configurations (acceptance,
@@ -161,4 +170,5 @@ Faithfully *kept* C++ quirks are documented at their site (e.g.
 - Legacy GeoIP (libGeoIP, `WITH_GEOIP`) is not supported — only MaxMind, as in
   the reference build used for comparison.
 - The C++ class API is not available to C++ connectors; they must use the C
-  API (which is complete: every `msc_*` function is exported).
+  API (which is complete: every `msc_*` function is exported, and the shared
+  library has the C++ library's SONAME, `libmodsecurity.so.3`).
