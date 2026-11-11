@@ -149,14 +149,17 @@ http {
 NGX
 
 # --- run ------------------------------------------------------------------
+# The trap is set before starting anything, so that a failed nginx start
+# does not leave albedo running.
+albedo_pid=
+cleanup() {
+    "$work/nginx/sbin/nginx" -p "$work/nginx" -c "$work/nginx/conf/nginx.conf" -s quit 2>/dev/null || true
+    [ -z "$albedo_pid" ] || kill "$albedo_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
 "$ALBEDO" --port "$BACKEND_PORT" > "$work/logs/albedo.log" 2>&1 &
 albedo_pid=$!
 "$work/nginx/sbin/nginx" -p "$work/nginx" -c "$work/nginx/conf/nginx.conf"
-cleanup() {
-    "$work/nginx/sbin/nginx" -p "$work/nginx" -c "$work/nginx/conf/nginx.conf" -s quit 2>/dev/null || true
-    kill "$albedo_pid" 2>/dev/null || true
-}
-trap cleanup EXIT
 for _ in $(seq 1 50); do
     curl -sf "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break
     sleep 0.2
