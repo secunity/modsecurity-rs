@@ -39,13 +39,17 @@ done
 
 diff "$work/cpp/out.txt" "$work/rs/out.txt"
 python3 -I - "$work/cpp/debug.log" "$work/rs/debug.log" <<'PY'
-import sys
-a = open(sys.argv[1], 'rb').read().split(b'\n')
-b = open(sys.argv[2], 'rb').read().split(b'\n')
-assert len(a) == len(b), (len(a), len(b))
-bad = [i for i, (x, y) in enumerate(zip(a, b))
-       if x.decode('utf-8', 'replace') != y.decode('utf-8', 'replace')]
-assert not bad, f"debug log differs at lines {bad[:10]}"
-print(f"identical: {len(a)} debug log lines")
+import itertools, sys
+# Stream both logs (each is hundreds of MB).
+n, bad = 0, []
+with open(sys.argv[1], 'rb') as fa, open(sys.argv[2], 'rb') as fb:
+    for x, y in itertools.zip_longest(fa, fb):
+        n += 1
+        if x is None or y is None or x.decode('utf-8', 'replace') != y.decode('utf-8', 'replace'):
+            bad.append(n)
+            if len(bad) == 10:
+                break
+assert not bad, f"debug log differs at lines {bad}"
+print(f"identical: {n} debug log lines")
 PY
 echo "requests: $(grep -c '^REQ ' "$work/cpp/out.txt"), outputs identical"
