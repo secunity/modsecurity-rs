@@ -50,6 +50,11 @@ ssdeep = []
 curl = ["dep:curl"]
 # Mirrors the MODSEC_REGEX_DOLLAR_ENDONLY build option.
 regex-dollar-endonly = []
+# Not a C++ option (off by default): match @pm/@pmFromFile/@pmf phrases with
+# the aho-corasick crate instead of the port of the C++ ACMP parser, fixing
+# ACMP's missed and misreported matches. Changes detection results and
+# TX:0/log contents compared with C++ (see src/operators/pm.rs).
+pm-aho-corasick = ["dep:aho-corasick"]
 
 [dependencies]
 # PCRE2 is used through its C API (as the C++ code does) so that match
@@ -74,6 +79,7 @@ rand = "0.9"
 # Local time and strftime-style formatting (audit log timestamps and
 # directories, TIME* variables); replaces libc localtime_r/strftime.
 jiff = "0.2"
+aho-corasick = { version = "1", optional = true }
 
 [profile.dev]
 opt-level = 1

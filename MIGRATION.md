@@ -100,6 +100,7 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
 | system libxml2, libfuzzy | same | thin `extern "C"` bindings in the modules that use them |
 | `libc`, `bstr` | — | POSIX calls; byte-string helpers |
 | `jiff` | libc `localtime_r`/`strftime` | local time zone and timestamp formatting (C-locale output) |
+| `aho-corasick` (optional) | — | `pm-aho-corasick` feature: alternative `@pm` matcher (off by default) |
 | `rand` | `<random>`, `rand()`/`srand()` | transaction id suffix, audit log boundaries |
 | — | yajl | `src/utils/json.rs` (yajl-compatible event parser, tree and generator) |
 
@@ -126,6 +127,15 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   were checked to be the same.
 - **Lua**: an error raised by a bad `m.*` call in tail position lacks the
   `file:line:` prefix.
+- **`pm-aho-corasick` feature** (off by default): `@pm` and its file
+  variants use a standard Aho-Corasick automaton instead of ACMP, which
+  fixes ACMP's missed matches, its reports of phrases that are not patterns
+  (and NUL truncation), and its platform-dependent handling of pattern
+  bytes >= 0x80. All regression and unit cases pass either way, and on the
+  CRS v4.8.0 regression suite (go-ftw, nginx) the alerts are the same as
+  with ACMP. Without the
+  feature the C++ behaviour is kept (the ACMP port agrees with C++
+  `acmp_process_quick` on 200k random cases).
 - **Time formatting** (audit/error log timestamps, the JSON `time_stamp`,
   parallel audit log and upload directory names) always uses the C locale's
   formats and English names. C++'s `strftime` follows the process `LC_TIME`

@@ -10,6 +10,7 @@
 # test/differential corpus at CRS paranoia levels 1 and 4). Rules:
 # modsecurity.conf-recommended (audit log off) + CRS. Each run is pinned to
 # one CPU (CPU, default 3); REPS repetitions alternate the two libraries.
+# FEATURES: extra cargo features for the Rust build (e.g. pm-aho-corasick).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -20,7 +21,7 @@ CPU=${CPU:-3}
 work="$root/target/benchmark"
 mkdir -p "$work"
 
-(cd "$root" && cargo build --release --lib)
+(cd "$root" && cargo build --release --lib ${FEATURES:+--features "$FEATURES"})
 ln -sf libmodsecurity.so "$root/target/release/libmodsecurity.so.3"
 gcc -O2 -I"$CPP_TREE/headers" -o "$work/bench_cpp" "$here/bench_capi.c" \
     -L"$CPP_TREE/src/.libs" -lmodsecurity -Wl,-rpath,"$CPP_TREE/src/.libs"
