@@ -99,6 +99,8 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
 | `curl` | libcurl | remote rules, HTTPS audit log |
 | system libxml2, libfuzzy | same | thin `extern "C"` bindings in the modules that use them |
 | `libc`, `bstr` | — | POSIX calls; byte-string helpers |
+| `jiff` | libc `localtime_r`/`strftime` | local time zone and timestamp formatting (C-locale output) |
+| `rand` | `<random>`, `rand()`/`srand()` | transaction id suffix, audit log boundaries |
 | — | yajl | `src/utils/json.rs` (yajl-compatible event parser, tree and generator) |
 
 `unsafe` is confined to FFI (PCRE2, libxml2, LMDB, libfuzzy, libc calls) and
@@ -124,6 +126,13 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   were checked to be the same.
 - **Lua**: an error raised by a bad `m.*` call in tail position lacks the
   `file:line:` prefix.
+- **Time formatting** (audit/error log timestamps, the JSON `time_stamp`,
+  parallel audit log and upload directory names) always uses the C locale's
+  formats and English names. C++'s `strftime` follows the process `LC_TIME`
+  locale, so the output only differs if the embedding application calls
+  `setlocale` (nginx does not). The local zone is read from `TZ` or
+  `/etc/localtime` as with libc; the output was checked to be identical to
+  glibc's across 1970–2040 in several zones.
 - `xmlCleanupParser()` is not called when a `ModSecurity` instance is
   dropped (unsafe with several instances).
 

@@ -71,6 +71,9 @@ curl = { version = "0.4", optional = true }
 # Random numbers (transaction id suffix, audit log boundaries); replaces the
 # C++ <random> engine and libc rand()/srand().
 rand = "0.9"
+# Local time and strftime-style formatting (audit log timestamps and
+# directories, TIME* variables); replaces libc localtime_r/strftime.
+jiff = "0.2"
 
 [profile.dev]
 opt-level = 1

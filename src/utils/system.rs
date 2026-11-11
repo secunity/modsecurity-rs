@@ -2,6 +2,10 @@
 
 use std::ffi::{CStr, CString, c_char, c_int, c_long};
 
+use jiff::fmt::strtime;
+use jiff::tz::TimeZone;
+use jiff::{Timestamp, Zoned};
+
 /// `wordexp(3)` bindings (glibc layout; not exposed by the `libc` crate).
 #[repr(C)]
 struct WordExpT {
@@ -136,52 +140,85 @@ pub fn strerror(errnum: i32) -> String {
     unsafe { CStr::from_ptr(libc::strerror(errnum)).to_string_lossy().into_owned() }
 }
 
-/// `strftime` of `t` in the local time zone (`localtime_r`).
+/// `t` (seconds since the epoch) in the local time zone: `localtime_r`.
+///
+/// The zone comes from `TZ` or the system configuration (`/etc/localtime`),
+/// as for libc; UTC if neither can be determined.
+pub fn localtime(t: i64) -> Zoned {
+    Timestamp::from_second(t).unwrap_or(Timestamp::UNIX_EPOCH).to_zoned(TimeZone::system())
+}
+
+/// `strftime(fmt, localtime_r(t))`.
+///
+/// Formatting is that of the C ("POSIX") locale: `%c` is
+/// `%a %b %e %H:%M:%S %Y` and names are English. C++'s `strftime` follows
+/// the process `LC_TIME` locale instead, which only differs when the
+/// embedding application changes it with `setlocale` (nginx does not).
 pub fn strftime_local(t: i64, fmt: &str) -> String {
-    let tt = t as libc::time_t;
-    // SAFETY: tm is a plain C struct; localtime_r fills it.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe {
-        libc::localtime_r(&tt, &mut tm);
-    }
-    strftime_tm(&tm, fmt)
-}
-
-/// `strftime` of `t` in UTC (`gmtime_r`).
-pub fn strftime_utc(t: i64, fmt: &str) -> String {
-    let tt = t as libc::time_t;
-    // SAFETY: as above.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe {
-        libc::gmtime_r(&tt, &mut tm);
-    }
-    strftime_tm(&tm, fmt)
-}
-
-/// `localtime_r`
-pub fn localtime(t: i64) -> libc::tm {
-    let tt = t as libc::time_t;
-    // SAFETY: as above.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe {
-        libc::localtime_r(&tt, &mut tm);
-    }
-    tm
-}
-
-fn strftime_tm(tm: &libc::tm, fmt: &str) -> String {
-    let Ok(cfmt) = CString::new(fmt) else {
-        return String::new();
-    };
-    let mut buf = vec![0u8; 256];
-    // SAFETY: buf is writable for its length, cfmt is NUL terminated and tm
-    // is initialised.
-    let n = unsafe { libc::strftime(buf.as_mut_ptr() as *mut libc::c_char, buf.len(), cfmt.as_ptr(), tm) };
-    buf.truncate(n);
-    String::from_utf8_lossy(&buf).into_owned()
+    let config = strtime::Config::new().custom(strtime::PosixCustom::new());
+    strtime::BrokenDownTime::from(&localtime(t)).to_string_with_config(&config, fmt).unwrap_or_default()
 }
 
 /// `std::time(nullptr)`
 pub fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The C++ implementation: `strftime(fmt, localtime_r(t))` in the C locale.
+    fn libc_strftime_local(t: i64, fmt: &str) -> String {
+        let tt = t as libc::time_t;
+        // SAFETY: tm is a plain C struct that localtime_r fills; buf is
+        // writable for its length and the format is NUL terminated.
+        unsafe {
+            let mut tm: libc::tm = std::mem::zeroed();
+            libc::localtime_r(&tt, &mut tm);
+            let cfmt = CString::new(fmt).unwrap();
+            let mut buf = [0u8; 256];
+            let n = libc::strftime(buf.as_mut_ptr() as *mut c_char, buf.len(), cfmt.as_ptr(), &tm);
+            String::from_utf8_lossy(&buf[..n]).into_owned()
+        }
+    }
+
+    /// Every format the library uses gives the same text as glibc in the C
+    /// locale, in whatever zone `TZ` selects (run with several, e.g.
+    /// `TZ=America/New_York`, `TZ=Asia/Kolkata`, `TZ=Australia/Lord_Howe`).
+    #[test]
+    fn strftime_local_matches_libc() {
+        const FORMATS: &[&str] = &[
+            "%c",
+            "[%d/%b/%Y:%H:%M:%S %z]",
+            "/%Y%m%d",
+            "/%Y%m%d-%H%M",
+            "/%Y%m%d-%H%M%S",
+            "%Y%m%d",
+            "%H:%M:%S",
+            "%u",
+            "%H",
+            "%M",
+            "%d",
+            "%Y",
+            "%S",
+        ];
+        // Every ~37 hours from 1970 to 2040 (all weekdays, months, hours and
+        // DST transitions), plus the epoch and leap-day edges.
+        let mut times: Vec<i64> = (0..2_200_000_000i64).step_by(133_337).collect();
+        times.extend([0, 951_782_400, 951_868_799, 1_709_164_800, 2_147_483_647]);
+        for &t in &times {
+            for fmt in FORMATS {
+                assert_eq!(strftime_local(t, fmt), libc_strftime_local(t, fmt), "t={t} fmt={fmt:?}");
+            }
+            // SAFETY: as above.
+            let tm_mon = unsafe {
+                let tt = t as libc::time_t;
+                let mut tm: libc::tm = std::mem::zeroed();
+                libc::localtime_r(&tt, &mut tm);
+                tm.tm_mon
+            };
+            assert_eq!(i32::from(localtime(t).month()), tm_mon + 1, "t={t}");
+        }
+    }
 }

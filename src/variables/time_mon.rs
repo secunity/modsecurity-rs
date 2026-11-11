@@ -32,7 +32,8 @@ impl Variable for TimeMon {
     }
     fn evaluate(&self, _t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
         let timeinfo = crate::utils::system::localtime(crate::utils::system::now());
-        let value = (timeinfo.tm_mon + 1).to_string();
+        // `tm_mon + 1` in C++: jiff months are already 1 to 12.
+        let value = timeinfo.month().to_string();
         l.push(VariableValue::new(self.ret_name.as_bytes(), value.as_bytes()));
     }
 }
