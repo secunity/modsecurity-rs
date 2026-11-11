@@ -3,10 +3,10 @@
 
 use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::{RuleWithActions, TransformationPath, TransformationResults};
+use crate::rule_with_actions::{RuleWithActions, TransformationPath};
+use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
-use crate::variable_value::VariableValue;
 use crate::variables::variable::{Variable, Variables, variables_to_string};
 
 /// The `SecRule` specific part of a rule: its targets and its operator.
@@ -182,16 +182,17 @@ impl RuleWithOperator {
             );
         }
 
-        let mut vars: Vec<&'a dyn Variable> = Vec::with_capacity(4);
+        // The transaction's buffers, reused by every rule (a chained rule
+        // evaluated below gets fresh ones); given back after the loop.
+        let EvalScratch { mut vars, mut e, mut values } = std::mem::take(&mut t.eval_scratch);
+        vars.clear();
         let mut exclusion = Variables::new();
         self.get_final_vars(rule, t, &mut vars, &mut exclusion);
 
-        // Reused for every value (execute_transformations clears it).
-        let mut values: TransformationResults = Vec::new();
-        for var in vars {
-            let mut e: Vec<VariableValue> = Vec::new();
+        for &var in &vars {
+            e.clear();
             var.evaluate(t, Some(rule), &mut e);
-            for v in e {
+            for v in e.drain(..) {
                 let value = v.value();
                 let key = v.key_with_collection();
 
@@ -233,6 +234,8 @@ impl RuleWithOperator {
                 }
             }
         }
+        vars.clear();
+        t.eval_scratch = EvalScratch { vars, e, values };
 
         if !global_ret {
             crate::ms_dbg_a!(t, 4, "Rule returned 0.");

@@ -28,7 +28,7 @@ use crate::request_body_processor::multipart::{Multipart, MultipartPartTmpFile};
 #[cfg(feature = "libxml2")]
 use crate::request_body_processor::xml::Xml;
 use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule_with_actions::{RuleWithActions, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set_properties::{
     BodyLimitAction, ConfigBoolean, ConfigXMLParseXmlIntoArgs, RuleEngine, rule_engine_state_string,
@@ -41,6 +41,7 @@ use crate::utils::string::{
     tolower,
 };
 use crate::variable_value::VariableValue;
+use crate::variables::variable::Variable;
 
 /// Types of request body that ModSecurity may give a special treatment for
 /// the data.
@@ -214,9 +215,9 @@ impl TransactionAnchoredVariables {
             unique_id: a("UNIQUE_ID"),
             url_encoded_error: a("URLENCODED_ERROR"),
             user_id: a("USERID"),
-            args: s("ARGS"),
-            args_get: s("ARGS_GET"),
-            args_post: s("ARGS_POST"),
+            args: AnchoredSetVariable::with_names("ARGS", "ARGS_NAMES"),
+            args_get: AnchoredSetVariable::with_names("ARGS_GET", "ARGS_GET_NAMES"),
+            args_post: AnchoredSetVariable::with_names("ARGS_POST", "ARGS_POST_NAMES"),
             files_sizes: s("FILES_SIZES"),
             files_names: s("FILES_NAMES"),
             files_tmp_content: s("FILES_TMP_CONTENT"),
@@ -240,6 +241,18 @@ impl TransactionAnchoredVariables {
             args_post_names: AnchoredSetVariableTranslationProxy::new("ARGS_POST_NAMES"),
         }
     }
+}
+
+/// Buffers of `RuleWithOperator::evaluate`, kept in the transaction so
+/// that evaluating a rule does not allocate them again.
+#[derive(Default)]
+pub struct EvalScratch<'a> {
+    /// The rule's final list of variables.
+    pub vars: Vec<&'a dyn Variable>,
+    /// The values of one variable.
+    pub e: Vec<VariableValue>,
+    /// The transformation results of one value.
+    pub values: TransformationResults,
 }
 
 pub struct Transaction<'a> {
@@ -311,6 +324,8 @@ pub struct Transaction<'a> {
     /// Chain ancestors of the rule being evaluated (replaces the C++
     /// `RuleWithActions::m_chainedRuleParent` back pointers).
     pub chained_rule_parents: Vec<&'a RuleWithActions>,
+    /// Buffers reused by rule evaluation.
+    pub eval_scratch: EvalScratch<'a>,
     log_cb_data: Option<Box<dyn Any + Send>>,
 }
 
@@ -398,6 +413,7 @@ impl<'a> Transaction<'a> {
             vars: TransactionAnchoredVariables::new(),
             marker: None,
             chained_rule_parents: Vec::new(),
+            eval_scratch: EvalScratch::default(),
             log_cb_data,
         };
         t.vars.url_encoded_error.set(b"0", 0);

@@ -12,6 +12,17 @@ use crate::variable_origin::VariableOrigin;
 use crate::variable_value::VariableValue;
 use crate::variables::variable::KeyExclusions;
 
+/// `m_translate` of one value: a value of collection `name` whose key and
+/// value are `v`'s key, with the origins moved to point at the key.
+pub(crate) fn translate(name: &str, v: &VariableValue) -> VariableValue {
+    let mut nv = VariableValue::with_collection(name.as_bytes(), v.key(), v.key());
+    nv.reserve_origin(v.origin().len());
+    for o in v.origin() {
+        nv.add_origin(VariableOrigin::new(v.key().len(), o.offset.wrapping_sub(v.key().len()).wrapping_sub(1)));
+    }
+    nv
+}
+
 #[derive(Debug, Clone)]
 pub struct AnchoredSetVariableTranslationProxy {
     pub name: String,
@@ -26,20 +37,21 @@ impl AnchoredSetVariableTranslationProxy {
     /// original key, adjusting the origins to point at the key.
     fn translate(&self, l: &mut [VariableValue]) {
         for v in l.iter_mut() {
-            let old = &*v;
-            let mut nv = VariableValue::with_collection(self.name.as_bytes(), old.key(), old.key());
-            nv.reserve_origin(old.origin().len());
-            for o in old.origin() {
-                nv.add_origin(VariableOrigin::new(
-                    old.key().len(),
-                    o.offset.wrapping_sub(old.key().len()).wrapping_sub(1),
-                ));
-            }
-            *v = nv;
+            *v = translate(&self.name, v);
         }
     }
 
+    /// Whether `fount`'s stored name values can be used: they are the
+    /// translation of its entries, and `l` holds nothing else that the C++
+    /// translation of the whole list would rewrite.
+    fn use_stored_names(&self, fount: &AnchoredSetVariable, l: &[VariableValue]) -> bool {
+        l.is_empty() && fount.has_names(&self.name)
+    }
+
     pub fn resolve(&self, fount: &AnchoredSetVariable, l: &mut Vec<VariableValue>) {
+        if self.use_stored_names(fount, l) {
+            return fount.resolve_names(l);
+        }
         fount.resolve(l);
         self.translate(l);
     }
@@ -51,16 +63,25 @@ impl AnchoredSetVariableTranslationProxy {
         ke: &KeyExclusions,
         t: Option<&Transaction<'_>>,
     ) {
+        if self.use_stored_names(fount, l) {
+            return fount.resolve_names_with_exclusions(l, ke, t);
+        }
         fount.resolve_with_exclusions(l, ke, t);
         self.translate(l);
     }
 
     pub fn resolve_key(&self, fount: &AnchoredSetVariable, key: &[u8], l: &mut Vec<VariableValue>) {
+        if self.use_stored_names(fount, l) {
+            return fount.resolve_names_key(key, l);
+        }
         fount.resolve_key(key, l);
         self.translate(l);
     }
 
     pub fn resolve_regular_expression(&self, fount: &AnchoredSetVariable, r: &Regex, l: &mut Vec<VariableValue>) {
+        if self.use_stored_names(fount, l) {
+            return fount.resolve_names_regular_expression(r, l);
+        }
         fount.resolve_regular_expression(r, l);
         self.translate(l);
     }
@@ -73,6 +94,9 @@ impl AnchoredSetVariableTranslationProxy {
         ke: &KeyExclusions,
         t: Option<&Transaction<'_>>,
     ) {
+        if self.use_stored_names(fount, l) {
+            return fount.resolve_names_regular_expression_with_exclusions(r, l, ke, t);
+        }
         fount.resolve_regular_expression_with_exclusions(r, l, ke, t);
         self.translate(l);
     }
@@ -83,5 +107,47 @@ impl AnchoredSetVariableTranslationProxy {
         let mut l = Vec::new();
         self.resolve(fount, &mut l);
         l.first().map(|v| v.value().to_vec())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The values stored at `set` time are exactly what translating the
+    /// fount's resolution gives, for every resolution; with a non-empty list
+    /// the whole list is still translated (C++ behaviour).
+    #[test]
+    fn stored_names_match_translation() {
+        let proxy = AnchoredSetVariableTranslationProxy::new("ARGS_NAMES");
+        let mut with = AnchoredSetVariable::with_names("ARGS", "ARGS_NAMES");
+        let mut without = AnchoredSetVariable::new("ARGS");
+        for (k, v, off) in [(&b"a"[..], &b"1"[..], 3), (b"b", b"22", 0), (b"a", b"333", 9), (b"", b"x", 1)] {
+            with.set(k, v, off);
+            without.set(k, v, off);
+        }
+        let r = Regex::new("^a");
+        let ke = KeyExclusions::default();
+        type Run<'r> = &'r dyn Fn(&AnchoredSetVariable, &mut Vec<VariableValue>);
+        let runs: [Run; 5] = [
+            &|f, l| proxy.resolve(f, l),
+            &|f, l| proxy.resolve_with_exclusions(f, l, &ke, None),
+            &|f, l| proxy.resolve_key(f, b"a", l),
+            &|f, l| proxy.resolve_regular_expression(f, &r, l),
+            &|f, l| proxy.resolve_regular_expression_with_exclusions(f, &r, l, &ke, None),
+        ];
+        for run in runs {
+            let (mut a, mut b) = (Vec::new(), Vec::new());
+            run(&with, &mut a);
+            run(&without, &mut b);
+            assert!(!a.is_empty());
+            assert_eq!(a, b);
+            let pre = VariableValue::with_collection(b"TX", b"k", b"v");
+            let (mut a, mut b) = (vec![pre.clone()], vec![pre]);
+            run(&with, &mut a);
+            run(&without, &mut b);
+            assert_eq!(a, b);
+            assert_eq!(a.last().unwrap().collection(), b"ARGS_NAMES");
+        }
     }
 }
