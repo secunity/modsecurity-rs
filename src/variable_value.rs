@@ -3,6 +3,8 @@
 //! Keys and values are byte strings: they come straight from the HTTP
 //! request.
 
+use std::sync::Arc;
+
 use crate::variable_origin::VariableOrigin;
 
 /// Inserts `items` at the front of `l` one after the other, in order, as the
@@ -25,25 +27,35 @@ pub type Origins = Vec<VariableOrigin>;
 /// A resolved variable: collection name, key and value, plus where the value
 /// came from. In C++ resolution produced heap allocated copies owned by the
 /// caller; here resolution produces owned values in a `Vec`.
+///
+/// Resolving a collection (e.g. `ARGS`, once per rule that targets it)
+/// copies its values, so the data is shared behind an `Arc` and a copy only
+/// bumps a reference count; the rare modifications (`set_value`,
+/// `add_origin`) copy on write. The collection name and the key are stored
+/// once, inside `key_with_collection`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct VariableValue {
+pub struct VariableValue(Arc<Inner>);
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Inner {
     origin: Origins,
-    collection: Vec<u8>,
-    key: Vec<u8>,
+    /// `collection:key`, or just `key` when there is no collection.
     key_with_collection: Vec<u8>,
+    /// Length of the collection name in `key_with_collection` (`None`: no
+    /// collection).
+    collection_len: Option<usize>,
     value: Vec<u8>,
 }
 
 impl VariableValue {
     /// `VariableValue(const std::string *key, const std::string *value)`
     pub fn new(key: &[u8], value: &[u8]) -> Self {
-        VariableValue {
+        VariableValue(Arc::new(Inner {
             origin: Vec::new(),
-            collection: Vec::new(),
-            key: key.to_vec(),
             key_with_collection: key.to_vec(),
+            collection_len: None,
             value: value.to_vec(),
-        }
+        }))
     }
 
     /// `VariableValue(collection, key, value)`
@@ -52,45 +64,52 @@ impl VariableValue {
         kwc.extend_from_slice(collection);
         kwc.push(b':');
         kwc.extend_from_slice(key);
-        VariableValue {
+        VariableValue(Arc::new(Inner {
             origin: Vec::new(),
-            collection: collection.to_vec(),
-            key: key.to_vec(),
             key_with_collection: kwc,
+            collection_len: Some(collection.len()),
             value: value.to_vec(),
-        }
+        }))
     }
 
     pub fn key(&self) -> &[u8] {
-        &self.key
+        match self.0.collection_len {
+            Some(n) => &self.0.key_with_collection[n + 1..],
+            None => &self.0.key_with_collection,
+        }
     }
 
     pub fn key_with_collection(&self) -> &[u8] {
-        &self.key_with_collection
+        &self.0.key_with_collection
     }
 
     pub fn collection(&self) -> &[u8] {
-        &self.collection
+        match self.0.collection_len {
+            Some(n) => &self.0.key_with_collection[..n],
+            None => b"",
+        }
     }
 
     pub fn value(&self) -> &[u8] {
-        &self.value
+        &self.0.value
     }
 
     pub fn set_value(&mut self, value: &[u8]) {
-        self.value = value.to_vec();
+        let inner = Arc::make_mut(&mut self.0);
+        inner.value.clear();
+        inner.value.extend_from_slice(value);
     }
 
     pub fn add_origin(&mut self, origin: VariableOrigin) {
-        self.origin.push(origin);
+        Arc::make_mut(&mut self.0).origin.push(origin);
     }
 
     pub fn origin(&self) -> &Origins {
-        &self.origin
+        &self.0.origin
     }
 
     pub fn reserve_origin(&mut self, additional: usize) {
-        self.origin.reserve(additional);
+        Arc::make_mut(&mut self.0).origin.reserve(additional);
     }
 }
 
@@ -113,5 +132,21 @@ mod tests {
         assert_eq!(got, expected);
         let keys: Vec<&[u8]> = got.iter().map(|x| x.key()).collect();
         assert_eq!(keys, [b"c".as_slice(), b"b", b"a", b"x", b"y"]);
+    }
+
+    #[test]
+    fn accessors_and_copy_on_write() {
+        let v = VariableValue::with_collection(b"ARGS", b"a:b", b"1");
+        assert_eq!((v.collection(), v.key(), v.key_with_collection()), (&b"ARGS"[..], &b"a:b"[..], &b"ARGS:a:b"[..]));
+        let e = VariableValue::with_collection(b"", b"", b"");
+        assert_eq!((e.collection(), e.key(), e.key_with_collection()), (&b""[..], &b""[..], &b":"[..]));
+        let n = VariableValue::new(b"k", b"v");
+        assert_eq!((n.collection(), n.key(), n.key_with_collection()), (&b""[..], &b"k"[..], &b"k"[..]));
+
+        let mut c = v.clone();
+        c.set_value(b"2");
+        c.add_origin(VariableOrigin::new(1, 0));
+        assert_eq!((v.value(), v.origin().len()), (&b"1"[..], 0));
+        assert_eq!((c.value(), c.origin().len()), (&b"2"[..], 1));
     }
 }

@@ -12,6 +12,7 @@ use crate::variable_value::VariableValue;
 pub struct AnchoredVariable {
     pub offset: usize,
     pub name: String,
+    /// Written only through `set*`/`unset`, which keep `var` in sync.
     pub value: Vec<u8>,
     var: VariableValue,
 }
@@ -28,12 +29,14 @@ impl AnchoredVariable {
 
     pub fn unset(&mut self) {
         self.value.clear();
+        self.var.set_value(b"");
     }
 
     /// `set(a, offset, offsetLen)`
     pub fn set_with_len(&mut self, a: &[u8], offset: usize, offset_len: usize) {
         self.offset = offset;
         self.value = a.to_vec();
+        self.var.set_value(a);
         self.var.add_origin(VariableOrigin::new(offset_len, offset));
     }
 
@@ -41,6 +44,7 @@ impl AnchoredVariable {
     pub fn set(&mut self, a: &[u8], offset: usize) {
         self.offset = offset;
         self.value = a.to_vec();
+        self.var.set_value(a);
         self.var.add_origin(VariableOrigin::new(self.value.len(), offset));
     }
 
@@ -49,9 +53,9 @@ impl AnchoredVariable {
         if self.name.is_empty() {
             return;
         }
-        let mut v = self.var.clone();
-        v.set_value(&self.value);
-        l.push(v);
+        // `var` holds the current value (kept in sync by set/unset), so
+        // this only shares it (C++: `m_var.m_value.assign(m_value)`).
+        l.push(self.var.clone());
     }
 
     /// `std::string *evaluate()`

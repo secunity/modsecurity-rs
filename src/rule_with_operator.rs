@@ -105,7 +105,7 @@ impl RuleWithOperator {
             }
             if t.rule_remove_target_by_tag
                 .iter()
-                .any(|(tag, target)| rule.contains_tag(tag, t) && target == variable.full_name())
+                .any(|(tag, target)| target == variable.full_name() && rule.contains_tag(tag, t))
             {
                 continue;
             }
@@ -143,7 +143,8 @@ impl RuleWithOperator {
             return true;
         }
 
-        let vars_str = variables_to_string(self.variables.iter().map(|v| v.as_ref()));
+        // Only needed for the debug log (C++ builds it unconditionally).
+        let vars_str = || variables_to_string(self.variables.iter().map(|v| v.as_ref()));
         if let Some(s) = &self.operator.base().string {
             if t.debug_enabled(4) {
                 let mut eparam = s.evaluate(Some(t));
@@ -167,7 +168,7 @@ impl RuleWithOperator {
                     rule.rule_id,
                     self.get_operator_name(),
                     String::from_utf8_lossy(&eparam),
-                    vars_str
+                    vars_str()
                 );
             }
         } else {
@@ -177,7 +178,7 @@ impl RuleWithOperator {
                 "(Rule: {}) Executing operator \"{} against {}.",
                 rule.rule_id,
                 self.get_operator_name(),
-                vars_str
+                vars_str()
             );
         }
 
@@ -202,7 +203,7 @@ impl RuleWithOperator {
                 if exclusion.contains_value(&v)
                     || t.rule_remove_target_by_tag
                         .iter()
-                        .any(|(tag, target)| rule.contains_tag(tag, t) && target.as_bytes() == v.key_with_collection())
+                        .any(|(tag, target)| target.as_bytes() == v.key_with_collection() && rule.contains_tag(tag, t))
                 {
                     continue;
                 }

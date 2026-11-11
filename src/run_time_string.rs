@@ -2,6 +2,8 @@
 //!
 //! A string with `%{VAR}` macros, expanded per transaction.
 
+use std::borrow::Cow;
+
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::variables::variable::Variable;
@@ -75,6 +77,16 @@ impl RunTimeString {
             }
         }
         s
+    }
+
+    /// `evaluate(t)` without copying when the string is plain text (no
+    /// macro): for hot comparisons such as `containsTag`.
+    pub fn evaluate_cow(&self, t: Option<&Transaction<'_>>) -> Cow<'_, [u8]> {
+        match self.elements.as_slice() {
+            [] => Cow::Borrowed(b""),
+            [RunTimeElementHolder::String(st)] => Cow::Borrowed(st),
+            _ => Cow::Owned(self.evaluate(t)),
+        }
     }
 
     /// `evaluate(t)`

@@ -503,12 +503,12 @@ impl RuleWithActions {
 
     /// `containsTag`
     pub fn contains_tag(&self, name: &str, t: &Transaction<'_>) -> bool {
-        self.actions_tag.iter().any(|tag| tag.get_name(t) == name.as_bytes())
+        self.actions_tag.iter().any(|tag| *tag.string.evaluate_cow(Some(t)) == *name.as_bytes())
     }
 
     /// `containsMsg`
     pub fn contains_msg(&self, name: &str, t: &Transaction<'_>) -> bool {
-        self.msg.as_ref().is_some_and(|m| m.data(t) == name.as_bytes())
+        self.msg.as_ref().is_some_and(|m| *m.string.evaluate_cow(Some(t)) == *name.as_bytes())
     }
 
     /// `getActionsByName`
