@@ -1,0 +1,38 @@
+r 10
+i FOO v0
+p
+i k15 v1
+i k7 v2
+i ba v3
+i aa v4
+p
+i k8 v5
+i k1 v6
+i foo v7
+e k10
+e k12
+p
+i zz v10
+i foo v11
+i k6 v12
+i cba v13
+c
+i k9 v15
+i ARG1 v16
+i k5 v17
+i k5 v18
+i id v19
+i k14 v20
+i k15 v21
+i k4 v22
+i ARG1 v23
+p
+i q v24
+i k12 v25
+p
+i k11 v26
+p
+i k1 v27
+p
+i abc v29
+p

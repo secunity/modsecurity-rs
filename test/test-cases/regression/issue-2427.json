@@ -1,0 +1,137 @@
+[
+  {
+    "enabled": 1,
+    "version_min": 300000,
+    "title": "Tmp file retained for @inspectFile (1/2)",
+    "resource": "lua",
+    "client": {
+      "ip": "200.249.12.31",
+      "port": 123
+    },
+    "server": {
+      "ip": "200.249.12.31",
+      "port": 80
+    },
+    "request": {
+      "headers": {
+        "Host": "localhost",
+        "User-Agent": "curl/7.38.0",
+        "Accept": "*/*",
+        "Content-Length": "658",
+        "Content-Type": "multipart/form-data; boundary=--------------------------756b6d74fa1a8ee2",
+        "Expect": "100-continue"
+      },
+      "uri": "/wheee/f%20i%20l%20e%20",
+      "method": "POST",
+      "body": [
+        "----------------------------756b6d74fa1a8ee2\n",
+        "Content-Disposition: form-data; name=\"name\"\n",
+        "\n",
+        "test\n",
+        "----------------------------756b6d74fa1a8ee2\n",
+        "Content-Disposition: form-data; name=\"name2\"\n",
+        "\n",
+        "test2\n",
+        "----------------------------756b6d74fa1a8ee2\n",
+        "Content-Disposition: form-data; name=\"filedata\"; filename=\"small_text_file1.txt\"\n",
+        "Content-Type: text/plain\n",
+        "\n",
+        "This is a very small test file..\n",
+        "----------------------------756b6d74fa1a8ee2\n",
+        "Content-Disposition: form-data; filename=\"small_text_file2.txt\"; name=\"small2.txt\" \n",
+        "Content-Type: text/plain\n",
+        "\n",
+        "This is another very small test file that contains the search content abcdef..\n",
+        "----------------------------756b6d74fa1a8ee2--\n"
+      ]
+    },
+    "response": {
+      "headers": {
+        "Content-Length": "0"
+      },
+      "body": [
+        ""
+      ]
+    },
+    "expected": {
+      "debug_log": "Returning from lua script: abcdef.*Rule returned 1",
+      "http_code": 403
+    },
+    "rules": [
+      "SecRuleEngine On",
+      "SecRequestBodyAccess On",
+      "SecTmpSaveUploadedFiles On",
+      "SecUploadKeepFiles Off",
+      "SecUploadDir /tmp",
+      "SecTmpDir /tmp",
+      "SecRule FILES_TMPNAMES \"@inspectFile test-cases/data/inspectFile-abcdef.lua\" \"id:1,phase:2,deny,status:403\""
+    ]
+  },
+  {
+    "enabled": 1,
+    "version_min": 300000,
+    "title": "Tmp file retained for @inspectFile (2/2)",
+    "resource": "lua",
+    "client": {
+      "ip": "200.249.12.31",
+      "port": 123
+    },
+    "server": {
+      "ip": "200.249.12.31",
+      "port": 80
+    },
+    "request": {
+      "headers": {
+        "Host": "localhost",
+        "User-Agent": "curl/7.38.0",
+        "Accept": "*/*",
+        "Content-Length": "677",
+        "Content-Type": "multipart/form-data; boundary=--------------------------756b6d74fa1a8ee2",
+        "Expect": "100-continue"
+      },
+      "uri": "/wheee/f%20i%20l%20e%20",
+      "method": "POST",
+      "body": [
+        "----------------------------756b6d74fa1a8ee2\r\n",
+        "Content-Disposition: form-data; name=\"name\"\r\n",
+        "\r\n",
+        "test\r\n",
+        "----------------------------756b6d74fa1a8ee2\r\n",
+        "Content-Disposition: form-data; name=\"name2\"\r\n",
+        "\r\n",
+        "test2\r\n",
+        "----------------------------756b6d74fa1a8ee2\r\n",
+        "Content-Disposition: form-data; name=\"filedata\"; filename=\"small_text_file1.txt\"\r\n",
+        "Content-Type: text/plain\r\n",
+        "\r\n",
+        "This is a very small test file..\r\n",
+        "----------------------------756b6d74fa1a8ee2\r\n",
+        "Content-Disposition: form-data; filename=\"small_text_file2.txt\"; name=\"small2.txt\" \r\n",
+        "Content-Type: text/plain\r\n",
+        "\r\n",
+        "This is another very small test file that does not contain the search content.\r\n",
+        "----------------------------756b6d74fa1a8ee2--\r\n"
+      ]
+    },
+    "response": {
+      "headers": {
+        "Content-Length": "0"
+      },
+      "body": [
+        ""
+      ]
+    },
+    "expected": {
+      "http_code": 200
+    },
+    "rules": [
+      "SecRuleEngine On",
+      "SecRequestBodyAccess On",
+      "SecTmpSaveUploadedFiles On",
+      "SecUploadKeepFiles Off",
+      "SecUploadDir /tmp",
+      "SecTmpDir /tmp",
+      "SecRule FILES_TMPNAMES \"@inspectFile test-cases/data/inspectFile-abcdef.lua\" \"id:1,phase:2,deny,status:403\""
+    ]
+  }
+]

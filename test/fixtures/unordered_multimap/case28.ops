@@ -1,0 +1,37 @@
+r 1000
+i arg2 v0
+i ARG1 v1
+i a v2
+i pass v3
+e id
+e k5
+i k5 v6
+i k15 v7
+i zz v8
+i k10 v9
+e k9
+i id v11
+i tx v12
+e y
+p
+i user v14
+i k9 v15
+i arg2 v16
+p
+i y v17
+i ARG1 v18
+i Foo v19
+p
+i foo v20
+i k1 v21
+i b v22
+e arg2
+p
+e ab
+i bar v25
+e arg1
+i zz v27
+i b v28
+p
+i ba v29
+p

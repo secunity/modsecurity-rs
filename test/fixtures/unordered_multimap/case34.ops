@@ -1,0 +1,16 @@
+r 1000
+i k13 v0
+i FOO v1
+i bar v3
+e A
+i aa v6
+i zz v7
+i k10 v8
+i k6 v9
+p
+i k4 v11
+p
+i k7 v12
+e ARG1
+i k3 v14
+p

@@ -1,0 +1,35 @@
+i k2 v0
+i ARG1 v1
+i aa v2
+i k9 v3
+i FOO v4
+p
+e content-type
+i arg1 v6
+i cookie v7
+p
+i k11 v8
+p
+i cookie v9
+i b v11
+i k13 v12
+e Ab
+p
+i k9 v14
+e id
+p
+i arg1 v16
+i Host v17
+i foo v18
+e k5
+i arg2 v20
+i zz v21
+i b v22
+i z v23
+i B v24
+p
+i k12 v26
+i ba v27
+p
+e k11
+p

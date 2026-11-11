@@ -1,0 +1,32 @@
+r 1000
+i k11 v0
+p
+e k11
+i b v2
+i y v3
+i aa v4
+i id v5
+i k6 v6
+i k11 v8
+i ARG1 v9
+i z v10
+i user v11
+i a v12
+e k6
+i k9 v14
+e cba
+i k12 v16
+p
+p
+i bca v19
+i a v21
+i FOO v22
+p
+i Content-Type v23
+p
+i k15 v24
+i k10 v25
+i k9 v26
+i k8 v28
+i pass v29
+p

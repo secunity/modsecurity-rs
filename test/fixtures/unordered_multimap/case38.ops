@@ -1,0 +1,73 @@
+e k11
+p
+i user v1
+i Host v2
+e B
+i k13 v4
+i foo v5
+i cookie v6
+p
+i A v7
+i k4 v8
+i zz v9
+p
+i Content-Type v10
+i b v11
+i FOO v12
+e Content-Type
+i arg1 v14
+i z v15
+i A v16
+c
+p
+i pass v18
+i content-type v19
+p
+e k3
+i b v21
+i k3 v22
+p
+i b v23
+i Ab v24
+e ba
+i Content-Type v26
+p
+e k10
+i z v28
+i bca v29
+i x v30
+i k9 v31
+i k4 v32
+i arg2 v33
+e k6
+i k9 v35
+i B v36
+p
+i k13 v37
+p
+i Ab v38
+i k8 v39
+i k14 v40
+i Content-Type v41
+i k12 v42
+i user v43
+i k14 v44
+i k13 v45
+e pass
+i k9 v47
+i y v48
+i content-type v49
+i pass v50
+p
+i x v51
+i k6 v52
+p
+i k15 v53
+i k11 v54
+p
+i user v55
+i k9 v56
+i pass v57
+i k14 v58
+e cba
+p

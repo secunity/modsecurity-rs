@@ -1,0 +1,71 @@
+r 10
+c
+e ARG1
+i arg2 v2
+e k13
+i k10 v4
+i bca v5
+p
+e Ab
+i k14 v7
+i k1 v8
+i Ab v9
+i k12 v10
+e k4
+i content-type v13
+i k6 v14
+p
+e Host
+e b
+p
+e user
+p
+p
+i cba v19
+i ARG1 v20
+i tx v21
+p
+i Ab v22
+c
+p
+i Content-Type v24
+e cba
+i a v26
+i k7 v27
+i a v28
+p
+i arg1 v29
+i ARG1 v30
+i Ab v31
+i content-type v32
+i zz v33
+e ARG1
+i ab v35
+i k11 v36
+p
+i foo v37
+i abc v38
+i foo v39
+p
+i arg1 v40
+i cba v41
+i tx v42
+i k8 v43
+i k14 v44
+p
+e Content-Type
+i z v46
+i B v47
+e FOO
+i k1 v49
+i a v50
+p
+e k6
+i y v53
+i ab v55
+p
+i B v56
+i id v57
+i abc v58
+i k10 v59
+p

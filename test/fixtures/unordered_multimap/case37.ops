@@ -1,0 +1,16 @@
+r 1000
+i k1 v0
+i k1 v1
+e Foo
+p
+i k10 v4
+i foo v5
+i k5 v7
+i k10 v8
+i ab v9
+i content-type v10
+i Host v11
+i k9 v12
+e z
+i k13 v14
+p

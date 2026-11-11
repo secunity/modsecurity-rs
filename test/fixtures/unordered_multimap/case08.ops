@@ -1,0 +1,35 @@
+i q v1
+i ba v3
+i arg2 v4
+p
+i pass v5
+i k15 v6
+i Ab v7
+p
+i arg2 v8
+i k3 v9
+e FOO
+i abc v11
+i ab v12
+p
+c
+i k2 v14
+i id v15
+i FOO v16
+i k12 v17
+p
+p
+i k2 v19
+i A v20
+i k10 v21
+i A v22
+i FOO v23
+i k7 v24
+i b v25
+i k11 v26
+p
+e user
+i y v28
+i user v29
+p
+p

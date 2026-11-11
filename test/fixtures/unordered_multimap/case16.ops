@@ -1,0 +1,7 @@
+r 1000
+i k12 v0
+i cookie v1
+p
+i Foo v3
+e Content-Type
+p

@@ -1,0 +1,34 @@
+r 10
+i k13 v0
+e bca
+i id v2
+i Host v4
+i aa v5
+i x v6
+i k11 v7
+i k11 v8
+e q
+i bca v10
+i A v11
+p
+i bar v12
+i Ab v13
+i ba v14
+p
+e k5
+p
+e k3
+i bar v17
+i zz v18
+i id v19
+i k3 v20
+i k12 v21
+c
+i k4 v23
+i ARG1 v24
+i y v25
+i k10 v26
+i k10 v27
+i cookie v28
+i Ab v29
+p

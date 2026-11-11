@@ -1,0 +1,73 @@
+[workspace]
+resolver = "3"
+members = [".", "others/libinjection"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+
+[package]
+name = "modsecurity"
+version = "3.0.17"
+edition = "2024"
+description = "Rust port of libmodsecurity v3 (ModSecurity web application firewall engine)"
+license = "Apache-2.0"
+build = "build.rs"
+
+[lib]
+name = "modsecurity"
+path = "src/lib.rs"
+# rlib for Rust embedders, cdylib/staticlib to keep the libmodsecurity C API
+# (msc_* functions) available to existing connectors.
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "regression_tests"
+path = "test/regression/regression.rs"
+required-features = []
+
+[[bin]]
+name = "unit_tests"
+path = "test/unit/unit.rs"
+
+[[bin]]
+name = "modsec-rules-check"
+path = "tools/rules-check/rules_check.rs"
+
+[[test]]
+name = "suites"
+path = "test/suites.rs"
+
+[features]
+default = ["libxml2", "lua", "maxmind", "lmdb", "ssdeep", "curl"]
+# Each feature mirrors one of the optional dependencies of the C++ build
+# (WITH_LIBXML2, WITH_LUA, WITH_MAXMIND, WITH_LMDB, WITH_SSDEEP, WITH_CURL).
+libxml2 = []
+lua = ["dep:mlua"]
+maxmind = ["dep:maxminddb"]
+lmdb = ["dep:lmdb-master-sys"]
+ssdeep = []
+curl = ["dep:curl"]
+# Mirrors the MODSEC_REGEX_DOLLAR_ENDONLY build option.
+regex-dollar-endonly = []
+
+[dependencies]
+# PCRE2 is used through its C API (as the C++ code does) so that match
+# limits, JIT fallback and error codes behave identically.
+pcre2-sys = "0.2.10"
+libc = "0.2"
+# Byte-string helpers: request data is arbitrary bytes, not UTF-8.
+bstr = "1.13"
+# Replace mbedtls' md5/sha1.
+md-5 = "0.11"
+sha1 = "0.11"
+# Pure-Rust libinjection (SQLi fingerprinting / XSS detection), vendored.
+libinjection = { path = "others/libinjection" }
+mlua = { version = "0.12", features = ["lua54", "vendored"], optional = true }
+maxminddb = { version = "0.32", optional = true }
+lmdb-master-sys = { version = "0.2", optional = true }
+# libcurl binding (SecRemoteRules, HTTPS audit log writer, remote pm/ip files).
+curl = { version = "0.4", optional = true }
+
+[profile.dev]
+opt-level = 1

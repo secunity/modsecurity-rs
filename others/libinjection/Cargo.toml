@@ -1,0 +1,14 @@
+[package]
+name = "libinjection"
+description = "Pure-Rust libinjection: SQL injection and XSS detection over raw bytes"
+version = "0.2.0"
+edition = "2024"
+
+[features]
+# Exposes the corpus loader used by the tests and the eval example.
+testdata = []
+
+[dependencies]
+
+[dev-dependencies]
+libinjection = { path = ".", features = ["testdata"] }

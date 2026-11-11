@@ -1,0 +1,17 @@
+r 1000
+i Foo v0
+e aa
+i cba v2
+i arg2 v3
+i Ab v4
+i ba v5
+i ARG1 v6
+i k5 v7
+i abc v8
+i cba v9
+i id v10
+i k6 v11
+i pass v12
+i k5 v13
+e k6
+p
