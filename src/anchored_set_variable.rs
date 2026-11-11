@@ -12,7 +12,7 @@ use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
 use crate::utils::unordered_multimap::UnorderedMultimap;
 use crate::variable_origin::VariableOrigin;
-use crate::variable_value::{VariableValue, prepend_each};
+use crate::variable_value::{VariableValue, move_to_front_reversed};
 use crate::variables::variable::KeyExclusions;
 
 /// An entry: the value and, for collections with a `*_NAMES` translation
@@ -113,7 +113,9 @@ impl AnchoredSetVariable {
     }
 
     fn resolve_pick(&self, pick: Pick, l: &mut Vec<VariableValue>) {
-        prepend_each(l, self.map.iter().map(|(_, e)| e.get(pick).clone()).collect());
+        let start = l.len();
+        l.extend(self.map.iter().map(|(_, e)| e.get(pick).clone()));
+        move_to_front_reversed(l, start);
     }
 
     /// `resolve(l, ke)`
@@ -128,15 +130,15 @@ impl AnchoredSetVariable {
         ke: &KeyExclusions,
         t: Option<&Transaction<'_>>,
     ) {
-        let mut front = Vec::new();
+        let start = l.len();
         for (k, e) in self.map.iter() {
             if !ke.to_omit(k) {
-                front.push(e.get(pick).clone());
+                l.push(e.get(pick).clone());
             } else {
                 crate::ms_dbg_opt!(t, 7, "Excluding key: {} from target value.", String::from_utf8_lossy(k));
             }
         }
-        prepend_each(l, front);
+        move_to_front_reversed(l, start);
     }
 
     /// `resolve(key, l)`
@@ -161,14 +163,14 @@ impl AnchoredSetVariable {
     }
 
     fn resolve_regular_expression_pick(&self, pick: Pick, r: &Regex, l: &mut Vec<VariableValue>) {
-        let mut front = Vec::new();
+        let start = l.len();
         for (k, e) in self.map.iter() {
             if r.search(k) <= 0 {
                 continue;
             }
-            front.push(e.get(pick).clone());
+            l.push(e.get(pick).clone());
         }
-        prepend_each(l, front);
+        move_to_front_reversed(l, start);
     }
 
     /// `resolveRegularExpression(r, l, ke)`
@@ -190,18 +192,18 @@ impl AnchoredSetVariable {
         ke: &KeyExclusions,
         t: Option<&Transaction<'_>>,
     ) {
-        let mut front = Vec::new();
+        let start = l.len();
         for (k, e) in self.map.iter() {
             if r.search(k) <= 0 {
                 continue;
             }
             if !ke.to_omit(k) {
-                front.push(e.get(pick).clone());
+                l.push(e.get(pick).clone());
             } else {
                 crate::ms_dbg_opt!(t, 7, "Excluding key: {} from target value.", String::from_utf8_lossy(k));
             }
         }
-        prepend_each(l, front);
+        move_to_front_reversed(l, start);
     }
 
     /// The translation proxy's resolutions: the same as the ones above

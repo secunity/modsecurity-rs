@@ -55,10 +55,13 @@ pub fn limit_to(amount: usize, s: &[u8]) -> Vec<u8> {
 /// `toHexIfNeeded`: escapes non printable bytes as `\xHH` (and, with
 /// `escape_spec`, also `"` and `\`). The result is always ASCII.
 pub fn to_hex_if_needed(s: &[u8], escape_spec: bool) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut res = String::with_capacity(s.len());
     for &c in s {
         if !(32..=126).contains(&c) || (escape_spec && (c == 34 || c == 92)) {
-            res.push_str(&format!("\\x{:02x}", c));
+            res.push_str("\\x");
+            res.push(HEX[usize::from(c >> 4)] as char);
+            res.push(HEX[usize::from(c & 15)] as char);
         } else {
             res.push(c as char);
         }
@@ -287,6 +290,24 @@ pub fn stoi(s: &[u8]) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn to_hex_if_needed_matches_format() {
+        let all: Vec<u8> = (0..=255).collect();
+        for spec in [false, true] {
+            let expected: String = all
+                .iter()
+                .map(|&c| {
+                    if !(32..=126).contains(&c) || (spec && (c == 34 || c == 92)) {
+                        format!("\\x{:02x}", c)
+                    } else {
+                        (c as char).to_string()
+                    }
+                })
+                .collect();
+            assert_eq!(to_hex_if_needed(&all, spec), expected);
+        }
+    }
 
     #[test]
     fn ssplit_matches_getline() {

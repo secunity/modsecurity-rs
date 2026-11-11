@@ -662,15 +662,14 @@ impl<V> UnorderedMultimap<V> {
     }
 
     /// `equal_range(key)`
-    pub fn equal_range<'s>(&'s self, key: &[u8]) -> impl Iterator<Item = (&'s [u8], &'s V)> + 's {
+    pub fn equal_range<'s>(&'s self, key: &[u8]) -> impl Iterator<Item = (&'s [u8], &'s V)> {
         let start = self.find_index(key);
         let hash = my_hash(key);
-        let key = key.to_vec();
         let mut cur = start;
         std::iter::from_fn(move || {
             let i = cur?;
             let n = self.node(i);
-            if n.hash != hash || !my_equal(&key, &n.key) {
+            if n.hash != hash || !my_equal(key, &n.key) {
                 cur = None;
                 return None;
             }

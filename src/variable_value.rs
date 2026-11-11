@@ -7,19 +7,20 @@ use std::sync::Arc;
 
 use crate::variable_origin::VariableOrigin;
 
-/// Inserts `items` at the front of `l` one after the other, in order, as the
-/// C++ code does with `l->insert(l->begin(), ...)` in a loop: the result is
-/// `items` reversed, followed by the previous contents of `l`.
+/// Moves the values pushed onto `l` from index `start` on to its front, in
+/// reverse order: the result of the C++ code's `l->insert(l->begin(), ...)`
+/// for each of them in turn, i.e. the new values reversed, followed by the
+/// previous contents of `l`.
 ///
 /// The C++ vector holds pointers, so its repeated front insertion is cheap
-/// per element; with owned values it must be done in one splice to stay
+/// per element; with owned values it must be done in one pass to stay
 /// linear (resolving `ARGS` with hundreds of arguments for every rule
-/// otherwise dominates the evaluation time).
-pub fn prepend_each(l: &mut Vec<VariableValue>, items: Vec<VariableValue>) {
-    if items.is_empty() {
-        return;
-    }
-    l.splice(0..0, items.into_iter().rev());
+/// otherwise dominates the evaluation time). Callers push straight onto `l`
+/// and call this once, which needs no temporary list.
+pub fn move_to_front_reversed(l: &mut [VariableValue], start: usize) {
+    let added = l.len() - start;
+    l[start..].reverse();
+    l.rotate_right(added);
 }
 
 pub type Origins = Vec<VariableOrigin>;
@@ -115,20 +116,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prepend_each_matches_repeated_front_insertion() {
+    fn move_to_front_reversed_matches_repeated_front_insertion() {
         let v = |s: &str| VariableValue::new(s.as_bytes(), b"");
-        let existing = vec![v("x"), v("y")];
-        let items = vec![v("a"), v("b"), v("c")];
-
-        let mut expected = existing.clone();
-        for it in items.clone() {
-            expected.insert(0, it);
+        for existing in [vec![], vec![v("x"), v("y")]] {
+            let items = vec![v("a"), v("b"), v("c")];
+            let mut expected = existing.clone();
+            for it in items.clone() {
+                expected.insert(0, it);
+            }
+            let mut got = existing.clone();
+            let start = got.len();
+            got.extend(items);
+            move_to_front_reversed(&mut got, start);
+            assert_eq!(got, expected);
         }
-        let mut got = existing;
-        prepend_each(&mut got, items);
-        assert_eq!(got, expected);
-        let keys: Vec<&[u8]> = got.iter().map(|x| x.key()).collect();
-        assert_eq!(keys, [b"c".as_slice(), b"b", b"a", b"x", b"y"]);
+        let mut none = vec![v("x")];
+        move_to_front_reversed(&mut none, 1);
+        assert_eq!(none, vec![v("x")]);
     }
 
     #[test]
