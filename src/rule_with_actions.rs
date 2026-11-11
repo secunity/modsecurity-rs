@@ -30,7 +30,18 @@ use crate::utils::string::limit_to;
 
 /// `TransformationResult`: the transformed value and the transformation
 /// path that produced it (e.g. `t:lowercase,t:urlDecode`).
-pub type TransformationResult = (Vec<u8>, String);
+pub type TransformationResult = (Vec<u8>, TransformationPath);
+
+/// The transformation path of a [`TransformationResult`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransformationPath {
+    /// `multiMatch`: the original value (empty path) or the one
+    /// transformation that produced this value.
+    Step(String),
+    /// All the transformations of the rule (see
+    /// [`RuleWithActions::transformation_path`]).
+    Full,
+}
 pub type TransformationResults = Vec<TransformationResult>;
 
 /// The subclass specific part of a rule.
@@ -409,40 +420,12 @@ impl RuleWithActions {
         crate::ms_dbg_a!(t, 4, "Not running any disruptive action (or block): {}. SecRuleEngine is not On.", a.name());
     }
 
-    /// `executeTransformation`
-    fn execute_transformation(
-        &self,
-        a: &dyn Transformation,
-        value: &mut Vec<u8>,
-        t: &Transaction<'_>,
-        ret: &mut TransformationResults,
-        path: &mut String,
-        nth: &mut i32,
-    ) {
-        if a.transform(value, Some(t)) && self.contains_multi_match_action {
-            ret.push((value.clone(), a.name().to_string()));
-            *nth += 1;
-        }
-        if path.is_empty() {
-            path.push_str(a.name());
-        } else {
-            path.push(',');
-            path.push_str(a.name());
-        }
-        crate::ms_dbg_a!(t, 9, " T ({}) {}: \"{}\"", nth, a.name(), String::from_utf8_lossy(&limit_to(80, value)));
-    }
-
-    /// `executeTransformations`
-    pub fn execute_transformations(&self, t: &Transaction<'_>, input: &[u8], ret: &mut TransformationResults) {
+    /// The transformations `executeTransformations` applies, in order:
+    /// the `SecDefaultAction` ones (unless the rule has `t:none`), the
+    /// rule's own (from its last `t:none` on) and the `SecRuleUpdateActionById`
+    /// ones (likewise).
+    fn for_each_transformation(&self, t: &Transaction<'_>, mut f: impl FnMut(&dyn Transformation)) {
         let mut none = 0;
-        let mut transformations = 0;
-        let mut path = String::new();
-        let mut value = input.to_vec();
-
-        if self.contains_multi_match_action {
-            // keep the original value
-            ret.push((value.clone(), path.clone()));
-        }
 
         for a in &self.transformations {
             if a.base().is_none {
@@ -461,14 +444,14 @@ impl RuleWithActions {
                     continue;
                 }
                 if let Some(tr) = a.as_transformation() {
-                    self.execute_transformation(tr, &mut value, t, ret, &mut path, &mut transformations);
+                    f(tr);
                 }
             }
         }
 
         for a in &self.transformations {
             if none == 0 {
-                self.execute_transformation(a.as_ref(), &mut value, t, ret, &mut path, &mut transformations);
+                f(a.as_ref());
             }
             if a.base().is_none {
                 none -= 1;
@@ -485,20 +468,64 @@ impl RuleWithActions {
             if let Some(tr) = a.as_transformation()
                 && none == 0
             {
-                self.execute_transformation(tr, &mut value, t, ret, &mut path, &mut transformations);
+                f(tr);
             }
             if a.base().is_none {
                 none -= 1;
             }
         }
+    }
 
-        if self.contains_multi_match_action {
+    /// `executeTransformations` (with `executeTransformation` inlined).
+    ///
+    /// `ret` is cleared first; the buffer of its last value is reused. The
+    /// path of the final value (without `multiMatch`) is
+    /// [`TransformationPath::Full`], spelled out by [`Self::transformation_path`]
+    /// only when it is needed (on a match).
+    pub fn execute_transformations(&self, t: &Transaction<'_>, input: &[u8], ret: &mut TransformationResults) {
+        let multi_match = self.contains_multi_match_action;
+        let mut value = match ret.pop() {
+            Some((mut v, _)) => {
+                v.clear();
+                v.extend_from_slice(input);
+                v
+            }
+            None => input.to_vec(),
+        };
+        ret.clear();
+        let mut nth = 0;
+
+        if multi_match {
+            // keep the original value
+            ret.push((value.clone(), TransformationPath::Step(String::new())));
+        }
+
+        self.for_each_transformation(t, |a| {
+            if a.transform(&mut value, Some(t)) && multi_match {
+                ret.push((value.clone(), TransformationPath::Step(a.name().to_string())));
+                nth += 1;
+            }
+            crate::ms_dbg_a!(t, 9, " T ({}) {}: \"{}\"", nth, a.name(), String::from_utf8_lossy(&limit_to(80, &value)));
+        });
+
+        if multi_match {
             crate::ms_dbg_a!(t, 9, "multiMatch is enabled. {} values to be tested.", ret.len());
+        } else {
+            ret.push((value, TransformationPath::Full));
         }
+    }
 
-        if !self.contains_multi_match_action {
-            ret.push((value, path));
-        }
+    /// The names of the transformations `executeTransformations` applies,
+    /// joined with `,` (the C++ code builds this path for every value).
+    pub fn transformation_path(&self, t: &Transaction<'_>) -> String {
+        let mut path = String::new();
+        self.for_each_transformation(t, |a| {
+            if !path.is_empty() {
+                path.push(',');
+            }
+            path.push_str(a.name());
+        });
+        path
     }
 
     /// `containsTag`

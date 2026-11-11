@@ -26,7 +26,7 @@ impl AnchoredSetVariableTranslationProxy {
     /// original key, adjusting the origins to point at the key.
     fn translate(&self, l: &mut [VariableValue]) {
         for v in l.iter_mut() {
-            let old = std::mem::take(v);
+            let old = &*v;
             let mut nv = VariableValue::with_collection(self.name.as_bytes(), old.key(), old.key());
             nv.reserve_origin(old.origin().len());
             for o in old.origin() {

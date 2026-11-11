@@ -6,6 +6,7 @@
 //! confined to this module.
 
 use pcre2_sys::*;
+use std::cell::RefCell;
 use std::ptr;
 
 /// `OVECCOUNT` (only meaningful for the legacy PCRE build, kept for parity).
@@ -80,6 +81,12 @@ impl MatchData {
         // `has_error()` first); a null general context selects malloc.
         MatchData(unsafe { pcre2_match_data_create_from_pattern_8(code, ptr::null_mut()) })
     }
+    /// Match data with room for `pairs` (start, end) pairs, usable with any
+    /// pattern that has fewer than `pairs` capture groups.
+    fn with_pairs(pairs: u32) -> Self {
+        // SAFETY: a null general context selects malloc.
+        MatchData(unsafe { pcre2_match_data_create_8(pairs, ptr::null_mut()) })
+    }
     fn ovector(&self) -> *const usize {
         // SAFETY: self.0 is a live match data block.
         unsafe { pcre2_get_ovector_pointer_8(self.0) }
@@ -98,6 +105,11 @@ impl Drop for MatchData {
 struct MatchContext(*mut pcre2_match_context_8);
 
 impl MatchContext {
+    fn create() -> Self {
+        // SAFETY: a null general context selects the default allocator.
+        MatchContext(unsafe { pcre2_match_context_create_8(ptr::null_mut()) })
+    }
+
     fn new(match_limit: u64) -> Self {
         // SAFETY: a null general context selects the default allocator.
         let ctx = unsafe { pcre2_match_context_create_8(ptr::null_mut()) };
@@ -116,16 +128,35 @@ impl Drop for MatchContext {
     }
 }
 
+/// Per-thread match data and match context, reused by every match on the
+/// thread (the C++ code creates and frees both for each match). The match
+/// data grows to the largest pattern seen; PCRE2 also keeps its interpreter
+/// frames in it between matches.
+struct Scratch {
+    md: MatchData,
+    pairs: u32,
+    ctx: MatchContext,
+}
+
+/// Initial size of the per-thread match data, in (start, end) pairs.
+const MIN_PAIRS: u32 = 16;
+
+thread_local! {
+    static SCRATCH: RefCell<Option<Scratch>> = const { RefCell::new(None) };
+}
+
 /// A compiled PCRE2 pattern.
 pub struct Regex {
     pub pattern: String,
     pc: *mut pcre2_code_8,
     pcje: i32,
+    /// Capture groups + 1: the ovector pairs a match can fill.
+    pairs: u32,
 }
 
 // SAFETY: a compiled pcre2_code (including its JIT code) is immutable after
 // compilation and PCRE2 documents it as safe to share between threads; all
-// per-match state (match data, contexts) is allocated per call.
+// per-match state (match data, contexts) is per call or per thread.
 unsafe impl Send for Regex {}
 unsafe impl Sync for Regex {}
 
@@ -178,7 +209,12 @@ impl Regex {
             // SAFETY: pc is a valid compiled pattern.
             unsafe { pcre2_jit_compile_8(pc, PCRE2_JIT_COMPLETE) }
         };
-        Regex { pattern: String::from_utf8_lossy(&pattern).into_owned(), pc, pcje }
+        let mut captures: u32 = 0;
+        if !pc.is_null() {
+            // SAFETY: pc is valid; PCRE2_INFO_CAPTURECOUNT writes a uint32_t.
+            unsafe { pcre2_pattern_info_8(pc, PCRE2_INFO_CAPTURECOUNT, &mut captures as *mut u32 as *mut _) };
+        }
+        Regex { pattern: String::from_utf8_lossy(&pattern).into_owned(), pc, pcje, pairs: captures + 1 }
     }
 
     pub fn has_error(&self) -> bool {
@@ -200,7 +236,7 @@ impl Regex {
         let mut rc = 0;
         if use_jit && self.pcje == 0 {
             // SAFETY: pc is valid (callers check has_error), `s` is readable
-            // for its length, md belongs to this pattern.
+            // for its length, md has room for all of this pattern's groups.
             rc = unsafe { pcre2_jit_match_8(self.pc, s.as_ptr(), s.len(), offset, options, md.0, ctx) };
         }
         if !use_jit || self.pcje != 0 || rc == PCRE2_ERROR_JIT_STACKLIMIT {
@@ -208,6 +244,46 @@ impl Regex {
             rc = unsafe { pcre2_match_8(self.pc, s.as_ptr(), s.len(), offset, options | PCRE2_NO_JIT, md.0, ctx) };
         }
         rc
+    }
+
+    /// Runs `f` with match data large enough for this pattern and the match
+    /// context for `match_limit` (null, i.e. PCRE2's defaults, for 0). Uses
+    /// the per-thread [`Scratch`]; falls back to fresh ones (as C++ always
+    /// does) if it is unavailable.
+    fn with_match_data<R>(&self, match_limit: u64, f: impl FnOnce(&MatchData, *mut pcre2_match_context_8) -> R) -> R {
+        let mut f = Some(f);
+        let r = SCRATCH
+            .try_with(|cell| {
+                let mut slot = cell.try_borrow_mut().ok()?;
+                if slot.as_ref().is_none_or(|sc| sc.pairs < self.pairs) {
+                    let pairs = self.pairs.max(MIN_PAIRS);
+                    let md = MatchData::with_pairs(pairs);
+                    if md.0.is_null() {
+                        return None;
+                    }
+                    let ctx = slot.take().map_or_else(MatchContext::create, |sc| sc.ctx);
+                    *slot = Some(Scratch { md, pairs, ctx });
+                }
+                let sc = slot.as_ref()?;
+                let ctx = if match_limit > 0 && !sc.ctx.0.is_null() {
+                    // SAFETY: ctx is a valid match context.
+                    unsafe { pcre2_set_match_limit_8(sc.ctx.0, match_limit as u32) };
+                    sc.ctx.0
+                } else {
+                    ptr::null_mut()
+                };
+                Some((f.take()?)(&sc.md, ctx))
+            })
+            .ok()
+            .flatten();
+        match r {
+            Some(r) => r,
+            None => {
+                let md = MatchData::new(self.pc);
+                let ctx = MatchContext::new(match_limit);
+                (f.take().expect("not called"))(&md, ctx.0)
+            }
+        }
     }
 
     fn ovec(md: &MatchData, i: usize) -> (usize, usize) {
@@ -227,30 +303,31 @@ impl Regex {
         if self.has_error() {
             return ret;
         }
-        let md = MatchData::new(self.pc);
-        let mut offset = 0usize;
-        loop {
-            let mut rc = self.exec(s, offset, 0, &md, ptr::null_mut(), true);
-            let mut i = 0;
-            while i < rc {
-                let (start, end) = Self::ovec(&md, i as usize);
-                if end > s.len() || start > end {
-                    rc = -1;
+        self.with_match_data(0, |md, _| {
+            let mut offset = 0usize;
+            loop {
+                let mut rc = self.exec(s, offset, 0, md, ptr::null_mut(), true);
+                let mut i = 0;
+                while i < rc {
+                    let (start, end) = Self::ovec(md, i as usize);
+                    if end > s.len() || start > end {
+                        rc = -1;
+                        break;
+                    }
+                    let len = end - start;
+                    offset = start + len;
+                    ret.push(SMatch::new(&s[start..end], start));
+                    if len == 0 {
+                        rc = 0;
+                        break;
+                    }
+                    i += 1;
+                }
+                if rc <= 0 {
                     break;
                 }
-                let len = end - start;
-                offset = start + len;
-                ret.push(SMatch::new(&s[start..end], start));
-                if len == 0 {
-                    rc = 0;
-                    break;
-                }
-                i += 1;
             }
-            if rc <= 0 {
-                break;
-            }
-        }
+        });
         ret.reverse();
         ret
     }
@@ -260,17 +337,17 @@ impl Regex {
         if self.has_error() {
             return RegexResult::ErrorOther;
         }
-        let ctx = MatchContext::new(match_limit);
-        let md = MatchData::new(self.pc);
-        let rc = self.exec(s, 0, 0, &md, ctx.0, true);
-        for i in 0..rc.max(0) {
-            let (start, end) = Self::ovec(&md, i as usize);
-            if end > s.len() || start > end {
-                continue;
+        self.with_match_data(match_limit, |md, ctx| {
+            let rc = self.exec(s, 0, 0, md, ctx, true);
+            for i in 0..rc.max(0) {
+                let (start, end) = Self::ovec(md, i as usize);
+                if end > s.len() || start > end {
+                    continue;
+                }
+                captures.push(SMatchCapture::new(i as usize, start, end - start));
             }
-            captures.push(SMatchCapture::new(i as usize, start, end - start));
-        }
-        Self::to_regex_result(rc)
+            Self::to_regex_result(rc)
+        })
     }
 
     /// `searchGlobal`
@@ -278,9 +355,17 @@ impl Regex {
         if self.has_error() {
             return RegexResult::ErrorOther;
         }
+        self.with_match_data(match_limit, |md, ctx| self.search_global_with(s, captures, md, ctx))
+    }
+
+    fn search_global_with(
+        &self,
+        s: &[u8],
+        captures: &mut Vec<SMatchCapture>,
+        md: &MatchData,
+        ctx: *mut pcre2_match_context_8,
+    ) -> RegexResult {
         let mut prev_match_zero_length = false;
-        let ctx = MatchContext::new(match_limit);
-        let md = MatchData::new(self.pc);
         let mut start_offset = 0usize;
         while start_offset <= s.len() {
             let options = if prev_match_zero_length { PCRE2_NOTEMPTY_ATSTART | PCRE2_ANCHORED } else { 0 };
@@ -288,7 +373,7 @@ impl Regex {
             // unless the options require the interpreter).
             let subj = subject(s);
             // SAFETY: as in `exec` (`subj` is never a dangling pointer).
-            let rc = unsafe { pcre2_match_8(self.pc, subj.as_ptr(), s.len(), start_offset, options, md.0, ctx.0) };
+            let rc = unsafe { pcre2_match_8(self.pc, subj.as_ptr(), s.len(), start_offset, options, md.0, ctx) };
             let r = Self::to_regex_result(rc);
             if r != RegexResult::Ok {
                 return r;
@@ -296,7 +381,7 @@ impl Regex {
             if rc > 0 {
                 let first_group = captures.len();
                 for i in 0..rc {
-                    let (start, end) = Self::ovec(&md, i as usize);
+                    let (start, end) = Self::ovec(md, i as usize);
                     if end > s.len() || start > end {
                         continue;
                     }
@@ -335,22 +420,23 @@ impl Regex {
         if self.has_error() {
             return 0;
         }
-        let md = MatchData::new(self.pc);
-        // The C++ code turns the return value into a boolean before reading
-        // the ovector, so the "last group" is always group 0.
-        let rc = self.exec(s, 0, 0, &md, ptr::null_mut(), false);
-        let ret = (rc > 0) as i32;
-        if ret > 0 {
-            // SAFETY: a successful match has at least one ovector pair.
-            let (a, b) = unsafe {
-                let ov = md.ovector();
-                (*ov.add(ret as usize - 1), *ov.add(ret as usize))
-            };
-            if a <= b && b <= s.len() {
-                *m = SMatch::new(&s[a..b], 0);
+        self.with_match_data(0, |md, _| {
+            // The C++ code turns the return value into a boolean before
+            // reading the ovector, so the "last group" is always group 0.
+            let rc = self.exec(s, 0, 0, md, ptr::null_mut(), false);
+            let ret = (rc > 0) as i32;
+            if ret > 0 {
+                // SAFETY: a successful match has at least one ovector pair.
+                let (a, b) = unsafe {
+                    let ov = md.ovector();
+                    (*ov.add(ret as usize - 1), *ov.add(ret as usize))
+                };
+                if a <= b && b <= s.len() {
+                    *m = SMatch::new(&s[a..b], 0);
+                }
             }
-        }
-        ret
+            ret
+        })
     }
 
     /// `search(s)`: 1 on match, 0 otherwise.
@@ -358,9 +444,7 @@ impl Regex {
         if self.has_error() {
             return 0;
         }
-        let md = MatchData::new(self.pc);
-        let rc = self.exec(s, 0, 0, &md, ptr::null_mut(), true);
-        (rc > 0) as i32
+        self.with_match_data(0, |md, _| (self.exec(s, 0, 0, md, ptr::null_mut(), true) > 0) as i32)
     }
 
     fn to_regex_result(rc: i32) -> RegexResult {
@@ -416,6 +500,30 @@ mod tests {
         assert_eq!(Regex::new("a").search(&Vec::new()), 0);
         let mut c = Vec::new();
         assert_eq!(Regex::new("x*").search_global(b"", &mut c, 0), RegexResult::Ok);
+    }
+
+    /// The per-thread match data grows for patterns with more groups than
+    /// it has room for, and a match limit does not stick to later matches.
+    #[test]
+    fn shared_match_data() {
+        let small = Regex::new("(a)");
+        let mut c = Vec::new();
+        assert_eq!(small.search_one_match(b"a", &mut c, 0), RegexResult::Ok);
+        assert_eq!(c.len(), 2);
+
+        let pattern: String = (0..40).map(|_| "(x)").collect();
+        let big = Regex::new(&pattern);
+        let subject = vec![b'x'; 40];
+        let mut c = Vec::new();
+        assert_eq!(big.search_one_match(&subject, &mut c, 0), RegexResult::Ok);
+        assert_eq!(c.len(), 41);
+        assert_eq!(c[40], SMatchCapture::new(40, 39, 1));
+        assert_eq!(big.search_all(&subject).len(), 41);
+
+        let slow = Regex::new("(a+)+$");
+        let input = [&[b'a'; 30][..], b"b"].concat();
+        assert_eq!(slow.search_one_match(&input, &mut Vec::new(), 10), RegexResult::ErrorMatchLimit);
+        assert_eq!(small.search_one_match(b"a", &mut Vec::new(), 0), RegexResult::Ok);
     }
 
     #[test]

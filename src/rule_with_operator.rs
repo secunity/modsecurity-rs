@@ -3,7 +3,7 @@
 
 use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::{RuleWithActions, TransformationResults};
+use crate::rule_with_actions::{RuleWithActions, TransformationPath, TransformationResults};
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
 use crate::variable_value::VariableValue;
@@ -186,6 +186,8 @@ impl RuleWithOperator {
         let mut exclusion = Variables::new();
         self.get_final_vars(rule, t, &mut vars, &mut exclusion);
 
+        // Reused for every value (execute_transformations clears it).
+        let mut values: TransformationResults = Vec::new();
         for var in vars {
             let mut e: Vec<VariableValue> = Vec::new();
             var.evaluate(t, Some(rule), &mut e);
@@ -208,7 +210,6 @@ impl RuleWithOperator {
                     continue;
                 }
 
-                let mut values: TransformationResults = Vec::new();
                 rule.execute_transformations(t, value, &mut values);
 
                 for (value_after_trans, path) in &values {
@@ -218,7 +219,12 @@ impl RuleWithOperator {
                         for i in v.origin() {
                             rm.reference.extend_from_slice(i.to_text().as_bytes());
                         }
-                        rm.reference.extend_from_slice(path.as_bytes());
+                        match path {
+                            TransformationPath::Step(p) => rm.reference.extend_from_slice(p.as_bytes()),
+                            TransformationPath::Full => {
+                                rm.reference.extend_from_slice(rule.transformation_path(t).as_bytes())
+                            }
+                        }
                         Self::update_matched_vars(t, key, value_after_trans);
                         rule.execute_actions_independent_of_chained_rule_result(t, &mut contains_block, rm);
                         rule.perform_logging(t, rm, false, false);

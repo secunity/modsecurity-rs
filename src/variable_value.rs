@@ -31,73 +31,70 @@ pub type Origins = Vec<VariableOrigin>;
 /// Resolving a collection (e.g. `ARGS`, once per rule that targets it)
 /// copies its values, so the data is shared behind an `Arc` and a copy only
 /// bumps a reference count; the rare modifications (`set_value`,
-/// `add_origin`) copy on write. The collection name and the key are stored
-/// once, inside `key_with_collection`.
+/// `add_origin`) copy on write. The collection name, key and value share
+/// one buffer: `collection:key` (or just `key`) followed by the value.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct VariableValue(Arc<Inner>);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Inner {
     origin: Origins,
-    /// `collection:key`, or just `key` when there is no collection.
-    key_with_collection: Vec<u8>,
-    /// Length of the collection name in `key_with_collection` (`None`: no
-    /// collection).
+    /// `collection:key` (or just `key` when there is no collection), then
+    /// the value.
+    data: Vec<u8>,
+    /// Length of the `collection:key` / `key` part of `data`.
+    kwc_len: usize,
+    /// Length of the collection name (`None`: no collection).
     collection_len: Option<usize>,
-    value: Vec<u8>,
 }
 
 impl VariableValue {
     /// `VariableValue(const std::string *key, const std::string *value)`
     pub fn new(key: &[u8], value: &[u8]) -> Self {
-        VariableValue(Arc::new(Inner {
-            origin: Vec::new(),
-            key_with_collection: key.to_vec(),
-            collection_len: None,
-            value: value.to_vec(),
-        }))
+        let mut data = Vec::with_capacity(key.len() + value.len());
+        data.extend_from_slice(key);
+        data.extend_from_slice(value);
+        VariableValue(Arc::new(Inner { origin: Vec::new(), data, kwc_len: key.len(), collection_len: None }))
     }
 
     /// `VariableValue(collection, key, value)`
     pub fn with_collection(collection: &[u8], key: &[u8], value: &[u8]) -> Self {
-        let mut kwc = Vec::with_capacity(collection.len() + 1 + key.len());
-        kwc.extend_from_slice(collection);
-        kwc.push(b':');
-        kwc.extend_from_slice(key);
-        VariableValue(Arc::new(Inner {
-            origin: Vec::new(),
-            key_with_collection: kwc,
-            collection_len: Some(collection.len()),
-            value: value.to_vec(),
-        }))
+        let kwc_len = collection.len() + 1 + key.len();
+        let mut data = Vec::with_capacity(kwc_len + value.len());
+        data.extend_from_slice(collection);
+        data.push(b':');
+        data.extend_from_slice(key);
+        data.extend_from_slice(value);
+        VariableValue(Arc::new(Inner { origin: Vec::new(), data, kwc_len, collection_len: Some(collection.len()) }))
     }
 
     pub fn key(&self) -> &[u8] {
+        let kwc = self.key_with_collection();
         match self.0.collection_len {
-            Some(n) => &self.0.key_with_collection[n + 1..],
-            None => &self.0.key_with_collection,
+            Some(n) => &kwc[n + 1..],
+            None => kwc,
         }
     }
 
     pub fn key_with_collection(&self) -> &[u8] {
-        &self.0.key_with_collection
+        &self.0.data[..self.0.kwc_len]
     }
 
     pub fn collection(&self) -> &[u8] {
         match self.0.collection_len {
-            Some(n) => &self.0.key_with_collection[..n],
+            Some(n) => &self.0.data[..n],
             None => b"",
         }
     }
 
     pub fn value(&self) -> &[u8] {
-        &self.0.value
+        &self.0.data[self.0.kwc_len..]
     }
 
     pub fn set_value(&mut self, value: &[u8]) {
         let inner = Arc::make_mut(&mut self.0);
-        inner.value.clear();
-        inner.value.extend_from_slice(value);
+        inner.data.truncate(inner.kwc_len);
+        inner.data.extend_from_slice(value);
     }
 
     pub fn add_origin(&mut self, origin: VariableOrigin) {
