@@ -1,0 +1,34 @@
+[package]
+name = "modsecurity-nginx"
+version = "1.0.4"
+edition = "2024"
+description = "Rust port of ModSecurity-nginx: the nginx connector for libmodsecurity"
+license = "Apache-2.0"
+build = "build.rs"
+
+[lib]
+# Produces libngx_http_modsecurity_module.so, loaded with `load_module`.
+name = "ngx_http_modsecurity_module"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[features]
+default = ["export-modules"]
+# The `ngx_modules` table nginx looks up in a dynamic module built outside
+# its own build system.
+export-modules = []
+# C++ `MODSECURITY_SANITY_CHECKS`: verify that every response header sent to
+# the client was inspected.
+sanity-checks = []
+# C++ `MODSECURITY_DDEBUG`: dump the rule sets while merging configurations.
+ddebug = []
+
+[dependencies]
+# nginx bindings (ngx-rust); NGINX_SOURCE_DIR / NGINX_BUILD_DIR select the
+# nginx tree the module is built for.
+ngx = { version = "0.5.1", default-features = false, features = ["std"] }
+nginx-sys = "0.5.0"
+# The libmodsecurity Rust port, linked in directly.
+modsecurity = { path = "../modsecurity-rust" }
