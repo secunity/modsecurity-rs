@@ -9,7 +9,7 @@
 use crate::anchored_set_variable::AnchoredSetVariable;
 use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::anchored_variable::AnchoredVariable;
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{Transaction, TransactionAnchoredVariables};
@@ -581,7 +581,7 @@ fn single_anchored<'t>(
 /// by name to its first value (empty if none).
 pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u8>, VariableNotFound> {
     let collection = variable.find('.').or_else(|| variable.find(':'));
-    use crate::collection::collection::Collection;
+    use crate::collection::Collection;
     let web_app_id = t.rules.properties.web_app_id();
     let cols = &t.collections;
     let vv: Option<Vec<u8>> = match collection {

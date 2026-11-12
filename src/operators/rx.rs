@@ -1,6 +1,6 @@
 //! Port of `src/operators/rx.cc`, `src/operators/rx.h`.
 
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param, log_offset, report_regex_compile_error, report_regex_search_error};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;

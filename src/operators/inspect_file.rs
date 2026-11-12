@@ -107,7 +107,7 @@ impl Operator for InspectFile {
     ) -> bool {
         if self.is_script {
             // Lua scripts need a transaction to run against.
-            return self.lua.run(t, input) != 0;
+            return self.lua.run(t, input);
         }
 
         let Some(res) = self.run_program(input) else {

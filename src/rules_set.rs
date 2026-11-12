@@ -1,7 +1,7 @@
 //! Port of `headers/modsecurity/rules_set.h` and `src/rules_set.cc`.
 
 use crate::actions::disruptive::allow::AllowType;
-use crate::debug_log::debug_log::DebugLog;
+use crate::debug_log::DebugLog;
 use crate::modsecurity::Phases;
 use crate::parser::driver::Driver;
 use crate::rules_set_phases::RulesSetPhases;
@@ -36,7 +36,7 @@ impl RulesSet {
     }
 
     /// The error of a failed load or merge: all the parser errors collected
-    /// so far (as the C API reports them, see [`RulesSet::get_parser_error`]).
+    /// so far (as the C API reports them, see [`RulesSet::parser_error`]).
     fn failed<T>(&self) -> Result<T, String> {
         Err(self.properties.parser_error.clone())
     }
@@ -82,7 +82,7 @@ impl RulesSet {
         self.load_with_ref(plain_rules, "")
     }
 
-    pub fn get_parser_error(&self) -> String {
+    pub fn parser_error(&self) -> String {
         self.properties.parser_error.clone()
     }
 
@@ -100,7 +100,7 @@ impl RulesSet {
         let rules = self.rules_set_phases.at(phase);
         crate::ms_dbg_a!(t, 9, "This phase consists of {} rule(s).", rules.size());
 
-        if t.allow_type == AllowType::FromNowOnAllowType && phase != Phases::Logging {
+        if t.allow_type == Some(AllowType::FromNowOn) && phase != Phases::Logging {
             crate::ms_dbg_a!(
                 t,
                 9,
@@ -108,7 +108,7 @@ impl RulesSet {
             );
             return;
         }
-        if t.allow_type == AllowType::RequestAllowType && phase <= Phases::RequestBody {
+        if t.allow_type == Some(AllowType::Request) && phase <= Phases::RequestBody {
             crate::ms_dbg_a!(
                 t,
                 9,
@@ -116,7 +116,7 @@ impl RulesSet {
             );
             return;
         }
-        t.allow_type = AllowType::NoneAllowType;
+        t.allow_type = None;
 
         let ex = &self.properties.exceptions;
         for rule in &rules.rules {
@@ -126,8 +126,8 @@ impl RulesSet {
                     t,
                     9,
                     "Skipped rule id '{}' due to a SecMarker: {}",
-                    rule.get_reference(),
-                    t.get_current_marker().unwrap_or_default()
+                    rule.reference(),
+                    t.current_marker().unwrap_or_default()
                 );
             } else if rule.is_marker() {
                 rule.evaluate(t);
@@ -137,15 +137,15 @@ impl RulesSet {
                     t,
                     9,
                     "Skipped rule id '{}' due to a `skip' action. Still {} to be skipped.",
-                    rule.get_reference(),
+                    rule.reference(),
                     t.skip_next
                 );
-            } else if t.allow_type != AllowType::NoneAllowType {
+            } else if t.allow_type.is_some() {
                 crate::ms_dbg_a!(
                     t,
                     9,
                     "Skipped rule id '{}' as request trough the utilization of an `allow' action.",
-                    rule.get_reference()
+                    rule.reference()
                 );
             } else {
                 let rwa = rule.as_rule_with_actions();
@@ -156,7 +156,7 @@ impl RulesSet {
                             t,
                             9,
                             "Skipped rule id '{}'. Removed by an SecRuleRemove directive.",
-                            rule.get_reference()
+                            rule.reference()
                         );
                         continue;
                     }
@@ -165,7 +165,7 @@ impl RulesSet {
                             t,
                             9,
                             "Skipped rule id '{}'. Removed by a SecRuleRemoveByMsg directive.",
-                            r.get_reference()
+                            r.reference()
                         );
                         continue;
                     }
@@ -174,7 +174,7 @@ impl RulesSet {
                             t,
                             9,
                             "Skipped rule id '{}'. Removed by a SecRuleRemoveByTag directive.",
-                            r.get_reference()
+                            r.reference()
                         );
                         continue;
                     }
@@ -183,7 +183,7 @@ impl RulesSet {
                             t,
                             9,
                             "Skipped rule id '{}'. Skipped due to a ruleRemoveByTag action.",
-                            r.get_reference()
+                            r.reference()
                         );
                         continue;
                     }

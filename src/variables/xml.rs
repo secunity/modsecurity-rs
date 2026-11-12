@@ -66,7 +66,7 @@ pub(crate) fn evaluate_xpath(
             crate::ms_dbg_a!(t, 2, "XML: Can't look for xmlns, internal error.");
         }
         Some(rule) => {
-            for x in rule.get_actions_by_name("xmlns", t) {
+            for x in rule.actions_by_name("xmlns", t) {
                 let Some((prefix, href)) = x.xml_namespace() else {
                     continue;
                 };

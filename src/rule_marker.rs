@@ -25,7 +25,7 @@ impl RuleMarker {
     /// Leaves the marker section the transaction was skipping to, if this
     /// is the marker it was looking for.
     pub fn evaluate(&self, t: &mut Transaction<'_>) -> bool {
-        if t.is_inside_a_marker() && t.get_current_marker() == Some(self.name.as_str()) {
+        if t.is_inside_a_marker() && t.current_marker() == Some(self.name.as_str()) {
             t.remove_marker();
             // FIXME (C++): ms_dbg_a(transaction, 4, "Out of a SecMarker " + *m_name);
         }

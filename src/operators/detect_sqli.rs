@@ -1,6 +1,6 @@
 //! Port of `src/operators/detect_sqli.cc`, `src/operators/detect_sqli.h`.
 
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::operators::libinjection_adapter::run_libinjection_sqli;
 use crate::operators::libinjection_utils::{
     InjectionResult, is_malicious_libinjection_result, libinjection_result_to_string, loggable_input,

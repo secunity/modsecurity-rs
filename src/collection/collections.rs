@@ -4,8 +4,8 @@
 //! The per transaction view of the collections: the persistent collections
 //! are borrowed from the `ModSecurity` instance, `TX` is owned.
 
+use crate::collection::Collection;
 use crate::collection::backend::in_memory_per_process::InMemoryPerProcess;
-use crate::collection::collection::Collection;
 
 pub struct Collections<'a> {
     pub global_collection_key: Vec<u8>,

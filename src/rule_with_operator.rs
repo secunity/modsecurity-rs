@@ -24,7 +24,7 @@ impl RuleWithOperator {
     }
 
     /// `getOperatorName`
-    pub fn get_operator_name(&self) -> &str {
+    pub fn operator_name(&self) -> &str {
         self.operator.op.name()
     }
 
@@ -58,7 +58,7 @@ impl RuleWithOperator {
     }
 
     /// `getVariablesExceptions`
-    fn get_variables_exceptions<'a>(
+    fn variables_exceptions<'a>(
         rule: &'a RuleWithActions,
         t: &Transaction<'a>,
         exclusion: &mut Variables<'a>,
@@ -85,7 +85,7 @@ impl RuleWithOperator {
     }
 
     /// `getFinalVars`
-    fn get_final_vars<'a>(
+    fn final_vars<'a>(
         &'a self,
         rule: &'a RuleWithActions,
         t: &Transaction<'a>,
@@ -93,7 +93,7 @@ impl RuleWithOperator {
         exclusion: &mut Variables<'a>,
     ) {
         let mut addition = Variables::new();
-        Self::get_variables_exceptions(rule, t, exclusion, &mut addition);
+        Self::variables_exceptions(rule, t, exclusion, &mut addition);
         for variable in &self.variables {
             if exclusion.contains_var(variable) {
                 continue;
@@ -167,7 +167,7 @@ impl RuleWithOperator {
                     4,
                     "(Rule: {}) Executing operator \"{}\" with param {} against {}.",
                     rule.rule_id,
-                    self.get_operator_name(),
+                    self.operator_name(),
                     String::from_utf8_lossy(&eparam),
                     vars_str()
                 );
@@ -178,7 +178,7 @@ impl RuleWithOperator {
                 4,
                 "(Rule: {}) Executing operator \"{} against {}.",
                 rule.rule_id,
-                self.get_operator_name(),
+                self.operator_name(),
                 vars_str()
             );
         }
@@ -188,7 +188,7 @@ impl RuleWithOperator {
         let EvalScratch { mut vars, mut e, mut values } = std::mem::take(&mut t.eval_scratch);
         vars.clear();
         let mut exclusion = Variables::new();
-        self.get_final_vars(rule, t, &mut vars, &mut exclusion);
+        self.final_vars(rule, t, &mut vars, &mut exclusion);
 
         for &var in &vars {
             e.clear();

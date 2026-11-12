@@ -259,7 +259,7 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
 pub(crate) mod test_support {
     use std::sync::{Arc, Mutex};
 
-    use crate::debug_log::debug_log::DebugLog;
+    use crate::debug_log::DebugLog;
     use crate::rules_set::RulesSet;
 
     /// A debug log that keeps the messages in memory.
@@ -275,27 +275,15 @@ pub(crate) mod test_support {
         fn write_ctx(&self, level: i32, _id: &str, _uri: &str, msg: &str) {
             self.write(level, msg);
         }
-        fn is_log_file_set(&self) -> bool {
-            false
+        fn level(&self) -> Option<i32> {
+            Some(9)
         }
-        fn is_log_level_set(&self) -> bool {
-            true
+        fn set_level(&mut self, _level: i32) {}
+        fn file(&self) -> Option<&str> {
+            None
         }
-        fn set_debug_log_level(&mut self, _level: i32) {}
-        fn set_debug_log_file(&mut self, _file_name: &str) -> Result<(), String> {
+        fn set_file(&mut self, _file_name: &str) -> Result<(), String> {
             Ok(())
-        }
-        fn get_debug_log_file(&self) -> &str {
-            ""
-        }
-        fn get_debug_log_level(&self) -> i32 {
-            9
-        }
-        fn debug_level(&self) -> i32 {
-            9
-        }
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
         }
     }
 

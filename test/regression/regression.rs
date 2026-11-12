@@ -294,7 +294,8 @@ fn run_one(t: &RegressionTest, resources: &[&str]) -> Outcome {
         tr.process_logging();
     }
 
-    let d = rules.properties.debug_log.as_any().downcast_ref::<CustomDebugLog>().expect("custom debug log");
+    let d: &dyn std::any::Any = rules.properties.debug_log.as_ref();
+    let d = d.downcast_ref::<CustomDebugLog>().expect("custom debug log");
     let server_log_s = server_log.lock().unwrap().clone();
     if !d.contains(&t.debug_log) {
         out.reason =

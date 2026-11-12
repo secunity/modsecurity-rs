@@ -5,7 +5,7 @@
 
 use std::sync::Mutex;
 
-use modsecurity::debug_log::debug_log::DebugLog;
+use modsecurity::debug_log::DebugLog;
 use modsecurity::utils::json::{JsonValue, parse_tree};
 
 pub const RESET: &str = "\x1B[0m";
@@ -169,37 +169,20 @@ impl DebugLog for CustomDebugLog {
         l.push_str(&format!("[{}] [{}] [{}] {}\n", id, uri, level, msg));
     }
 
-    fn is_log_file_set(&self) -> bool {
-        false
+    fn level(&self) -> Option<i32> {
+        (self.level != -1).then_some(self.level)
     }
 
-    fn is_log_level_set(&self) -> bool {
-        self.level != -1
-    }
-
-    fn set_debug_log_level(&mut self, level: i32) {
+    fn set_level(&mut self, level: i32) {
         self.level = level;
     }
 
-    fn set_debug_log_file(&mut self, _file_name: &str) -> Result<(), String> {
+    fn file(&self) -> Option<&str> {
+        None
+    }
+
+    fn set_file(&mut self, _file_name: &str) -> Result<(), String> {
         Ok(())
-    }
-
-    fn get_debug_log_file(&self) -> &str {
-        ""
-    }
-
-    /// The C++ `CustomDebugLog::getDebugLogLevel` always reports 9.
-    fn get_debug_log_level(&self) -> i32 {
-        9
-    }
-
-    fn debug_level(&self) -> i32 {
-        self.level
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 

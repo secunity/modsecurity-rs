@@ -3,7 +3,7 @@
 //! The HTTPS writer posts every entry, as JSON, to the URL given by
 //! `SecAuditLog`.
 
-use crate::audit_log::audit_log::AuditLog;
+use crate::audit_log::AuditLog;
 use crate::transaction::Transaction;
 use crate::utils::https_client::HttpsClient;
 

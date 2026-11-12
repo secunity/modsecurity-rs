@@ -3,7 +3,7 @@
 use std::any::Any;
 use std::sync::OnceLock;
 
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::rule_message::RuleMessage;
 use crate::transaction::Transaction;
 
@@ -120,7 +120,7 @@ impl ModSecurity {
         crate::unique_id::UniqueId::unique_id();
         // (C++ calls `srand(time(NULL))` here to seed libc `rand()` for the
         // audit log boundaries; those now come from the `rand` crate, see
-        // `audit_log::writer::writer::generate_boundary`.)
+        // `audit_log::writer::generate_boundary`.)
         // (A no-op without libxml2.)
         crate::request_body_processor::xml::init_parser();
         ModSecurity {
@@ -168,7 +168,7 @@ impl ModSecurity {
         self.connector = connector.to_string();
     }
 
-    pub fn get_connector_information(&self) -> &str {
+    pub fn connector_information(&self) -> &str {
         &self.connector
     }
 

@@ -25,7 +25,7 @@ impl ValidateByteRange {
     }
 
     /// `getRange`: adds `N` or `N-M` to the table.
-    pub fn get_range(&mut self, range_representation: &[u8]) -> Result<(), String> {
+    pub fn add_range(&mut self, range_representation: &[u8]) -> Result<(), String> {
         let lossy = |s: &[u8]| String::from_utf8_lossy(s).into_owned();
         let Some(pos) = range_representation.iter().position(|&c| c == b'-') else {
             let Some(start) = stoi(range_representation) else {
@@ -80,7 +80,7 @@ impl Operator for ValidateByteRange {
         let param = self.param.literal.clone();
         // Comma separated list of ranges (empty pieces fail to convert).
         for range in param.split(|&c| c == b',') {
-            self.get_range(range)?;
+            self.add_range(range)?;
         }
         Ok(())
     }

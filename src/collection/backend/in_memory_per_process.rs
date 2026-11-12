@@ -3,8 +3,8 @@
 
 use std::sync::RwLock;
 
+use crate::collection::Collection;
 use crate::collection::backend::collection_data::CollectionData;
-use crate::collection::collection::Collection;
 use crate::utils::regex::Regex;
 use crate::utils::unordered_multimap::UnorderedMultimap;
 use crate::variable_value::{VariableValue, move_to_front_reversed};

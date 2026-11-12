@@ -1,7 +1,7 @@
 //! Port of `src/operators/verify_cpf.cc`, `src/operators/verify_cpf.h`
 //! (Brazilian CPF numbers).
 
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;

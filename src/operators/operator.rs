@@ -137,7 +137,7 @@ pub fn report_regex_compile_error(t: &mut Transaction<'_>, re: &Regex) {
     let off = t.vars.offset;
     t.vars.msc_pcre_error.set(b"1", off);
     {
-        use crate::collection::collection::Collection;
+        use crate::collection::Collection;
         t.collections.tx_collection.store_or_update_first(b"MSC_PCRE_ERROR", b"1");
     }
     crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
@@ -145,7 +145,7 @@ pub fn report_regex_compile_error(t: &mut Transaction<'_>, re: &Regex) {
 
 /// `Operator::reportRegexSearchError`
 pub fn report_regex_search_error(t: &mut Transaction<'_>, re: &Regex, result: RegexResult, op_name: &str) {
-    use crate::collection::collection::Collection;
+    use crate::collection::Collection;
     let off = t.vars.offset;
     t.vars.msc_pcre_error.set(b"1", off);
     t.collections.tx_collection.store_or_update_first(b"MSC_PCRE_ERROR", b"1");

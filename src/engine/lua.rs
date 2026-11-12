@@ -59,9 +59,9 @@ mod without_lua {
         }
 
         /// `run`
-        pub fn run(&self, t: &mut Transaction<'_>, _s: &[u8]) -> i32 {
+        pub fn run(&self, t: &mut Transaction<'_>, _s: &[u8]) -> bool {
             crate::ms_dbg_a!(t, 9, "Lua support was not enabled.");
-            0
+            false
         }
     }
 }
@@ -73,7 +73,7 @@ mod with_lua {
 
     use super::Transaction;
     use crate::actions::transformations::transformation;
-    use crate::collection::collection::Collection;
+    use crate::collection::Collection;
     use crate::utils::string::{to_hex_if_needed, toupper_str};
     use crate::variables::variable::{string_match_resolve, string_match_resolve_multi};
 
@@ -298,9 +298,9 @@ end
         }
 
         /// `run`: runs the script with `s` as the argument of `main` (none
-        /// when empty). Returns 1 when `main` returned a non empty string
-        /// (or number), 0 otherwise or on errors.
-        pub fn run(&self, t: &mut Transaction<'_>, s: &[u8]) -> i32 {
+        /// when empty). Returns whether `main` returned a non empty string
+        /// (or number); `false` on errors.
+        pub fn run(&self, t: &mut Transaction<'_>, s: &[u8]) -> bool {
             let t: &Transaction<'_> = t;
             let lua = Self::new_state();
             match self.run_in(&lua, t, s) {
@@ -314,12 +314,12 @@ end
                         self.script_name,
                         mlua_error_text(&e)
                     );
-                    0
+                    false
                 }
             }
         }
 
-        fn run_in(&self, lua: &mlua::Lua, t: &Transaction<'_>, s: &[u8]) -> mlua::Result<i32> {
+        fn run_in(&self, lua: &mlua::Lua, t: &Transaction<'_>, s: &[u8]) -> mlua::Result<bool> {
             lua.scope(|scope| {
                 let globals = lua.globals();
 
@@ -378,7 +378,7 @@ end
                         };
                         msg.push_str(&mlua_error_text(&e));
                         crate::ms_dbg_a!(t, 2, "{}", msg);
-                        return Ok(0);
+                        return Ok(false);
                     }
                 };
 
@@ -390,7 +390,7 @@ end
                         e.push_str(&lossy(&luaerr));
                     }
                     crate::ms_dbg_a!(t, 2, "{}", e);
-                    return Ok(0);
+                    return Ok(false);
                 }
 
                 // lua_setglobal(L, "modsec") pops what is left on the stack:
@@ -415,7 +415,7 @@ end
                         e.push_str(&lossy(&luaerr));
                     }
                     crate::ms_dbg_a!(t, 2, "{}", e);
-                    return Ok(0);
+                    return Ok(false);
                 }
 
                 // One result, as lua_pcall(L, nargs, 1, 0) asks for.
@@ -423,7 +423,7 @@ end
 
                 crate::ms_dbg_a!(t, 9, "Returning from lua script: {}", lossy(&lua_ret));
 
-                Ok(if lua_ret.is_empty() { 0 } else { 1 })
+                Ok(!lua_ret.is_empty())
             })
         }
     }
@@ -651,7 +651,7 @@ end
 #[cfg(all(test, feature = "lua"))]
 mod tests {
     use super::Lua;
-    use crate::collection::collection::Collection;
+    use crate::collection::Collection;
     use crate::modsecurity::ModSecurity;
     use crate::transaction::Transaction;
     use crate::variables::test_support::rules_with_log;
@@ -696,15 +696,15 @@ mod tests {
         let (rules, log) = rules_with_log();
         let mut t = Transaction::new(&ms, &rules, None);
 
-        assert_eq!(loaded("match.lua").run(&mut t, b""), 1);
+        assert!(loaded("match.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Returning from lua script: Lua script matched."));
 
-        assert_eq!(loaded("test.lua").run(&mut t, b""), 0);
+        assert!(!loaded("test.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains(
             "Failed to execute lua script: test/test-cases/data/test.lua (main) - attempt to call a nil value"
         ));
 
-        assert_eq!(loaded("match-log.lua").run(&mut t, b""), 1);
+        assert!(loaded("match-log.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("[9] echo 123\n"));
 
         // A shebang line is skipped and the argument reaches main.
@@ -714,7 +714,7 @@ mod tests {
             l.load(&p).unwrap();
             l
         };
-        assert_eq!(l.run(&mut t, b"hello"), 1);
+        assert!(l.run(&mut t, b"hello"));
         assert!(log.lock().unwrap().contains("[9] hello\n"));
         assert!(log.lock().unwrap().contains("Returning from lua script: hello!"));
 
@@ -722,24 +722,24 @@ mod tests {
         let p = temp_script("num.lua", "function main()\n  return 0\nend\n");
         let mut l = Lua::new();
         l.load(&p).unwrap();
-        assert_eq!(l.run(&mut t, b""), 1);
+        assert!(l.run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Returning from lua script: 0\n"));
 
         // Errors.
         let p = temp_script("err.lua", "function main()\n  error('boom')\nend\n");
         let mut l = Lua::new();
         l.load(&p).unwrap();
-        assert_eq!(l.run(&mut t, b""), 0);
+        assert!(!l.run(&mut t, b""));
         assert!(log.lock().unwrap().contains(&format!("[2] Failed to execute lua script: {p} (main) - {p}:2: boom\n")));
         let p = temp_script("err2.lua", "error({})\n");
         let mut l = Lua::new();
         l.load(&p).unwrap();
-        assert_eq!(l.run(&mut t, b""), 0);
+        assert!(!l.run(&mut t, b""));
         assert!(log.lock().unwrap().contains(&format!("[2] Failed to execute lua script: {p} (before main)\n")));
         let p = temp_script("err3.lua", "function main()\n  m.log()\nend\n");
         let mut l = Lua::new();
         l.load(&p).unwrap();
-        assert_eq!(l.run(&mut t, b""), 0);
+        assert!(!l.run(&mut t, b""));
         assert!(log.lock().unwrap().contains(&format!(
             "[2] Failed to execute lua script: {p} (main) - {p}:2: bad argument #1 to 'log' (number expected, got no value)\n"
         )));
@@ -748,7 +748,7 @@ mod tests {
             temp_script("modsec.lua", "function main()\n  return getmetatable == nil and '' or modsec.__name\nend\n");
         let mut l = Lua::new();
         l.load(&p).unwrap();
-        assert_eq!(l.run(&mut t, b""), 1);
+        assert!(l.run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Returning from lua script: luaL_msc\n"));
     }
 
@@ -762,31 +762,31 @@ mod tests {
         let ip_key = format!("lua-test-{}", std::process::id());
         t.collections.ip_collection_key = ip_key.as_bytes().to_vec();
 
-        assert_eq!(loaded("setvar.lua").run(&mut t, b""), 0);
+        assert!(!loaded("setvar.lua").run(&mut t, b""));
         assert_eq!(t.collections.tx_collection.resolve_first(b"lua_set_var"), Some(b"2".to_vec()));
         assert_eq!(
             t.collections.ip_collection.resolve_first(format!("{}::app::lua_set_var", ip_key).as_bytes()),
             Some(b"2".to_vec())
         );
 
-        assert_eq!(loaded("match-set.lua").run(&mut t, b""), 1);
+        assert!(loaded("match-set.lua").run(&mut t, b""));
         assert_eq!(t.collections.tx_collection.resolve_first(b"test"), Some(b"whee".to_vec()));
 
         t.collections.tx_collection.store_or_update_first(b"test", b"FELIPE");
-        assert_eq!(loaded("match-getvar-transformation.lua").run(&mut t, b""), 1);
+        assert!(loaded("match-getvar-transformation.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Just fine."));
-        assert_eq!(loaded("match-getvar-multi-transformations.lua").run(&mut t, b""), 1);
+        assert!(loaded("match-getvar-multi-transformations.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Whee. Working like a charm. That is what we have: FELIPE"));
 
         t.collections.tx_collection.store_or_update_first(b"test", b"2");
-        assert_eq!(loaded("match-getvar.lua").run(&mut t, b""), 1);
+        assert!(loaded("match-getvar.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Number is bigger than one."));
 
         // Unknown variables.
-        assert_eq!(loaded("lua-getvar-unknown.lua").run(&mut t, b""), 0);
+        assert!(!loaded("lua-getvar-unknown.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("[2] Lua: m.getvar(): unknown variable: UNKNOWN_VARIABLE.\n"));
         assert!(log.lock().unwrap().contains("UNKNOWN_VARIABLE is not available from Lua."));
-        assert_eq!(loaded("lua-getvars-rule.lua").run(&mut t, b""), 0);
+        assert!(!loaded("lua-getvars-rule.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("[2] Lua: m.getvars(): unknown variable: RULE.\n"));
         assert!(log.lock().unwrap().contains("RULE from Lua: 0 value(s)."));
 
@@ -794,7 +794,7 @@ mod tests {
         let p = temp_script("setvar-args.lua", "function main()\n  m.setvar('x')\n  m.setvar('novalue', 'v')\nend\n");
         let mut l = Lua::new();
         l.load(&p).unwrap();
-        assert_eq!(l.run(&mut t, b""), 0);
+        assert!(!l.run(&mut t, b""));
         assert!(log.lock().unwrap().contains("[8] m.setvar: Failed m.setvar funtion must has 2 arguments\n"));
         assert!(
             log.lock().unwrap().contains(
@@ -842,7 +842,7 @@ end
         l.load(&p).unwrap();
         let ret = l.run(&mut t, b"");
         let got = log.lock().unwrap().clone();
-        assert_eq!(ret, 1, "{}", got);
+        assert!(ret, "{}", got);
         let expected = format!(
             "[1] count=0 modsec=luaL_msc tr=true
 [8] m.setvar: Failed m.setvar funtion must has 2 arguments
@@ -863,9 +863,9 @@ end
         let (rules, log) = rules_with_log();
         let mut t = Transaction::new(&ms, &rules, None);
         t.process_uri(b"/?a=1&b=2", b"GET", b"1.1");
-        assert_eq!(loaded("match-getvars-args.lua").run(&mut t, b""), 0);
+        assert!(!loaded("match-getvars-args.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("ARGS count read =2"));
-        assert_eq!(loaded("match-getvars.lua").run(&mut t, b""), 0);
+        assert!(!loaded("match-getvars.lua").run(&mut t, b""));
         let s = log.lock().unwrap().clone();
         assert!(s.contains("[\"name\"] = QUERY_STRING,") && s.contains("[\"value\"] = a=1&b=2,"), "{}", s);
     }
@@ -886,7 +886,7 @@ mod tests {
         let ms = ModSecurity::new();
         let (rules, log) = rules_with_log();
         let mut t = Transaction::new(&ms, &rules, None);
-        assert_eq!(l.run(&mut t, b""), 0);
+        assert!(!l.run(&mut t, b""));
         assert!(log.lock().unwrap().contains("[9] Lua support was not enabled.\n"));
     }
 }

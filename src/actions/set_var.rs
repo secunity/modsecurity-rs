@@ -112,7 +112,7 @@ impl Action for SetVar {
 mod tests {
     use super::*;
     use crate::actions::block::test_support::*;
-    use crate::collection::collection::Collection;
+    use crate::collection::Collection;
     use crate::modsecurity::ModSecurity;
 
     fn setvar(op: SetVarOperation, name: &str, pre: Option<&str>) -> SetVar {

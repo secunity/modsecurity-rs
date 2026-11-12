@@ -10,8 +10,8 @@ use std::os::unix::fs::OpenOptionsExt;
 
 use md5::{Digest, Md5};
 
-use crate::audit_log::audit_log::{AuditLog, AuditLogFormat};
-use crate::audit_log::writer::writer::generate_boundary;
+use crate::audit_log::writer::generate_boundary;
+use crate::audit_log::{AuditLog, AuditLogFormat};
 use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFiles;
 use crate::utils::string::string_to_hex;
@@ -60,20 +60,20 @@ fn write_index(transaction: &Transaction<'_>, path: &str, file_name: &str, log: 
     let log_md5 = string_to_hex(&Md5::digest(log));
 
     let msg = transaction.to_old_audit_log_format_index(file_name, log.len() as f64, &log_md5);
-    SharedFiles::get_instance().write(path, &msg)
+    SharedFiles::instance().write(path, &msg)
 }
 
 pub(super) fn init(audit: &AuditLog) -> Result<(), String> {
     if !audit.path1.is_empty() {
-        SharedFiles::get_instance().open(&audit.path1)?;
+        SharedFiles::instance().open(&audit.path1)?;
     }
 
     if !audit.path2.is_empty() {
-        SharedFiles::get_instance().open(&audit.path2)?;
+        SharedFiles::instance().open(&audit.path2)?;
     }
 
     if !audit.storage_dir.is_empty() {
-        create_dir(&audit.storage_dir, audit.get_directory_permission() as u32)?;
+        create_dir(&audit.storage_dir, audit.directory_permission() as u32)?;
     }
 
     Ok(())
@@ -87,7 +87,7 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
     );
 
     // As in C++, the format comes from the transaction's rule set.
-    let log = if transaction.rules.properties.audit_log.format == AuditLogFormat::Json {
+    let log = if transaction.rules.properties.audit_log.format == Some(AuditLogFormat::Json) {
         transaction.to_json(parts)
     } else {
         let boundary = generate_boundary();
@@ -101,7 +101,7 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
         return Err("Log path is not valid.".to_string());
     }
 
-    let dir_mode = audit.get_directory_permission() as u32;
+    let dir_mode = audit.directory_permission() as u32;
     create_dir(&format!("{}{}", log_path, log_file_path(ts, YEAR_MONTH_DAY_DIRECTORY)), dir_mode)?;
     create_dir(
         &format!("{}{}", log_path, log_file_path(ts, YEAR_MONTH_DAY_DIRECTORY | YEAR_MONTH_DAY_AND_TIME_DIRECTORY)),
@@ -109,12 +109,13 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
     )?;
 
     // open(fileName, O_CREAT | O_WRONLY | O_APPEND, filePermission)
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(audit.get_file_permission() as u32)
-        .open(&file_name)
-        .map_err(|e| format!("Not able to open: {}. {}", file_name, strerror(e.raw_os_error().unwrap_or(0))))?;
+    let mut file =
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .mode(audit.file_permission() as u32)
+            .open(&file_name)
+            .map_err(|e| format!("Not able to open: {}. {}", file_name, strerror(e.raw_os_error().unwrap_or(0))))?;
     // The C++ code reopens the file with an std::ofstream (append) and
     // ignores write errors.
     let _ = file.write_all(&log);
@@ -136,6 +137,6 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
 }
 
 pub(super) fn close(audit: &AuditLog) {
-    SharedFiles::get_instance().close(&audit.path1);
-    SharedFiles::get_instance().close(&audit.path2);
+    SharedFiles::instance().close(&audit.path1);
+    SharedFiles::instance().close(&audit.path2);
 }

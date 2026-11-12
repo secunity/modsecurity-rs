@@ -19,7 +19,7 @@ use crate::actions::disruptive::allow::AllowType;
 use crate::anchored_set_variable::AnchoredSetVariable;
 use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::anchored_variable::AnchoredVariable;
-use crate::audit_log::audit_log::{self, AuditLogStatus};
+use crate::audit_log::{self, AuditLogStatus, PartsChange};
 use crate::collection::collections::Collections;
 use crate::intervention::Intervention;
 use crate::modsecurity::{ModSecurity, Phases};
@@ -285,9 +285,11 @@ pub struct Transaction<'a> {
     pub rule_remove_target_by_id: Vec<(i32, String)>,
     pub request_body_access: Option<bool>,
     /// `ctl:auditLogParts` modifications: (0 = add / 1 = remove, parts).
-    pub audit_log_modifier: Vec<(i32, String)>,
+    /// `ctl:auditLogParts` changes for this transaction, in rule order.
+    pub audit_log_modifier: Vec<(PartsChange, String)>,
     /// This transaction's most recent `ctl:auditEngine`.
-    pub ctl_audit_engine: AuditLogStatus,
+    /// `ctl:auditEngine`, when a rule set it for this transaction.
+    pub ctl_audit_engine: Option<AuditLogStatus>,
     /// Messages saved by `log`/`msg`/... for the audit log.
     pub rules_messages: Vec<RuleMessage<'a>>,
     pub request_body: Vec<u8>,
@@ -296,7 +298,9 @@ pub struct Transaction<'a> {
     pub id: String,
     /// Rules still to be skipped because of a `skip` action.
     pub skip_next: i32,
-    pub allow_type: AllowType,
+    /// Set by a matching `allow` action, until the rules it covers are
+    /// skipped.
+    pub allow_type: Option<AllowType>,
     /// The decoded URI (raw is `uri`).
     pub uri_decoded: Vec<u8>,
     /// The pending disruptive action, handed out by
@@ -329,7 +333,7 @@ pub struct Transaction<'a> {
     log_cb_data: Option<Box<dyn Any + Send>>,
 }
 
-fn get_id(id: Option<&str>, timestamp: i64) -> String {
+fn transaction_id(id: Option<&str>, timestamp: i64) -> String {
     match id {
         Some(id) => id.to_string(),
         None => format!("{}{}", timestamp, double_to_string(crate::utils::random::generate_transaction_unique_id())),
@@ -383,13 +387,13 @@ impl<'a> Transaction<'a> {
             rule_remove_target_by_id: Vec::new(),
             request_body_access: None,
             audit_log_modifier: Vec::new(),
-            ctl_audit_engine: AuditLogStatus::NotSet,
+            ctl_audit_engine: None,
             rules_messages: Vec::new(),
             request_body: Vec::new(),
             response_body: Vec::new(),
-            id: get_id(id, timestamp),
+            id: transaction_id(id, timestamp),
             skip_next: 0,
-            allow_type: AllowType::NoneAllowType,
+            allow_type: None,
             uri_decoded: Vec::new(),
             intervention: Intervention::default(),
             is_interrupted: false,
@@ -429,7 +433,7 @@ impl<'a> Transaction<'a> {
     /// Whether a debug message of `level` would be written (the test done by
     /// the `ms_dbg` macros).
     pub fn debug_enabled(&self, level: i32) -> bool {
-        self.rules.properties.debug_log.debug_level() >= level
+        self.rules.properties.debug_log.enabled(level)
     }
 
     /// `debug(level, message)`
@@ -445,7 +449,7 @@ impl<'a> Transaction<'a> {
         self.marker.is_some()
     }
 
-    pub fn get_current_marker(&self) -> Option<&str> {
+    pub fn current_marker(&self) -> Option<&str> {
         self.marker.as_deref()
     }
 
@@ -623,7 +627,7 @@ impl<'a> Transaction<'a> {
     /// `processRequestHeaders`
     pub fn process_request_headers(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_HEADERS.  (SecRules 1)");
-        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
+        if self.rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return;
         }
@@ -702,7 +706,7 @@ impl<'a> Transaction<'a> {
     pub fn process_request_body(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_BODY. (SecRules 2)");
 
-        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
+        if self.rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return;
         }
@@ -932,7 +936,7 @@ impl<'a> Transaction<'a> {
             } else {
                 if props.request_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Request body limit is marked to reject the request");
-                    if self.get_rule_engine_state() == Some(RuleEngine::Enabled) {
+                    if self.rule_engine_state() == Some(RuleEngine::Enabled) {
                         self.intervention = Intervention {
                             status: 403,
                             url: None,
@@ -958,7 +962,7 @@ impl<'a> Transaction<'a> {
         self.vars.response_status.set(code.to_string().as_bytes(), off);
         self.vars.response_protocol.set(proto.as_bytes(), off);
 
-        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
+        if self.rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return;
         }
@@ -989,7 +993,7 @@ impl<'a> Transaction<'a> {
     pub fn process_response_body(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_BODY. (SecRules 4)");
 
-        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
+        if self.rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return;
         }
@@ -1072,7 +1076,7 @@ impl<'a> Transaction<'a> {
             } else {
                 if props.response_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Response body limit is marked to reject the request");
-                    if self.get_rule_engine_state() == Some(RuleEngine::Enabled) {
+                    if self.rule_engine_state() == Some(RuleEngine::Enabled) {
                         self.intervention = Intervention {
                             status: 403,
                             url: None,
@@ -1091,17 +1095,17 @@ impl<'a> Transaction<'a> {
     }
 
     /// `getResponseBody`
-    pub fn get_response_body(&self) -> &[u8] {
+    pub fn response_body(&self) -> &[u8] {
         &self.response_body
     }
 
     /// `getResponseBodyLength`
-    pub fn get_response_body_length(&self) -> usize {
+    pub fn response_body_length(&self) -> usize {
         self.response_body.len()
     }
 
     /// `getRequestBodyLength`
-    pub fn get_request_body_length(&self) -> usize {
+    pub fn request_body_length(&self) -> usize {
         self.request_body.len()
     }
 
@@ -1109,7 +1113,7 @@ impl<'a> Transaction<'a> {
     pub fn process_logging(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase LOGGING. (SecRules 5)");
 
-        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
+        if self.rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return;
         }
@@ -1118,22 +1122,21 @@ impl<'a> Transaction<'a> {
 
         // If relevant, save this transaction information at the audit_logs
         let audit = &self.rules.properties.audit_log;
-        let mut parts = audit.get_parts();
+        let mut parts = audit.parts();
         crate::ms_dbg_a!(self, 8, "Checking if this request is suitable to be saved as an audit log.");
 
         if !self.audit_log_modifier.is_empty() {
             crate::ms_dbg_a!(self, 4, "There was an audit log modifier for this transaction.");
             crate::ms_dbg_a!(self, 7, "AuditLog parts before modification(s): {}.", parts);
             for (op, p) in &self.audit_log_modifier {
-                if *op == 0 {
-                    parts = audit_log::AuditLog::add_parts(parts, p);
-                } else {
-                    parts = audit_log::AuditLog::remove_parts(parts, p);
-                }
+                parts = match op {
+                    PartsChange::Add => audit_log::AuditLog::add_parts(parts, p),
+                    PartsChange::Remove => audit_log::AuditLog::remove_parts(parts, p),
+                };
             }
         }
         crate::ms_dbg_a!(self, 8, "Checking if this request is relevant to be part of the audit logs.");
-        let saved = audit.save_if_relevant(self, parts);
+        let saved = audit.save_if_relevant(self, Some(parts));
         if saved {
             crate::ms_dbg_a!(self, 8, "Request was relevant to be saved. Parts: {}", parts);
         }
@@ -1377,8 +1380,8 @@ impl<'a> Transaction<'a> {
             g.string(b"producer");
             g.map_open();
             g.add("modsecurity", self.ms.who_am_i().as_bytes());
-            g.add("connector", self.ms.get_connector_information().as_bytes());
-            g.add("secrules_engine", rule_engine_state_string(self.get_rule_engine_state()).as_bytes());
+            g.add("connector", self.ms.connector_information().as_bytes());
+            g.add("secrules_engine", rule_engine_state_string(self.rule_engine_state()).as_bytes());
             g.string(b"components");
             g.array_open();
             for a in &self.rules.properties.components {
@@ -1432,7 +1435,7 @@ impl<'a> Transaction<'a> {
 
     /// `getRuleEngineState`: this transaction's `ctl:ruleEngine`, else
     /// `SecRuleEngine`.
-    pub fn get_rule_engine_state(&self) -> Option<RuleEngine> {
+    pub fn rule_engine_state(&self) -> Option<RuleEngine> {
         self.sec_rule_engine.or(self.rules.properties.sec_rule_engine)
     }
 
@@ -1737,21 +1740,21 @@ pub mod c_api {
         };
         // strdup(m_responseBody.str().c_str()): the raw bytes up to the
         // first NUL byte.
-        intervention::strdup(t.get_response_body())
+        intervention::strdup(t.response_body())
     }
 
     /// # Safety
     /// `t` as above.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_get_response_body_length(t: *mut CTransaction) -> usize {
-        tx!(t).get_response_body_length()
+        tx!(t).response_body_length()
     }
 
     /// # Safety
     /// `t` as above.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_get_request_body_length(t: *mut CTransaction) -> usize {
-        tx!(t).get_request_body_length()
+        tx!(t).request_body_length()
     }
 
     /// # Safety

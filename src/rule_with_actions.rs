@@ -266,7 +266,7 @@ impl RuleWithActions {
     }
 
     /// `getReference`: the rule id for `SecRule`s, `file:line` otherwise.
-    pub fn get_reference(&self) -> String {
+    pub fn reference(&self) -> String {
         match self.kind {
             RuleWithActionsKind::Operator(_) => self.rule_id.to_string(),
             _ => format!("{}:{}", self.file_name, self.line_number),
@@ -497,7 +497,7 @@ impl RuleWithActions {
             return;
         }
 
-        if t.get_rule_engine_state() == Some(RuleEngine::Enabled) {
+        if t.rule_engine_state() == Some(RuleEngine::Enabled) {
             crate::ms_dbg_a!(t, 4, "Running (disruptive)     action: {}.", a.name());
             a.evaluate(self, t, rm);
             return;
@@ -625,7 +625,7 @@ impl RuleWithActions {
     }
 
     /// `getActionsByName`
-    pub fn get_actions_by_name<'s>(&'s self, name: &str, t: &'s Transaction<'_>) -> Vec<&'s dyn Action> {
+    pub fn actions_by_name<'s>(&'s self, name: &str, t: &'s Transaction<'_>) -> Vec<&'s dyn Action> {
         let mut ret: Vec<&dyn Action> = Vec::new();
         for z in &self.actions_runtime_pos {
             if z.name() == name {

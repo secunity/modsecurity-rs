@@ -51,10 +51,10 @@ impl Rule {
     }
 
     /// `getReference`
-    pub fn get_reference(&self) -> String {
+    pub fn reference(&self) -> String {
         match self {
             Rule::Marker(m) => format!("{}:{}", m.file_name, m.line_number),
-            Rule::WithActions(r) => r.get_reference(),
+            Rule::WithActions(r) => r.reference(),
         }
     }
 

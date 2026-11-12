@@ -6,7 +6,7 @@
 use std::ffi::CString;
 use std::net::Ipv4Addr;
 
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;

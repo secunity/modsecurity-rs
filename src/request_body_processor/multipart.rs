@@ -136,7 +136,7 @@ impl MultipartPartTmpFile {
     }
 
     /// `getFilename`
-    pub fn get_filename(&self) -> &str {
+    pub fn filename(&self) -> &str {
         &self.tmp_file_name
     }
 
@@ -498,14 +498,20 @@ impl Multipart {
     }
 
     /// `parse_content_disposition`: `c_d_value` is the header value (a C
-    /// string), `offset` where it starts.
-    fn parse_content_disposition(&mut self, t: &mut Transaction<'_>, c_d_value: &[u8], offset: usize) -> i32 {
+    /// string), `offset` where it starts. The error is the (negative) code
+    /// of the C++ function, which the error message shows.
+    fn parse_content_disposition(
+        &mut self,
+        t: &mut Transaction<'_>,
+        c_d_value: &[u8],
+        offset: usize,
+    ) -> Result<(), i32> {
         let cd = c_str(c_d_value);
         let at = |i: usize| c_at(cd, i);
 
         // accept only what we understand
         if !cd.starts_with(b"form-data") {
-            return -1;
+            return Err(-1);
         }
 
         // see if there are any other parts to parse
@@ -514,11 +520,11 @@ impl Multipart {
             p += 1;
         }
         if at(p) == 0 {
-            return 1; // this is OK
+            return Ok(()); // this is OK
         }
 
         if at(p) != b';' {
-            return -2;
+            return Err(-2);
         }
         p += 1;
 
@@ -532,7 +538,7 @@ impl Multipart {
             }
 
             if at(p) == 0 {
-                return -3;
+                return Err(-3);
             }
 
             let start = p;
@@ -541,7 +547,7 @@ impl Multipart {
             }
 
             if at(p) == 0 {
-                return -4;
+                return Err(-4);
             }
 
             let name = &cd[start..p];
@@ -551,11 +557,11 @@ impl Multipart {
             }
 
             if at(p) == 0 {
-                return -5;
+                return Err(-5);
             }
 
             if at(p) != b'=' {
-                return -13;
+                return Err(-13);
             }
 
             p += 1;
@@ -565,7 +571,7 @@ impl Multipart {
             }
 
             if at(p) == 0 {
-                return -6;
+                return Err(-6);
             }
 
             let mpp = self.mpp.as_mut().expect("part being built");
@@ -580,7 +586,7 @@ impl Multipart {
                 if at(p) != b'\'' || p == start_of_charset {
                     // Must be at least one legit char before ' for start of
                     // language
-                    return -16;
+                    return Err(-16);
                 }
                 mpp.filename_charset = cd[start_of_charset..p].to_vec();
                 mpp.filename_charset_offset = offset.wrapping_add(p - mpp.filename_charset.len());
@@ -598,7 +604,7 @@ impl Multipart {
                 }
                 if at(p) != b'\'' {
                     self.flag_invalid_quoting = 1;
-                    return -17; // Single quote for end-of-language not found
+                    return Err(-17); // Single quote for end-of-language not found
                 }
                 mpp.filename_language = cd[start_of_language..p].to_vec();
                 mpp.filename_language_offset = offset.wrapping_add(p - mpp.filename_language.len());
@@ -619,13 +625,13 @@ impl Multipart {
                             || !at(p + 1).is_ascii_hexdigit()
                             || !at(p + 2).is_ascii_hexdigit()
                         {
-                            return -18;
+                            return Err(-18);
                         }
                         p += 3;
                     } else if at(p).is_ascii_alphanumeric() || ATTR_CHAR_SPECIAL.contains(&at(p)) {
                         p += 1;
                     } else {
-                        return -19;
+                        return Err(-19);
                     }
                 }
                 value = cd[start_of_filename..p].to_vec();
@@ -642,14 +648,14 @@ impl Multipart {
 
                 p += 1;
                 if at(p) == 0 {
-                    return -7;
+                    return Err(-7);
                 }
 
                 while at(p) != 0 {
                     if at(p) == b'\\' {
                         if at(p + 1) == 0 {
                             // improper escaping
-                            return -8;
+                            return Err(-8);
                         }
                         // only quote and \ can be escaped
                         if at(p + 1) == quote || at(p + 1) == b'\\' {
@@ -661,7 +667,7 @@ impl Multipart {
                             // improperly escaped content and there's
                             // nothing we can do about it.
                             //
-                            // return -9;
+                            // return Err(-9);
                         }
                     } else if at(p) == quote {
                         break;
@@ -675,7 +681,7 @@ impl Multipart {
                     p += 1; // go over the quote at the end
                 } else {
                     self.flag_invalid_quoting = 1;
-                    return -15; // closing quote not found
+                    return Err(-15); // closing quote not found
                 }
             } else {
                 // not quoted
@@ -703,7 +709,7 @@ impl Multipart {
                         lossy(&value),
                         lossy(&mpp.name)
                     );
-                    return -14;
+                    return Err(-14);
                 }
                 mpp.name = value.clone();
                 mpp.name_offset = value_offset;
@@ -719,7 +725,7 @@ impl Multipart {
                         "Multipart: Warning: Duplicate Content-Disposition filename: {}.",
                         lossy(&value)
                     );
-                    return -15;
+                    return Err(-15);
                 } else {
                     self.validate_quotes(t, &value, quote);
                     let mpp = self.mpp.as_mut().expect("part being built");
@@ -739,7 +745,7 @@ impl Multipart {
                         "Multipart: Warning: Duplicate Content-Disposition filename*: {}.",
                         lossy(&value)
                     );
-                    return -15;
+                    return Err(-15);
                 }
 
                 let mut invalid_count = 0;
@@ -753,7 +759,7 @@ impl Multipart {
                 mpp.filename_star_offset = value_offset;
                 crate::ms_dbg_a!(t, 9, "Multipart: Content-Disposition filename*: {}.", lossy(&mpp.filename_star));
             } else {
-                return -11;
+                return Err(-11);
             }
 
             if at(p) != 0 {
@@ -778,7 +784,7 @@ impl Multipart {
                             self.flag_invalid_quoting = 1;
                         }
                         // p++;
-                        return -12;
+                        return Err(-12);
                     }
                     p += 1; // move over the semi-colon
                 }
@@ -807,7 +813,7 @@ impl Multipart {
             t.vars.multipart_file_name.set(&mpp.name, &mpp.filename, mpp.filename_offset);
         }
 
-        1
+        Ok(())
     }
 
     /// `process_part_data`
@@ -883,8 +889,8 @@ impl Multipart {
 
                         // do we have an opened file?
                         if !tmp.is_open() {
-                            crate::ms_dbg_a!(t, 1, "Multipart: Failed to create file: {}", tmp.get_filename());
-                            self.error = Some(format!("Multipart: Failed to create file: {}", tmp.get_filename()));
+                            crate::ms_dbg_a!(t, 1, "Multipart: Failed to create file: {}", tmp.filename());
+                            self.error = Some(format!("Multipart: Failed to create file: {}", tmp.filename()));
                             return false;
                         }
                         // keep track of the files count
@@ -896,7 +902,7 @@ impl Multipart {
                             "Multipart: Created temporary file {} (mode 0{:o}): {}",
                             self.nfiles,
                             t.rules.properties.upload_file_mode.unwrap_or(0),
-                            tmp.get_filename()
+                            tmp.filename()
                         );
                     }
                     let tmp = mpp.tmp_file.as_ref().expect("temporary file");
@@ -904,8 +910,8 @@ impl Multipart {
                     // write the reserve first
                     if reserved != 0 {
                         if !tmp.write(&self.reserve[1..1 + reserved]) {
-                            crate::ms_dbg_a!(t, 1, "Multipart: writing to \"{}\" failed", tmp.get_filename());
-                            self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.get_filename()));
+                            crate::ms_dbg_a!(t, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
+                            self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.filename()));
                             return false;
                         }
 
@@ -918,8 +924,8 @@ impl Multipart {
 
                     // write data to the file
                     if !tmp.write(&self.buf[..len]) {
-                        crate::ms_dbg_a!(t, 1, "Multipart: writing to \"{}\" failed", tmp.get_filename());
-                        self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.get_filename()));
+                        crate::ms_dbg_a!(t, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
+                        self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.filename()));
                         return false;
                     }
 
@@ -1027,8 +1033,7 @@ impl Multipart {
                 return;
             };
 
-            let rc = self.parse_content_disposition(t, &header_value, cd_offset);
-            if rc < 0 {
+            if let Err(rc) = self.parse_content_disposition(t, &header_value, cd_offset) {
                 crate::ms_dbg_a!(
                     t,
                     1,
@@ -1204,7 +1209,7 @@ impl Multipart {
     }
 
     /// `process_boundary`
-    fn process_boundary(&mut self, t: &mut Transaction<'_>, last_part: bool) -> i32 {
+    fn process_boundary(&mut self, t: &mut Transaction<'_>, last_part: bool) {
         // if there was a part being built finish it
         if let Some(mut mpp) = self.mpp.take() {
             // record all the part header lines from the part into the
@@ -1281,8 +1286,6 @@ impl Multipart {
 
             self.reserve = [0; 4];
         }
-
-        1
     }
 
     /// Sets `MULTIPART_LF_LINE` / `MULTIPART_CRLF_LF_LINES` and logs the
@@ -1440,10 +1443,7 @@ impl Multipart {
                         }
 
                         // Looks like the final boundary - process it.
-                        if self.process_boundary(t, true) < 0 {
-                            self.flag_error = 1;
-                            return false;
-                        }
+                        self.process_boundary(t, true);
 
                         // The payload is complete after all.
                         self.is_complete = true;
@@ -1473,9 +1473,9 @@ impl Multipart {
 
             if m.type_ == PartType::File {
                 if let Some(f) = &m.tmp_file
-                    && !f.get_filename().is_empty()
+                    && !f.filename().is_empty()
                 {
-                    let n = f.get_filename().as_bytes();
+                    let n = f.filename().as_bytes();
                     t.vars.files_tmp_names.set(n, n, m.filename_offset);
                 }
 
@@ -1811,10 +1811,7 @@ impl Multipart {
                                     self.flag_crlf_line = 1;
                                 }
 
-                                if self.process_boundary(t, is_final) < 0 {
-                                    self.flag_error = 1;
-                                    return false;
-                                }
+                                self.process_boundary(t, is_final);
 
                                 if is_final {
                                     self.is_complete = true;
@@ -1966,7 +1963,7 @@ impl Multipart {
                 {
                     // only mark for deletion for now; the file should stay
                     // on disk until the transaction is complete
-                    crate::ms_dbg_opt!(t, 9, "Multipart: Marking temporary file for deletion: {}", f.get_filename());
+                    crate::ms_dbg_opt!(t, 9, "Multipart: Marking temporary file for deletion: {}", f.filename());
                     f.set_delete();
                 }
             }
@@ -1986,50 +1983,11 @@ impl Drop for Multipart {
 /// as the regression test harness does, with a debug log kept in memory.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use std::sync::Mutex;
-
-    use crate::debug_log::debug_log::DebugLog;
+    pub use crate::debug_log::test_support::CaptureLog;
     use crate::modsecurity::ModSecurity;
     use crate::rules_set::RulesSet;
     use crate::rules_set_properties::RulesSetProperties;
     use crate::transaction::{RequestBodyType, Transaction};
-
-    /// A debug log keeping the messages in memory.
-    #[derive(Debug, Default)]
-    pub struct CaptureLog {
-        pub lines: Mutex<Vec<String>>,
-    }
-
-    impl DebugLog for CaptureLog {
-        fn write(&self, _level: i32, msg: &str) {
-            self.lines.lock().unwrap().push(msg.to_string());
-        }
-        fn write_ctx(&self, _level: i32, _id: &str, _uri: &str, msg: &str) {
-            self.lines.lock().unwrap().push(msg.to_string());
-        }
-        fn is_log_file_set(&self) -> bool {
-            false
-        }
-        fn is_log_level_set(&self) -> bool {
-            true
-        }
-        fn set_debug_log_level(&mut self, _level: i32) {}
-        fn set_debug_log_file(&mut self, _file_name: &str) -> Result<(), String> {
-            Ok(())
-        }
-        fn get_debug_log_file(&self) -> &str {
-            ""
-        }
-        fn get_debug_log_level(&self) -> i32 {
-            9
-        }
-        fn debug_level(&self) -> i32 {
-            9
-        }
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-    }
 
     /// A rule set with an in-memory debug log at level 9.
     pub fn new_rules() -> RulesSet {
@@ -2040,8 +1998,7 @@ pub(crate) mod test_support {
 
     /// The messages logged so far.
     pub fn log(rules: &RulesSet) -> Vec<String> {
-        let l = rules.properties.debug_log.as_any().downcast_ref::<CaptureLog>().unwrap();
-        l.lines.lock().unwrap().clone()
+        CaptureLog::lines_of(rules.properties.debug_log.as_ref())
     }
 
     /// Runs a request with `headers` and `body` up to (and including) the

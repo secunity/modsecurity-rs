@@ -15,7 +15,7 @@ pub struct Rules {
 impl Rules {
     pub fn dump(&self) {
         for r in &self.rules {
-            println!("    Rule ID: {}--{:p}", r.get_reference(), Arc::as_ptr(r));
+            println!("    Rule ID: {}--{:p}", r.reference(), Arc::as_ptr(r));
         }
     }
 

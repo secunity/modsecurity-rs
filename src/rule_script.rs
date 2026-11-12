@@ -31,7 +31,7 @@ impl RuleScript {
     ) -> bool {
         crate::ms_dbg_a!(t, 4, " Executing script: {}.", self.name);
         let contains_block = rule.execute_actions_independent_of_chained_rule_result(t, rm);
-        let ret = self.lua.run(t, b"") != 0;
+        let ret = self.lua.run(t, b"");
         if ret {
             rule.execute_actions_after_full_match(t, contains_block, rm);
         }

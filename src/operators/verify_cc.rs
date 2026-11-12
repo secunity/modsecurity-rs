@@ -7,7 +7,7 @@ use std::ptr;
 
 use pcre2_sys::*;
 
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;

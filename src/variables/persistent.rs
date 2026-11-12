@@ -12,7 +12,7 @@
 //! [`Persistent::variable`]. Two quirks of the C++ classes are kept (see
 //! [`Persistent::regex_name`] and [`Persistent::del`]).
 
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
 use crate::variable_value::VariableValue;

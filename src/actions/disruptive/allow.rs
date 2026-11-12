@@ -8,13 +8,15 @@ use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
-/// `AllowType`
+/// What an `allow` action lets through.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AllowType {
-    NoneAllowType,
-    RequestAllowType,
-    PhaseAllowType,
-    FromNowOnAllowType,
+    /// `allow:request`: the rest of the request phases.
+    Request,
+    /// `allow:phase`: the rest of the current phase.
+    Phase,
+    /// `allow`: everything but the logging phase.
+    FromNowOn,
 }
 
 #[derive(Debug)]
@@ -28,21 +30,20 @@ impl Allow {
     pub fn new(action: &str) -> Result<Self, String> {
         let (name, payload) = name_and_payload(action);
         let allow_type = match payload.to_ascii_lowercase().as_str() {
-            "phase" => AllowType::PhaseAllowType,
-            "request" => AllowType::RequestAllowType,
-            "" => AllowType::FromNowOnAllowType,
+            "phase" => AllowType::Phase,
+            "request" => AllowType::Request,
+            "" => AllowType::FromNowOn,
             _ => return Err("Allow: if specified, the parameter most be: phase, request".to_string()),
         };
         Ok(Allow { name: name.to_string(), allow_type })
     }
 
     /// `allowTypeToName`
-    pub fn allow_type_to_name(a: AllowType) -> &'static str {
+    fn allow_type_to_name(a: AllowType) -> &'static str {
         match a {
-            AllowType::NoneAllowType => "None",
-            AllowType::RequestAllowType => "Request",
-            AllowType::PhaseAllowType => "Phase",
-            AllowType::FromNowOnAllowType => "FromNowOn",
+            AllowType::Request => "Request",
+            AllowType::Phase => "Phase",
+            AllowType::FromNowOn => "FromNowOn",
         }
     }
 }
@@ -63,7 +64,7 @@ impl Action for Allow {
             "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: {}",
             Self::allow_type_to_name(self.allow_type)
         );
-        t.allow_type = self.allow_type;
+        t.allow_type = Some(self.allow_type);
     }
 }
 
@@ -76,9 +77,9 @@ mod tests {
     #[test]
     fn allow() {
         let ty = |a: &str| Allow::new(a).map(|x| x.allow_type);
-        assert_eq!(ty("allow"), Ok(AllowType::FromNowOnAllowType));
-        assert_eq!(ty("allow:phase"), Ok(AllowType::PhaseAllowType));
-        assert_eq!(ty("allow:REQUEST"), Ok(AllowType::RequestAllowType));
+        assert_eq!(ty("allow"), Ok(AllowType::FromNowOn));
+        assert_eq!(ty("allow:phase"), Ok(AllowType::Phase));
+        assert_eq!(ty("allow:REQUEST"), Ok(AllowType::Request));
         assert_eq!(ty("allow:foo"), Err("Allow: if specified, the parameter most be: phase, request".to_string()));
 
         let ms = ModSecurity::new();
@@ -88,7 +89,7 @@ mod tests {
         let mut rm = RuleMessage::new(&r);
         let a = Allow::new("allow:phase").unwrap();
         a.evaluate(&r, &mut t, &mut rm);
-        assert_eq!(t.allow_type, AllowType::PhaseAllowType);
+        assert_eq!(t.allow_type, Some(AllowType::Phase));
         assert!(has_log(&t, "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: Phase"));
     }
 }

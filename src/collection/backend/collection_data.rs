@@ -58,7 +58,7 @@ impl CollectionData {
     }
 
     /// `getSerialized`
-    pub fn get_serialized(&self) -> Vec<u8> {
+    pub fn serialize(&self) -> Vec<u8> {
         let mut s = b"{".to_vec();
         if self.has_expiry() {
             s.extend_from_slice(b"\"__expire_\":");
@@ -79,7 +79,7 @@ impl CollectionData {
     }
 
     /// `setFromSerialized`
-    pub fn set_from_serialized(&mut self, data: &[u8]) {
+    pub fn deserialize(&mut self, data: &[u8]) {
         const EXPIRY_PREFIX: &[u8] = b"\"__expire_\":";
         const VALUE_PREFIX: &[u8] = b"\"__value_\":\"";
         self.has_value = false;
@@ -150,13 +150,13 @@ mod tests {
     fn roundtrip() {
         let mut d = CollectionData::with_value(b"abc");
         d.set_expiry(100);
-        let s = d.get_serialized();
+        let s = d.serialize();
         let mut e = CollectionData::new();
-        e.set_from_serialized(&s);
+        e.deserialize(&s);
         assert!(e.has_value() && e.has_expiry());
         assert_eq!(e.value(), b"abc");
         let mut f = CollectionData::new();
-        f.set_from_serialized(b"plain");
+        f.deserialize(b"plain");
         assert_eq!(f.value(), b"plain");
     }
 }

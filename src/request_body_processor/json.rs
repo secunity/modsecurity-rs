@@ -94,7 +94,7 @@ impl Json {
     }
 
     /// `getCurrentKey(emptyIsNull = false)`
-    fn get_current_key(&mut self) -> Vec<u8> {
+    fn current_key(&mut self) -> Vec<u8> {
         if self.containers.is_empty() {
             return b"json".to_vec();
         }
@@ -117,7 +117,7 @@ impl Json {
 
     /// The `yajl_start_map` / `yajl_start_array` callbacks.
     fn start_container(&mut self, array: bool) -> bool {
-        let name = self.get_current_key();
+        let name = self.current_key();
         self.containers.push(if array {
             JsonContainer::Array { name, element_counter: 0 }
         } else {
@@ -170,7 +170,7 @@ impl JsonParser<'_, '_, '_> {
         if json.is_previous_array() {
             json.count_array_element();
         } else {
-            let data = json.get_current_key();
+            let data = json.current_key();
             path.extend_from_slice(&data);
         }
 

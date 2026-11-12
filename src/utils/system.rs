@@ -50,7 +50,7 @@ pub struct ResourceLookup {
 /// `find_resource`: looks for `resource` as given, through shell expansion,
 /// and relative to the directory of `config`.
 pub fn find_resource(resource: &str, config: &str) -> ResourceLookup {
-    let relative = format!("{}/{}", get_path(config), resource);
+    let relative = format!("{}/{}", parent_dir(config), resource);
     // Each name is tried as a file, then through shell expansion.
     let attempts = [(resource, false), (resource, true), (relative.as_str(), false), (relative.as_str(), true)];
     let mut looked_at = "Looking at: ".to_string();
@@ -65,10 +65,10 @@ pub fn find_resource(resource: &str, config: &str) -> ResourceLookup {
     ResourceLookup { path: None, looked_at }
 }
 
-/// `get_path`: directory part of `file`. As in C++, a name without any
+/// `parent_dir`: directory part of `file`. As in C++, a name without any
 /// separator is returned unchanged (`npos > 0` and `substr(0, npos)`), and a
 /// separator at position 0 yields an empty string.
-pub fn get_path(file: &str) -> String {
+pub fn parent_dir(file: &str) -> String {
     match file.rfind(['/', '\\']) {
         Some(0) => String::new(),
         Some(found) => file[..found].to_string(),

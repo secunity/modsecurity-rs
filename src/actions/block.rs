@@ -49,9 +49,7 @@ impl Action for Block {
 /// the dynamic-element hooks used by `setvar`.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use std::sync::Mutex;
-
-    use crate::debug_log::debug_log::DebugLog;
+    use crate::debug_log::test_support::CaptureLog;
     pub use crate::rule_with_actions::RuleAction;
     use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
@@ -60,51 +58,13 @@ pub(crate) mod test_support {
     use crate::variables::variable::Variable;
     use crate::variables::{VariableSelector, new_variable};
 
-    /// Debug log that keeps every message (level 9).
-    #[derive(Default)]
-    pub struct CaptureLog {
-        pub lines: Mutex<Vec<String>>,
-    }
-
-    impl DebugLog for CaptureLog {
-        fn write(&self, _level: i32, msg: &str) {
-            self.lines.lock().unwrap().push(msg.to_string());
-        }
-        fn write_ctx(&self, _level: i32, _id: &str, _uri: &str, msg: &str) {
-            self.lines.lock().unwrap().push(msg.to_string());
-        }
-        fn is_log_file_set(&self) -> bool {
-            false
-        }
-        fn is_log_level_set(&self) -> bool {
-            true
-        }
-        fn set_debug_log_level(&mut self, _level: i32) {}
-        fn set_debug_log_file(&mut self, _file_name: &str) -> Result<(), String> {
-            Ok(())
-        }
-        fn get_debug_log_file(&self) -> &str {
-            ""
-        }
-        fn get_debug_log_level(&self) -> i32 {
-            9
-        }
-        fn debug_level(&self) -> i32 {
-            9
-        }
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-    }
-
     pub fn rules() -> RulesSet {
         RulesSet::with_debug_log(Box::new(CaptureLog::default()))
     }
 
     /// The debug messages logged so far.
     pub fn logs(t: &Transaction<'_>) -> Vec<String> {
-        let l = t.rules.properties.debug_log.as_any().downcast_ref::<CaptureLog>().unwrap();
-        l.lines.lock().unwrap().clone()
+        CaptureLog::lines_of(t.rules.properties.debug_log.as_ref())
     }
 
     pub fn has_log(t: &Transaction<'_>, msg: &str) -> bool {

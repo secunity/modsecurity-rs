@@ -11,7 +11,7 @@ mod common;
 use common::*;
 use modsecurity::actions::capture::Capture;
 use modsecurity::actions::transformations::transformation;
-use modsecurity::collection::collection::Collection;
+use modsecurity::collection::Collection;
 use modsecurity::modsecurity::ModSecurity;
 use modsecurity::operators::libinjection_adapter::{self, InjectionResult};
 use modsecurity::operators::operator;

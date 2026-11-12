@@ -4,7 +4,7 @@
 //! the transaction.
 
 use crate::actions::action::Action;
-use crate::audit_log::audit_log::AuditLogStatus;
+use crate::audit_log::AuditLogStatus;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -33,6 +33,6 @@ impl Action for AuditEngine {
             "Setting SecAuditEngine to {} as requested by a ctl:auditEngine action",
             self.status as i32
         );
-        t.ctl_audit_engine = self.status;
+        t.ctl_audit_engine = Some(self.status);
     }
 }

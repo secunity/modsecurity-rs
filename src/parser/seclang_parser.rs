@@ -15,7 +15,7 @@
 use crate::actions::action::{Action, InertAction, Kind};
 use crate::actions::transformations::transformation::{Transformation, TransformationKind as TK};
 use crate::actions::{self, ctl, data, disruptive};
-use crate::audit_log::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
+use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
 use crate::modsecurity::Phases;
 use crate::operators::operator::{RuleOperator, instantiate_with_param};
 use crate::parser::driver::Driver;
@@ -1091,11 +1091,11 @@ impl SeclangParser {
             // Debug log: start
             (sym::CONFIG_DIR_DEBUG_LVL, _) => {
                 let level = atoi(&rhs[0].bytes()) as i32;
-                driver.properties.debug_log.set_debug_log_level(level);
+                driver.properties.debug_log.set_level(level);
             }
             (sym::CONFIG_DIR_DEBUG_LOG, _) => {
                 let v = rhs[0].string();
-                if let Err(error) = driver.properties.debug_log.set_debug_log_file(&v) {
+                if let Err(error) = driver.properties.debug_log.set_file(&v) {
                     return Self::fail(driver, at0, &format!("Failed to start DebugLog: {}", error));
                 }
             }
@@ -1111,7 +1111,7 @@ impl SeclangParser {
                             &format!("Failed to load locate the GeoDB file from: {} {}", v, lookup.looked_at),
                         );
                     };
-                    if let Err(err) = crate::utils::geo_lookup::GeoLookup::get_instance().set_data_base(&file) {
+                    if let Err(err) = crate::utils::geo_lookup::GeoLookup::instance().set_data_base(&file) {
                         return Self::fail(driver, at0, &format!("Failed to load the GeoDB from: {}. {}", file, err));
                     }
                 } else {
@@ -1521,7 +1521,7 @@ impl SeclangParser {
         if let Some(value) = second {
             // ctl:<option>=<value>
             let t = rhs[0].string();
-            use crate::audit_log::audit_log::AuditLogStatus;
+            use crate::audit_log::AuditLogStatus;
             use crate::rules_set_properties::{ParseXmlIntoArgs, RuleEngine};
             let a = match (kind, value) {
                 (sym::ACTION_CTL_AUDIT_ENGINE, sym::CONFIG_VALUE_ON) => {
@@ -3154,7 +3154,7 @@ mod tests {
     fn load(rules: &str, reference: &str) -> (i32, String) {
         let mut r = RulesSet::new();
         let n = r.load_with_ref(rules, reference).map_or(-1, |n| n as i32);
-        (n, r.get_parser_error())
+        (n, r.parser_error())
     }
 
     #[test]
@@ -3457,7 +3457,7 @@ mod tests {
                 let mut r = RulesSet::new();
                 r.load("SecDebugLogLevel 9").expect("valid directive");
                 let failed = r.load_with_ref(&rules, &filename).is_err();
-                let err = r.get_parser_error();
+                let err = r.parser_error();
                 let ok = match &expected {
                     Some(e) => failed && regex_search(err.as_bytes(), &Regex::new(e)) > 0,
                     None => !failed,

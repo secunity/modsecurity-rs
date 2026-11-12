@@ -4,7 +4,7 @@
 //! of a persistent collection.
 
 use crate::actions::action::Action;
-use crate::collection::collection::Collection;
+use crate::collection::Collection;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;

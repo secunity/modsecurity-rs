@@ -116,7 +116,7 @@ impl JsonGen {
     }
 
     /// `yajl_gen_get_buf`
-    pub fn get_buf(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         &self.buf
     }
 
@@ -723,7 +723,7 @@ mod tests {
         g.bool(true);
         g.array_close();
         g.map_close();
-        assert_eq!(g.get_buf(), br#"{"a":"x\"y\n","n":5,"arr":["1",true]}"#);
+        assert_eq!(g.as_bytes(), br#"{"a":"x\"y\n","n":5,"arr":["1",true]}"#);
     }
 
     #[test]

@@ -55,7 +55,7 @@ fn set_lock(file: &File, l_type: libc::c_int) {
 
 impl SharedFiles {
     /// `getInstance`
-    pub fn get_instance() -> &'static SharedFiles {
+    pub fn instance() -> &'static SharedFiles {
         static INSTANCE: OnceLock<SharedFiles> = OnceLock::new();
         INSTANCE.get_or_init(|| SharedFiles { handlers: Mutex::new(HashMap::new()) })
     }
@@ -123,7 +123,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("log.txt");
         let name = path.to_str().unwrap();
-        let sf = SharedFiles::get_instance();
+        let sf = SharedFiles::instance();
 
         assert_eq!(sf.write(name, b"x"), Err(format!("file is not open: {}", name)));
         sf.open(name).unwrap();

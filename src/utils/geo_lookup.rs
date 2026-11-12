@@ -25,7 +25,7 @@ struct GeoLookupState {
     mmdb: Option<maxminddb::Reader<Vec<u8>>>,
 }
 
-/// `GeoLookup` (singleton, see [`GeoLookup::get_instance`]).
+/// `GeoLookup` (singleton, see [`GeoLookup::instance`]).
 #[derive(Debug)]
 pub struct GeoLookup {
     state: RwLock<GeoLookupState>,
@@ -33,7 +33,7 @@ pub struct GeoLookup {
 
 impl GeoLookup {
     /// `getInstance`
-    pub fn get_instance() -> &'static GeoLookup {
+    pub fn instance() -> &'static GeoLookup {
         static INSTANCE: GeoLookup = GeoLookup {
             state: RwLock::new(GeoLookupState {
                 version: GeoLookupVersion::NotLoaded,
@@ -264,7 +264,7 @@ mod tests {
     /// One test only: the database is process wide.
     #[test]
     fn set_data_base_and_lookup() {
-        let g = GeoLookup::get_instance();
+        let g = GeoLookup::instance();
         let err = g.set_data_base("/nonexistent/db.mmdb").unwrap_err();
         assert!(err.starts_with("Can't open:  /nonexistent/db.mmdb. Support enabled for:"));
         #[cfg(feature = "maxmind")]

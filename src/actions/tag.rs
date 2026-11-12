@@ -35,8 +35,8 @@ impl Tag {
         Tag { string: z }
     }
 
-    /// `getName`
-    pub fn get_name(&self, t: &Transaction<'_>) -> Vec<u8> {
+    /// The tag, with its macros expanded for `t`.
+    pub fn tag(&self, t: &Transaction<'_>) -> Vec<u8> {
         self.string.evaluate(Some(t))
     }
 }
@@ -47,7 +47,7 @@ impl Action for Tag {
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        let tag = self.get_name(t);
+        let tag = self.tag(t);
         crate::ms_dbg_a!(t, 9, "Rule tag: {}", lossy(&tag));
         rm.tags.push(tag);
     }

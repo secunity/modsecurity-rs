@@ -33,6 +33,6 @@ impl Operator for GeoLookup {
         input: &[u8],
         _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        GeoDb::get_instance().lookup(input, Some(t))
+        GeoDb::instance().lookup(input, Some(t))
     }
 }

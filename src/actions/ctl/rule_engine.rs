@@ -47,7 +47,7 @@ mod tests {
     use crate::actions::ctl::request_body_processor_json::RequestBodyProcessorJSON;
     use crate::actions::ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED;
     use crate::actions::ctl::request_body_processor_xml::RequestBodyProcessorXML;
-    use crate::audit_log::audit_log::AuditLogStatus;
+    use crate::audit_log::{AuditLogStatus, PartsChange};
     use crate::modsecurity::ModSecurity;
     use crate::rules_set_properties::ParseXmlIntoArgs as ParseXmlIntoArgsState;
     use crate::transaction::RequestBodyType;
@@ -72,7 +72,7 @@ mod tests {
         assert!(has_log(&t, "Setting SecRuleEngine to DetectionOnly as requested by a ctl:ruleEngine action"));
 
         run(&AuditEngine::new(AuditLogStatus::RelevantOnly), &mut t);
-        assert_eq!(t.ctl_audit_engine, AuditLogStatus::RelevantOnly);
+        assert_eq!(t.ctl_audit_engine, Some(AuditLogStatus::RelevantOnly));
         assert!(has_log(&t, "Setting SecAuditEngine to 3 as requested by a ctl:auditEngine action"));
 
         run(&ParseXmlIntoArgs::new(ParseXmlIntoArgsState::OnlyArgs), &mut t);
@@ -89,7 +89,10 @@ mod tests {
 
         run(&AuditLogParts::new("ctl:auditLogParts=+E"), &mut t);
         run(&AuditLogParts::new("ctl:auditLogParts=-HK"), &mut t);
-        assert_eq!(t.audit_log_modifier, vec![(0, "E".to_string()), (1, "HK".to_string())]);
+        assert_eq!(
+            t.audit_log_modifier,
+            vec![(PartsChange::Add, "E".to_string()), (PartsChange::Remove, "HK".to_string())]
+        );
 
         run(&RequestBodyProcessorJSON::new("ctl:requestBodyProcessor=JSON"), &mut t);
         assert_eq!(t.request_body_processor, RequestBodyType::JSONRequestBody);

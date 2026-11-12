@@ -8,8 +8,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::actions::action::Action;
-use crate::audit_log::audit_log::AuditLog;
-use crate::debug_log::debug_log::{DebugLog, DefaultDebugLog};
+use crate::audit_log::AuditLog;
+use crate::debug_log::{DebugLog, DefaultDebugLog};
 use crate::modsecurity::NUMBER_OF_PHASES;
 use crate::rules_exceptions::RulesExceptions;
 
@@ -457,13 +457,12 @@ impl RulesSetProperties {
             return Err(e);
         }
 
-        if from.debug_log.is_log_file_set() && !to.debug_log.is_log_file_set() {
-            let f = from.debug_log.get_debug_log_file().to_string();
-            to.debug_log.set_debug_log_file(&f)?;
+        if let (Some(file), None) = (from.debug_log.file(), to.debug_log.file()) {
+            to.debug_log.set_file(file)?;
         }
 
-        if from.debug_log.is_log_level_set() && !to.debug_log.is_log_level_set() {
-            to.debug_log.set_debug_log_level(from.debug_log.get_debug_log_level());
+        if let (Some(level), None) = (from.debug_log.level(), to.debug_log.level()) {
+            to.debug_log.set_level(level);
         }
 
         Ok(())

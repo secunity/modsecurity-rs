@@ -3,7 +3,7 @@
 //! Persistent collections (`IP`, `SESSION`, `USER`, `GLOBAL`, `RESOURCE`)
 //! stored in an LMDB file shared by every process using the library:
 //! `./modsec-shared-collections` (relative to the working directory).
-//! Values are stored as `CollectionData::get_serialized` (value + expiry).
+//! Values are stored as `CollectionData::serialize` (value + expiry).
 //!
 //! All the `unsafe` code of the backend (the LMDB C API) lives in this
 //! file; every LMDB handle is created, used and released within one method,
@@ -19,8 +19,8 @@ use std::sync::OnceLock;
 use lmdb_master_sys as ffi;
 use lmdb_master_sys::{MDB_dbi, MDB_env, MDB_txn, MDB_val};
 
+use crate::collection::Collection;
 use crate::collection::backend::collection_data::CollectionData;
-use crate::collection::collection::Collection;
 use crate::utils::regex::Regex;
 use crate::variable_value::{VariableValue, move_to_front_reversed};
 use crate::variables::variable::KeyExclusions;
@@ -51,7 +51,7 @@ static ENV_PROVIDER: OnceLock<MdbEnvProvider> = OnceLock::new();
 
 impl MdbEnvProvider {
     /// `GetInstance` (the Meyers singleton).
-    fn get_instance() -> &'static MdbEnvProvider {
+    fn instance() -> &'static MdbEnvProvider {
         ENV_PROVIDER.get_or_init(|| MdbEnvProvider::open(SHARED_COLLECTIONS_PATH))
     }
 
@@ -231,7 +231,7 @@ impl Lmdb {
     /// `txn_begin`: opens the shared environment on first use; -1 when it
     /// could not be opened.
     fn txn_begin(&self, flags: c_uint) -> Result<(Txn, MDB_dbi), c_int> {
-        let provider = MdbEnvProvider::get_instance();
+        let provider = MdbEnvProvider::instance();
         if !provider.is_valid() {
             return Err(-1);
         }
@@ -273,7 +273,7 @@ impl Lmdb {
         if rc == 0 {
             // SAFETY: the value belongs to the open txn and is copied
             // before the database is modified.
-            previous_data.set_from_serialized(unsafe { val_bytes(&mdb_value_ret) });
+            previous_data.deserialize(unsafe { val_bytes(&mdb_value_ret) });
             // SAFETY: as above; deletes the pair just read.
             let rc = unsafe { ffi::mdb_del(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
             lmdb_debug(rc, "del", scope);
@@ -285,7 +285,7 @@ impl Lmdb {
         }
 
         let new_data = build(previous_data);
-        let serialized_data = new_data.get_serialized();
+        let serialized_data = new_data.serialize();
         let mut mdb_value = string2val(&serialized_data);
 
         // SAFETY: live write txn; key and value point at live buffers.
@@ -322,7 +322,7 @@ impl Lmdb {
 
         let mut collection_data = CollectionData::new();
         // SAFETY: the value belongs to the open txn and is copied.
-        collection_data.set_from_serialized(unsafe { val_bytes(&mdb_value_ret) });
+        collection_data.deserialize(unsafe { val_bytes(&mdb_value_ret) });
         if collection_data.is_expired() {
             // SAFETY: deletes the pair just read in the live write txn.
             let rc = unsafe { ffi::mdb_del(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
@@ -369,7 +369,7 @@ impl Lmdb {
                     while unsafe { ffi::mdb_cursor_get(cursor, &mut key, &mut data, op) } == 0 {
                         // SAFETY: as above.
                         let (k, d) = unsafe { (val_bytes(&key), val_bytes(&data)) };
-                        collection_data.set_from_serialized(d);
+                        collection_data.deserialize(d);
                         if collection_data.is_expired() {
                             expired_vars.push(k.to_vec());
                             continue;
@@ -467,7 +467,7 @@ impl Collection for Lmdb {
                 lmdb_debug(rc, "get", "resolveFirst");
                 if rc == 0 {
                     // SAFETY: the value belongs to the open txn and is copied.
-                    collection_data.set_from_serialized(unsafe { val_bytes(&mdb_value_ret) });
+                    collection_data.deserialize(unsafe { val_bytes(&mdb_value_ret) });
                     if !collection_data.is_expired() && collection_data.has_value() {
                         ret = Some(collection_data.value().to_vec());
                     }
@@ -538,7 +538,7 @@ mod tests {
         // If another test already opened the default file, that one is
         // used; the keys below are unique to this test run.
         ENV_PROVIDER.get_or_init(|| MdbEnvProvider::open(&path));
-        assert!(MdbEnvProvider::get_instance().is_valid());
+        assert!(MdbEnvProvider::instance().is_valid());
     }
 
     fn keys(l: &[VariableValue]) -> Vec<Vec<u8>> {
