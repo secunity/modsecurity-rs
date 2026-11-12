@@ -244,7 +244,9 @@ pub unsafe extern "C" fn ngx_http_modsecurity_access_handler(r: *mut ngx_http_re
                 // Request body was saved to a file, probably we don't have
                 // a copy of it in memory.
                 let file_name = bytes(&(*(*rb).temp_file).file.name);
-                ctx.modsec_transaction.request_body_from_file(&String::from_utf8_lossy(&file_name));
+                // The C module ignores the result too; libmodsecurity logs a
+                // file it cannot read.
+                let _ = ctx.modsec_transaction.request_body_from_file(&String::from_utf8_lossy(&file_name));
                 already_inspected = true;
             }
 

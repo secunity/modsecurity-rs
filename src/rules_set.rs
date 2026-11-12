@@ -2,7 +2,7 @@
 
 use crate::actions::disruptive::allow::AllowType;
 use crate::debug_log::debug_log::DebugLog;
-use crate::modsecurity::{NUMBER_OF_PHASES, Phases};
+use crate::modsecurity::Phases;
 use crate::parser::driver::Driver;
 use crate::rules_set_phases::RulesSetPhases;
 use crate::rules_set_properties::RulesSetProperties;
@@ -96,28 +96,25 @@ impl RulesSet {
     }
 
     /// `evaluate(phase, transaction)`
-    pub fn evaluate<'a>(&'a self, phase: i32, t: &mut Transaction<'a>) -> i32 {
-        if phase < 0 || phase as usize >= NUMBER_OF_PHASES {
-            return 0;
-        }
-        let rules = self.rules_set_phases.at(phase as usize);
+    pub fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
+        let rules = self.rules_set_phases.at(phase);
         crate::ms_dbg_a!(t, 9, "This phase consists of {} rule(s).", rules.size());
 
-        if t.allow_type == AllowType::FromNowOnAllowType && phase != Phases::LoggingPhase as i32 {
+        if t.allow_type == AllowType::FromNowOnAllowType && phase != Phases::Logging {
             crate::ms_dbg_a!(
                 t,
                 9,
                 "Skipping all rules evaluation on this phase as request through the utilization of an `allow' action."
             );
-            return 1;
+            return;
         }
-        if t.allow_type == AllowType::RequestAllowType && phase <= Phases::RequestBodyPhase as i32 {
+        if t.allow_type == AllowType::RequestAllowType && phase <= Phases::RequestBody {
             crate::ms_dbg_a!(
                 t,
                 9,
                 "Skipping all rules evaluation on this phase as request through the utilization of an `allow' action."
             );
-            return 1;
+            return;
         }
         t.allow_type = AllowType::NoneAllowType;
 
@@ -201,7 +198,6 @@ impl RulesSet {
                 }
             }
         }
-        1
     }
 
     /// `merge(Parser::Driver *from)`

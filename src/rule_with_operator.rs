@@ -79,7 +79,7 @@ impl RuleWithOperator {
                 helper(v.as_ref());
             }
         }
-        for v in ex.variable_update_target_by_id.for_id(rule.rule_id as f64) {
+        for v in ex.variable_update_target_by_id.for_rule(rule.rule_id) {
             helper(v.as_ref());
         }
     }

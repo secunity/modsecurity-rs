@@ -447,10 +447,8 @@ impl RulesSetProperties {
             to.response_body_type_to_be_inspected.set = true;
         }
 
-        for i in 0..NUMBER_OF_PHASES {
-            for a in from.default_actions[i].iter() {
-                to.default_actions[i].push(a.clone());
-            }
+        for (to, from) in to.default_actions.iter_mut().zip(&from.default_actions) {
+            to.extend(from.iter().cloned());
         }
 
         if let Err(e) = to.audit_log.merge(&from.audit_log)

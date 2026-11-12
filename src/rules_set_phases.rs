@@ -3,23 +3,23 @@
 
 use std::sync::Arc;
 
-use crate::modsecurity::NUMBER_OF_PHASES;
+use crate::modsecurity::{NUMBER_OF_PHASES, Phases};
 use crate::rule::Rule;
 use crate::rules::Rules;
 
 #[derive(Debug, Default, Clone)]
 pub struct RulesSetPhases {
+    /// One list per phase, plus an eighth that C++ has and `dump` prints.
     rules_at_phase: [Rules; 8],
 }
 
 impl RulesSetPhases {
-    /// `insert`
+    /// `insert`: adds the rule to its phase. Returns whether it has one.
     pub fn insert(&mut self, rule: Arc<Rule>) -> bool {
-        let phase = rule.get_phase();
-        if phase < 0 || phase as usize >= NUMBER_OF_PHASES {
+        let Some(phase) = rule.phase() else {
             return false;
-        }
-        self.rules_at_phase[phase as usize].insert(rule);
+        };
+        self.rules_at_phase[phase.index()].insert(rule);
         true
     }
 
@@ -45,11 +45,11 @@ impl RulesSetPhases {
         }
     }
 
-    pub fn at(&self, index: usize) -> &Rules {
-        &self.rules_at_phase[index]
+    pub fn at(&self, phase: Phases) -> &Rules {
+        &self.rules_at_phase[phase.index()]
     }
 
-    pub fn at_mut(&mut self, index: usize) -> &mut Rules {
-        &mut self.rules_at_phase[index]
+    pub fn at_mut(&mut self, phase: Phases) -> &mut Rules {
+        &mut self.rules_at_phase[phase.index()]
     }
 }

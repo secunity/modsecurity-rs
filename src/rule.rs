@@ -4,6 +4,7 @@
 //! (`SecMarker`) and `RuleWithActions` (everything else); `Rule` is the
 //! closed enum over them.
 
+use crate::modsecurity::Phases;
 use crate::rule_marker::RuleMarker;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -40,17 +41,12 @@ impl Rule {
         }
     }
 
-    pub fn get_phase(&self) -> i32 {
+    /// The phase the rule runs in; `None` for a rule with an unknown
+    /// `phase:<name>` (see `actions::phase`), which runs in none.
+    pub fn phase(&self) -> Option<Phases> {
         match self {
-            Rule::Marker(m) => m.phase,
-            Rule::WithActions(r) => r.get_phase(),
-        }
-    }
-
-    pub fn set_phase(&mut self, phase: i32) {
-        match self {
-            Rule::Marker(m) => m.phase = phase,
-            Rule::WithActions(r) => r.set_phase(phase),
+            Rule::Marker(m) => Some(m.phase),
+            Rule::WithActions(r) => r.phase(),
         }
     }
 

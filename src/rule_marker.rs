@@ -8,7 +8,7 @@ pub struct RuleMarker {
     pub file_name: String,
     pub line_number: i32,
     /// FIXME (C++): phase may not be needed for SecMarker.
-    pub phase: i32,
+    pub phase: Phases,
     pub name: String,
 }
 
@@ -17,7 +17,7 @@ impl RuleMarker {
         RuleMarker {
             file_name: file_name.to_string(),
             line_number,
-            phase: Phases::RequestHeadersPhase as i32,
+            phase: Phases::RequestHeaders,
             name: name.to_string(),
         }
     }

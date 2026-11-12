@@ -1265,24 +1265,25 @@ impl SeclangParser {
     fn sec_default_action(driver: &mut Driver, list: Vec<ParsedAction>, at0: &Location) -> Result<(), Flow> {
         let mut has_disruptive = false;
         let mut checked_actions: Vec<Box<dyn Action>> = Vec::new();
-        let mut defined_phase: i32 = -1;
+        // The phase named by a `phase` action (`None` when its name is
+        // unknown), and its SecLang number for the error message.
+        let mut defined_phase: Option<Phases> = None;
         let mut sec_rule_defined_phase: i32 = -1;
         for pa in list {
             let a = pa.as_action();
             if a.is_disruptive() && !a.is_block() {
                 has_disruptive = true;
             }
-            if matches!(pa, ParsedAction::Action(RuleAction::Phase(_))) {
-                // `phase->m_phase`: applied the way the rule constructor
-                // does it (`evaluate(rule, nullptr)`).
-                let mut scratch = RuleWithActions::new(None, None, "", 0, RuleWithActionsKind::Unconditional);
-                a.configure(&mut scratch);
-                defined_phase = scratch.get_phase();
-                // `phase->m_secRulesPhase`: the SecLang phase number, i.e.
-                // the internal one minus the URI phase that SecLang cannot
-                // name (phase:0 is the connection phase).
-                sec_rule_defined_phase =
-                    if defined_phase <= Phases::ConnectionPhase as i32 { defined_phase } else { defined_phase - 1 };
+            if let ParsedAction::Action(RuleAction::Phase(phase)) = &pa {
+                defined_phase = phase.phase;
+                // The SecLang phase number: the internal one minus the URI
+                // phase that SecLang cannot name (phase:0 is the connection
+                // phase); -1 for an unknown name.
+                sec_rule_defined_phase = match phase.phase {
+                    None => -1,
+                    Some(Phases::Connection) => 0,
+                    Some(p) => p as i32 - 1,
+                };
             } else if matches!(a.kind(), Kind::RunTimeOnlyIfMatch | Kind::RunTimeBeforeMatchAttempt) {
                 if a.as_transformation().is_some_and(Transformation::is_none) {
                     return Self::fail(
@@ -1297,20 +1298,14 @@ impl SeclangParser {
                 return Self::fail(driver, at0, &msg);
             }
         }
-        if defined_phase == -1 {
-            defined_phase = Phases::RequestHeadersPhase as i32;
-        }
+        // Without a (known) phase the default actions are those of phase 1.
+        let defaults = &mut driver.properties.default_actions[defined_phase.unwrap_or(Phases::RequestHeaders).index()];
 
         if !has_disruptive {
             return Self::fail(driver, at0, "SecDefaultAction must specify a disruptive action.");
         }
 
-        let idx = defined_phase as usize;
-        if idx >= driver.properties.default_actions.len() {
-            // C++ indexes the array out of bounds here.
-            return Err(Flow::Error);
-        }
-        if !driver.properties.default_actions[idx].is_empty() {
+        if !defaults.is_empty() {
             let msg = format!(
                 "SecDefaultActions can only be placed once per phase and configuration context. Phase {} was informed already.",
                 sec_rule_defined_phase
@@ -1318,9 +1313,7 @@ impl SeclangParser {
             return Self::fail(driver, at0, &msg);
         }
 
-        for a in checked_actions {
-            driver.properties.default_actions[idx].push(std::sync::Arc::from(a));
-        }
+        defaults.extend(checked_actions.into_iter().map(std::sync::Arc::from));
         Ok(())
     }
 
@@ -3244,13 +3237,13 @@ mod tests {
         let rules = "SecRule ARGS \"@rx a\" \"id:1,phase:2,chain,deny\"\nSecRule ARGS \"@rx b\" \"chain\"\nSecRule ARGS \"@rx c\" \"t:none\"\nSecRule ARGS \"@rx d\" \"id:2,phase:2,pass\"\n";
         let mut d = Driver::new();
         assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
-        let phase = &d.rules_set_phases.at(Phases::RequestBodyPhase as usize).rules;
+        let phase = &d.rules_set_phases.at(Phases::RequestBody).rules;
         assert_eq!(phase.len(), 2);
         let r = phase[0].as_rule_with_actions().unwrap();
         let child = r.chained_rule_child.as_ref().unwrap();
         assert!(child.chained_rule_parent);
         assert!(child.chained_rule_child.is_some());
-        assert_eq!(child.get_phase(), Phases::RequestBodyPhase as i32);
+        assert_eq!(child.phase(), Some(Phases::RequestBody));
 
         let (n, err) = load("SecRule ARGS \"@rx a\" \"id:40\"\nSecRule ARGS \"@rx a\" \"id:40\"\n", "t");
         assert_eq!(n, -1);

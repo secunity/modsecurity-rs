@@ -463,11 +463,11 @@ impl<'a> Transaction<'a> {
 
     fn evaluate_phase(&mut self, phase: Phases) {
         let rules = self.rules;
-        rules.evaluate(phase as i32, self);
+        rules.evaluate(phase, self);
     }
 
     /// `processConnection`
-    pub fn process_connection(&mut self, client: &str, c_port: i32, server: &str, s_port: i32) -> i32 {
+    pub fn process_connection(&mut self, client: &str, c_port: i32, server: &str, s_port: i32) {
         self.client_ip_address = client.to_string();
         self.server_ip_address = server.to_string();
         if self.request_host_name.is_empty() {
@@ -485,8 +485,7 @@ impl<'a> Transaction<'a> {
         self.vars.server_addr.set(self.server_ip_address.as_bytes(), off);
         self.vars.server_port.set(self.server_port.to_string().as_bytes(), off);
         self.vars.remote_port.set(self.client_port.to_string().as_bytes(), off);
-        self.evaluate_phase(Phases::ConnectionPhase);
-        1
+        self.evaluate_phase(Phases::Connection);
     }
 
     /// `extractArguments`
@@ -541,7 +540,7 @@ impl<'a> Transaction<'a> {
     }
 
     /// `processURI`
-    pub fn process_uri(&mut self, uri: &[u8], method: &[u8], http_version: &[u8]) -> i32 {
+    pub fn process_uri(&mut self, uri: &[u8], method: &[u8], http_version: &[u8]) {
         crate::ms_dbg_a!(self, 4, "Starting phase URI. (SecRules 0 + 1/2)");
         self.http_version = String::from_utf8_lossy(http_version).into_owned();
         self.uri = uri.to_vec();
@@ -619,22 +618,20 @@ impl<'a> Transaction<'a> {
         }
 
         self.vars.offset += 1;
-        1
     }
 
     /// `processRequestHeaders`
-    pub fn process_request_headers(&mut self) -> i32 {
+    pub fn process_request_headers(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_HEADERS.  (SecRules 1)");
         if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
-            return 1;
+            return;
         }
-        self.evaluate_phase(Phases::RequestHeadersPhase);
-        1
+        self.evaluate_phase(Phases::RequestHeaders);
     }
 
     /// `addRequestHeader`
-    pub fn add_request_header(&mut self, key: &[u8], value: &[u8]) -> i32 {
+    pub fn add_request_header(&mut self, key: &[u8], value: &[u8]) {
         let off = self.vars.offset;
         self.vars.request_headers_names.set(key, key, off);
         self.vars.offset = off + key.len() + 2;
@@ -699,16 +696,15 @@ impl<'a> Transaction<'a> {
             self.vars.server_name.set(&host[0], off);
         }
         self.vars.offset = off + value.len() + 1;
-        1
     }
 
     /// `processRequestBody`
-    pub fn process_request_body(&mut self) -> i32 {
+    pub fn process_request_body(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_BODY. (SecRules 2)");
 
         if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
-            return 1;
+            return;
         }
 
         if self.vars.inbound_data_error.value.is_empty() {
@@ -849,7 +845,7 @@ impl<'a> Transaction<'a> {
         if props.sec_request_body_access == Some(false) {
             if self.request_body_access != Some(true) {
                 crate::ms_dbg_a!(self, 4, "Request body processing is disabled");
-                return 1;
+                return;
             } else {
                 crate::ms_dbg_a!(
                     self,
@@ -863,7 +859,7 @@ impl<'a> Transaction<'a> {
                 4,
                 "Request body processing is enabled, but disabled to this transaction due to ctl:requestBodyAccess action"
             );
-            return 1;
+            return;
         }
 
         // FULL_REQUEST
@@ -888,16 +884,15 @@ impl<'a> Transaction<'a> {
             self.vars.request_body_length.set_with_len(rb.len().to_string().as_bytes(), off, rb.len());
         }
 
-        self.evaluate_phase(Phases::RequestBodyPhase);
-        1
+        self.evaluate_phase(Phases::RequestBody);
     }
 
-    /// `requestBodyFromFile`
-    pub fn request_body_from_file(&mut self, path: &str) -> i32 {
-        let Ok(s) = std::fs::read(path) else {
+    /// `requestBodyFromFile`: [`Self::append_request_body`] with the
+    /// content of a file.
+    pub fn request_body_from_file(&mut self, path: &str) -> std::io::Result<bool> {
+        let s = std::fs::read(path).inspect_err(|_| {
             crate::ms_dbg_a!(self, 3, "Failed to open request body at: {}", path);
-            return 0;
-        };
+        })?;
         crate::ms_dbg_a!(
             self,
             9,
@@ -905,11 +900,13 @@ impl<'a> Transaction<'a> {
             s.len(),
             self.rules.properties.request_body_limit.unwrap_or(0)
         );
-        self.append_request_body(&s)
+        Ok(self.append_request_body(&s))
     }
 
-    /// `appendRequestBody`
-    pub fn append_request_body(&mut self, buf: &[u8]) -> i32 {
+    /// `appendRequestBody`: adds `buf` to the request body. Returns `false`
+    /// when the body limit was hit and only a part was kept
+    /// (`SecRequestBodyLimitAction ProcessPartial`).
+    pub fn append_request_body(&mut self, buf: &[u8]) -> bool {
         let current_size = self.request_body.len();
         let props = &self.rules.properties;
         crate::ms_dbg_a!(
@@ -931,7 +928,7 @@ impl<'a> Transaction<'a> {
                 let n = space_left.min(buf.len());
                 self.request_body.extend_from_slice(&buf[..n]);
                 crate::ms_dbg_a!(self, 5, "Request body limit is marked to process partial");
-                return 0;
+                return false;
             } else {
                 if props.request_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Request body limit is marked to reject the request");
@@ -946,15 +943,15 @@ impl<'a> Transaction<'a> {
                         crate::ms_dbg_a!(self, 5, "Not rejecting the request as the engine is not Enabled");
                     }
                 }
-                return 1;
+                return true;
             }
         }
         self.request_body.extend_from_slice(buf);
-        1
+        true
     }
 
     /// `processResponseHeaders`
-    pub fn process_response_headers(&mut self, code: i32, proto: &str) -> i32 {
+    pub fn process_response_headers(&mut self, code: i32, proto: &str) {
         crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_HEADERS. (SecRules 3)");
         self.http_code_returned = code;
         let off = self.vars.offset;
@@ -963,14 +960,13 @@ impl<'a> Transaction<'a> {
 
         if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
-            return 1;
+            return;
         }
-        self.evaluate_phase(Phases::ResponseHeadersPhase);
-        1
+        self.evaluate_phase(Phases::ResponseHeaders);
     }
 
     /// `addResponseHeader`
-    pub fn add_response_header(&mut self, key: &[u8], value: &[u8]) -> i32 {
+    pub fn add_response_header(&mut self, key: &[u8], value: &[u8]) {
         let off = self.vars.offset;
         self.vars.response_headers_names.set(key, key, off);
         self.vars.response_headers.set(key, value, off);
@@ -981,7 +977,6 @@ impl<'a> Transaction<'a> {
                 self.vars.response_content_type.set(v, 0);
             }
         }
-        1
     }
 
     fn response_type_is_inspected(&self) -> bool {
@@ -991,12 +986,12 @@ impl<'a> Transaction<'a> {
     }
 
     /// `processResponseBody`
-    pub fn process_response_body(&mut self) -> i32 {
+    pub fn process_response_body(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_BODY. (SecRules 4)");
 
         if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
-            return 1;
+            return;
         }
 
         let props = &self.rules.properties;
@@ -1007,7 +1002,7 @@ impl<'a> Transaction<'a> {
                 "Response body is disabled, returning... {}",
                 config_boolean_code(props.sec_response_body_access)
             );
-            return 1;
+            return;
         }
 
         if !self.response_type_is_inspected() && props.response_body_type_to_be_inspected.set {
@@ -1023,7 +1018,7 @@ impl<'a> Transaction<'a> {
                 valid.push(' ');
             }
             crate::ms_dbg_a!(self, 8, "Content-Type(s) marked to be inspected: {}", valid);
-            return 1;
+            return;
         }
         if self.vars.outbound_data_error.value.is_empty() {
             let off = self.vars.offset;
@@ -1034,12 +1029,13 @@ impl<'a> Transaction<'a> {
         let rb = self.response_body.clone();
         self.vars.response_body.set(&rb, off);
         self.vars.response_content_length.set(rb.len().to_string().as_bytes(), off);
-        self.evaluate_phase(Phases::ResponseBodyPhase);
-        1
+        self.evaluate_phase(Phases::ResponseBody);
     }
 
-    /// `appendResponseBody`
-    pub fn append_response_body(&mut self, buf: &[u8]) -> i32 {
+    /// `appendResponseBody`: adds `buf` to the response body. Returns
+    /// `false` when the body limit was hit and only a part was kept
+    /// (`SecResponseBodyLimitAction ProcessPartial`).
+    pub fn append_response_body(&mut self, buf: &[u8]) -> bool {
         let current_size = self.response_body.len();
         let props = &self.rules.properties;
         let bi = &props.response_body_type_to_be_inspected.value;
@@ -1050,7 +1046,7 @@ impl<'a> Transaction<'a> {
                 "Not appending response body. Response Content-Type is {}. It is not marked to be inspected.",
                 String::from_utf8_lossy(&self.vars.response_content_type.value)
             );
-            return 1;
+            return true;
         }
 
         crate::ms_dbg_a!(
@@ -1072,7 +1068,7 @@ impl<'a> Transaction<'a> {
                 let n = space_left.min(buf.len());
                 self.response_body.extend_from_slice(&buf[..n]);
                 crate::ms_dbg_a!(self, 5, "Response body limit is marked to process partial");
-                return 0;
+                return false;
             } else {
                 if props.response_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Response body limit is marked to reject the request");
@@ -1087,11 +1083,11 @@ impl<'a> Transaction<'a> {
                         crate::ms_dbg_a!(self, 5, "Not rejecting the request as the engine is not Enabled");
                     }
                 }
-                return 1;
+                return true;
             }
         }
         self.response_body.extend_from_slice(buf);
-        1
+        true
     }
 
     /// `getResponseBody`
@@ -1110,15 +1106,15 @@ impl<'a> Transaction<'a> {
     }
 
     /// `processLogging`
-    pub fn process_logging(&mut self) -> i32 {
+    pub fn process_logging(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase LOGGING. (SecRules 5)");
 
         if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
-            return 1;
+            return;
         }
 
-        self.evaluate_phase(Phases::LoggingPhase);
+        self.evaluate_phase(Phases::Logging);
 
         // If relevant, save this transaction information at the audit_logs
         let audit = &self.rules.properties.audit_log;
@@ -1141,7 +1137,6 @@ impl<'a> Transaction<'a> {
         if saved {
             crate::ms_dbg_a!(self, 8, "Request was relevant to be saved. Parts: {}", parts);
         }
-        1
     }
 
     /// `intervention`: the pending disruptive intervention, if any, with
@@ -1442,19 +1437,17 @@ impl<'a> Transaction<'a> {
     }
 
     /// `updateStatusCode`
-    pub fn update_status_code(&mut self, code: i32) -> i32 {
+    pub fn update_status_code(&mut self, code: i32) {
         self.http_code_returned = code;
         let off = self.vars.offset;
         self.vars.response_status.set(code.to_string().as_bytes(), off);
-        1
     }
 
     /// `setRequestHostName`
-    pub fn set_request_host_name(&mut self, hostname: &str) -> i32 {
+    pub fn set_request_host_name(&mut self, hostname: &str) {
         if !hostname.is_empty() {
             self.request_host_name = hostname.to_string();
         }
-        1
     }
 
     /// The callback data given at construction.
@@ -1564,7 +1557,8 @@ pub mod c_api {
         let t = tx!(t);
         let c = String::from_utf8_lossy(unsafe { bytes(client) }).into_owned();
         let s = String::from_utf8_lossy(unsafe { bytes(server) }).into_owned();
-        t.process_connection(&c, c_port, &s, s_port)
+        t.process_connection(&c, c_port, &s, s_port);
+        1
     }
 
     /// # Safety
@@ -1577,28 +1571,31 @@ pub mod c_api {
         http_version: *const c_char,
     ) -> c_int {
         let t = tx!(t);
-        t.process_uri(unsafe { bytes(uri) }, unsafe { bytes(protocol) }, unsafe { bytes(http_version) })
+        t.process_uri(unsafe { bytes(uri) }, unsafe { bytes(protocol) }, unsafe { bytes(http_version) });
+        1
     }
 
     /// # Safety
     /// As above.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_process_request_headers(t: *mut CTransaction) -> c_int {
-        tx!(t).process_request_headers()
+        tx!(t).process_request_headers();
+        1
     }
 
     /// # Safety
     /// As above.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_process_request_body(t: *mut CTransaction) -> c_int {
-        tx!(t).process_request_body()
+        tx!(t).process_request_body();
+        1
     }
 
     /// # Safety
     /// As above; `buf` points to `len` bytes.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_append_request_body(t: *mut CTransaction, buf: *const c_uchar, len: usize) -> c_int {
-        tx!(t).append_request_body(unsafe { slice(buf, len) })
+        c_int::from(tx!(t).append_request_body(unsafe { slice(buf, len) }))
     }
 
     /// # Safety
@@ -1607,7 +1604,8 @@ pub mod c_api {
     pub unsafe extern "C" fn msc_request_body_from_file(t: *mut CTransaction, path: *const c_char) -> c_int {
         let t = tx!(t);
         let p = String::from_utf8_lossy(unsafe { bytes(path) }).into_owned();
-        t.request_body_from_file(&p)
+        // 0 when the file cannot be read, as in C++.
+        t.request_body_from_file(&p).map_or(0, c_int::from)
     }
 
     /// # Safety
@@ -1620,21 +1618,23 @@ pub mod c_api {
     ) -> c_int {
         let t = tx!(t);
         let p = String::from_utf8_lossy(unsafe { bytes(protocol) }).into_owned();
-        t.process_response_headers(code, &p)
+        t.process_response_headers(code, &p);
+        1
     }
 
     /// # Safety
     /// As above.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_process_response_body(t: *mut CTransaction) -> c_int {
-        tx!(t).process_response_body()
+        tx!(t).process_response_body();
+        1
     }
 
     /// # Safety
     /// As above; `buf` points to `len` bytes.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_append_response_body(t: *mut CTransaction, buf: *const c_uchar, len: usize) -> c_int {
-        tx!(t).append_response_body(unsafe { slice(buf, len) })
+        c_int::from(tx!(t).append_response_body(unsafe { slice(buf, len) }))
     }
 
     /// # Safety
@@ -1646,7 +1646,8 @@ pub mod c_api {
         value: *const c_uchar,
     ) -> c_int {
         let t = tx!(t);
-        t.add_request_header(unsafe { bytes(key as *const c_char) }, unsafe { bytes(value as *const c_char) })
+        t.add_request_header(unsafe { bytes(key as *const c_char) }, unsafe { bytes(value as *const c_char) });
+        1
     }
 
     /// # Safety
@@ -1660,7 +1661,8 @@ pub mod c_api {
         len_value: usize,
     ) -> c_int {
         let t = tx!(t);
-        t.add_request_header(unsafe { slice(key, len_key) }, unsafe { slice(value, len_value) })
+        t.add_request_header(unsafe { slice(key, len_key) }, unsafe { slice(value, len_value) });
+        1
     }
 
     /// # Safety
@@ -1672,7 +1674,8 @@ pub mod c_api {
         value: *const c_uchar,
     ) -> c_int {
         let t = tx!(t);
-        t.add_response_header(unsafe { bytes(key as *const c_char) }, unsafe { bytes(value as *const c_char) })
+        t.add_response_header(unsafe { bytes(key as *const c_char) }, unsafe { bytes(value as *const c_char) });
+        1
     }
 
     /// # Safety
@@ -1686,7 +1689,8 @@ pub mod c_api {
         len_value: usize,
     ) -> c_int {
         let t = tx!(t);
-        t.add_response_header(unsafe { slice(key, len_key) }, unsafe { slice(value, len_value) })
+        t.add_response_header(unsafe { slice(key, len_key) }, unsafe { slice(value, len_value) });
+        1
     }
 
     /// # Safety
@@ -1754,14 +1758,16 @@ pub mod c_api {
     /// `t` as above.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_process_logging(t: *mut CTransaction) -> c_int {
-        tx!(t).process_logging()
+        tx!(t).process_logging();
+        1
     }
 
     /// # Safety
     /// `t` as above.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_update_status_code(t: *mut CTransaction, status: c_int) -> c_int {
-        tx!(t).update_status_code(status)
+        tx!(t).update_status_code(status);
+        1
     }
 
     /// # Safety
@@ -1770,7 +1776,8 @@ pub mod c_api {
     pub unsafe extern "C" fn msc_set_request_hostname(t: *mut CTransaction, hostname: *const c_uchar) -> c_int {
         let t = tx!(t);
         let h = String::from_utf8_lossy(unsafe { bytes(hostname as *const c_char) }).into_owned();
-        t.set_request_host_name(&h)
+        t.set_request_host_name(&h);
+        1
     }
 
     /// # Safety

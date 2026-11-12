@@ -74,7 +74,7 @@ impl<'r> RuleMessage<'r> {
             } else {
                 msg.extend_from_slice(code.to_string().as_bytes());
             }
-            msg.extend_from_slice(format!(" (phase {}). ", self.get_phase()).as_bytes());
+            msg.extend_from_slice(format!(" (phase {}). ", self.phase_number()).as_bytes());
         } else {
             msg.extend_from_slice(b"ModSecurity: Warning. ");
         }
@@ -137,7 +137,8 @@ impl<'r> RuleMessage<'r> {
     }
 
     /// `getPhase`: the SecLang phase number (1..5) of the rule.
-    pub fn get_phase(&self) -> i32 {
-        self.rule.get_phase() - 1
+    pub fn phase_number(&self) -> i32 {
+        // C++ `m_phase - 1`, with -1 as the phase of an unknown name.
+        self.rule.phase().map_or(-1, |p| p as i32) - 1
     }
 }

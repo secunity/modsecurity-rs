@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use crate::modsecurity::NUMBER_OF_PHASES;
+use crate::modsecurity::Phases;
 use crate::parser::seclang_parser::{Location, SeclangParser};
 use crate::parser::seclang_scanner::Scanner;
 use crate::rule::Rule;
@@ -21,7 +21,7 @@ use crate::utils::system::is_file;
 /// chained children.
 #[derive(Debug, Clone, Copy)]
 struct LastRule {
-    phase: usize,
+    phase: Phases,
     index: usize,
     depth: usize,
 }
@@ -85,9 +85,9 @@ impl Driver {
     /// `addSecMarker`
     pub fn add_sec_marker(&mut self, marker: &str, file_name: &str, line_number: i32) -> i32 {
         // FIXME (C++): we might move this to the parser.
-        for i in 0..NUMBER_OF_PHASES {
+        for phase in Phases::ALL {
             let mut rule = RuleMarker::new(marker, file_name, line_number);
-            rule.phase = i as i32;
+            rule.phase = phase;
             self.rules_set_phases.insert(Arc::new(Rule::Marker(rule)));
         }
         0
@@ -95,10 +95,6 @@ impl Driver {
 
     /// `addSecAction`
     pub fn add_sec_action(&mut self, rule: RuleWithActions) -> bool {
-        if rule.get_phase() >= NUMBER_OF_PHASES as i32 {
-            self.properties.parser_error.push_str(&format!("Unknown phase: {}\n", rule.get_phase()));
-            return false;
-        }
         self.rules_set_phases.insert(Arc::new(Rule::WithActions(rule)));
         true
     }
@@ -124,16 +120,11 @@ impl Driver {
     /// `addSecRule`: adds a `SecRule`, or chains it to the previous one
     /// when that one has the `chain` action.
     pub fn add_sec_rule(&mut self, mut r: RuleWithActions) -> bool {
-        if r.get_phase() >= NUMBER_OF_PHASES as i32 {
-            self.properties.parser_error.push_str(&format!("Unknown phase: {}\n", r.get_phase()));
-            return false;
-        }
-
         // is it a chained rule?
         if let Some(last) = self.last_rule_mut()
             && last.is_chained()
         {
-            r.set_phase(last.get_phase());
+            r.set_phase(last.phase());
             if r.has_disruptive_action() {
                 self.properties
                     .parser_error
@@ -157,8 +148,8 @@ impl Driver {
             return false;
         }
 
-        for i in 0..NUMBER_OF_PHASES {
-            let rules = self.rules_set_phases.at(i);
+        for phase in Phases::ALL {
+            let rules = self.rules_set_phases.at(phase);
             for lr in &rules.rules {
                 if lr.rule_with_operator_id() == Some(r.rule_id) {
                     self.properties.parser_error.push_str(&format!("Rule id: {} is duplicated\n", r.rule_id));
@@ -167,8 +158,11 @@ impl Driver {
             }
         }
 
-        let phase = r.get_phase() as usize;
-        if self.rules_set_phases.insert(Arc::new(Rule::WithActions(r))) {
+        // A rule without a phase (unknown `phase:<name>`) is dropped.
+        let phase = r.phase();
+        if let Some(phase) = phase
+            && self.rules_set_phases.insert(Arc::new(Rule::WithActions(r)))
+        {
             let index = self.rules_set_phases.at(phase).rules.len() - 1;
             self.last_rule = Some(LastRule { phase, index, depth: 0 });
         } else {

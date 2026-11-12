@@ -49,7 +49,9 @@ unsafe fn add_header(r: *mut ngx_http_request_t, ctx: &mut Ctx, name: &[u8], val
         store_header(ctx, r, name, value)
     };
     let _ = r;
-    ctx.modsec_transaction.add_response_header(name, value) as ngx_int_t
+    ctx.modsec_transaction.add_response_header(name, value);
+    // `msc_add_n_response_header` always succeeds.
+    1
 }
 
 /// `ngx_http_modsecurity_store_ctx_header` (sanity checks).

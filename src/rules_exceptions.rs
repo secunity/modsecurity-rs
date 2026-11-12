@@ -20,9 +20,11 @@ use crate::variables::variable::Variable;
 /// Multimap keyed by rule id where a new entry goes in front of the existing
 /// entries with the same id (libstdc++ `unordered_multimap::emplace`).
 ///
-/// Ids are C++ `double`s: the key is the bit pattern of the `f64` (with
-/// `-0.0` folded into `0.0`), which gives the same equality as comparing the
-/// numbers (rule ids are never NaN).
+/// The ids of the entries are C++ `double`s (`SecRuleUpdateTargetById 1.5e3`
+/// is accepted), and that is deliberately kept: the key is the bit pattern
+/// of the `f64` (with `-0.0` folded into `0.0`), which gives the same
+/// equality as comparing the numbers (ids are never NaN). Lookups take the
+/// integer id of a rule.
 #[derive(Debug)]
 pub struct IdMultimap<V> {
     by_id: HashMap<u64, Vec<V>>,
@@ -47,9 +49,11 @@ impl<V: Clone> IdMultimap<V> {
         self.by_id.is_empty()
     }
 
-    /// The entries for one rule id, in container order.
-    pub fn for_id(&self, id: f64) -> &[V] {
-        self.by_id.get(&id_key(id)).map_or(&[], Vec::as_slice)
+    /// The entries for the rule with id `rule_id`, in container order. An
+    /// entry applies when its id (a `double`, as parsed by `std::stod`)
+    /// equals the rule id converted to `double`, as in C++.
+    pub fn for_rule(&self, rule_id: i64) -> &[V] {
+        self.by_id.get(&id_key(rule_id as f64)).map_or(&[], Vec::as_slice)
     }
 
     /// Emplaces the entries of `from`, walking each id's entries in
@@ -217,18 +221,18 @@ mod tests {
         m.emplace(1.0, "a");
         m.emplace(2.0, "x");
         m.emplace(1.0, "b");
-        assert_eq!(m.for_id(1.0), ["b", "a"]);
-        assert_eq!(m.for_id(2.0), ["x"]);
-        assert!(m.for_id(3.0).is_empty());
+        assert_eq!(m.for_rule(1), ["b", "a"]);
+        assert_eq!(m.for_rule(2), ["x"]);
+        assert!(m.for_rule(3).is_empty());
         let mut n = IdMultimap::default();
         n.emplace(1.0, "c");
         n.merge_from(&m);
         // A merge walks the entries in container order, emplacing each in
         // front: it reverses them (as with libstdc++).
-        assert_eq!(n.for_id(1.0), ["a", "b", "c"]);
+        assert_eq!(n.for_rule(1), ["a", "b", "c"]);
         // -0.0 and 0.0 are the same id.
         m.emplace(-0.0, "z");
-        assert_eq!(m.for_id(0.0), ["z"]);
+        assert_eq!(m.for_rule(0), ["z"]);
     }
 
     #[test]

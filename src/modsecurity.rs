@@ -16,19 +16,37 @@ use crate::transaction::Transaction;
 pub enum Phases {
     /// The very first information that ModSecurity can inspect, right
     /// after a connection is established.
-    ConnectionPhase = 0,
+    Connection = 0,
     /// Happens just after the server has the full request URI.
-    UriPhase = 1,
+    Uri = 1,
     /// The server has all the request headers (before the body).
-    RequestHeadersPhase = 2,
+    RequestHeaders = 2,
     /// Request body inspection.
-    RequestBodyPhase = 3,
+    RequestBody = 3,
     /// Just before the response headers are delivered.
-    ResponseHeadersPhase = 4,
+    ResponseHeaders = 4,
     /// Response body inspection.
-    ResponseBodyPhase = 5,
+    ResponseBody = 5,
     /// Logging; no disruptive action can happen here.
-    LoggingPhase = 6,
+    Logging = 6,
+}
+
+impl Phases {
+    /// Every phase, in order.
+    pub const ALL: [Phases; NUMBER_OF_PHASES] = [
+        Phases::Connection,
+        Phases::Uri,
+        Phases::RequestHeaders,
+        Phases::RequestBody,
+        Phases::ResponseHeaders,
+        Phases::ResponseBody,
+        Phases::Logging,
+    ];
+
+    /// The position of the phase in per-phase tables.
+    pub fn index(self) -> usize {
+        self as usize
+    }
 }
 
 /// Just a marking for the expected number of phases.

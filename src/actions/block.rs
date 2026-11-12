@@ -33,7 +33,7 @@ impl Action for Block {
     fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(t, 8, "Marking request as disruptive.");
         let rules = t.rules;
-        if let Some(defaults) = rules.properties.default_actions.get(rule.get_phase() as usize) {
+        if let Some(defaults) = rule.phase().map(|p| &rules.properties.default_actions[p.index()]) {
             for a in defaults {
                 if !a.is_disruptive() {
                     continue;
@@ -143,7 +143,7 @@ mod tests {
     fn block_runs_default_disruptive_actions() {
         let ms = ModSecurity::new();
         let mut rules = rules();
-        let defaults = &mut rules.properties.default_actions[Phases::RequestBodyPhase as usize];
+        let defaults = &mut rules.properties.default_actions[Phases::RequestBody.index()];
         defaults.push(Arc::new(Log::new("log")));
         defaults.push(Arc::new(Deny::new("deny")));
         let phase = Phase::new("phase:2").unwrap();

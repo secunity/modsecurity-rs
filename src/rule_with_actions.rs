@@ -156,7 +156,7 @@ pub struct RuleWithActions {
     // --- `Rule` ---
     pub file_name: String,
     pub line_number: i32,
-    phase: i32,
+    phase: Option<Phases>,
 
     // --- `RuleWithActions` ---
     pub rev: String,
@@ -199,7 +199,7 @@ impl RuleWithActions {
         let mut r = RuleWithActions {
             file_name: file_name.to_string(),
             line_number,
-            phase: Phases::RequestHeadersPhase as i32,
+            phase: Some(Phases::RequestHeaders),
             rev: String::new(),
             ver: String::new(),
             accuracy: 0,
@@ -255,11 +255,13 @@ impl RuleWithActions {
 
     // --- `Rule` accessors ---
 
-    pub fn get_phase(&self) -> i32 {
+    /// The phase the rule runs in; `None` after an unknown `phase:<name>`,
+    /// which leaves the rule out of every phase.
+    pub fn phase(&self) -> Option<Phases> {
         self.phase
     }
 
-    pub fn set_phase(&mut self, phase: i32) {
+    pub fn set_phase(&mut self, phase: Option<Phases>) {
         self.phase = phase;
     }
 
@@ -398,7 +400,7 @@ impl RuleWithActions {
         }
 
         let rules = t.rules;
-        for a in rules.properties.exceptions.action_pre_update_target_by_id.for_id(self.rule_id as f64) {
+        for a in rules.properties.exceptions.action_pre_update_target_by_id.for_rule(self.rule_id) {
             if a.is_disruptive() && a.name() == "block" {
                 crate::ms_dbg_a!(t, 9, "Rule contains a `block' action");
                 contains_block = true;
@@ -434,8 +436,7 @@ impl RuleWithActions {
     ) {
         let mut disruptive_already_executed = false;
         let rules = t.rules;
-        let phase = self.get_phase() as usize;
-        if let Some(defaults) = rules.properties.default_actions.get(phase) {
+        if let Some(defaults) = self.phase.map(|p| &rules.properties.default_actions[p.index()]) {
             for a in defaults {
                 if a.kind() != Kind::RunTimeOnlyIfMatch {
                     continue;
@@ -451,7 +452,7 @@ impl RuleWithActions {
             a.evaluate(self, t, rm);
         }
 
-        for a in rules.properties.exceptions.action_pos_update_target_by_id.for_id(self.rule_id as f64) {
+        for a in rules.properties.exceptions.action_pos_update_target_by_id.for_rule(self.rule_id) {
             self.execute_action(t, contains_block, rm, a.as_ref(), false);
             disruptive_already_executed = true;
         }
@@ -522,7 +523,7 @@ impl RuleWithActions {
         // first we make sure that won't be a t:none on the target rule.
         let rules = t.rules;
         if none == 0
-            && let Some(defaults) = rules.properties.default_actions.get(self.get_phase() as usize)
+            && let Some(defaults) = self.phase.map(|p| &rules.properties.default_actions[p.index()])
         {
             for a in defaults {
                 if a.kind() != Kind::RunTimeBeforeMatchAttempt {
@@ -544,12 +545,12 @@ impl RuleWithActions {
         }
 
         let pre = &rules.properties.exceptions.action_pre_update_target_by_id;
-        for a in pre.for_id(self.rule_id as f64) {
+        for a in pre.for_rule(self.rule_id) {
             if a.as_transformation().is_some_and(Transformation::is_none) {
                 none += 1;
             }
         }
-        for a in pre.for_id(self.rule_id as f64) {
+        for a in pre.for_rule(self.rule_id) {
             if let Some(tr) = a.as_transformation()
                 && none == 0
             {
@@ -637,12 +638,12 @@ impl RuleWithActions {
             }
         }
         let ex = &t.rules.properties.exceptions;
-        for z in ex.action_pre_update_target_by_id.for_id(self.rule_id as f64) {
+        for z in ex.action_pre_update_target_by_id.for_rule(self.rule_id) {
             if z.name() == name {
                 ret.push(z.as_ref());
             }
         }
-        for z in ex.action_pos_update_target_by_id.for_id(self.rule_id as f64) {
+        for z in ex.action_pos_update_target_by_id.for_rule(self.rule_id) {
             if z.name() == name {
                 ret.push(z.as_ref());
             }
