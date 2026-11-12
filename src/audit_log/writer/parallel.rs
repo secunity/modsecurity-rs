@@ -87,7 +87,7 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
     );
 
     // As in C++, the format comes from the transaction's rule set.
-    let log = if transaction.rules.properties.audit_log.format == AuditLogFormat::JSONAuditLogFormat {
+    let log = if transaction.rules.properties.audit_log.format == AuditLogFormat::Json {
         transaction.to_json(parts)
     } else {
         let boundary = generate_boundary();

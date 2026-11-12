@@ -14,7 +14,7 @@ pub(super) fn init(audit: &AuditLog) -> Result<(), String> {
 
 pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32) -> Result<(), String> {
     // As in C++, the format comes from the transaction's rule set.
-    let msg = if transaction.rules.properties.audit_log.format == AuditLogFormat::JSONAuditLogFormat {
+    let msg = if transaction.rules.properties.audit_log.format == AuditLogFormat::Json {
         transaction.to_json(parts)
     } else {
         let boundary = generate_boundary();

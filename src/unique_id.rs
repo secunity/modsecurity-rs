@@ -10,7 +10,6 @@ use sha1::{Digest, Sha1};
 
 use crate::utils::string::string_to_hex;
 
-pub const MAC_ADDRESS_SIZE: usize = 19;
 pub const MAX_MACHINE_NAME_SIZE: usize = 256;
 
 pub struct UniqueId;
@@ -57,11 +56,17 @@ impl UniqueId {
     /// read past its buffer; only the returned entries are walked here.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     pub fn ethernet_mac_address() -> String {
+        use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
         // SAFETY: plain socket creation.
-        let sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, libc::IPPROTO_IP) };
-        if sock < 0 {
+        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, libc::IPPROTO_IP) };
+        if fd < 0 {
             return String::new();
         }
+        // SAFETY: `fd` is a new descriptor owned by nothing else; it is
+        // closed when `owned` goes out of scope, on every return path.
+        let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+        let sock = owned.as_raw_fd();
 
         const N: usize = 128;
         // SAFETY: ifreq is a plain C struct (name + union), all zeroes is valid.
@@ -73,8 +78,6 @@ impl UniqueId {
         // SAFETY: `conf` describes the writable buffer `ifconfbuf` of
         // `ifc_len` bytes, which outlives the call.
         if unsafe { libc::ioctl(sock, libc::SIOCGIFCONF as _, &mut conf) } != 0 {
-            // SAFETY: closing the socket opened above.
-            unsafe { libc::close(sock) };
             return String::new();
         }
 
@@ -99,8 +102,6 @@ impl UniqueId {
                 break;
             }
         }
-        // SAFETY: closing the socket opened above.
-        unsafe { libc::close(sock) };
         mac
     }
 
@@ -131,7 +132,8 @@ mod tests {
     fn mac_address_format() {
         let mac = UniqueId::ethernet_mac_address();
         if !mac.is_empty() {
-            assert_eq!(mac.len(), MAC_ADDRESS_SIZE - 2);
+            // `xx:xx:xx:xx:xx:xx`
+            assert_eq!(mac.len(), 17);
             assert_eq!(mac.matches(':').count(), 5);
         }
     }

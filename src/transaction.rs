@@ -383,7 +383,7 @@ impl<'a> Transaction<'a> {
             rule_remove_target_by_id: Vec::new(),
             request_body_access: None,
             audit_log_modifier: Vec::new(),
-            ctl_audit_engine: AuditLogStatus::NotSetLogStatus,
+            ctl_audit_engine: AuditLogStatus::NotSet,
             rules_messages: Vec::new(),
             request_body: Vec::new(),
             response_body: Vec::new(),

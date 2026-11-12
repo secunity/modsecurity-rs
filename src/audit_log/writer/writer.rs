@@ -22,9 +22,9 @@ impl Writer {
     /// The writer of `SecAuditLogType` (serial when not set).
     pub fn for_type(audit_type: AuditLogType) -> Self {
         match audit_type {
-            AuditLogType::ParallelAuditLogType => Writer::Parallel,
-            AuditLogType::HttpsAuditLogType => Writer::Https,
-            AuditLogType::SerialAuditLogType | AuditLogType::NotSetAuditLogType => Writer::Serial,
+            AuditLogType::Parallel => Writer::Parallel,
+            AuditLogType::Https => Writer::Https,
+            AuditLogType::Serial | AuditLogType::NotSet => Writer::Serial,
         }
     }
 

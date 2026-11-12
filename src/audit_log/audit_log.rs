@@ -6,25 +6,25 @@ use crate::utils::regex::Regex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditLogType {
-    NotSetAuditLogType,
-    SerialAuditLogType,
-    ParallelAuditLogType,
-    HttpsAuditLogType,
+    NotSet,
+    Serial,
+    Parallel,
+    Https,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditLogStatus {
-    NotSetLogStatus,
-    OnAuditLogStatus,
-    OffAuditLogStatus,
-    RelevantOnlyAuditLogStatus,
+    NotSet,
+    On,
+    Off,
+    RelevantOnly,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditLogFormat {
-    NotSetAuditLogFormat,
-    JSONAuditLogFormat,
-    NativeAuditLogFormat,
+    NotSet,
+    Json,
+    Native,
 }
 
 /// `SecAuditLogRelevantStatus`: the pattern and its compiled regex (C++
@@ -154,7 +154,7 @@ impl AuditLog {
             path2: String::new(),
             storage_dir: String::new(),
             prefix: String::new(),
-            format: AuditLogFormat::NotSetAuditLogFormat,
+            format: AuditLogFormat::NotSet,
             parts: -1,
             default_parts: Self::A_AUDIT_LOG_PART
                 | Self::B_AUDIT_LOG_PART
@@ -166,8 +166,8 @@ impl AuditLog {
             default_file_permission: 0o640,
             directory_permission: -1,
             default_directory_permission: 0o750,
-            status: AuditLogStatus::NotSetLogStatus,
-            audit_type: AuditLogType::NotSetAuditLogType,
+            status: AuditLogStatus::NotSet,
+            audit_type: AuditLogType::NotSet,
             relevant: None,
             writer: None,
             ctl_audit_engine_active: false,
@@ -262,7 +262,7 @@ impl AuditLog {
     /// `init`: (re)creates the writer for the configured type. The `Err`
     /// carries the C++ `std::string *error`.
     pub fn init(&mut self) -> Result<(), String> {
-        if (self.status == AuditLogStatus::OffAuditLogStatus || self.status == AuditLogStatus::NotSetLogStatus)
+        if (self.status == AuditLogStatus::Off || self.status == AuditLogStatus::NotSet)
             && !self.ctl_audit_engine_active
         {
             self.discard_writer();
@@ -295,12 +295,11 @@ impl AuditLog {
         let mut parts = parts;
 
         let mut transaction_audit_log_status = self.status;
-        if t.ctl_audit_engine != AuditLogStatus::NotSetLogStatus {
+        if t.ctl_audit_engine != AuditLogStatus::NotSet {
             transaction_audit_log_status = t.ctl_audit_engine;
         }
 
-        if transaction_audit_log_status == AuditLogStatus::OffAuditLogStatus
-            || transaction_audit_log_status == AuditLogStatus::NotSetLogStatus
+        if transaction_audit_log_status == AuditLogStatus::Off || transaction_audit_log_status == AuditLogStatus::NotSet
         {
             crate::ms_dbg_a!(t, 5, "Audit log engine was not set.");
             return true;
@@ -308,7 +307,7 @@ impl AuditLog {
 
         let save_anyway = t.rules_messages.iter().any(|i| !i.no_audit_log);
 
-        if transaction_audit_log_status == AuditLogStatus::RelevantOnlyAuditLogStatus
+        if transaction_audit_log_status == AuditLogStatus::RelevantOnly
             && !self.is_relevant(t.http_code_returned)
             && !save_anyway
         {
@@ -382,11 +381,11 @@ impl AuditLog {
             self.directory_permission = from.directory_permission;
         }
 
-        if from.audit_type != AuditLogType::NotSetAuditLogType {
+        if from.audit_type != AuditLogType::NotSet {
             self.audit_type = from.audit_type;
         }
 
-        if from.status != AuditLogStatus::NotSetLogStatus {
+        if from.status != AuditLogStatus::NotSet {
             self.status = from.status;
         }
 
@@ -394,7 +393,7 @@ impl AuditLog {
             self.parts = from.parts;
         }
 
-        if from.format != AuditLogFormat::NotSetAuditLogFormat {
+        if from.format != AuditLogFormat::NotSet {
             self.format = from.format;
         }
 
@@ -453,7 +452,7 @@ mod tests {
         let mut rules = RulesSet::new();
         rules.properties.sec_rule_engine = Some(RuleEngine::Enabled);
         let mut from = AuditLog::new();
-        from.set_status(AuditLogStatus::OnAuditLogStatus);
+        from.set_status(AuditLogStatus::On);
         from.set_parts("ABFHZ");
         configure(&mut from);
         rules.properties.audit_log.merge(&from).unwrap();
@@ -519,7 +518,7 @@ mod tests {
         from.set_prefix("pre");
         from.set_file_mode(0o600);
         from.set_relevant_status("^5");
-        from.set_format(AuditLogFormat::JSONAuditLogFormat);
+        from.set_format(AuditLogFormat::Json);
         // Status not set: the merge succeeds without creating a writer.
         a.set_file_path2("keep");
         a.set_parts("AZ");
@@ -530,7 +529,7 @@ mod tests {
         assert_eq!(a.get_file_permission(), 0o600);
         assert_eq!(a.get_directory_permission(), 0o750);
         assert_eq!(a.get_parts(), AuditLog::A_AUDIT_LOG_PART | AuditLog::Z_AUDIT_LOG_PART);
-        assert_eq!(a.format, AuditLogFormat::JSONAuditLogFormat);
+        assert_eq!(a.format, AuditLogFormat::Json);
         assert!(a.writer.is_none());
         assert!(a.is_relevant(500));
         assert!(!a.is_relevant(404));
@@ -542,7 +541,7 @@ mod tests {
 
         // A serial writer needs a file it can open.
         let mut from = AuditLog::new();
-        from.set_status(AuditLogStatus::OnAuditLogStatus);
+        from.set_status(AuditLogStatus::On);
         from.set_file_path1("/nonexistent-dir/x/audit.log");
         assert_eq!(a.merge(&from).unwrap_err(), "Failed to open file: /nonexistent-dir/x/audit.log");
         assert!(a.writer.is_none());
@@ -570,7 +569,7 @@ mod tests {
         let d = temp_dir("relevant");
         let log = p(&d, "serial.log");
         let rules = rules_with(|a| {
-            a.set_status(AuditLogStatus::RelevantOnlyAuditLogStatus);
+            a.set_status(AuditLogStatus::RelevantOnly);
             a.set_relevant_status("^5");
             a.set_file_path1(&log);
         });
@@ -595,11 +594,11 @@ mod tests {
         // ctl:auditEngine=Off wins over the configuration.
         run(&rules, "ctl-off", |t| {
             t.http_code_returned = 500;
-            t.ctl_audit_engine = AuditLogStatus::OffAuditLogStatus;
+            t.ctl_audit_engine = AuditLogStatus::Off;
         });
         assert!(!std::fs::read_to_string(&log).unwrap().contains("ctl-off"));
         // ctl:auditEngine=On saves a non relevant transaction.
-        run(&rules, "ctl-on", |t| t.ctl_audit_engine = AuditLogStatus::OnAuditLogStatus);
+        run(&rules, "ctl-on", |t| t.ctl_audit_engine = AuditLogStatus::On);
         assert!(std::fs::read_to_string(&log).unwrap().contains(" ctl-on "));
     }
 
@@ -609,7 +608,7 @@ mod tests {
         let native = p(&d, "serial.log");
         let json = p(&d, "serial.json");
         let rules = rules_with(|a| {
-            a.set_type(AuditLogType::SerialAuditLogType);
+            a.set_type(AuditLogType::Serial);
             a.set_file_path1(&native);
         });
         run(&rules, "id-serial", |_| {});
@@ -620,7 +619,7 @@ mod tests {
         assert!(std::fs::read_to_string(&native).unwrap().starts_with(&out));
 
         let rules = rules_with(|a| {
-            a.set_format(AuditLogFormat::JSONAuditLogFormat);
+            a.set_format(AuditLogFormat::Json);
             a.set_file_path1(&json);
         });
         run(&rules, "id-json", |_| {});
@@ -687,7 +686,7 @@ mod tests {
 
         // SecAuditLog only: index into path1, custom modes.
         let rules = rules_with(|a| {
-            a.set_type(AuditLogType::ParallelAuditLogType);
+            a.set_type(AuditLogType::Parallel);
             a.set_storage_dir(storage.to_str().unwrap());
             a.set_file_path1(&p(&d, "index1.log"));
             a.set_file_mode(0o600);
@@ -709,7 +708,7 @@ mod tests {
 
         // SecAuditLog and SecAuditLog2: index into path2 only.
         let rules = rules_with(|a| {
-            a.set_type(AuditLogType::ParallelAuditLogType);
+            a.set_type(AuditLogType::Parallel);
             a.set_storage_dir(storage.to_str().unwrap());
             a.set_file_path1(&p(&d, "index1b.log"));
             a.set_file_path2(&p(&d, "index2.log"));
@@ -721,7 +720,7 @@ mod tests {
 
         // SecAuditLog2 only.
         let rules = rules_with(|a| {
-            a.set_type(AuditLogType::ParallelAuditLogType);
+            a.set_type(AuditLogType::Parallel);
             a.set_storage_dir(storage.to_str().unwrap());
             a.set_file_path2(&p(&d, "index2b.log"));
         });
@@ -732,8 +731,8 @@ mod tests {
         // JSON, no index; default directory mode.
         let storage_json = d.join("parjson");
         let rules = rules_with(|a| {
-            a.set_type(AuditLogType::ParallelAuditLogType);
-            a.set_format(AuditLogFormat::JSONAuditLogFormat);
+            a.set_type(AuditLogType::Parallel);
+            a.set_format(AuditLogFormat::Json);
             a.set_storage_dir(storage_json.to_str().unwrap());
         });
         run(&rules, "id-par4", |t| t.time_stamp = ts);
@@ -748,15 +747,15 @@ mod tests {
         // No storage directory.
         let ms = ModSecurity::new();
         let rules = rules_with(|a| {
-            a.set_type(AuditLogType::ParallelAuditLogType);
+            a.set_type(AuditLogType::Parallel);
         });
         let t = Transaction::with_id(&ms, &rules, "x", None);
         let w = Writer::Parallel;
         assert_eq!(w.write(&rules.properties.audit_log, &t, ABFHZ).unwrap_err(), "Log path is not valid.");
         // Not able to create the storage directory.
         let mut a = AuditLog::new();
-        a.set_status(AuditLogStatus::OnAuditLogStatus);
-        a.set_type(AuditLogType::ParallelAuditLogType);
+        a.set_status(AuditLogStatus::On);
+        a.set_type(AuditLogType::Parallel);
         a.set_storage_dir("/nonexistent-dir/x");
         let e = a.init().unwrap_err();
         assert!(e.starts_with("Not able to create directory: /nonexistent-dir/x: "), "{}", e);
@@ -767,7 +766,7 @@ mod tests {
         let d = temp_dir("refcount");
         let log = p(&d, "a.log");
         let mut a = AuditLog::new();
-        a.set_status(AuditLogStatus::OnAuditLogStatus);
+        a.set_status(AuditLogStatus::On);
         a.set_file_path1(&log);
         a.init().unwrap();
         // Re-initialising keeps the file open (new writer opened first).

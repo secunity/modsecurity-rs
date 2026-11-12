@@ -103,7 +103,7 @@ impl ModSecurity {
         // (C++ calls `srand(time(NULL))` here to seed libc `rand()` for the
         // audit log boundaries; those now come from the `rand` crate, see
         // `audit_log::writer::writer::generate_boundary`.)
-        #[cfg(feature = "libxml2")]
+        // (A no-op without libxml2.)
         crate::request_body_processor::xml::init_parser();
         ModSecurity {
             global_collection: new_collection("GLOBAL"),

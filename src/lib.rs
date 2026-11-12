@@ -50,36 +50,36 @@ macro_rules! ms_dbg_opt {
 }
 
 pub mod actions;
-pub mod anchored_set_variable;
-pub mod anchored_set_variable_translation_proxy;
-pub mod anchored_variable;
-pub mod audit_log;
+pub(crate) mod anchored_set_variable;
+pub(crate) mod anchored_set_variable_translation_proxy;
+pub(crate) mod anchored_variable;
+pub(crate) mod audit_log;
 pub mod collection;
 pub mod debug_log;
-pub mod engine;
+pub(crate) mod engine;
 pub mod intervention;
 pub mod modsecurity;
 pub mod operators;
-pub mod parser;
-pub mod request_body_processor;
-pub mod rule;
-pub mod rule_marker;
+pub(crate) mod parser;
+pub(crate) mod request_body_processor;
+pub(crate) mod rule;
+pub(crate) mod rule_marker;
 pub mod rule_message;
-pub mod rule_script;
-pub mod rule_unconditional;
+pub(crate) mod rule_script;
+pub(crate) mod rule_unconditional;
 pub mod rule_with_actions;
-pub mod rule_with_operator;
-pub mod rules;
-pub mod rules_exceptions;
+pub(crate) mod rule_with_operator;
+pub(crate) mod rules;
+pub(crate) mod rules_exceptions;
 pub mod rules_set;
-pub mod rules_set_phases;
-pub mod rules_set_properties;
-pub mod run_time_string;
+pub(crate) mod rules_set_phases;
+pub(crate) mod rules_set_properties;
+pub(crate) mod run_time_string;
 pub mod transaction;
-pub mod unique_id;
+pub(crate) mod unique_id;
 pub mod utils;
-pub mod variable_origin;
-pub mod variable_value;
+pub(crate) mod variable_origin;
+pub(crate) mod variable_value;
 pub mod variables;
 
 /// Connectors share one `ModSecurity` and one `RulesSet` between worker

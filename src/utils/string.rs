@@ -127,13 +127,6 @@ pub fn replace_all(s: &mut Vec<u8>, from: &[u8], to: &[u8]) {
     }
 }
 
-/// `replaceAll` for configuration strings.
-pub fn replace_all_str(s: &mut String, from: &str, to: &str) {
-    let mut v = std::mem::take(s).into_bytes();
-    replace_all(&mut v, from.as_bytes(), to.as_bytes());
-    *s = String::from_utf8(v).unwrap_or_default();
-}
-
 /// `std::string::find(needle, pos)`.
 pub fn find_from(haystack: &[u8], needle: &[u8], pos: usize) -> Option<usize> {
     if pos > haystack.len() {
@@ -221,11 +214,6 @@ pub fn toupper(s: &[u8]) -> Vec<u8> {
     s.to_ascii_uppercase()
 }
 
-/// `tolower` for configuration strings.
-pub fn tolower_str(s: &str) -> String {
-    s.to_ascii_lowercase()
-}
-
 /// `toupper` for configuration strings.
 pub fn toupper_str(s: &str) -> String {
     s.to_ascii_uppercase()
@@ -235,13 +223,6 @@ pub fn toupper_str(s: &str) -> String {
 #[inline]
 pub fn is_space(c: u8) -> bool {
     matches!(c, b' ' | b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r')
-}
-
-/// Case insensitive (ASCII) equality, as used by the many `std::equal(...,
-/// tolower(a) == tolower(b))` comparisons of the C++ code.
-#[inline]
-pub fn eq_ignore_case(a: &[u8], b: &[u8]) -> bool {
-    a.eq_ignore_ascii_case(b)
 }
 
 /// Lossy view of bytes for log messages.

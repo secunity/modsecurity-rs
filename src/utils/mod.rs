@@ -9,7 +9,6 @@ pub mod ip_tree;
 pub mod json;
 pub mod md5;
 pub mod msc_tree;
-pub mod phase;
 pub mod random;
 pub mod regex;
 pub mod sha1;

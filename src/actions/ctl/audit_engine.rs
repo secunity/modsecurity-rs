@@ -17,7 +17,7 @@ pub struct AuditEngine {
 
 impl AuditEngine {
     pub fn new(action: &str) -> Self {
-        AuditEngine { base: ActionBase::new(action), audit_engine: AuditLogStatus::NotSetLogStatus }
+        AuditEngine { base: ActionBase::new(action), audit_engine: AuditLogStatus::NotSet }
     }
 }
 
@@ -28,9 +28,9 @@ impl Action for AuditEngine {
         // The parser builds the payload as `auditengine=<value>`.
         let what = self.base.parser_payload.get(12..).unwrap_or("");
         self.audit_engine = match what {
-            "on" => AuditLogStatus::OnAuditLogStatus,
-            "off" => AuditLogStatus::OffAuditLogStatus,
-            "relevantonly" => AuditLogStatus::RelevantOnlyAuditLogStatus,
+            "on" => AuditLogStatus::On,
+            "off" => AuditLogStatus::Off,
+            "relevantonly" => AuditLogStatus::RelevantOnly,
             _ => {
                 return Err(format!(
                     "Internal error. Expected: On, Off or RelevantOnly; got: {}",

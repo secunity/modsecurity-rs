@@ -652,13 +652,13 @@ impl SeclangParser {
             }
             // SecAuditEngine
             (sym::CONFIG_DIR_AUDIT_ENG, Some(sym::CONFIG_VALUE_RELEVANT_ONLY)) => {
-                p.audit_log.set_status(AuditLogStatus::RelevantOnlyAuditLogStatus);
+                p.audit_log.set_status(AuditLogStatus::RelevantOnly);
             }
             (sym::CONFIG_DIR_AUDIT_ENG, Some(sym::CONFIG_VALUE_OFF)) => {
-                p.audit_log.set_status(AuditLogStatus::OffAuditLogStatus);
+                p.audit_log.set_status(AuditLogStatus::Off);
             }
             (sym::CONFIG_DIR_AUDIT_ENG, _) => {
-                p.audit_log.set_status(AuditLogStatus::OnAuditLogStatus);
+                p.audit_log.set_status(AuditLogStatus::On);
             }
             // SecAuditLogFileMode
             (sym::CONFIG_DIR_AUDIT_FLE_MOD, _) => {
@@ -678,10 +678,10 @@ impl SeclangParser {
                 p.audit_log.set_file_path1(&rhs[0].string());
             }
             (sym::CONFIG_DIR_AUDIT_LOG_FMT, Some(sym::JSON)) => {
-                p.audit_log.set_format(AuditLogFormat::JSONAuditLogFormat);
+                p.audit_log.set_format(AuditLogFormat::Json);
             }
             (sym::CONFIG_DIR_AUDIT_LOG_FMT, _) => {
-                p.audit_log.set_format(AuditLogFormat::NativeAuditLogFormat);
+                p.audit_log.set_format(AuditLogFormat::Native);
             }
             // SecAuditLogRelevantStatus
             (sym::CONFIG_DIR_AUDIT_STS, _) => {
@@ -695,13 +695,13 @@ impl SeclangParser {
             }
             // SecAuditLogType
             (sym::CONFIG_DIR_AUDIT_TPE, Some(sym::CONFIG_VALUE_SERIAL)) => {
-                p.audit_log.set_type(AuditLogType::SerialAuditLogType);
+                p.audit_log.set_type(AuditLogType::Serial);
             }
             (sym::CONFIG_DIR_AUDIT_TPE, Some(sym::CONFIG_VALUE_PARALLEL)) => {
-                p.audit_log.set_type(AuditLogType::ParallelAuditLogType);
+                p.audit_log.set_type(AuditLogType::Parallel);
             }
             (sym::CONFIG_DIR_AUDIT_TPE, _) => {
-                p.audit_log.set_type(AuditLogType::HttpsAuditLogType);
+                p.audit_log.set_type(AuditLogType::Https);
             }
             // Upload
             (sym::CONFIG_UPDLOAD_KEEP_FILES, Some(sym::CONFIG_VALUE_ON)) => {

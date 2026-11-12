@@ -91,7 +91,7 @@ mod tests {
         );
 
         run(&mut AuditEngine::new("ctl:auditengine=relevantonly"), &mut t);
-        assert_eq!(t.ctl_audit_engine, AuditLogStatus::RelevantOnlyAuditLogStatus);
+        assert_eq!(t.ctl_audit_engine, AuditLogStatus::RelevantOnly);
         assert!(has_log(&t, "Setting SecAuditEngine to 3 as requested by a ctl:auditEngine action"));
         assert_eq!(
             AuditEngine::new("ctl:auditengine=x").init(),

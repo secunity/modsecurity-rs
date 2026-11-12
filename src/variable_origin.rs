@@ -13,7 +13,7 @@ impl VariableOrigin {
     }
 
     /// `toText`: `v<offset>,<length>`.
-    pub fn to_text(&self) -> String {
+    pub fn to_text(self) -> String {
         format!("v{},{}", self.offset, self.length)
     }
 }
