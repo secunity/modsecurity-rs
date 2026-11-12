@@ -60,8 +60,8 @@ use modsecurity::transaction::Transaction;
 
 let ms = ModSecurity::new();
 let mut rules = RulesSet::new();
-if rules.load_from_uri("modsecurity.conf") < 0 {
-    eprintln!("{}", rules.get_parser_error());
+if let Err(error) = rules.load_from_uri("modsecurity.conf") {
+    eprintln!("{error}");
 }
 
 let mut t = Transaction::new(&ms, &rules, None);
@@ -70,8 +70,8 @@ t.process_uri(b"/index.php?id=1", b"GET", b"1.1");
 t.add_request_header(b"Host", b"www.example.com");
 t.process_request_headers();
 // ... request body, response headers/body, process_logging()
-if let Some(it) = t.intervention() {
-    println!("status {}", it.status);
+if let Some(intervention) = t.intervention() {
+    println!("status {}", intervention.status);
 }
 ```
 

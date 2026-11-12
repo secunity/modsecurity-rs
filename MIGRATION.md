@@ -4,17 +4,21 @@ Source: libmodsecurity v3.0.17 (`ModSecurity` repository, commit `1ebdc390`).
 
 ## Layout
 
-The module tree mirrors the C++ tree; each `.h`/`.cc` pair became one `.rs`
-file with the same name (hyphens become underscores).
+The module tree follows the C++ tree: a `.h`/`.cc` pair is usually one `.rs`
+file with the same name (hyphens become underscores). Where the C++ files
+only existed to hold one class each, they were folded together (see the
+table and "How C++ constructs were expressed").
 
 | C++ | Rust |
 |---|---|
 | `headers/modsecurity/*.h` (public API) | `src/*.rs` (crate root): `modsecurity`, `transaction`, `rules_set`, `rules_set_properties`, `rules_set_phases`, `rules`, `rule`, `rule_with_actions`, `rule_with_operator`, `rule_unconditional`, `rule_marker`, `rule_message`, `rules_exceptions`, `intervention`, `variable_value`, `variable_origin`, `anchored_*` |
 | `headers/modsecurity/actions/action.h` | `src/actions/action.rs` |
-| `headers/modsecurity/collection/*.h` | `src/collection/{collection,collections}.rs` |
-| `headers/modsecurity/audit_log.h`, `debug_log.h` | `src/audit_log/audit_log.rs`, `src/debug_log/debug_log.rs` |
+| `headers/modsecurity/collection/*.h` | `src/collection/{mod,collections}.rs` |
+| `headers/modsecurity/audit_log.h`, `debug_log.h` | `src/audit_log/mod.rs`, `src/debug_log.rs` |
 | `src/actions/{,ctl,data,disruptive,transformations}/` | `src/actions/...` (same subdirectories) |
-| `src/operators/`, `src/variables/` | `src/operators/`, `src/variables/` |
+| `src/operators/` | `src/operators/` |
+| `src/variables/*.h` (one header per variable) | `src/variables/`: `variable.rs` (the target type), `mod.rs` (the table of variables), and `persistent`, `rule`, `env`, `xml`, `computed` for the ones with logic of their own |
+| `src/actions/transformations/*.cc` | `src/actions/transformations/` (one `Transformation` type; the functions keep their files) |
 | `src/audit_log/writer/`, `src/collection/backend/` | same paths |
 | `src/request_body_processor/`, `src/engine/lua.cc` | same paths |
 | `src/parser/seclang-scanner.ll`, `seclang-parser.yy`, `driver.cc` | `src/parser/seclang_scanner.rs`, `seclang_parser.rs`, `driver.rs` |
@@ -41,18 +45,33 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
 - **Byte strings.** `std::string` holds arbitrary bytes, so request data
   (keys, values, bodies, matches, collection contents) is `Vec<u8>`/`&[u8]`;
   configuration identifiers are `String`.
-- **Class hierarchies.** Open, polymorphic families became traits with the
-  base-class data in a struct: `Action`/`ActionBase`, `Transformation`,
-  `Operator`/`OperatorBase`, `Variable`/`VariableBase`, `Collection`,
-  `DebugLog`, audit `Writer`. Closed hierarchies became enums: `Rule`
-  (`Marker` | `WithActions`) and `RuleWithActionsKind` (`Operator` |
-  `Unconditional` | `Script`). `dynamic_cast` became `Any` downcasts or
-  explicit trait hooks (e.g. `Variable::dynamic_name/dynamic_del/...`
-  replace SetVar's casts to the six `*_DynamicElement` classes).
-- **Macros.** `DEFINE_VARIABLE*` became `define_variable!` /
-  `define_variable_dict!` (the dict form generates `Name::{DictElement,
-  NoDictElement, DictElementRegexp}` because Rust macros cannot paste
-  identifiers); `ms_dbg_a` became `ms_dbg_a!`.
+- **Class hierarchies.** No Rust type emulates a C++ base class (a trait
+  with `base()` accessors over an embedded struct):
+  - *Actions* are an `Action` trait (`name`, `kind`, `configure`,
+    `evaluate`); each action owns what it parsed from its payload, and its
+    constructor does the parsing and returns `Result` (C++: construct, then
+    `init(&error)`). A rule keeps the actions it treats specially in typed
+    slots (`RuleAction`).
+  - *Transformations* are one `Transformation { name, kind }` with a match
+    over `TransformationKind`.
+  - *Operators* are an `Operator` trait (`name`, `param`, `init`,
+    `evaluate`); an operator with a parameter owns a `Param`. Negation
+    (`!@op`) belongs to the rule (`RuleOperator`), not to the operator.
+  - *Variables* (rule targets) are one `Variable` struct: its name, its key
+    exclusions and a `Source` enum (transaction field, `*_NAMES` proxy, `TX`,
+    persistent collection, `RULE`, `ENV`, `XML`, computed value, `!VAR`,
+    `&VAR`). The ~100 classes the C++ `DEFINE_VARIABLE*` macros generate
+    are rows of the table in `variables::new_variable`.
+  - `Collection`, `DebugLog` and the Lua/libxml2 backends are traits or
+    feature-gated modules; `Rule` (`Marker` | `WithActions`),
+    `RuleWithActionsKind` (`Operator` | `Unconditional` | `Script`) and the
+    audit log `Writer` are enums.
+- **Sentinels and codes.** "Not set" is `Option` (configuration values,
+  audit log settings, a rule's phase after an unknown `phase:<name>`);
+  phases are the `Phases` enum; fallible operations return `Result`. The C
+  API keeps its integer codes. Numbers that C++ prints are kept as numbers
+  (`AuditLogStatus`, the multipart Content-Disposition error codes).
+- **Macros.** `ms_dbg_a` became `ms_dbg_a!`.
 - **Ownership and lifetimes.** `Transaction<'a>` borrows its `ModSecurity`
   and `RulesSet` for `'a` (C++ keeps raw pointers that must outlive it).
   Rules are `Arc<Rule>` because `RulesSet::merge` shares them between sets

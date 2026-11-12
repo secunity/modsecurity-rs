@@ -94,3 +94,8 @@ fn thread_safety() {
     send_sync::<rules_set::RulesSet>();
     send::<transaction::Transaction<'static>>();
 }
+
+/// Compiles the example of the README as a doctest.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
