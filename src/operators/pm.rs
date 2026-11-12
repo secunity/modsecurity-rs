@@ -1,7 +1,7 @@
 //! Port of `src/operators/pm.cc`, `src/operators/pm.h`.
 
 use crate::collection::collection::Collection;
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -153,7 +153,8 @@ impl Matcher {
 
 #[derive(Debug)]
 pub struct Pm {
-    pub base: OperatorBase,
+    name: &'static str,
+    pub(crate) param: Param,
     pub(crate) p: Matcher,
 }
 
@@ -164,7 +165,7 @@ impl Pm {
 
     /// `Pm(n, param)`: used by `@pmFromFile` / `@pmf`.
     pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
-        Pm { base: OperatorBase::with_string(name, param), p: Matcher::new() }
+        Pm { name, param: Param::new(param), p: Matcher::new() }
     }
 
     /// Makes the matcher ready for searching once all patterns were added.
@@ -197,10 +198,16 @@ impl Pm {
 }
 
 impl Operator for Pm {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
 
     fn init(&mut self, _file: &str) -> Result<(), String> {
-        let op_parm = parse_pm_content(&self.base.param);
+        let op_parm = parse_pm_content(&self.param.literal);
 
         // std::istream_iterator<std::string>: white space separated words.
         for a in op_parm.split(|c| crate::utils::string::is_space(*c)).filter(|a| !a.is_empty()) {

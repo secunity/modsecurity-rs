@@ -1,6 +1,6 @@
 //! Port of `src/operators/ip_match.cc`, `src/operators/ip_match.h`.
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -9,7 +9,8 @@ use crate::utils::ip_tree::IpTree;
 
 #[derive(Debug)]
 pub struct IpMatch {
-    pub base: OperatorBase,
+    name: &'static str,
+    pub(crate) param: Param,
     pub(crate) tree: IpTree,
 }
 
@@ -20,16 +21,22 @@ impl IpMatch {
 
     /// `IpMatch(n, param)`: used by `@ipMatchFromFile` / `@ipMatchF`.
     pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
-        IpMatch { base: OperatorBase::with_string(name, param), tree: IpTree::new() }
+        IpMatch { name, param: Param::new(param), tree: IpTree::new() }
     }
 }
 
 impl Operator for IpMatch {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
 
     fn init(&mut self, _file: &str) -> Result<(), String> {
         // An invalid list fails without a message, as in C++.
-        if self.tree.add_from_buffer(&self.base.param) { Ok(()) } else { Err(String::new()) }
+        if self.tree.add_from_buffer(&self.param.literal) { Ok(()) } else { Err(String::new()) }
     }
 
     fn evaluate(

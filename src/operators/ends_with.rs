@@ -1,6 +1,6 @@
 //! Port of `src/operators/ends_with.cc`, `src/operators/ends_with.h`.
 
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -8,19 +8,23 @@ use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct EndsWith {
-    pub base: OperatorBase,
+    param: Param,
 }
 
 impl EndsWith {
     pub fn new(param: RunTimeString) -> Self {
-        let mut base = OperatorBase::with_string("EndsWith", param);
-        base.could_contain_macro = true;
-        EndsWith { base }
+        EndsWith { param: Param::expanded_in_message(param) }
     }
 }
 
 impl Operator for EndsWith {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "EndsWith"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -29,7 +33,7 @@ impl Operator for EndsWith {
         rm: &mut RuleMessage<'_>,
     ) -> bool {
         let mut ret = false;
-        let p = self.base.param_value(t);
+        let p = self.param.value(t);
 
         if input.len() >= p.len() {
             ret = input.ends_with(&p);

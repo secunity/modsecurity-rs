@@ -7,7 +7,7 @@ use std::ffi::CString;
 use std::net::Ipv4Addr;
 
 use crate::collection::collection::Collection;
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -27,7 +27,7 @@ pub enum RblProvider {
 
 #[derive(Debug)]
 pub struct Rbl {
-    pub base: OperatorBase,
+    param: Param,
     service: Vec<u8>,
     demands_password: bool,
     provider: RblProvider,
@@ -76,8 +76,8 @@ fn scan_dotted_quad(s: &[u8]) -> Option<[i32; 4]> {
 
 impl Rbl {
     pub fn new(param: RunTimeString) -> Self {
-        let base = OperatorBase::with_string("Rbl", param);
-        let service = base.param.clone();
+        let param = Param::new(param);
+        let service = param.literal.clone();
         let contains = |needle: &[u8]| service.windows(needle.len()).any(|w| w == needle);
         let (demands_password, provider) = if contains(b"httpbl.org") {
             (true, RblProvider::Httpbl)
@@ -88,7 +88,7 @@ impl Rbl {
         } else {
             (false, RblProvider::UnknownProvider)
         };
-        Rbl { base, service, demands_password, provider }
+        Rbl { param, service, demands_password, provider }
     }
 
     /// `mapIpToAddress`: the DNS name to query for `ip_str` (empty when the
@@ -253,7 +253,13 @@ fn resolve(host: &[u8]) -> Resolved {
 }
 
 impl Operator for Rbl {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "Rbl"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,

@@ -2,7 +2,7 @@
 //! `src/operators/validate_byte_range.h`.
 
 use crate::operators::eq::stoi;
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -10,14 +10,14 @@ use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct ValidateByteRange {
-    pub base: OperatorBase,
+    param: Param,
     /// Bitmap of the accepted byte values.
     table: [u8; 32],
 }
 
 impl ValidateByteRange {
     pub fn new(param: RunTimeString) -> Self {
-        ValidateByteRange { base: OperatorBase::with_string("ValidateByteRange", param), table: [0; 32] }
+        ValidateByteRange { param: Param::new(param), table: [0; 32] }
     }
 
     fn set(&mut self, b: i32) {
@@ -68,10 +68,16 @@ impl ValidateByteRange {
 }
 
 impl Operator for ValidateByteRange {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "ValidateByteRange"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
 
     fn init(&mut self, _file: &str) -> Result<(), String> {
-        let param = self.base.param.clone();
+        let param = self.param.literal.clone();
         // Comma separated list of ranges (empty pieces fail to convert).
         for range in param.split(|&c| c == b',') {
             self.get_range(range)?;

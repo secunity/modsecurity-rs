@@ -2,7 +2,7 @@
 
 use std::io::Read;
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::operators::pm::Pm;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -56,15 +56,16 @@ impl PmFromFile {
 }
 
 impl Operator for PmFromFile {
-    fn base(&self) -> &OperatorBase {
-        &self.pm.base
+    fn name(&self) -> &'static str {
+        self.pm.name()
     }
-    fn base_mut(&mut self) -> &mut OperatorBase {
-        &mut self.pm.base
+
+    fn param(&self) -> Option<&Param> {
+        self.pm.param()
     }
 
     fn init(&mut self, config: &str) -> Result<(), String> {
-        let tokens = split(&self.pm.base.param, b' ');
+        let tokens = split(&self.pm.param.literal, b' ');
 
         for token in tokens {
             if token.is_empty() {

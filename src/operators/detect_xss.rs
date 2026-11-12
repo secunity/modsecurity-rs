@@ -5,15 +5,13 @@ use crate::operators::libinjection_adapter::run_libinjection_xss;
 use crate::operators::libinjection_utils::{
     InjectionResult, is_malicious_libinjection_result, libinjection_result_to_string, loggable_input,
 };
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
-pub struct DetectXSS {
-    pub base: OperatorBase,
-}
+pub struct DetectXSS;
 
 impl Default for DetectXSS {
     fn default() -> Self {
@@ -23,14 +21,18 @@ impl Default for DetectXSS {
 
 impl DetectXSS {
     pub fn new() -> Self {
-        let mut base = OperatorBase::new("DetectXSS");
-        base.match_message = Some("detected XSS using libinjection.");
-        DetectXSS { base }
+        DetectXSS
     }
 }
 
 impl Operator for DetectXSS {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "DetectXSS"
+    }
+
+    fn resolve_match_message(&self, _t: &Transaction<'_>, _key: &[u8], _value: &[u8]) -> Vec<u8> {
+        b"detected XSS using libinjection.".to_vec()
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,

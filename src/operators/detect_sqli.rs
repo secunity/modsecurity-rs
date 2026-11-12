@@ -5,15 +5,13 @@ use crate::operators::libinjection_adapter::run_libinjection_sqli;
 use crate::operators::libinjection_utils::{
     InjectionResult, is_malicious_libinjection_result, libinjection_result_to_string, loggable_input,
 };
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
-pub struct DetectSQLi {
-    pub base: OperatorBase,
-}
+pub struct DetectSQLi;
 
 impl Default for DetectSQLi {
     fn default() -> Self {
@@ -23,14 +21,18 @@ impl Default for DetectSQLi {
 
 impl DetectSQLi {
     pub fn new() -> Self {
-        let mut base = OperatorBase::new("DetectSQLi");
-        base.match_message = Some("detected SQLi using libinjection.");
-        DetectSQLi { base }
+        DetectSQLi
     }
 }
 
 impl Operator for DetectSQLi {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "DetectSQLi"
+    }
+
+    fn resolve_match_message(&self, _t: &Transaction<'_>, _key: &[u8], _value: &[u8]) -> Vec<u8> {
+        b"detected SQLi using libinjection.".to_vec()
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,

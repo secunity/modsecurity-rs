@@ -9,100 +9,120 @@ use crate::transaction::Transaction;
 use crate::utils::regex::{Regex, RegexResult};
 use crate::utils::string::{limit_to, to_hex_if_needed};
 
-/// Data members of the C++ `Operator` base class.
+/// The parameter of an operator (`@op parameter`), which may hold macros
+/// (`%{TX.x}`) expanded for each transaction.
 #[derive(Debug, Default)]
-pub struct OperatorBase {
-    /// The fixed match message of operators that have one (C++
-    /// `m_match_message`).
-    pub match_message: Option<&'static str>,
-    pub negation: bool,
-    /// The operator name used in the match message (e.g. `Rx`).
-    pub op: &'static str,
-    pub param: Vec<u8>,
-    pub string: Option<RunTimeString>,
-    pub could_contain_macro: bool,
+pub struct Param {
+    /// The parameter expanded without a transaction (macros left out):
+    /// what operators compile or load when the rules are read.
+    pub literal: Vec<u8>,
+    pub string: RunTimeString,
+    /// Whether the match message shows the parameter expanded for the
+    /// transaction (C++ `m_couldContainsMacro`) or the literal.
+    expanded_in_message: bool,
 }
 
-impl OperatorBase {
-    /// `Operator(opName)`
-    pub fn new(op_name: &'static str) -> Self {
-        OperatorBase { op: op_name, ..Default::default() }
+impl Param {
+    pub fn new(string: RunTimeString) -> Self {
+        Param { literal: string.evaluate_static(), string, expanded_in_message: false }
     }
 
-    /// `Operator(opName, param)` with a literal parameter.
-    pub fn with_param(op_name: &'static str, param: &[u8]) -> Self {
-        OperatorBase { op: op_name, param: param.to_vec(), ..Default::default() }
-    }
-
-    /// `Operator(opName, std::unique_ptr<RunTimeString> param)`: the
-    /// parameter is pre-expanded (without a transaction) into `param`.
-    pub fn with_string(op_name: &'static str, param: RunTimeString) -> Self {
-        let p = param.evaluate_static();
-        OperatorBase { op: op_name, param: p, string: Some(param), ..Default::default() }
+    /// A parameter that the match message shows with its macros expanded.
+    pub fn expanded_in_message(string: RunTimeString) -> Self {
+        Param { expanded_in_message: true, ..Self::new(string) }
     }
 
     /// The parameter expanded for `t`, borrowed when it has no macro.
-    pub fn param_value(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
-        self.string.as_ref().map_or(Cow::Borrowed(&[][..]), |s| s.evaluate_cow(Some(t)))
+    pub fn value(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
+        self.string.evaluate_cow(Some(t))
+    }
+
+    pub fn contains_macro(&self) -> bool {
+        self.string.contains_macro()
+    }
+
+    /// The literal as text, for operators whose parameter is a file name
+    /// or similar.
+    pub fn literal_lossy(&self) -> String {
+        String::from_utf8_lossy(&self.literal).into_owned()
     }
 }
 
 /// A SecRule operator (`@rx`, `@pm`, ...).
 pub trait Operator: Send + Sync + std::fmt::Debug {
-    fn base(&self) -> &OperatorBase;
-    fn base_mut(&mut self) -> &mut OperatorBase;
+    /// The operator name shown in match messages and the debug log (e.g.
+    /// `Rx`).
+    fn name(&self) -> &'static str;
 
-    /// `init(arg, error)`: `file` is the configuration file the rule came
-    /// from (used to resolve relative resource paths).
+    /// The parameter, for operators that take one.
+    fn param(&self) -> Option<&Param> {
+        None
+    }
+
+    /// `init(file, &error)`: compiles/loads what the parameter names;
+    /// `file` is the configuration file of the rule.
     fn init(&mut self, _file: &str) -> Result<(), String> {
         Ok(())
     }
 
-    /// `evaluate(transaction, rule, str, ruleMessage)`: whether `input`
-    /// matches (before the negation of `!@op`).
+    /// Whether `input` matches (before the negation of `!@op`).
     fn evaluate(&self, t: &mut Transaction<'_>, rule: &RuleWithActions, input: &[u8], rm: &mut RuleMessage<'_>)
     -> bool;
 
-    /// `resolveMatchMessage`
+    /// The result of the rule's operator: [`Operator::evaluate`] with the
+    /// negation of `!@op` applied. Operators whose failures must not match
+    /// even when negated override this.
+    fn evaluate_negatable(
+        &self,
+        negated: bool,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
+        input: &[u8],
+        rm: &mut RuleMessage<'_>,
+    ) -> bool {
+        self.evaluate(t, rule, input, rm) != negated
+    }
+
+    /// The text logged for a match (`resolveMatchMessage`).
     fn resolve_match_message(&self, t: &Transaction<'_>, key: &[u8], value: &[u8]) -> Vec<u8> {
-        default_resolve_match_message(self.base(), t, key, value)
+        let empty = Param::default();
+        let param = self.param().unwrap_or(&empty);
+        let p = if param.expanded_in_message { param.value(t) } else { Cow::Borrowed(&param.literal[..]) };
+        let mut ret = Vec::new();
+        ret.extend_from_slice(b"Matched \"Operator `");
+        ret.extend_from_slice(self.name().as_bytes());
+        ret.extend_from_slice(b"' with parameter `");
+        ret.extend_from_slice(&limit_to(200, &p));
+        ret.extend_from_slice(b"' against variable `");
+        ret.extend_from_slice(to_hex_if_needed(key, false).as_bytes());
+        ret.extend_from_slice(b"' (Value: `");
+        ret.extend_from_slice(&limit_to(100, to_hex_if_needed(value, false).as_bytes()));
+        ret.extend_from_slice(b"' )");
+        ret
     }
 }
 
-/// The default `resolveMatchMessage` body.
-pub fn default_resolve_match_message(b: &OperatorBase, t: &Transaction<'_>, key: &[u8], value: &[u8]) -> Vec<u8> {
-    if let Some(m) = b.match_message {
-        return m.as_bytes().to_vec();
-    }
-    let p: Cow<'_, [u8]> = if !b.could_contain_macro {
-        Cow::Borrowed(&b.param)
-    } else {
-        Cow::Owned(b.string.as_ref().map(|s| s.evaluate(Some(t))).unwrap_or_default())
-    };
-    let mut ret = Vec::new();
-    ret.extend_from_slice(b"Matched \"Operator `");
-    ret.extend_from_slice(b.op.as_bytes());
-    ret.extend_from_slice(b"' with parameter `");
-    ret.extend_from_slice(&limit_to(200, &p));
-    ret.extend_from_slice(b"' against variable `");
-    ret.extend_from_slice(to_hex_if_needed(key, false).as_bytes());
-    ret.extend_from_slice(b"' (Value: `");
-    ret.extend_from_slice(&limit_to(100, to_hex_if_needed(value, false).as_bytes()));
-    ret.extend_from_slice(b"' )");
-    ret
+/// The operator of a rule: the operator and whether the rule negates it
+/// (`!@op`).
+#[derive(Debug)]
+pub struct RuleOperator {
+    pub op: Box<dyn Operator>,
+    pub negated: bool,
 }
 
-impl dyn Operator {
-    /// `evaluateInternal`: evaluates and applies the negation (`!@op`).
-    pub fn evaluate_internal(
+impl RuleOperator {
+    pub fn new(op: Box<dyn Operator>) -> Self {
+        RuleOperator { op, negated: false }
+    }
+
+    pub fn evaluate(
         &self,
         t: &mut Transaction<'_>,
         rule: &RuleWithActions,
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let res = self.evaluate(t, rule, input, rm);
-        if self.base().negation { !res } else { res }
+        self.op.evaluate_negatable(self.negated, t, rule, input, rm)
     }
 }
 
@@ -144,20 +164,6 @@ pub fn report_regex_search_error(t: &mut Transaction<'_>, re: &Regex, result: Re
         if match_limit { "MATCH_LIMIT" } else { "OTHER" },
         re.pattern
     );
-}
-
-/// Declares the `base`/`base_mut` accessors of [`Operator`] for a struct with
-/// a `base: OperatorBase` field.
-#[macro_export]
-macro_rules! operator_base_accessors {
-    () => {
-        fn base(&self) -> &$crate::operators::operator::OperatorBase {
-            &self.base
-        }
-        fn base_mut(&mut self) -> &mut $crate::operators::operator::OperatorBase {
-            &mut self.base
-        }
-    };
 }
 
 /// `Operator::instantiate(op, param)`: the operator named `op` (case

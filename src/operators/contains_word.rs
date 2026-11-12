@@ -1,6 +1,6 @@
 //! Port of `src/operators/contains_word.cc`, `src/operators/contains_word.h`.
 
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -9,12 +9,12 @@ use crate::utils::string::{find, find_from};
 
 #[derive(Debug)]
 pub struct ContainsWord {
-    pub base: OperatorBase,
+    param: Param,
 }
 
 impl ContainsWord {
     pub fn new(param: RunTimeString) -> Self {
-        ContainsWord { base: OperatorBase::with_string("ContainsWord", param) }
+        ContainsWord { param: Param::new(param) }
     }
 
     /// `acceptableChar`: true when `a[pos]` is not an ASCII letter. A
@@ -30,7 +30,13 @@ impl ContainsWord {
 }
 
 impl Operator for ContainsWord {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "ContainsWord"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -38,7 +44,7 @@ impl Operator for ContainsWord {
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let param_target = self.base.param_value(t);
+        let param_target = self.param.value(t);
 
         if param_target.is_empty() {
             return true;

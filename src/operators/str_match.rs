@@ -1,6 +1,6 @@
 //! Port of `src/operators/str_match.cc`, `src/operators/str_match.h`.
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -9,19 +9,23 @@ use crate::utils::string::find;
 
 #[derive(Debug)]
 pub struct StrMatch {
-    pub base: OperatorBase,
+    param: Param,
 }
 
 impl StrMatch {
     pub fn new(param: RunTimeString) -> Self {
-        let mut base = OperatorBase::with_string("StrMatch", param);
-        base.could_contain_macro = true;
-        StrMatch { base }
+        StrMatch { param: Param::expanded_in_message(param) }
     }
 }
 
 impl Operator for StrMatch {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "StrMatch"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -29,7 +33,7 @@ impl Operator for StrMatch {
         input: &[u8],
         _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let p = self.base.param_value(t);
+        let p = self.param.value(t);
         find(input, &p).is_some()
     }
 }

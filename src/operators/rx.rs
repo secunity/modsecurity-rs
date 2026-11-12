@@ -1,9 +1,7 @@
 //! Port of `src/operators/rx.cc`, `src/operators/rx.h`.
 
 use crate::collection::collection::Collection;
-use crate::operators::operator::{
-    Operator, OperatorBase, log_offset, report_regex_compile_error, report_regex_search_error,
-};
+use crate::operators::operator::{Operator, Param, log_offset, report_regex_compile_error, report_regex_search_error};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -17,68 +15,51 @@ const MULTI_LINE: bool = !cfg!(feature = "regex-dollar-endonly");
 
 #[derive(Debug)]
 pub struct Rx {
-    pub base: OperatorBase,
+    param: Param,
     re: Option<Regex>,
 }
 
 impl Rx {
     pub fn new(param: RunTimeString) -> Self {
-        let mut base = OperatorBase::with_string("Rx", param);
-        base.could_contain_macro = true;
-        Rx { base, re: None }
+        Rx { param: Param::expanded_in_message(param), re: None }
     }
 
     fn contains_macro(&self) -> bool {
-        self.base.string.as_ref().is_some_and(|s| s.contains_macro())
+        self.param.contains_macro()
     }
 }
 
-impl Operator for Rx {
-    crate::operator_base_accessors!();
-
-    fn init(&mut self, _file: &str) -> Result<(), String> {
-        if !self.contains_macro() {
-            let re = Regex::with_options(&self.base.param, false, MULTI_LINE);
-            let has_error = re.has_error();
-            self.re = Some(re);
-            if has_error {
-                return Err(format!("Invalid regular expression: {}", String::from_utf8_lossy(&self.base.param)));
-            }
-        }
-        Ok(())
-    }
-
-    fn evaluate(
+impl Rx {
+    /// Whether `input` matches; `None` when the regular expression failed
+    /// (it does not compile, or it hit the match limits), which is neither
+    /// a match nor a mismatch.
+    fn try_match(
         &self,
         t: &mut Transaction<'_>,
         rule: &RuleWithActions,
         input: &[u8],
         rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        if self.base.param.is_empty() && !self.contains_macro() {
-            return true;
+    ) -> Option<bool> {
+        if self.param.literal.is_empty() && !self.contains_macro() {
+            return Some(true);
         }
 
         let re_owned;
         let re: &Regex = if self.contains_macro() {
-            let eparam = self.base.param_value(t);
+            let eparam = self.param.value(t);
             re_owned = Regex::with_options(&eparam, false, MULTI_LINE);
             &re_owned
         } else if let Some(re) = self.re.as_ref() {
             re
         } else {
             // init() was not called: compile the parameter now.
-            re_owned = Regex::with_options(&self.base.param, false, MULTI_LINE);
+            re_owned = Regex::with_options(&self.param.literal, false, MULTI_LINE);
             &re_owned
         };
 
         if re.has_error() {
             report_regex_compile_error(t, re);
-            // A regex failure is neither a match nor a mismatch. Return the
-            // value that the negation in evaluate_internal turns into "no
-            // match", so that the negated form does not fire on errors
-            // either (#3123).
-            return self.base.negation;
+            return None;
         }
 
         // (`utils::regex` guards against dangling empty-slice pointers.)
@@ -89,8 +70,7 @@ impl Operator for Rx {
 
         if regex_result != RegexResult::Ok {
             report_regex_search_error(t, re, regex_result, "rx");
-            // A regex failure is neither a match nor a mismatch (#3123).
-            return self.base.negation;
+            return None;
         }
 
         if rule.has_capture_action() {
@@ -113,7 +93,51 @@ impl Operator for Rx {
             log_offset(rm, capture.offset, capture.length);
         }
 
-        !captures.is_empty()
+        Some(!captures.is_empty())
+    }
+}
+
+impl Operator for Rx {
+    fn name(&self) -> &'static str {
+        "Rx"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
+
+    fn init(&mut self, _file: &str) -> Result<(), String> {
+        if !self.contains_macro() {
+            let re = Regex::with_options(&self.param.literal, false, MULTI_LINE);
+            let has_error = re.has_error();
+            self.re = Some(re);
+            if has_error {
+                return Err(format!("Invalid regular expression: {}", String::from_utf8_lossy(&self.param.literal)));
+            }
+        }
+        Ok(())
+    }
+
+    fn evaluate(
+        &self,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
+        input: &[u8],
+        rm: &mut RuleMessage<'_>,
+    ) -> bool {
+        self.try_match(t, rule, input, rm).unwrap_or(false)
+    }
+
+    /// A failed regular expression does not match, negated or not (#3123).
+    fn evaluate_negatable(
+        &self,
+        negated: bool,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
+        input: &[u8],
+        rm: &mut RuleMessage<'_>,
+    ) -> bool {
+        self.try_match(t, rule, input, rm).is_some_and(|matched| matched != negated)
     }
 }
 

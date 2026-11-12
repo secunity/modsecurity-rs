@@ -1,6 +1,6 @@
 //! Port of `src/operators/within.cc`, `src/operators/within.h`.
 
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -9,19 +9,23 @@ use crate::utils::string::find;
 
 #[derive(Debug)]
 pub struct Within {
-    pub base: OperatorBase,
+    param: Param,
 }
 
 impl Within {
     pub fn new(param: RunTimeString) -> Self {
-        let mut base = OperatorBase::with_string("Within", param);
-        base.could_contain_macro = true;
-        Within { base }
+        Within { param: Param::expanded_in_message(param) }
     }
 }
 
 impl Operator for Within {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "Within"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -29,7 +33,7 @@ impl Operator for Within {
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let param_target = self.base.param_value(t);
+        let param_target = self.param.value(t);
 
         if input.is_empty() {
             return true;

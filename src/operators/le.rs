@@ -1,7 +1,7 @@
 //! Port of `src/operators/le.cc`, `src/operators/le.h`.
 
 use crate::operators::eq::atoll;
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -9,19 +9,23 @@ use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct Le {
-    pub base: OperatorBase,
+    param: Param,
 }
 
 impl Le {
     pub fn new(param: RunTimeString) -> Self {
-        let mut base = OperatorBase::with_string("Le", param);
-        base.could_contain_macro = true;
-        Le { base }
+        Le { param: Param::expanded_in_message(param) }
     }
 }
 
 impl Operator for Le {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "Le"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -29,7 +33,7 @@ impl Operator for Le {
         input: &[u8],
         _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let p = self.base.param_value(t);
+        let p = self.param.value(t);
         atoll(input) <= atoll(&p)
     }
 }

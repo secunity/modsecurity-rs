@@ -4,7 +4,7 @@
 //! processor against a DTD. Matches (returns true) when the DTD cannot be
 //! loaded or the document is missing, not well formed or not valid.
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -12,7 +12,7 @@ use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct ValidateDTD {
-    pub base: OperatorBase,
+    param: Param,
     #[cfg(feature = "libxml2")]
     resource: String,
 }
@@ -20,7 +20,7 @@ pub struct ValidateDTD {
 impl ValidateDTD {
     pub fn new(param: RunTimeString) -> Self {
         ValidateDTD {
-            base: OperatorBase::with_string("ValidateDTD", param),
+            param: Param::new(param),
             #[cfg(feature = "libxml2")]
             resource: String::new(),
         }
@@ -42,11 +42,17 @@ impl Drop for XmlDtdPtrManager {
 }
 
 impl Operator for ValidateDTD {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "ValidateDTD"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
 
     #[cfg(feature = "libxml2")]
     fn init(&mut self, file: &str) -> Result<(), String> {
-        let param = String::from_utf8_lossy(&self.base.param).into_owned();
+        let param = self.param.literal_lossy();
         let lookup = crate::utils::system::find_resource(&param, file);
         let Some(resource) = lookup.path else {
             return Err(format!("XML: File not found: {}. {}", param, lookup.looked_at));
@@ -64,7 +70,7 @@ impl Operator for ValidateDTD {
         _input: &[u8],
         _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        crate::ms_dbg_a!(t, 2, "Operator: {} is not implemented or malfunctioning.", self.base.op);
+        crate::ms_dbg_a!(t, 2, "Operator: {} is not implemented or malfunctioning.", self.name());
         true
     }
 

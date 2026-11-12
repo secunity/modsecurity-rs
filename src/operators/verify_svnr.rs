@@ -2,7 +2,7 @@
 //! (Austrian social security numbers).
 
 use crate::collection::collection::Collection;
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -26,15 +26,15 @@ const BAD_SVNR: [&[u8; 10]; 12] = [
 
 #[derive(Debug)]
 pub struct VerifySVNR {
-    pub base: OperatorBase,
+    param: Param,
     re: Regex,
 }
 
 impl VerifySVNR {
     pub fn new(param: RunTimeString) -> Self {
-        let base = OperatorBase::with_string("VerifySVNR", param);
-        let re = Regex::with_options(&base.param, false, true);
-        VerifySVNR { base, re }
+        let param = Param::new(param);
+        let re = Regex::with_options(&param.literal, false, true);
+        VerifySVNR { param, re }
     }
 
     /// `convert_to_int`
@@ -87,7 +87,13 @@ impl VerifySVNR {
 }
 
 impl Operator for VerifySVNR {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "VerifySVNR"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -95,7 +101,7 @@ impl Operator for VerifySVNR {
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
-        if self.base.param.is_empty() {
+        if self.param.literal.is_empty() {
             return false;
         }
 

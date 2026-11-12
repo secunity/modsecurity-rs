@@ -1,7 +1,7 @@
 //! Port of `src/operators/validate_utf8_encoding.cc`,
 //! `src/operators/validate_utf8_encoding.h`.
 
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -13,9 +13,7 @@ pub const UNICODE_ERROR_RESTRICTED_CHARACTER: i32 = -4;
 pub const UNICODE_ERROR_DECODING_ERROR: i32 = -5;
 
 #[derive(Debug)]
-pub struct ValidateUtf8Encoding {
-    pub base: OperatorBase,
-}
+pub struct ValidateUtf8Encoding;
 
 impl Default for ValidateUtf8Encoding {
     fn default() -> Self {
@@ -25,7 +23,7 @@ impl Default for ValidateUtf8Encoding {
 
 impl ValidateUtf8Encoding {
     pub fn new() -> Self {
-        ValidateUtf8Encoding { base: OperatorBase::new("ValidateUtf8Encoding") }
+        ValidateUtf8Encoding
     }
 
     /// `detect_utf8_character`: the length of the UTF-8 character at the
@@ -107,7 +105,9 @@ impl ValidateUtf8Encoding {
 }
 
 impl Operator for ValidateUtf8Encoding {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "ValidateUtf8Encoding"
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,

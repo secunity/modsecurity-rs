@@ -5,7 +5,7 @@
 //! library). Without it the operator fails to initialise and never
 //! matches, like the C++ build without ssdeep.
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -29,7 +29,7 @@ mod ffi {
 
 #[derive(Debug)]
 pub struct FuzzyHash {
-    pub base: OperatorBase,
+    param: Param,
     #[cfg(feature = "ssdeep")]
     threshold: i32,
     /// The hashes of the file (`fuzzy_hash_chunk` list), one per line.
@@ -40,7 +40,7 @@ pub struct FuzzyHash {
 impl FuzzyHash {
     pub fn new(param: RunTimeString) -> Self {
         FuzzyHash {
-            base: OperatorBase::with_string("FuzzyHash", param),
+            param: Param::new(param),
             #[cfg(feature = "ssdeep")]
             threshold: 0,
             #[cfg(feature = "ssdeep")]
@@ -50,7 +50,13 @@ impl FuzzyHash {
 }
 
 impl Operator for FuzzyHash {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "FuzzyHash"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
 
     #[cfg(feature = "ssdeep")]
     fn init(&mut self, param2: &str) -> Result<(), String> {
@@ -58,7 +64,7 @@ impl Operator for FuzzyHash {
         use crate::utils::system::find_resource;
         use std::io::Read;
 
-        let param = self.base.param.clone();
+        let param = self.param.literal.clone();
         let Some(pos) = param.iter().rposition(|&c| c == b' ') else {
             return Err("Please use @fuzzyHash with filename and value".to_string());
         };

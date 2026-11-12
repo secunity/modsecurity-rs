@@ -3,7 +3,7 @@
 //! Also hosts the C number parsing helpers shared by the numeric
 //! comparison operators (`@eq`, `@ge`, `@gt`, `@le`, `@lt`).
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -70,17 +70,23 @@ pub(crate) fn stoi(s: &[u8]) -> Option<i32> {
 
 #[derive(Debug)]
 pub struct Eq {
-    pub base: OperatorBase,
+    param: Param,
 }
 
 impl Eq {
     pub fn new(param: RunTimeString) -> Self {
-        Eq { base: OperatorBase::with_string("Eq", param) }
+        Eq { param: Param::new(param) }
     }
 }
 
 impl Operator for Eq {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "Eq"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -88,7 +94,7 @@ impl Operator for Eq {
         input: &[u8],
         _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let pt = self.base.param_value(t);
+        let pt = self.param.value(t);
         // A failing std::stoi counts as 0.
         let p = stoi(&pt).unwrap_or(0);
         let i = stoi(input).unwrap_or(0);

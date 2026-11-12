@@ -6,7 +6,7 @@
 //! start with `1` (and is longer than one byte).
 
 use crate::engine::lua::Lua;
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -15,7 +15,7 @@ use crate::utils::system::find_resource;
 
 #[derive(Debug)]
 pub struct InspectFile {
-    pub base: OperatorBase,
+    param: Param,
     file: String,
     is_script: bool,
     lua: Lua,
@@ -23,12 +23,7 @@ pub struct InspectFile {
 
 impl InspectFile {
     pub fn new(param: RunTimeString) -> Self {
-        InspectFile {
-            base: OperatorBase::with_string("InspectFile", param),
-            file: String::new(),
-            is_script: false,
-            lua: Lua::new(),
-        }
+        InspectFile { param: Param::new(param), file: String::new(), is_script: false, lua: Lua::new() }
     }
 
     /// Runs `self.file` with `arg` (posix_spawn of the C++ code: the path is
@@ -78,10 +73,16 @@ impl InspectFile {
 }
 
 impl Operator for InspectFile {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "InspectFile"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
 
     fn init(&mut self, param2: &str) -> Result<(), String> {
-        let param = String::from_utf8_lossy(&self.base.param).into_owned();
+        let param = self.param.literal_lossy();
 
         let lookup = find_resource(&param, param2);
         self.file = lookup.path.unwrap_or_default();

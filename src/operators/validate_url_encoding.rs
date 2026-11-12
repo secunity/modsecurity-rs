@@ -1,15 +1,13 @@
 //! Port of `src/operators/validate_url_encoding.cc`,
 //! `src/operators/validate_url_encoding.h`.
 
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
-pub struct ValidateUrlEncoding {
-    pub base: OperatorBase,
-}
+pub struct ValidateUrlEncoding;
 
 impl Default for ValidateUrlEncoding {
     fn default() -> Self {
@@ -19,7 +17,7 @@ impl Default for ValidateUrlEncoding {
 
 impl ValidateUrlEncoding {
     pub fn new() -> Self {
-        ValidateUrlEncoding { base: OperatorBase::new("ValidateUrlEncoding") }
+        ValidateUrlEncoding
     }
 
     /// `validate_url_encoding`: 1 when valid, -1 for an empty input, -2 for
@@ -63,7 +61,9 @@ impl ValidateUrlEncoding {
 }
 
 impl Operator for ValidateUrlEncoding {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "ValidateUrlEncoding"
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,

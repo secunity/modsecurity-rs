@@ -8,7 +8,7 @@ use std::ptr;
 use pcre2_sys::*;
 
 use crate::collection::collection::Collection;
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -48,13 +48,13 @@ impl Drop for MatchData {
 
 #[derive(Debug)]
 pub struct VerifyCC {
-    pub base: OperatorBase,
+    param: Param,
     re: Option<CompiledPattern>,
 }
 
 impl VerifyCC {
     pub fn new(param: RunTimeString) -> Self {
-        VerifyCC { base: OperatorBase::with_string("VerifyCC", param), re: None }
+        VerifyCC { param: Param::new(param), re: None }
     }
 
     /// `luhnVerify`: Luhn Mod-10 Method (ISO 2894/ANSI 4.13). Only the
@@ -91,11 +91,17 @@ impl VerifyCC {
 }
 
 impl Operator for VerifyCC {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "VerifyCC"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
 
     fn init(&mut self, _file: &str) -> Result<(), String> {
         // PCRE2_ZERO_TERMINATED: the pattern ends at its first NUL byte.
-        let param = &self.base.param;
+        let param = &self.param.literal;
         let len = param.iter().position(|&c| c == 0).unwrap_or(param.len());
         let mut errornumber: i32 = 0;
         let mut erroroffset: usize = 0;
@@ -178,7 +184,7 @@ impl Operator for VerifyCC {
                         t,
                         9,
                         "CC# match \"{}\" at {}. [offset {}]",
-                        String::from_utf8_lossy(&self.base.param),
+                        String::from_utf8_lossy(&self.param.literal),
                         String::from_utf8_lossy(i),
                         offset
                     );

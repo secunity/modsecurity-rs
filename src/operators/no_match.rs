@@ -1,15 +1,13 @@
 //! Port of `src/operators/no_match.cc`, `src/operators/no_match.h`.
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 /// Never matches.
 #[derive(Debug)]
-pub struct NoMatch {
-    pub base: OperatorBase,
-}
+pub struct NoMatch;
 
 impl Default for NoMatch {
     fn default() -> Self {
@@ -19,12 +17,14 @@ impl Default for NoMatch {
 
 impl NoMatch {
     pub fn new() -> Self {
-        NoMatch { base: OperatorBase::new("NoMatch") }
+        NoMatch
     }
 }
 
 impl Operator for NoMatch {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "NoMatch"
+    }
     fn evaluate(
         &self,
         _t: &mut Transaction<'_>,

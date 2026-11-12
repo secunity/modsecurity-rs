@@ -1,6 +1,6 @@
 //! Port of `src/operators/contains.cc`, `src/operators/contains.h`.
 
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -9,17 +9,23 @@ use crate::utils::string::find;
 
 #[derive(Debug)]
 pub struct Contains {
-    pub base: OperatorBase,
+    param: Param,
 }
 
 impl Contains {
     pub fn new(param: RunTimeString) -> Self {
-        Contains { base: OperatorBase::with_string("Contains", param) }
+        Contains { param: Param::new(param) }
     }
 }
 
 impl Operator for Contains {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "Contains"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -27,7 +33,7 @@ impl Operator for Contains {
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let p = self.base.param_value(t);
+        let p = self.param.value(t);
         let offset = find(input, &p);
 
         let contains = offset.is_some();

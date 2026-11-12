@@ -2,7 +2,7 @@
 //! (Brazilian CPF numbers).
 
 use crate::collection::collection::Collection;
-use crate::operators::operator::{Operator, OperatorBase, log_offset};
+use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -25,15 +25,15 @@ const BAD_CPF: [&[u8; 11]; 11] = [
 
 #[derive(Debug)]
 pub struct VerifyCPF {
-    pub base: OperatorBase,
+    param: Param,
     re: Regex,
 }
 
 impl VerifyCPF {
     pub fn new(param: RunTimeString) -> Self {
-        let base = OperatorBase::with_string("VerifyCPF", param);
-        let re = Regex::with_options(&base.param, false, true);
-        VerifyCPF { base, re }
+        let param = Param::new(param);
+        let re = Regex::with_options(&param.literal, false, true);
+        VerifyCPF { param, re }
     }
 
     /// `convert_to_int`
@@ -95,7 +95,13 @@ impl VerifyCPF {
 }
 
 impl Operator for VerifyCPF {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "VerifyCPF"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -103,7 +109,7 @@ impl Operator for VerifyCPF {
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
-        if self.base.param.is_empty() {
+        if self.param.literal.is_empty() {
             return false;
         }
 

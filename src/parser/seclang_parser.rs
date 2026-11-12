@@ -17,7 +17,7 @@ use crate::actions::transformations::transformation::{Transformation, Transforma
 use crate::actions::{self, ctl, data, disruptive};
 use crate::audit_log::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
 use crate::modsecurity::Phases;
-use crate::operators::operator::{Operator, instantiate_with_param};
+use crate::operators::operator::{RuleOperator, instantiate_with_param};
 use crate::parser::driver::Driver;
 use crate::parser::seclang_scanner::{ScanError, Scanner, Token};
 use crate::rule_script::RuleScript;
@@ -157,7 +157,7 @@ enum Value {
     #[default]
     None,
     Str(Vec<u8>),
-    Operator(Box<dyn Operator>),
+    Operator(RuleOperator),
     RunTimeString(RunTimeString),
     Variable(Box<dyn Variable>),
     Action(ActResult),
@@ -192,7 +192,7 @@ impl StackEntry {
         String::from_utf8_lossy(&self.bytes()).into_owned()
     }
 
-    fn operator(&mut self) -> Option<Box<dyn Operator>> {
+    fn operator(&mut self) -> Option<RuleOperator> {
         match self.take() {
             Value::Operator(o) => Some(o),
             _ => None,
@@ -757,7 +757,7 @@ impl SeclangParser {
             // A bare parameter is a regular expression.
             let param = rhs[last].run_time_string();
             match instantiate_with_param("rx", param) {
-                Some(o) => o,
+                Some(o) => RuleOperator::new(o),
                 None => return Err(Flow::Error),
             }
         } else {
@@ -766,11 +766,9 @@ impl SeclangParser {
                 None => return Err(Flow::Error),
             }
         };
-        if negated {
-            op.base_mut().negation = true;
-        }
+        op.negated = negated;
         let file = driver.filename(rhs[0].loc.end.filename).to_string();
-        if let Err(error) = op.init(&file) {
+        if let Err(error) = op.op.init(&file) {
             driver.error(at0, &error, "");
             return Err(Flow::Error);
         }
@@ -843,7 +841,7 @@ impl SeclangParser {
         };
         let param = if rhs.len() > 1 { rhs[1].run_time_string() } else { RunTimeString::new() };
         match instantiate_with_param(name, param) {
-            Some(o) => Ok(Value::Operator(o)),
+            Some(o) => Ok(Value::Operator(RuleOperator::new(o))),
             None => Err(Flow::Error),
         }
     }

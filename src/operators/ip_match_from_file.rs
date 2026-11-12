@@ -2,7 +2,7 @@
 //! `src/operators/ip_match_from_file.h`.
 
 use crate::operators::ip_match::IpMatch;
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -23,15 +23,16 @@ impl IpMatchFromFile {
 }
 
 impl Operator for IpMatchFromFile {
-    fn base(&self) -> &OperatorBase {
-        &self.ip_match.base
+    fn name(&self) -> &'static str {
+        self.ip_match.name()
     }
-    fn base_mut(&mut self) -> &mut OperatorBase {
-        &mut self.ip_match.base
+
+    fn param(&self) -> Option<&Param> {
+        self.ip_match.param()
     }
 
     fn init(&mut self, file: &str) -> Result<(), String> {
-        let param = String::from_utf8_lossy(&self.ip_match.base.param).into_owned();
+        let param = self.ip_match.param.literal_lossy();
 
         if param.starts_with("https://") {
             self.ip_match.tree.add_from_url(&param)

@@ -1,7 +1,7 @@
 //! Port of `headers/modsecurity/rule_with_operator.h` and
 //! `src/rule_with_operator.cc`.
 
-use crate::operators::operator::Operator;
+use crate::operators::operator::RuleOperator;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::{LogPoint, RuleWithActions, TransformationPath};
 use crate::transaction::EvalScratch;
@@ -13,17 +13,17 @@ use crate::variables::variable::{Variable, Variables, variables_to_string};
 #[derive(Debug)]
 pub struct RuleWithOperator {
     pub variables: Vec<Box<dyn Variable>>,
-    pub operator: Box<dyn Operator>,
+    pub operator: RuleOperator,
 }
 
 impl RuleWithOperator {
-    pub fn new(op: Box<dyn Operator>, variables: Vec<Box<dyn Variable>>) -> Self {
+    pub fn new(op: RuleOperator, variables: Vec<Box<dyn Variable>>) -> Self {
         RuleWithOperator { variables, operator: op }
     }
 
     /// `getOperatorName`
     pub fn get_operator_name(&self) -> &str {
-        self.operator.base().op
+        self.operator.op.name()
     }
 
     /// `updateMatchedVars`
@@ -52,7 +52,7 @@ impl RuleWithOperator {
             String::from_utf8_lossy(&limit_to(80, to_hex_if_needed(value, false).as_bytes())),
             String::from_utf8_lossy(key)
         );
-        self.operator.evaluate_internal(t, rule, value, rm)
+        self.operator.evaluate(t, rule, value, rm)
     }
 
     /// `getVariablesExceptions`
@@ -145,7 +145,7 @@ impl RuleWithOperator {
 
         // Only needed for the debug log (C++ builds it unconditionally).
         let vars_str = || variables_to_string(self.variables.iter().map(|v| v.as_ref()));
-        if let Some(s) = &self.operator.base().string {
+        if let Some(s) = self.operator.op.param().map(|p| &p.string) {
             if t.debug_enabled(4) {
                 let mut eparam = s.evaluate(Some(t));
                 if s.contains_macro() {
@@ -216,7 +216,7 @@ impl RuleWithOperator {
                 for (value_after_trans, path) in &values {
                     let ret = self.execute_operator_at(rule, t, key, value_after_trans, rm);
                     if ret {
-                        rm.match_ = self.operator.resolve_match_message(t, key, value);
+                        rm.match_ = self.operator.op.resolve_match_message(t, key, value);
                         for i in v.origin() {
                             rm.reference.extend_from_slice(i.to_text().as_bytes());
                         }

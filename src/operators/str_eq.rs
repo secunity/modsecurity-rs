@@ -1,6 +1,6 @@
 //! Port of `src/operators/str_eq.cc`, `src/operators/str_eq.h`.
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -8,17 +8,23 @@ use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct StrEq {
-    pub base: OperatorBase,
+    param: Param,
 }
 
 impl StrEq {
     pub fn new(param: RunTimeString) -> Self {
-        StrEq { base: OperatorBase::with_string("StrEq", param) }
+        StrEq { param: Param::new(param) }
     }
 }
 
 impl Operator for StrEq {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "StrEq"
+    }
+
+    fn param(&self) -> Option<&Param> {
+        Some(&self.param)
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
@@ -26,7 +32,7 @@ impl Operator for StrEq {
         input: &[u8],
         _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let pt = self.base.param_value(t);
+        let pt = self.param.value(t);
         *pt == *input
     }
 }

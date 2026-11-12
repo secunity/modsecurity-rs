@@ -1,6 +1,6 @@
 //! Port of `src/operators/geo_lookup.cc`, `src/operators/geo_lookup.h`.
 
-use crate::operators::operator::{Operator, OperatorBase};
+use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -8,9 +8,7 @@ use crate::utils::geo_lookup::GeoLookup as GeoDb;
 
 /// `@geoLookup`: fills the `GEO` collection from the configured database.
 #[derive(Debug)]
-pub struct GeoLookup {
-    pub base: OperatorBase,
-}
+pub struct GeoLookup;
 
 impl Default for GeoLookup {
     fn default() -> Self {
@@ -20,12 +18,14 @@ impl Default for GeoLookup {
 
 impl GeoLookup {
     pub fn new() -> Self {
-        GeoLookup { base: OperatorBase::new("GeoLookup") }
+        GeoLookup
     }
 }
 
 impl Operator for GeoLookup {
-    crate::operator_base_accessors!();
+    fn name(&self) -> &'static str {
+        "GeoLookup"
+    }
     fn evaluate(
         &self,
         t: &mut Transaction<'_>,
