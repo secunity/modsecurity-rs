@@ -89,6 +89,12 @@ impl RulesSet {
     /// `cleanMatchedVars`
     pub fn clean_matched_vars(t: &mut Transaction<'_>) {
         crate::ms_dbg_a!(t, 9, "Matched vars cleaned.");
+        // Every match adds to MATCHED_VARS, so when that is empty no rule
+        // matched since the last cleaning and there is nothing to unset
+        // (this runs after every rule).
+        if t.vars.matched_vars.is_empty() {
+            return;
+        }
         t.vars.matched_var.unset();
         t.vars.matched_vars.unset();
         t.vars.matched_var_name.unset();

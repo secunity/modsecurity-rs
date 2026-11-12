@@ -35,7 +35,8 @@ impl AnchoredVariable {
     /// `set(a, offset, offsetLen)`
     pub fn set_with_len(&mut self, a: &[u8], offset: usize, offset_len: usize) {
         self.offset = offset;
-        self.value = a.to_vec();
+        self.value.clear();
+        self.value.extend_from_slice(a);
         self.var.set_value(a);
         self.var.add_origin(VariableOrigin::new(offset_len, offset));
     }
@@ -43,7 +44,8 @@ impl AnchoredVariable {
     /// `set(a, offset)`
     pub fn set(&mut self, a: &[u8], offset: usize) {
         self.offset = offset;
-        self.value = a.to_vec();
+        self.value.clear();
+        self.value.extend_from_slice(a);
         self.var.set_value(a);
         self.var.add_origin(VariableOrigin::new(self.value.len(), offset));
     }
