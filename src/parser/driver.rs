@@ -178,13 +178,13 @@ impl Driver {
     }
 
     /// `parse(f, ref)`: parses the rules in `f`; `reference` names their
-    /// origin in the error messages. Returns 0 on failure (see
-    /// `properties.parser_error`).
-    pub fn parse(&mut self, f: &str, reference: &str) -> i32 {
+    /// origin in the error messages. Returns whether the rules were valid
+    /// (the errors are in `properties.parser_error`).
+    pub fn parse(&mut self, f: &str, reference: &str) -> bool {
         self.parse_bytes(f.as_bytes(), reference)
     }
 
-    fn parse_bytes(&mut self, f: &[u8], reference: &str) -> i32 {
+    fn parse_bytes(&mut self, f: &[u8], reference: &str) -> bool {
         self.last_rule = None;
         let name = if reference.is_empty() {
             "<<reference missing or not informed>>".to_string()
@@ -195,7 +195,7 @@ impl Driver {
         self.loc.push(Location::new(idx));
 
         if f.is_empty() {
-            return 1;
+            return true;
         }
 
         // scan_begin
@@ -210,18 +210,15 @@ impl Driver {
         // (Disabled in C++: "Last rule is marked as chained but there
         // isn't a subsequent rule.")
 
-        i32::from(res == 0)
+        res == 0
     }
 
     /// `parseFile`
-    pub fn parse_file(&mut self, f: &str) -> i32 {
-        if !is_file(f) {
+    pub fn parse_file(&mut self, f: &str) -> bool {
+        let content = if is_file(f) { std::fs::read(f).ok() } else { None };
+        let Some(content) = content else {
             self.properties.parser_error.push_str(&format!("Failed to open the file: {}\n", f));
-            return 0;
-        }
-        let Ok(content) = std::fs::read(f) else {
-            self.properties.parser_error.push_str(&format!("Failed to open the file: {}\n", f));
-            return 0;
+            return false;
         };
         self.parse_bytes(&content, f)
     }

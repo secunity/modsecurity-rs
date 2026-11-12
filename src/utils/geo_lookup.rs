@@ -59,9 +59,10 @@ impl GeoLookup {
         st.version = GeoLookupVersion::NotLoaded;
     }
 
-    /// `setDataBase`: opens the database at `file_path`. On failure `err`
-    /// describes the problem.
-    pub fn set_data_base(&self, file_path: &str, err: &mut String) -> bool {
+    /// `setDataBase`: opens the database at `file_path`. Fails only when no
+    /// database is loaded afterwards (a database loaded before stays in use
+    /// if this one cannot be opened, as in C++).
+    pub fn set_data_base(&self, file_path: &str) -> Result<(), String> {
         #[cfg(feature = "maxmind")]
         let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         #[cfg(not(feature = "maxmind"))]
@@ -82,7 +83,7 @@ impl GeoLookup {
         }
 
         if st.version == GeoLookupVersion::NotLoaded {
-            *err = format!("Can't open:  {}. ", file_path);
+            let mut err = format!("Can't open:  {}. ", file_path);
             err.push_str("Support enabled for:");
             #[cfg(feature = "maxmind")]
             err.push_str(" libMaxMind");
@@ -92,10 +93,10 @@ impl GeoLookup {
                 err.push(' ');
                 err.push_str(&int_max);
             }
-            return false;
+            return Err(err);
         }
 
-        true
+        Ok(())
     }
 
     /// `lookup`: looks `target` up and fills the `GEO` collection of the
@@ -264,8 +265,7 @@ mod tests {
     #[test]
     fn set_data_base_and_lookup() {
         let g = GeoLookup::get_instance();
-        let mut err = String::new();
-        assert!(!g.set_data_base("/nonexistent/db.mmdb", &mut err));
+        let err = g.set_data_base("/nonexistent/db.mmdb").unwrap_err();
         assert!(err.starts_with("Can't open:  /nonexistent/db.mmdb. Support enabled for:"));
         #[cfg(feature = "maxmind")]
         assert!(err.ends_with(" libMaxMind. libMaxMind: Can't open: Error opening the specified MaxMind DB file."));
@@ -279,7 +279,7 @@ mod tests {
             use crate::rules_set::RulesSet;
 
             let db = format!("{}/test/test-cases/data/GeoIP2-City-Test.mmdb", env!("CARGO_MANIFEST_DIR"));
-            assert!(g.set_data_base(&db, &mut err));
+            assert_eq!(g.set_data_base(&db), Ok(()));
             assert_eq!(g.version(), GeoLookupVersion::VersionMaxmind);
 
             let ms = ModSecurity::new();

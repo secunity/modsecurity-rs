@@ -32,16 +32,15 @@ impl Action for Accuracy {
         }
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) -> bool {
+    fn configure(&self, rule: &mut RuleWithActions) {
         rule.accuracy = self.accuracy;
-        true
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::block::test_support::rule;
+    use crate::actions::block::test_support::{RuleAction, rule};
     use crate::actions::chain::Chain;
     use crate::actions::maturity::Maturity;
     use crate::actions::rev::Rev;
@@ -59,7 +58,13 @@ mod tests {
             assert_eq!(x.action_kind(), Kind::ConfigurationKind);
             x.init().unwrap();
         }
-        let r = rule(vec![Box::new(a), Box::new(m), Box::new(rev), Box::new(ver), Box::new(c)]);
+        let r = rule(vec![
+            RuleAction::Other(Box::new(a)),
+            RuleAction::Other(Box::new(m)),
+            RuleAction::Other(Box::new(rev)),
+            RuleAction::Other(Box::new(ver)),
+            RuleAction::Other(Box::new(c)),
+        ]);
         assert_eq!(r.accuracy, 8);
         assert_eq!(r.maturity, 9);
         assert_eq!(r.rev, "2.1.3");

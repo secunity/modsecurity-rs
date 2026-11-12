@@ -122,13 +122,7 @@ impl Operator for VerifyCC {
         Ok(())
     }
 
-    fn evaluate(
-        &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
-        i: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
-    ) -> bool {
+    fn evaluate(&self, t: &mut Transaction<'_>, rule: &RuleWithActions, i: &[u8], _rm: &mut RuleMessage<'_>) -> bool {
         // Without a successful init() the C++ code would dereference a null
         // pattern.
         let Some(re) = self.re.as_ref() else {
@@ -176,20 +170,19 @@ impl Operator for VerifyCC {
                 }
                 let m = &i[start..end];
                 if Self::luhn_verify(m) {
-                    if let Some(t) = t {
-                        if rule.is_some_and(|r| r.has_capture_action()) {
-                            t.collections.tx_collection.store_or_update_first(b"0", m);
-                            crate::ms_dbg_a!(t, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
-                        }
-                        crate::ms_dbg_a!(
-                            t,
-                            9,
-                            "CC# match \"{}\" at {}. [offset {}]",
-                            String::from_utf8_lossy(&self.base.param),
-                            String::from_utf8_lossy(i),
-                            offset
-                        );
+                    if rule.has_capture_action() {
+                        t.collections.tx_collection.store_or_update_first(b"0", m);
+                        crate::ms_dbg_a!(t, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
                     }
+                    crate::ms_dbg_a!(
+                        t,
+                        9,
+                        "CC# match \"{}\" at {}. [offset {}]",
+                        String::from_utf8_lossy(&self.base.param),
+                        String::from_utf8_lossy(i),
+                        offset
+                    );
+
                     return true;
                 }
             }
@@ -202,6 +195,7 @@ impl Operator for VerifyCC {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operators::operator::test_support::eval;
 
     #[test]
     fn luhn() {
@@ -216,8 +210,8 @@ mod tests {
     fn verify_cc() {
         let mut op = VerifyCC::new(RunTimeString::from_text("\\d{13,16}"));
         op.init("").unwrap();
-        assert!(op.evaluate(None, None, b"cc: 4111111111111111 x", None));
-        assert!(!op.evaluate(None, None, b"cc: 4111111111112 x", None));
+        assert!(eval(&op, b"cc: 4111111111111111 x"));
+        assert!(!eval(&op, b"cc: 4111111111112 x"));
         let mut bad = VerifyCC::new(RunTimeString::from_text("(("));
         assert!(bad.init("").is_err());
     }

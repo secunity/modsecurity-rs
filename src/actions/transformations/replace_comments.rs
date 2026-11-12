@@ -1,10 +1,5 @@
 //! Port of `src/actions/transformations/replace_comments.cc`, `src/actions/transformations/replace_comments.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
-
-crate::transformation_struct!(ReplaceComments);
-
 fn inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();
     let mut changed = false;
@@ -42,8 +37,7 @@ fn inplace(input: &mut Vec<u8>) -> bool {
     changed
 }
 
-impl Transformation for ReplaceComments {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        inplace(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    inplace(value)
 }

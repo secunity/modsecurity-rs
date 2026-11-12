@@ -83,12 +83,12 @@ impl Operator for Eq {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let pt = self.base.string.as_ref().map_or_else(Vec::new, |s| s.evaluate(t.as_deref()));
+        let pt = self.base.param_value(t);
         // A failing std::stoi counts as 0.
         let p = stoi(&pt).unwrap_or(0);
         let i = stoi(input).unwrap_or(0);

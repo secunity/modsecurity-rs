@@ -25,8 +25,7 @@ impl Action for Rev {
         Ok(())
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) -> bool {
+    fn configure(&self, rule: &mut RuleWithActions) {
         rule.rev = self.rev.clone();
-        true
     }
 }

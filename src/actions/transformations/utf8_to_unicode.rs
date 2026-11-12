@@ -1,10 +1,5 @@
 //! Port of `src/actions/transformations/utf8_to_unicode.cc`, `src/actions/transformations/utf8_to_unicode.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
-
-crate::transformation_struct!(Utf8ToUnicode);
-
 const UNICODE_ERROR_CHARACTERS_MISSING: i32 = -1;
 const UNICODE_ERROR_INVALID_ENCODING: i32 = -2;
 
@@ -160,10 +155,9 @@ fn encode(value: &mut Vec<u8>) -> bool {
     changed
 }
 
-impl Transformation for Utf8ToUnicode {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        encode(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    encode(value)
 }
 
 #[cfg(test)]

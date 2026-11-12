@@ -18,12 +18,7 @@ pub struct IpMatchFromFile {
 
 impl IpMatchFromFile {
     pub fn new(param: RunTimeString) -> Self {
-        Self::with_name("IpMatchFromFile", param)
-    }
-
-    /// `IpMatchFromFile(n, param)`
-    pub fn with_name(name: &str, param: RunTimeString) -> Self {
-        IpMatchFromFile { ip_match: IpMatch::with_name(name, param) }
+        IpMatchFromFile { ip_match: IpMatch::with_name("IpMatchFromFile", param) }
     }
 }
 
@@ -36,29 +31,25 @@ impl Operator for IpMatchFromFile {
     }
 
     fn init(&mut self, file: &str) -> Result<(), String> {
-        let mut e = String::new();
         let param = String::from_utf8_lossy(&self.ip_match.base.param).into_owned();
 
-        let res = if param.starts_with("https://") {
-            self.ip_match.tree.add_from_url(&param, &mut e)
+        if param.starts_with("https://") {
+            self.ip_match.tree.add_from_url(&param)
         } else {
-            let mut error = String::new();
-            let resf = find_resource(&param, file, &mut error);
-            if resf.is_empty() {
-                return Err(error);
-            }
-            self.ip_match.tree.add_from_file(&resf, &mut e)
-        };
-
-        if res { Ok(()) } else { Err(e) }
+            let lookup = find_resource(&param, file);
+            let Some(resf) = lookup.path else {
+                return Err(lookup.looked_at);
+            };
+            self.ip_match.tree.add_from_file(&resf)
+        }
     }
 
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         self.ip_match.evaluate(t, rule, input, rm)
     }
@@ -67,15 +58,16 @@ impl Operator for IpMatchFromFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operators::operator::test_support::eval;
 
     #[test]
     fn from_file() {
         let config = format!("{}/test/test-cases/regression/x.json", env!("CARGO_MANIFEST_DIR"));
         let mut op = IpMatchFromFile::new(RunTimeString::from_text("../data/ipMatchFromFile.txt"));
         op.init(&config).unwrap();
-        assert!(op.evaluate(None, None, b"200.249.12.31", None));
-        assert!(op.evaluate(None, None, b"::1", None));
-        assert!(!op.evaluate(None, None, b"200.249.12.32", None));
+        assert!(eval(&op, b"200.249.12.31"));
+        assert!(eval(&op, b"::1"));
+        assert!(!eval(&op, b"200.249.12.32"));
 
         let mut op = IpMatchFromFile::new(RunTimeString::from_text("file-not-found.txt"));
         assert_eq!(

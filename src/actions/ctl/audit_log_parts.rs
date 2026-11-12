@@ -34,8 +34,7 @@ impl Action for AuditLogParts {
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         t.audit_log_modifier.push((self.parts_action, self.parts.clone()));
-        true
     }
 }

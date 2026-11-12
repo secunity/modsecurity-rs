@@ -181,7 +181,9 @@ impl DebugLog for CustomDebugLog {
         self.level = level;
     }
 
-    fn set_debug_log_file(&mut self, _file_name: &str, _error: &mut String) {}
+    fn set_debug_log_file(&mut self, _file_name: &str) -> Result<(), String> {
+        Ok(())
+    }
 
     fn get_debug_log_file(&self) -> &str {
         ""

@@ -21,19 +21,17 @@ impl Operator for BeginsWith {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let p = self.base.string.as_ref().map_or_else(Vec::new, |s| s.evaluate(t.as_deref()));
+        let p = self.base.param_value(t);
 
         if input.len() < p.len() {
             false
         } else if input.starts_with(&p) {
-            if let Some(rm) = rm {
-                log_offset(rm, 0, p.len());
-            }
+            log_offset(rm, 0, p.len());
             true
         } else {
             false

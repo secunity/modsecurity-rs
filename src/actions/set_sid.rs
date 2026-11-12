@@ -24,13 +24,12 @@ impl SetSID {
 impl Action for SetSID {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let col_name_expanded = self.string.evaluate(Some(t));
         crate::ms_dbg_a!(t, 8, "Session ID initiated with value: '{}'.", lossy(&col_name_expanded));
         t.collections.session_collection_key.clone_from(&col_name_expanded);
         let offset = t.vars.offset;
         t.vars.session_id.set(&col_name_expanded, offset);
-        true
     }
 }
 
@@ -65,7 +64,7 @@ mod tests {
         for (col, field) in [("ip", 0), ("global", 1), ("resource", 2)] {
             let mut a = InitCol::with_rts(&format!("initcol:{}=", col), rts("k"));
             a.init().unwrap();
-            assert!(a.evaluate(&r, &mut t, &mut rm));
+            a.evaluate(&r, &mut t, &mut rm);
             let c = &t.collections;
             let key = [&c.ip_collection_key, &c.global_collection_key, &c.resource_collection_key][field];
             assert_eq!(key, b"k");

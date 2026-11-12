@@ -81,17 +81,15 @@ impl Operator for ValidateByteRange {
 
     fn evaluate(
         &self,
-        _t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        _t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        mut rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         let mut count = 0usize;
         for (i, &x) in input.iter().enumerate() {
             if self.table[usize::from(x >> 3)] & (1 << (x & 0x7)) == 0 {
-                if let Some(rm) = rm.as_deref_mut() {
-                    log_offset(rm, i, 1);
-                }
+                log_offset(rm, i, 1);
                 count += 1;
             }
         }
@@ -103,6 +101,7 @@ impl Operator for ValidateByteRange {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operators::operator::test_support::eval;
 
     fn op(p: &str) -> Result<ValidateByteRange, String> {
         let mut o = ValidateByteRange::new(RunTimeString::from_text(p));
@@ -112,8 +111,8 @@ mod tests {
     #[test]
     fn ranges() {
         let o = op("10,13,32-126").unwrap();
-        assert!(!o.evaluate(None, None, b"Hello World\r\n", None));
-        assert!(o.evaluate(None, None, b"\x01", None));
+        assert!(!eval(&o, b"Hello World\r\n"));
+        assert!(eval(&o, b"\x01"));
         assert_eq!(op("1-300").unwrap_err(), "Invalid range end value: 300");
         assert_eq!(op("20-10").unwrap_err(), "Invalid range: 20-10");
         assert_eq!(op("x").unwrap_err(), "Not able to convert 'x' into a number");

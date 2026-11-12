@@ -81,16 +81,16 @@ impl Operator for InspectFile {
     crate::operator_base_accessors!();
 
     fn init(&mut self, param2: &str) -> Result<(), String> {
-        let mut err = String::new();
-        let mut err_lua = String::new();
         let param = String::from_utf8_lossy(&self.base.param).into_owned();
 
-        self.file = find_resource(&param, param2, &mut err);
+        let lookup = find_resource(&param, param2);
+        self.file = lookup.path.unwrap_or_default();
         if std::fs::File::open(&self.file).is_err() {
-            return Err(format!("Failed to open file: {}. {}", param, err));
+            return Err(format!("Failed to open file: {}. {}", param, lookup.looked_at));
         }
 
-        if Lua::is_compatible(&self.file, &mut self.lua, &mut err_lua) {
+        if let Ok(lua) = Lua::from_script(&self.file) {
+            self.lua = lua;
             self.is_script = true;
         }
 
@@ -99,17 +99,14 @@ impl Operator for InspectFile {
 
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
         if self.is_script {
             // Lua scripts need a transaction to run against.
-            return match t {
-                Some(t) => self.lua.run(t, input) != 0,
-                None => false,
-            };
+            return self.lua.run(t, input) != 0;
         }
 
         let Some(res) = self.run_program(input) else {
@@ -127,6 +124,7 @@ impl Operator for InspectFile {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use crate::operators::operator::test_support::eval;
 
     /// The operator with its program set (init() also asks the Lua engine
     /// whether the file is a script).
@@ -140,22 +138,22 @@ mod tests {
     fn external_program() {
         // /bin/echo prints its argument: "1\n" does not match, "0\n" does.
         let echo = op("/bin/echo");
-        assert!(!echo.evaluate(None, None, b"1", None));
-        assert!(echo.evaluate(None, None, b"0", None));
-        assert!(echo.evaluate(None, None, b"whee", None));
+        assert!(!eval(&echo, b"1"));
+        assert!(eval(&echo, b"0"));
+        assert!(eval(&echo, b"whee"));
 
         let helper = format!("{}/test/test-cases/data/inspectfile-posix-helper.sh", env!("CARGO_MANIFEST_DIR"));
         let helper = op(&helper);
-        assert!(helper.evaluate(None, None, b"match", None));
-        assert!(!helper.evaluate(None, None, b"nomatch", None));
+        assert!(eval(&helper, b"match"));
+        assert!(!eval(&helper, b"nomatch"));
         // Output on stderr only, and a non-zero exit status, never match.
-        assert!(!helper.evaluate(None, None, b"stderr-only", None));
-        assert!(!helper.evaluate(None, None, b"other", None));
+        assert!(!eval(&helper, b"stderr-only"));
+        assert!(!eval(&helper, b"other"));
         // Spaces and shell characters are passed as a single argument.
-        assert!(!helper.evaluate(None, None, b"match; echo 0", None));
+        assert!(!eval(&helper, b"match; echo 0"));
 
         let not_exec = format!("{}/test/test-cases/data/inspectfile-not-executable.txt", env!("CARGO_MANIFEST_DIR"));
-        assert!(!op(&not_exec).evaluate(None, None, b"match", None));
+        assert!(!eval(&op(&not_exec), b"match"));
     }
 
     #[test]

@@ -2,14 +2,15 @@
 //! `src/rules_exceptions.cc`.
 //!
 //! The C++ class keeps the "update target/action by id" tables in
-//! `std::unordered_multimap<double, ...>`. Every consumer filters those
-//! tables by rule id, so the only observable property of the container is
-//! the relative order of entries sharing an id: libstdc++ inserts a new
+//! `std::unordered_multimap<double, ...>`. Every consumer looks those
+//! tables up by rule id, so the only observable property of the container
+//! is the relative order of entries sharing an id: libstdc++ inserts a new
 //! element in front of its equivalents. [`IdMultimap`] reproduces exactly
 //! that. The tag/msg tables are keyed by freshly allocated
 //! `shared_ptr<std::string>` (every entry is a distinct key, ordered by
 //! pointer hash); they are kept in insertion order here.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::actions::action::{Action, Kind};
@@ -18,36 +19,48 @@ use crate::variables::variable::Variable;
 
 /// Multimap keyed by rule id where a new entry goes in front of the existing
 /// entries with the same id (libstdc++ `unordered_multimap::emplace`).
+///
+/// Ids are C++ `double`s: the key is the bit pattern of the `f64` (with
+/// `-0.0` folded into `0.0`), which gives the same equality as comparing the
+/// numbers (rule ids are never NaN).
 #[derive(Debug)]
 pub struct IdMultimap<V> {
-    entries: Vec<(f64, V)>,
+    by_id: HashMap<u64, Vec<V>>,
 }
 
 impl<V> Default for IdMultimap<V> {
     fn default() -> Self {
-        IdMultimap { entries: Vec::new() }
+        IdMultimap { by_id: HashMap::new() }
     }
 }
 
-impl<V: Clone> IdMultimap<V> {
-    pub fn emplace(&mut self, key: f64, value: V) {
-        match self.entries.iter().position(|(k, _)| *k == key) {
-            Some(p) => self.entries.insert(p, (key, value)),
-            None => self.entries.push((key, value)),
-        }
-    }
+fn id_key(id: f64) -> u64 {
+    if id == 0.0 { 0.0f64.to_bits() } else { id.to_bits() }
+}
 
-    pub fn iter(&self) -> impl Iterator<Item = &(f64, V)> {
-        self.entries.iter()
+impl<V: Clone> IdMultimap<V> {
+    pub fn emplace(&mut self, id: f64, value: V) {
+        self.by_id.entry(id_key(id)).or_default().insert(0, value);
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.by_id.is_empty()
     }
 
     /// The entries for one rule id, in container order.
-    pub fn for_id(&self, id: f64) -> impl Iterator<Item = &V> {
-        self.entries.iter().filter(move |(k, _)| *k == id).map(|(_, v)| v)
+    pub fn for_id(&self, id: f64) -> &[V] {
+        self.by_id.get(&id_key(id)).map_or(&[], Vec::as_slice)
+    }
+
+    /// Emplaces the entries of `from`, walking each id's entries in
+    /// container order (so a merge reverses them, as with libstdc++).
+    pub fn merge_from(&mut self, from: &IdMultimap<V>) {
+        for (&key, values) in &from.by_id {
+            let to = self.by_id.entry(key).or_default();
+            for v in values {
+                to.insert(0, v.clone());
+            }
+        }
     }
 }
 
@@ -70,7 +83,7 @@ impl RulesExceptions {
     }
 
     /// `loadUpdateActionById`
-    pub fn load_update_action_by_id(&mut self, id: f64, actions: Vec<Box<dyn Action>>) -> Result<(), String> {
+    pub fn load_update_action_by_id(&mut self, id: f64, actions: Vec<Box<dyn Action>>) {
         for a in actions {
             match a.action_kind() {
                 Kind::ConfigurationKind => {
@@ -87,43 +100,37 @@ impl RulesExceptions {
                 }
             }
         }
-        Ok(())
     }
 
     /// `loadRemoveRuleByMsg`
-    pub fn load_remove_rule_by_msg(&mut self, msg: &str) -> Result<(), String> {
+    pub fn load_remove_rule_by_msg(&mut self, msg: &str) {
         self.remove_rule_by_msg.push(msg.to_string());
-        Ok(())
     }
 
     /// `loadRemoveRuleByTag`
-    pub fn load_remove_rule_by_tag(&mut self, tag: &str) -> Result<(), String> {
+    pub fn load_remove_rule_by_tag(&mut self, tag: &str) {
         self.remove_rule_by_tag.push(tag.to_string());
-        Ok(())
     }
 
     /// `loadUpdateTargetByMsg`
-    pub fn load_update_target_by_msg(&mut self, msg: &str, vars: Vec<Box<dyn Variable>>) -> Result<(), String> {
+    pub fn load_update_target_by_msg(&mut self, msg: &str, vars: Vec<Box<dyn Variable>>) {
         for v in vars {
             self.variable_update_target_by_msg.push((Arc::new(msg.to_string()), Arc::from(v)));
         }
-        Ok(())
     }
 
     /// `loadUpdateTargetByTag`
-    pub fn load_update_target_by_tag(&mut self, tag: &str, vars: Vec<Box<dyn Variable>>) -> Result<(), String> {
+    pub fn load_update_target_by_tag(&mut self, tag: &str, vars: Vec<Box<dyn Variable>>) {
         for v in vars {
             self.variable_update_target_by_tag.push((Arc::new(tag.to_string()), Arc::from(v)));
         }
-        Ok(())
     }
 
     /// `loadUpdateTargetById`
-    pub fn load_update_target_by_id(&mut self, id: f64, vars: Vec<Box<dyn Variable>>) -> Result<(), String> {
+    pub fn load_update_target_by_id(&mut self, id: f64, vars: Vec<Box<dyn Variable>>) {
         for v in vars {
             self.variable_update_target_by_id.emplace(id, Arc::from(v));
         }
-        Ok(())
     }
 
     /// `load`: parses the argument of `SecRuleRemoveById` (ids and ranges).
@@ -165,14 +172,12 @@ impl RulesExceptions {
         Err(format!("Not a number or range: {}", a))
     }
 
-    pub fn add_number(&mut self, a: i32) -> bool {
+    pub fn add_number(&mut self, a: i32) {
         self.numbers.push(a);
-        true
     }
 
-    pub fn add_range(&mut self, a: i32, b: i32) -> bool {
+    pub fn add_range(&mut self, a: i32, b: i32) {
         self.ranges.push((a, b));
-        true
     }
 
     /// `contains`
@@ -181,7 +186,7 @@ impl RulesExceptions {
     }
 
     /// `merge`
-    pub fn merge(&mut self, from: &RulesExceptions) -> bool {
+    pub fn merge(&mut self, from: &RulesExceptions) {
         for &a in &from.numbers {
             self.add_number(a);
         }
@@ -194,18 +199,11 @@ impl RulesExceptions {
         for p in &from.variable_update_target_by_msg {
             self.variable_update_target_by_msg.push(p.clone());
         }
-        for (k, v) in from.variable_update_target_by_id.iter() {
-            self.variable_update_target_by_id.emplace(*k, v.clone());
-        }
-        for (k, v) in from.action_pos_update_target_by_id.iter() {
-            self.action_pos_update_target_by_id.emplace(*k, v.clone());
-        }
-        for (k, v) in from.action_pre_update_target_by_id.iter() {
-            self.action_pre_update_target_by_id.emplace(*k, v.clone());
-        }
+        self.variable_update_target_by_id.merge_from(&from.variable_update_target_by_id);
+        self.action_pos_update_target_by_id.merge_from(&from.action_pos_update_target_by_id);
+        self.action_pre_update_target_by_id.merge_from(&from.action_pre_update_target_by_id);
         self.remove_rule_by_msg.extend(from.remove_rule_by_msg.iter().cloned());
         self.remove_rule_by_tag.extend(from.remove_rule_by_tag.iter().cloned());
-        true
     }
 }
 
@@ -219,13 +217,18 @@ mod tests {
         m.emplace(1.0, "a");
         m.emplace(2.0, "x");
         m.emplace(1.0, "b");
-        assert_eq!(m.for_id(1.0).copied().collect::<Vec<_>>(), vec!["b", "a"]);
+        assert_eq!(m.for_id(1.0), ["b", "a"]);
+        assert_eq!(m.for_id(2.0), ["x"]);
+        assert!(m.for_id(3.0).is_empty());
         let mut n = IdMultimap::default();
-        for (k, v) in m.iter() {
-            n.emplace(*k, *v);
-        }
-        // One merge restores insertion order, as with libstdc++.
-        assert_eq!(n.for_id(1.0).copied().collect::<Vec<_>>(), vec!["a", "b"]);
+        n.emplace(1.0, "c");
+        n.merge_from(&m);
+        // A merge walks the entries in container order, emplacing each in
+        // front: it reverses them (as with libstdc++).
+        assert_eq!(n.for_id(1.0), ["a", "b", "c"]);
+        // -0.0 and 0.0 are the same id.
+        m.emplace(-0.0, "z");
+        assert_eq!(m.for_id(0.0), ["z"]);
     }
 
     #[test]

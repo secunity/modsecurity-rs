@@ -21,6 +21,10 @@ impl XmlNS {
 impl Action for XmlNS {
     crate::action_base_accessors!();
 
+    fn xml_namespace(&self) -> Option<(&str, &str)> {
+        Some((&self.scope, &self.href))
+    }
+
     fn init(&mut self) -> Result<(), String> {
         let http = "http://";
         let payload = &self.base.parser_payload;

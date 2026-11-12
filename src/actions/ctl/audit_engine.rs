@@ -41,7 +41,7 @@ impl Action for AuditEngine {
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         // C++ prints the numeric value of the enum.
         crate::ms_dbg_a!(
             t,
@@ -50,6 +50,5 @@ impl Action for AuditEngine {
             self.audit_engine as i32
         );
         t.ctl_audit_engine = self.audit_engine;
-        true
     }
 }

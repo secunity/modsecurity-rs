@@ -33,11 +33,16 @@ fn main() {
         let r = if std::fs::metadata(arg).is_ok() { rules.load_from_uri(arg) } else { rules.load(arg) };
 
         let mut err = String::new();
-        if r < 0 {
-            err = std::mem::take(&mut rules.properties.parser_error);
-            ret = -1;
-        }
-        println!("Loaded {} rules.", r);
+        let loaded = match r {
+            Ok(n) => n as i64,
+            Err(_) => {
+                // The errors are reported (and forgotten) per argument.
+                err = std::mem::take(&mut rules.properties.parser_error);
+                ret = -1;
+                -1
+            }
+        };
+        println!("Loaded {} rules.", loaded);
         if !err.is_empty() {
             eprintln!("    {}", err);
         }

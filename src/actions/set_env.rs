@@ -26,7 +26,7 @@ impl SetENV {
 impl Action for SetENV {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let col_name_expanded = self.string.evaluate(Some(t));
         let (name, value) = ssplit_pair(&col_name_expanded, b'=');
         crate::ms_dbg_a!(t, 8, "Setting environment variable: {} to {}", lossy(&name), lossy(&value));
@@ -45,7 +45,6 @@ impl Action for SetENV {
         }
         // The transaction's view of the environment (the `ENV` variable).
         t.variable_envs.insert(name, value);
-        true
     }
 }
 

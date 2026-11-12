@@ -5,7 +5,6 @@ use core::ffi::{c_char, c_void};
 use core::mem::offset_of;
 use core::ptr;
 
-use modsecurity::intervention::{self, ModSecurityIntervention};
 use modsecurity::modsecurity::{
     MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, ModSecurity, ServerLogEntry,
 };
@@ -117,16 +116,13 @@ pub unsafe fn ngx_http_modsecurity_process_intervention(
     r: *mut ngx_http_request_t,
     early_log: bool,
 ) -> ngx_int_t {
-    let mut it = ModSecurityIntervention { status: 200, ..Default::default() };
-
-    if !ctx.modsec_transaction.intervention(&mut it) {
+    let Some(it) = ctx.modsec_transaction.intervention() else {
         return 0;
-    }
+    };
 
     // SAFETY: valid request per the contract.
     let mcf = unsafe { loc_conf(r) };
     if mcf.is_null() {
-        intervention::free(&mut it);
         return NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t;
     }
 
@@ -135,14 +131,14 @@ pub unsafe fn ngx_http_modsecurity_process_intervention(
     // SAFETY: mcf checked above; r->connection->log is valid.
     unsafe {
         if (*mcf).use_error_log != 0 {
-            let log = cstr_bytes(it.log).unwrap_or_else(|| b"(no log message was specified)".to_vec());
-            log_error(NGX_LOG_ERR as ngx_uint_t, (*(*r).connection).log, &log);
+            let log = it.log.as_deref().map_or(&b"(no log message was specified)"[..], str::as_bytes);
+            log_error(NGX_LOG_ERR as ngx_uint_t, (*(*r).connection).log, log);
         }
     }
 
-    let url = cstr_bytes(it.url);
+    // The C connector reads the url as a C string: up to its first NUL.
+    let url = it.url.as_deref().map(|u| u.split(|&c| c == 0).next().unwrap_or_default());
     let status = it.status;
-    intervention::free(&mut it);
 
     if let Some(url) = url {
         // SAFETY: valid request; the header is allocated from its pool.
@@ -202,15 +198,6 @@ pub unsafe fn ngx_http_modsecurity_process_intervention(
 }
 
 /// The bytes of a C string owned by the intervention (None for NULL).
-fn cstr_bytes(p: *const c_char) -> Option<Vec<u8>> {
-    if p.is_null() {
-        return None;
-    }
-    // SAFETY: non-null intervention strings are NUL terminated (malloc'ed by
-    // libmodsecurity).
-    Some(unsafe { core::ffi::CStr::from_ptr(p) }.to_bytes().to_vec())
-}
-
 /// `ngx_http_clear_location(r)`
 ///
 /// # Safety
@@ -349,17 +336,17 @@ unsafe fn arg(cf: *mut ngx_conf_t, n: usize) -> ngx_str_t {
 /// `cf` must be the current configuration.
 unsafe fn rules_result(
     cf: *mut ngx_conf_t,
-    res: i32,
-    mcf: *mut LocConf,
+    res: Result<usize, String>,
     counter: fn(&mut MainConf) -> &mut ngx_uint_t,
 ) -> *mut c_char {
-    // SAFETY: cf and mcf are valid during directive handling.
+    // SAFETY: cf is valid during directive handling.
     unsafe {
-        if res < 0 {
-            return pool_cstr((*cf).pool, &(*mcf).rules_set.get_parser_error());
-        }
+        let n = match res {
+            Ok(n) => n,
+            Err(error) => return pool_cstr((*cf).pool, &error),
+        };
         let mmcf = conf_main_conf(cf, ptr::addr_of!(ngx_http_modsecurity_module)) as *mut MainConf;
-        *counter(&mut *mmcf) += res as ngx_uint_t;
+        *counter(&mut *mmcf) += n as ngx_uint_t;
     }
     NGX_CONF_OK
 }
@@ -375,7 +362,7 @@ unsafe extern "C" fn ngx_conf_set_rules(
     unsafe {
         let rules = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
         let res = (*mcf).rules_set.load(&String::from_utf8_lossy(&rules));
-        rules_result(cf, res, mcf, |m| &mut m.rules_inline)
+        rules_result(cf, res, |m| &mut m.rules_inline)
     }
 }
 
@@ -390,7 +377,7 @@ unsafe extern "C" fn ngx_conf_set_rules_file(
     unsafe {
         let file = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
         let res = (*mcf).rules_set.load_from_uri(&String::from_utf8_lossy(&file));
-        rules_result(cf, res, mcf, |m| &mut m.rules_file)
+        rules_result(cf, res, |m| &mut m.rules_file)
     }
 }
 
@@ -406,7 +393,7 @@ unsafe extern "C" fn ngx_conf_set_rules_remote(
         let key = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
         let server = ngx_str_to_bytes(&arg(cf, 2)).unwrap_or_default();
         let res = (*mcf).rules_set.load_remote(&String::from_utf8_lossy(&key), &String::from_utf8_lossy(&server));
-        rules_result(cf, res, mcf, |m| &mut m.rules_remote)
+        rules_result(cf, res, |m| &mut m.rules_remote)
     }
 }
 
@@ -663,9 +650,8 @@ unsafe extern "C" fn ngx_http_modsecurity_merge_conf(
             c.rules_set.dump();
         }
 
-        let rules = c.rules_set.merge(&mut p.rules_set);
-        if rules < 0 {
-            return pool_cstr((*cf).pool, &c.rules_set.get_parser_error());
+        if let Err(error) = c.rules_set.merge(&mut p.rules_set) {
+            return pool_cstr((*cf).pool, &error);
         }
 
         #[cfg(feature = "ddebug")]

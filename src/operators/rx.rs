@@ -50,10 +50,10 @@ impl Operator for Rx {
 
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         if self.base.param.is_empty() && !self.contains_macro() {
             return true;
@@ -61,7 +61,7 @@ impl Operator for Rx {
 
         let re_owned;
         let re: &Regex = if self.contains_macro() {
-            let eparam = self.base.string.as_ref().map_or_else(Vec::new, |s| s.evaluate(t.as_deref()));
+            let eparam = self.base.param_value(t);
             re_owned = Regex::with_options(&eparam, false, MULTI_LINE);
             &re_owned
         } else if let Some(re) = self.re.as_ref() {
@@ -84,12 +84,7 @@ impl Operator for Rx {
         // (`utils::regex` guards against dangling empty-slice pointers.)
         let subject: &[u8] = input;
         let mut captures: Vec<SMatchCapture> = Vec::new();
-        let match_limit = match t.as_deref() {
-            Some(tr) if tr.rules.properties.pcre_match_limit.set => {
-                u64::from(tr.rules.properties.pcre_match_limit.value)
-            }
-            _ => 0,
-        };
+        let match_limit = t.rules.properties.pcre_match_limit.map_or(0, u64::from);
         let regex_result = re.search_one_match(subject, &mut captures, match_limit);
 
         if regex_result != RegexResult::Ok {
@@ -98,9 +93,7 @@ impl Operator for Rx {
             return self.base.negation;
         }
 
-        if let (Some(rule), Some(t)) = (rule, t)
-            && rule.has_capture_action()
-        {
+        if rule.has_capture_action() {
             for capture in &captures {
                 let capture_substring = &input[capture.offset..capture.offset + capture.length];
                 let key = capture.group.to_string();
@@ -116,10 +109,8 @@ impl Operator for Rx {
             }
         }
 
-        if let Some(rm) = rm {
-            for capture in &captures {
-                log_offset(rm, capture.offset, capture.length);
-            }
+        for capture in &captures {
+            log_offset(rm, capture.offset, capture.length);
         }
 
         !captures.is_empty()
@@ -129,13 +120,14 @@ impl Operator for Rx {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operators::operator::test_support::eval;
 
     #[test]
     fn empty_input_and_captures() {
         let mut op = Rx::new(RunTimeString::from_text("a(b)?c"));
         op.init("").unwrap();
-        assert!(!op.evaluate(None, None, b"", None));
-        assert!(op.evaluate(None, None, b"xac", None));
+        assert!(!eval(&op, b""));
+        assert!(eval(&op, b"xac"));
         let mut bad = Rx::new(RunTimeString::from_text("("));
         assert_eq!(bad.init("").unwrap_err(), "Invalid regular expression: (");
     }

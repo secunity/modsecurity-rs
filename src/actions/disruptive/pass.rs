@@ -4,7 +4,7 @@
 //! intervention.
 
 use crate::actions::action::{Action, ActionBase};
-use crate::intervention;
+use crate::intervention::Intervention;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -27,10 +27,9 @@ impl Action for Pass {
         true
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
-        intervention::free(&mut t.it);
-        intervention::reset(&mut t.it);
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
+        // intervention::free + reset: drops the url and log too.
+        t.intervention = Intervention::default();
         crate::ms_dbg_a!(t, 8, "Running action pass");
-        true
     }
 }

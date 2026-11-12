@@ -49,21 +49,20 @@ impl Action for RuleId {
         Ok(())
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) -> bool {
+    fn configure(&self, rule: &mut RuleWithActions) {
         rule.rule_id = self.rule_id as i64;
-        true
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::block::test_support::rule;
+    use crate::actions::block::test_support::{RuleAction, rule};
 
     fn id(p: &str) -> Result<i64, String> {
         let mut a = RuleId::new(&format!("id:{}", p));
         a.init()?;
-        Ok(rule(vec![Box::new(a)]).rule_id)
+        Ok(rule(vec![RuleAction::Other(Box::new(a))]).rule_id)
     }
 
     #[test]

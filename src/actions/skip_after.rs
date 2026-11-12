@@ -25,9 +25,8 @@ impl SkipAfter {
 impl Action for SkipAfter {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(t, 5, "Setting skipAfter for: {}", self.skip_name);
         t.add_marker(&self.skip_name);
-        true
     }
 }

@@ -9,7 +9,6 @@
 mod common;
 
 use common::*;
-use modsecurity::actions::action::Action;
 use modsecurity::actions::capture::Capture;
 use modsecurity::actions::transformations::transformation;
 use modsecurity::collection::collection::Collection;
@@ -17,7 +16,7 @@ use modsecurity::modsecurity::ModSecurity;
 use modsecurity::operators::libinjection_adapter::{self, InjectionResult};
 use modsecurity::operators::operator;
 use modsecurity::rule_message::RuleMessage;
-use modsecurity::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+use modsecurity::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
 use modsecurity::rules_set::RulesSet;
 use modsecurity::transaction::Transaction;
 use modsecurity::utils::json::JsonValue;
@@ -84,11 +83,10 @@ fn eval_operator(t: &UnitTest, transaction: &mut Transaction<'_>) -> (i64, Vec<u
     let mut op = operator::instantiate(&t.name, &t.param).expect("operator exists");
     let _ = op.init(&t.filename);
     configure_libinjection_override(t);
-    let actions: Option<Vec<Box<dyn Action>>> =
-        if t.capture != 0 { Some(vec![Box::new(Capture::new("capture"))]) } else { None };
+    let actions = if t.capture != 0 { Some(vec![RuleAction::Capture(Capture::new("capture"))]) } else { None };
     let rule = RuleWithActions::new(actions, None, "dummy.conf", -1, RuleWithActionsKind::Unconditional);
     let mut rm = RuleMessage::new(&rule);
-    let matched = op.evaluate(Some(transaction), Some(&rule), &t.input, Some(&mut rm));
+    let matched = op.evaluate(transaction, &rule, &t.input, &mut rm);
     let mut output = Vec::new();
     if t.capture != 0
         && let Some(tx0) = transaction.collections.tx_collection.resolve_first(b"0")
@@ -100,7 +98,7 @@ fn eval_operator(t: &UnitTest, transaction: &mut Transaction<'_>) -> (i64, Vec<u
 }
 
 fn eval_transformation(t: &UnitTest, transaction: &Transaction<'_>) -> (i64, Vec<u8>) {
-    let tfn = transformation::instantiate(&format!("t:{}", t.name));
+    let tfn = transformation::Transformation::from_name(&format!("t:{}", t.name));
     let mut ret = t.input.clone();
     tfn.transform(&mut ret, Some(transaction));
     (1, ret)

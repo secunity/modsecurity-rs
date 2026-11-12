@@ -1,10 +1,6 @@
 //! Port of `src/actions/transformations/js_decode.cc`, `src/actions/transformations/js_decode.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
 use crate::utils::string::{isodigit, valid_hex, x2c};
-
-crate::transformation_struct!(JsDecode);
 
 fn inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();
@@ -111,10 +107,9 @@ fn inplace(input: &mut Vec<u8>) -> bool {
     changed
 }
 
-impl Transformation for JsDecode {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        inplace(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    inplace(value)
 }
 
 #[cfg(test)]

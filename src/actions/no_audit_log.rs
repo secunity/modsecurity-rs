@@ -22,9 +22,8 @@ impl NoAuditLog {
 impl Action for NoAuditLog {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         rm.no_audit_log = true;
         rm.save_message = false;
-        true
     }
 }

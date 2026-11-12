@@ -68,7 +68,6 @@ impl Variable for Xml {
 
     #[cfg(feature = "libxml2")]
     fn evaluate(&self, t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-        use crate::actions::xmlns::XmlNS;
         use crate::request_body_processor::xml::ffi;
 
         let param = &self.base.name;
@@ -106,28 +105,28 @@ impl Variable for Xml {
             }
             Some(rule) => {
                 for x in rule.get_actions_by_name("xmlns", t) {
-                    let Some(z) = x.as_any().downcast_ref::<XmlNS>() else {
+                    let Some((prefix, href)) = x.xml_namespace() else {
                         continue;
                     };
-                    let scope = ffi::c_string(z.scope.as_bytes());
-                    let href = ffi::c_string(z.href.as_bytes());
+                    let scope = ffi::c_string(prefix.as_bytes());
+                    let href_c = ffi::c_string(href.as_bytes());
                     // SAFETY: the context is live; prefix and URI are NUL
                     // terminated (libxml2 copies them).
                     let rc = unsafe {
-                        ffi::xmlXPathRegisterNs(xpath_ctx, scope.as_ptr().cast::<u8>(), href.as_ptr().cast::<u8>())
+                        ffi::xmlXPathRegisterNs(xpath_ctx, scope.as_ptr().cast::<u8>(), href_c.as_ptr().cast::<u8>())
                     };
                     if rc != 0 {
                         crate::ms_dbg_a!(
                             t,
                             1,
                             "Failed to register XML namespace href \"{}\" prefix \"{}\".",
-                            z.href,
-                            z.scope
+                            href,
+                            prefix
                         );
                         return;
                     }
 
-                    crate::ms_dbg_a!(t, 4, "Registered XML namespace href \"{}\" prefix \"{}\"", z.href, z.scope);
+                    crate::ms_dbg_a!(t, 4, "Registered XML namespace href \"{}\" prefix \"{}\"", href, prefix);
                 }
             }
         }

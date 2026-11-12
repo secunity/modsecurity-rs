@@ -69,10 +69,9 @@ impl Operator for FuzzyHash {
         };
         self.threshold = threshold;
 
-        let mut err = String::new();
-        let resource = find_resource(&file, param2, &mut err);
-        let Ok(mut f) = std::fs::File::open(&resource) else {
-            return Err(format!("Failed to open file: {}. {}", String::from_utf8_lossy(&param), err));
+        let lookup = find_resource(&file, param2);
+        let Ok(mut f) = std::fs::File::open(lookup.path.unwrap_or_default()) else {
+            return Err(format!("Failed to open file: {}. {}", String::from_utf8_lossy(&param), lookup.looked_at));
         };
         let mut content = Vec::new();
         // A read error ends the stream, like a failing std::getline.
@@ -99,10 +98,10 @@ impl Operator for FuzzyHash {
     #[cfg(feature = "ssdeep")]
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
         let mut result = [0 as std::ffi::c_char; ffi::FUZZY_MAX_RESULT];
 
@@ -111,7 +110,7 @@ impl Operator for FuzzyHash {
         // FUZZY_MAX_RESULT bytes as fuzzy_hash_buf requires.
         let rc = unsafe { ffi::fuzzy_hash_buf(input.as_ptr(), input.len() as u32, result.as_mut_ptr()) };
         if rc != 0 {
-            crate::ms_dbg_opt!(t.as_deref(), 4, "Problems generating fuzzy hash");
+            crate::ms_dbg_a!(t, 4, "Problems generating fuzzy hash");
             return false;
         }
 
@@ -120,7 +119,7 @@ impl Operator for FuzzyHash {
             // (fuzzy_hash_buf NUL terminates its result).
             let i = unsafe { ffi::fuzzy_compare(chunk.as_ptr(), result.as_ptr()) };
             if i >= self.threshold {
-                crate::ms_dbg_opt!(t.as_deref(), 4, "Fuzzy hash: matched with score: {}.", i);
+                crate::ms_dbg_a!(t, 4, "Fuzzy hash: matched with score: {}.", i);
                 return true;
             }
         }
@@ -132,10 +131,10 @@ impl Operator for FuzzyHash {
     #[cfg(not(feature = "ssdeep"))]
     fn evaluate(
         &self,
-        _t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        _t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         _input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
         // No match.
         false
@@ -145,6 +144,7 @@ impl Operator for FuzzyHash {
 #[cfg(all(test, feature = "ssdeep"))]
 mod tests {
     use super::*;
+    use crate::operators::operator::test_support::eval;
 
     #[test]
     fn param_errors() {
@@ -160,9 +160,9 @@ mod tests {
         let body = std::fs::read(format!("{}/modsecurity.conf-recommended", root)).unwrap();
         let mut op = FuzzyHash::new(RunTimeString::from_text(&format!("{}/test/test-cases/data/ssdeep.txt 1", root)));
         op.init("").unwrap();
-        assert!(op.evaluate(None, None, &body, None));
+        assert!(eval(&op, &body));
         let mut op = FuzzyHash::new(RunTimeString::from_text(&format!("{}/test/test-cases/data/ssdeep.txt 100", root)));
         op.init("").unwrap();
-        assert!(!op.evaluate(None, None, &body, None));
+        assert!(!eval(&op, &body));
     }
 }

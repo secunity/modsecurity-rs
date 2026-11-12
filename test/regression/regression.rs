@@ -12,7 +12,6 @@ mod common;
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use modsecurity::intervention::{self, ModSecurityIntervention};
 use modsecurity::modsecurity::{MODSECURITY_VERSION, ModSecurity, ServerLogEntry};
 use modsecurity::rules_set::RulesSet;
 use modsecurity::transaction::Transaction;
@@ -177,18 +176,16 @@ struct Status {
 }
 
 fn actions(r: &mut Status, t: &mut Transaction<'_>, server_log: &Mutex<String>) {
-    let mut it = ModSecurityIntervention { status: 200, ..Default::default() };
-    if t.intervention(&mut it) {
+    if let Some(it) = t.intervention() {
         if it.status != 0 {
-            r.status = it.status as i64;
+            r.status = i64::from(it.status);
         }
-        if let Some(u) = it.url_str() {
-            r.location.push_str(&u);
+        if let Some(u) = &it.url {
+            r.location.push_str(&String::from_utf8_lossy(u));
         }
-        if let Some(l) = it.log_str() {
-            server_log.lock().unwrap().push_str(&l);
+        if let Some(l) = &it.log {
+            server_log.lock().unwrap().push_str(l);
         }
-        intervention::free(&mut it);
     }
 }
 
@@ -236,16 +233,15 @@ fn run_one(t: &RegressionTest, resources: &[&str]) -> Outcome {
     }
     let mut rules = RulesSet::with_debug_log(Box::new(CustomDebugLog::new()));
 
-    rules.load("SecDebugLogLevel 9");
+    rules.load("SecDebugLogLevel 9").expect("valid directive");
     let filename =
         std::path::Path::new(&t.filename).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-    if rules.load_with_ref(&t.rules, &filename) < 0 {
+    if let Err(s) = rules.load_with_ref(&t.rules, &filename) {
         // Parser error
         if t.parser_error.is_empty() {
-            out.reason = format!("{}parse failed.{}\n{}\n", KRED, RESET, rules.get_parser_error());
+            out.reason = format!("{}parse failed.{}\n{}\n", KRED, RESET, s);
             return out;
         }
-        let s = rules.get_parser_error();
         if contains(&s, &t.parser_error) {
             out.passed = true;
         } else {

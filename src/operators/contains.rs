@@ -22,21 +22,19 @@ impl Operator for Contains {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let p = self.base.string.as_ref().map_or_else(Vec::new, |s| s.evaluate(t.as_deref()));
+        let p = self.base.param_value(t);
         let offset = find(input, &p);
 
         let contains = offset.is_some();
 
-        if let (Some(offset), Some(t)) = (offset, t) {
-            if let Some(rm) = rm {
-                log_offset(rm, offset, p.len());
-            }
-            t.matched.push(p);
+        if let Some(offset) = offset {
+            log_offset(rm, offset, p.len());
+            t.matched.push(p.into_owned());
         }
 
         contains

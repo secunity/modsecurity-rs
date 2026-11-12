@@ -1,10 +1,6 @@
 //! Port of `src/actions/transformations/sql_hex_decode.cc`, `src/actions/transformations/sql_hex_decode.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
 use crate::utils::string::{valid_hex, x2c};
-
-crate::transformation_struct!(SqlHexDecode);
 
 #[inline]
 fn mytolower(ch: u8) -> u8 {
@@ -50,8 +46,7 @@ fn inplace(value: &mut Vec<u8>) -> bool {
     changed
 }
 
-impl Transformation for SqlHexDecode {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        inplace(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    inplace(value)
 }

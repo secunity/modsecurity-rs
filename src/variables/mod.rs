@@ -125,10 +125,8 @@ pub mod files_tmp_names;
 pub mod full_request;
 pub mod full_request_length;
 pub mod geo;
-pub mod global;
 pub mod highest_severity;
 pub mod inbound_data_error;
-pub mod ip;
 pub mod matched_var;
 pub mod matched_var_name;
 pub mod matched_vars;
@@ -158,6 +156,7 @@ pub mod multipart_strict_error;
 pub mod multipart_unmatched_boundary;
 pub mod outbound_data_error;
 pub mod path_info;
+pub mod persistent;
 pub mod query_string;
 pub mod remote_addr;
 pub mod remote_host;
@@ -181,7 +180,6 @@ pub mod request_method;
 pub mod request_protocol;
 pub mod request_uri;
 pub mod request_uri_raw;
-pub mod resource;
 pub mod response_body;
 pub mod response_content_length;
 pub mod response_content_type;
@@ -193,7 +191,6 @@ pub mod rule;
 pub mod server_addr;
 pub mod server_name;
 pub mod server_port;
-pub mod session;
 pub mod session_id;
 pub mod status;
 pub mod time;
@@ -208,7 +205,6 @@ pub mod time_year;
 pub mod tx;
 pub mod unique_id;
 pub mod url_encoded_error;
-pub mod user;
 pub mod user_id;
 pub mod variable;
 pub mod web_app_id;
@@ -255,6 +251,7 @@ pub enum VariableSelector {
 /// in C++ either: the text between the slashes is used as the key.)
 pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Box<dyn variable::Variable>> {
     use VariableSelector as S;
+    use persistent::Persistent;
     use variable::Variable;
 
     /// The `DEFINE_VARIABLE_DICT` style variables (module `$m` with the
@@ -329,34 +326,12 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Box<dyn va
         },
 
         // Collections
-        "RESOURCE" => collection!(
-            resource::ResourceDictElement,
-            resource::ResourceNoDictElement,
-            resource::ResourceDictElementRegexp,
-            resource::ResourceDynamicElement
-        ),
-        "IP" => collection!(ip::IpDictElement, ip::IpNoDictElement, ip::IpDictElementRegexp, ip::IpDynamicElement),
-        "GLOBAL" => collection!(
-            global::GlobalDictElement,
-            global::GlobalNoDictElement,
-            global::GlobalDictElementRegexp,
-            global::GlobalDynamicElement
-        ),
-        "USER" => {
-            collection!(
-                user::UserDictElement,
-                user::UserNoDictElement,
-                user::UserDictElementRegexp,
-                user::UserDynamicElement
-            )
-        }
+        "RESOURCE" => Some(Persistent::Resource.variable(selector)),
+        "IP" => Some(Persistent::Ip.variable(selector)),
+        "GLOBAL" => Some(Persistent::Global.variable(selector)),
+        "USER" => Some(Persistent::User.variable(selector)),
         "TX" => collection!(tx::TxDictElement, tx::TxNoDictElement, tx::TxDictElementRegexp, tx::TxDynamicElement),
-        "SESSION" => collection!(
-            session::SessionDictElement,
-            session::SessionNoDictElement,
-            session::SessionDictElementRegexp,
-            session::SessionDynamicElement
-        ),
+        "SESSION" => Some(Persistent::Session.variable(selector)),
 
         // RUN_TIME_VAR_ENV / RUN_TIME_VAR_XML
         "ENV" => match selector {
@@ -486,7 +461,9 @@ pub(crate) mod test_support {
             true
         }
         fn set_debug_log_level(&mut self, _level: i32) {}
-        fn set_debug_log_file(&mut self, _file_name: &str, _error: &mut String) {}
+        fn set_debug_log_file(&mut self, _file_name: &str) -> Result<(), String> {
+            Ok(())
+        }
         fn get_debug_log_file(&self) -> &str {
             ""
         }
@@ -804,7 +781,7 @@ mod tests {
     fn persistent_collections_are_compartmentalised() {
         let ms = ModSecurity::new();
         let (mut rules, _log) = rules_with_log();
-        rules.properties.sec_web_app_id.value = "app".to_string();
+        rules.properties.sec_web_app_id = Some("app".to_string());
         let mut t = Transaction::new(&ms, &rules, None);
         // The persistent collections may live on disk (LMDB): use keys
         // unique to this run.
@@ -835,11 +812,11 @@ mod tests {
         );
 
         // IP del uses the same compartments.
-        ip::IpDynamicElement::del(&t, b"key1");
+        persistent::Persistent::Ip.del(&t, b"key1");
         assert!(eval(&*var("IP", sel_key("key1")), &t, None).is_empty());
         // Sic: SESSION del uses the IP collection key as second compartment,
         // so it does not remove the value.
-        session::SessionDynamicElement::del(&t, b"key1");
+        persistent::Persistent::Session.del(&t, b"key1");
         assert_eq!(eval(&*var("SESSION", sel_key("key1")), &t, None).len(), 1);
     }
 
@@ -852,8 +829,13 @@ mod tests {
         parent.rev = "3".to_string();
         let mut sev = crate::actions::severity::Severity::new("severity:2");
         sev.severity = 2;
-        let mut child =
-            RuleWithActions::new(Some(vec![Box::new(sev)]), None, "f", 2, RuleWithActionsKind::Unconditional);
+        let mut child = RuleWithActions::new(
+            Some(vec![crate::rule_with_actions::RuleAction::Severity(sev)]),
+            None,
+            "f",
+            2,
+            RuleWithActionsKind::Unconditional,
+        );
         child.rule_id = 0;
         parent.chained_rule_child = Some(Box::new(child));
         let child = parent.chained_rule_child.as_deref().unwrap();
@@ -936,7 +918,7 @@ mod tests {
     fn computed_variables() {
         let ms = ModSecurity::new();
         let (mut rules, _log) = rules_with_log();
-        rules.properties.sec_web_app_id.value = "bisteka".to_string();
+        rules.properties.sec_web_app_id = Some("bisteka".to_string());
         let t = Transaction::new(&ms, &rules, None);
 
         assert_eq!(

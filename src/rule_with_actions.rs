@@ -16,6 +16,7 @@ use crate::actions::capture::Capture;
 use crate::actions::log_data::LogData;
 use crate::actions::msg::Msg;
 use crate::actions::multi_match::MultiMatch;
+use crate::actions::phase::Phase;
 use crate::actions::set_var::SetVar;
 use crate::actions::severity::Severity;
 use crate::actions::tag::Tag;
@@ -43,6 +44,101 @@ pub enum TransformationPath {
     Full,
 }
 pub type TransformationResults = Vec<TransformationResult>;
+
+/// An action of a rule, as built by the parser. The actions a rule keeps in
+/// dedicated slots (sorted with `dynamic_cast` by the C++ constructor) keep
+/// their type; every other action is `Other`.
+#[derive(Debug)]
+pub enum RuleAction {
+    Phase(Phase),
+    Capture(Capture),
+    MultiMatch(MultiMatch),
+    Severity(Severity),
+    LogData(LogData),
+    Msg(Msg),
+    SetVar(SetVar),
+    Tag(Tag),
+    Block(Block),
+    Other(Box<dyn Action>),
+}
+
+/// Applies `$f` to the action held by a [`RuleAction`], whatever its type.
+macro_rules! with_action {
+    ($a:expr, $x:ident => $f:expr) => {
+        match $a {
+            RuleAction::Phase($x) => $f,
+            RuleAction::Capture($x) => $f,
+            RuleAction::MultiMatch($x) => $f,
+            RuleAction::Severity($x) => $f,
+            RuleAction::LogData($x) => $f,
+            RuleAction::Msg($x) => $f,
+            RuleAction::SetVar($x) => $f,
+            RuleAction::Tag($x) => $f,
+            RuleAction::Block($x) => $f,
+            RuleAction::Other($x) => $f,
+        }
+    };
+}
+
+impl RuleAction {
+    pub fn as_action(&self) -> &dyn Action {
+        with_action!(self, a => a.as_dyn())
+    }
+
+    pub fn as_action_mut(&mut self) -> &mut dyn Action {
+        with_action!(self, a => a.as_dyn_mut())
+    }
+
+    pub fn into_action(self) -> Box<dyn Action> {
+        with_action!(self, a => a.into_dyn())
+    }
+}
+
+/// Conversions to a trait object, for both the concrete actions and the
+/// boxed `Other` ones.
+trait AsDynAction {
+    fn as_dyn(&self) -> &dyn Action;
+    fn as_dyn_mut(&mut self) -> &mut dyn Action;
+    fn into_dyn(self) -> Box<dyn Action>;
+}
+
+impl<T: Action + 'static> AsDynAction for T {
+    fn as_dyn(&self) -> &dyn Action {
+        self
+    }
+    fn as_dyn_mut(&mut self) -> &mut dyn Action {
+        self
+    }
+    fn into_dyn(self) -> Box<dyn Action> {
+        Box::new(self)
+    }
+}
+
+impl AsDynAction for Box<dyn Action> {
+    fn as_dyn(&self) -> &dyn Action {
+        self.as_ref()
+    }
+    fn as_dyn_mut(&mut self) -> &mut dyn Action {
+        self.as_mut()
+    }
+    fn into_dyn(self) -> Box<dyn Action> {
+        self
+    }
+}
+
+/// Where [`RuleWithActions::perform_logging`] is called from (the C++
+/// `lastLog` / `chainedParentNull` flags).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogPoint {
+    /// A match of a `SecRule` (`lastLog = false`): logs `multiMatch` rules.
+    EachMatch,
+    /// The end of a matching `SecRule` (`lastLog = true`,
+    /// `chainedParentNull = true`).
+    RuleEnd,
+    /// The end of a `SecAction` (`lastLog = true`,
+    /// `chainedParentNull = false`).
+    UnconditionalEnd,
+}
 
 /// The subclass specific part of a rule.
 #[derive(Debug)]
@@ -72,13 +168,13 @@ pub struct RuleWithActions {
     pub chained_rule_parent: bool,
 
     disruptive_action: Option<Box<dyn Action>>,
-    log_data: Option<Box<LogData>>,
-    msg: Option<Box<Msg>>,
-    severity: Option<Box<Severity>>,
+    log_data: Option<LogData>,
+    msg: Option<Msg>,
+    severity: Option<Severity>,
     actions_runtime_pos: Vec<Box<dyn Action>>,
     actions_set_var: Vec<SetVar>,
     actions_tag: Vec<Tag>,
-    transformations: Vec<Box<dyn Transformation>>,
+    transformations: Vec<Transformation>,
 
     contains_capture_action: bool,
     contains_multi_match_action: bool,
@@ -88,21 +184,14 @@ pub struct RuleWithActions {
     pub kind: RuleWithActionsKind,
 }
 
-/// Moves a boxed action into its concrete type (`dynamic_cast` + ownership
-/// transfer). The caller checks the type first.
-fn downcast_box<T: Action>(a: Box<dyn Action>) -> Box<T> {
-    let any: Box<dyn std::any::Any> = a;
-    any.downcast::<T>().expect("type checked by caller")
-}
-
 impl RuleWithActions {
     /// `RuleWithActions(actions, transformations, fileName, lineNumber)`
     /// plus the subclass part. Configuration actions (`id`, `phase`, ...)
     /// are applied to the rule here and dropped; run time actions are sorted
     /// into their slots.
     pub fn new(
-        actions: Option<Vec<Box<dyn Action>>>,
-        transformations: Option<Vec<Box<dyn Transformation>>>,
+        actions: Option<Vec<RuleAction>>,
+        transformations: Option<Vec<Transformation>>,
         file_name: &str,
         line_number: i32,
         kind: RuleWithActionsKind,
@@ -132,40 +221,33 @@ impl RuleWithActions {
             is_chained: false,
             kind,
         };
-        if let Some(actions) = actions {
-            for a in actions {
-                match a.action_kind() {
+        for a in actions.into_iter().flatten() {
+            match a {
+                // The only configuration action with a type of its own.
+                RuleAction::Phase(p) => {
+                    p.configure(&mut r);
+                }
+                RuleAction::Capture(_) => r.contains_capture_action = true,
+                RuleAction::MultiMatch(_) => r.contains_multi_match_action = true,
+                RuleAction::Severity(a) => r.severity = Some(a),
+                RuleAction::LogData(a) => r.log_data = Some(a),
+                RuleAction::Msg(a) => r.msg = Some(a),
+                RuleAction::SetVar(a) => r.actions_set_var.push(a),
+                RuleAction::Tag(a) => r.actions_tag.push(a),
+                RuleAction::Block(a) => {
+                    r.actions_runtime_pos.push(Box::new(a));
+                    r.contains_static_block_action = true;
+                }
+                RuleAction::Other(a) => match a.action_kind() {
                     Kind::ConfigurationKind => {
                         a.configure(&mut r);
                     }
-                    Kind::RunTimeOnlyIfMatchKind => {
-                        if a.is::<Capture>() {
-                            r.contains_capture_action = true;
-                        } else if a.is::<MultiMatch>() {
-                            r.contains_multi_match_action = true;
-                        } else if a.is::<Severity>() {
-                            r.severity = Some(downcast_box(a));
-                        } else if a.is::<LogData>() {
-                            r.log_data = Some(downcast_box(a));
-                        } else if a.is::<Msg>() {
-                            r.msg = Some(downcast_box(a));
-                        } else if a.is::<SetVar>() {
-                            r.actions_set_var.push(*downcast_box(a));
-                        } else if a.is::<Tag>() {
-                            r.actions_tag.push(*downcast_box(a));
-                        } else if a.is::<Block>() {
-                            r.actions_runtime_pos.push(a);
-                            r.contains_static_block_action = true;
-                        } else if a.is_disruptive() {
-                            r.disruptive_action = Some(a);
-                        } else {
-                            r.actions_runtime_pos.push(a);
-                        }
-                    }
+                    Kind::RunTimeOnlyIfMatchKind if a.is_disruptive() => r.disruptive_action = Some(a),
+                    Kind::RunTimeOnlyIfMatchKind => r.actions_runtime_pos.push(a),
                     Kind::RunTimeBeforeMatchAttemptKind => {
                         println!("General failure, action: {} has an unknown type.", a.name());
                     }
-                }
+                },
             }
         }
         r
@@ -263,7 +345,7 @@ impl RuleWithActions {
         self.disruptive_action.as_deref()
     }
 
-    pub fn transformations(&self) -> &[Box<dyn Transformation>] {
+    pub fn transformations(&self) -> &[Transformation] {
         &self.transformations
     }
 
@@ -302,13 +384,14 @@ impl RuleWithActions {
         t.matched.clear();
     }
 
-    /// `executeActionsIndependentOfChainedRuleResult`
+    /// `executeActionsIndependentOfChainedRuleResult`. Returns whether a
+    /// `SecRuleUpdateActionById` added a `block` action to the rule.
     pub fn execute_actions_independent_of_chained_rule_result<'a>(
         &'a self,
         t: &mut Transaction<'a>,
-        contains_block: &mut bool,
         rm: &mut RuleMessage<'a>,
-    ) {
+    ) -> bool {
+        let mut contains_block = false;
         for a in &self.actions_set_var {
             crate::ms_dbg_a!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
             a.evaluate(self, t, rm);
@@ -318,7 +401,7 @@ impl RuleWithActions {
         for a in rules.properties.exceptions.action_pre_update_target_by_id.for_id(self.rule_id as f64) {
             if a.is_disruptive() && a.name() == "block" {
                 crate::ms_dbg_a!(t, 9, "Rule contains a `block' action");
-                *contains_block = true;
+                contains_block = true;
             } else if a.name() == "setvar" {
                 crate::ms_dbg_a!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
                 a.evaluate(self, t, rm);
@@ -339,6 +422,7 @@ impl RuleWithActions {
                 a.evaluate(self, t, rm);
             }
         }
+        contains_block
     }
 
     /// `executeActionsAfterFullMatch`
@@ -382,7 +466,8 @@ impl RuleWithActions {
             m.evaluate(self, t, rm);
         }
         for a in &self.actions_runtime_pos {
-            if !a.is_disruptive() && !(disruptive_already_executed && a.is::<Block>()) {
+            // Neither disruptive, nor a `block` once a disruptive action ran.
+            if !(a.is_disruptive() || disruptive_already_executed && a.is_block()) {
                 self.execute_action(t, contains_block, rm, a.as_ref(), false);
             }
         }
@@ -411,7 +496,7 @@ impl RuleWithActions {
             return;
         }
 
-        if t.get_rule_engine_state() == RuleEngine::EnabledRuleEngine {
+        if t.get_rule_engine_state() == Some(RuleEngine::Enabled) {
             crate::ms_dbg_a!(t, 4, "Running (disruptive)     action: {}.", a.name());
             a.evaluate(self, t, rm);
             return;
@@ -424,7 +509,7 @@ impl RuleWithActions {
     /// the `SecDefaultAction` ones (unless the rule has `t:none`), the
     /// rule's own (from its last `t:none` on) and the `SecRuleUpdateActionById`
     /// ones (likewise).
-    fn for_each_transformation(&self, t: &Transaction<'_>, mut f: impl FnMut(&dyn Transformation)) {
+    fn for_each_transformation(&self, t: &Transaction<'_>, mut f: impl FnMut(&Transformation)) {
         let mut none = 0;
 
         for a in &self.transformations {
@@ -451,7 +536,7 @@ impl RuleWithActions {
 
         for a in &self.transformations {
             if none == 0 {
-                f(a.as_ref());
+                f(a);
             }
             if a.base().is_none {
                 none -= 1;
@@ -548,7 +633,7 @@ impl RuleWithActions {
         }
         for z in &self.transformations {
             if z.name() == name {
-                ret.push(z.as_ref());
+                ret.push(z);
             }
         }
         let ex = &t.rules.properties.exceptions;
@@ -565,17 +650,12 @@ impl RuleWithActions {
         ret
     }
 
-    /// `performLogging`
-    pub fn perform_logging<'a>(
-        &'a self,
-        t: &mut Transaction<'a>,
-        rm: &mut RuleMessage<'a>,
-        last_log: bool,
-        chained_parent_null: bool,
-    ) {
+    /// `performLogging`: saves the message for the audit log and sends it
+    /// to the server log, depending on where the rule is in its evaluation.
+    pub fn perform_logging<'a>(&'a self, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>, point: LogPoint) {
         let mut is_it_to_be_logged = rm.save_message;
-        if last_log {
-            if chained_parent_null {
+        if point != LogPoint::EachMatch {
+            if point == LogPoint::RuleEnd {
                 is_it_to_be_logged = rm.save_message && !self.chained_rule_parent;
                 if is_it_to_be_logged && !self.has_multimatch() {
                     t.rules_messages.push(rm.clone());

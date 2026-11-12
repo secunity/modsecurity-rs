@@ -163,7 +163,7 @@ impl Pm {
     }
 
     /// `Pm(n, param)`: used by `@pmFromFile` / `@pmf`.
-    pub fn with_name(name: &str, param: RunTimeString) -> Self {
+    pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
         Pm { base: OperatorBase::with_string(name, param), p: Matcher::new() }
     }
 
@@ -175,20 +175,18 @@ impl Pm {
     /// `Pm::evaluate`, shared by the `@pm` family.
     pub(crate) fn evaluate_pm(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         let rc = self.p.find(input);
 
-        if let (Some((offset, m)), Some(t)) = (rc, t) {
-            if let Some(rm) = rm {
-                log_offset(rm, (offset + 1).saturating_sub(m.len()), m.len());
-            }
+        if let Some((offset, m)) = rc {
+            log_offset(rm, (offset + 1).saturating_sub(m.len()), m.len());
             t.matched.push(m.to_vec());
 
-            if rule.is_some_and(|r| r.has_capture_action()) {
+            if rule.has_capture_action() {
                 t.collections.tx_collection.store_or_update_first(b"0", m);
                 crate::ms_dbg_a!(t, 7, "Added pm match TX.0: {}", String::from_utf8_lossy(m));
             }
@@ -215,10 +213,10 @@ impl Operator for Pm {
 
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         self.evaluate_pm(t, rule, input, rm)
     }
@@ -227,6 +225,7 @@ impl Operator for Pm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operators::operator::test_support::eval;
 
     #[test]
     fn pm_content() {
@@ -290,7 +289,7 @@ mod tests {
     fn pm_matches() {
         let mut op = Pm::new(RunTimeString::from_text("foo bar"));
         op.init("").unwrap();
-        assert!(op.evaluate(None, None, b"xxBARxx", None));
-        assert!(!op.evaluate(None, None, b"baz", None));
+        assert!(eval(&op, b"xxBARxx"));
+        assert!(!eval(&op, b"baz"));
     }
 }

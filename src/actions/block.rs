@@ -24,7 +24,11 @@ impl Block {
 impl Action for Block {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) -> bool {
+    fn is_block(&self) -> bool {
+        true
+    }
+
+    fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(t, 8, "Marking request as disruptive.");
         let rules = t.rules;
         if let Some(defaults) = rules.properties.default_actions.get(rule.get_phase() as usize) {
@@ -35,7 +39,6 @@ impl Action for Block {
                 a.evaluate(rule, t, rm);
             }
         }
-        true
     }
 }
 
@@ -46,9 +49,9 @@ impl Action for Block {
 pub(crate) mod test_support {
     use std::sync::Mutex;
 
-    use crate::actions::action::Action;
     use crate::collection::collection::Collection;
     use crate::debug_log::debug_log::DebugLog;
+    pub use crate::rule_with_actions::RuleAction;
     use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;
@@ -76,7 +79,9 @@ pub(crate) mod test_support {
             true
         }
         fn set_debug_log_level(&mut self, _level: i32) {}
-        fn set_debug_log_file(&mut self, _file_name: &str, _error: &mut String) {}
+        fn set_debug_log_file(&mut self, _file_name: &str) -> Result<(), String> {
+            Ok(())
+        }
         fn get_debug_log_file(&self) -> &str {
             ""
         }
@@ -106,7 +111,7 @@ pub(crate) mod test_support {
     }
 
     /// A `SecAction` with these actions (configuration actions applied).
-    pub fn rule(actions: Vec<Box<dyn Action>>) -> RuleWithActions {
+    pub fn rule(actions: Vec<RuleAction>) -> RuleWithActions {
         RuleWithActions::new(Some(actions), None, "test.conf", 1, RuleWithActionsKind::Unconditional)
     }
 
@@ -174,7 +179,7 @@ mod tests {
         defaults.push(Arc::new(Deny::new("deny")));
         let mut phase = Phase::new("phase:2");
         phase.init().unwrap();
-        let r = rule(vec![Box::new(phase), Box::new(Block::new("block"))]);
+        let r = rule(vec![RuleAction::Phase(phase), RuleAction::Block(Block::new("block"))]);
         assert!(r.has_block_action());
 
         let mut t = Transaction::new(&ms, &rules, None);
@@ -185,14 +190,14 @@ mod tests {
         assert!(has_log(&t, "Running action deny"));
         // Only the disruptive default action ran.
         assert!(!rm.save_message);
-        assert_eq!(t.it.status, 403);
-        assert_eq!(t.it.disruptive, 1);
+        assert_eq!(t.intervention.status, 403);
+        assert!(t.intervention.disruptive);
         assert!(rm.is_disruptive);
 
         // Nothing happens in a phase without default actions.
         Pass::new("pass").evaluate(&r, &mut t, &mut rm);
-        let r1 = rule(vec![Box::new(Block::new("block"))]);
+        let r1 = rule(vec![RuleAction::Block(Block::new("block"))]);
         Block::new("block").evaluate(&r1, &mut t, &mut rm);
-        assert_eq!(t.it.status, 200);
+        assert_eq!(t.intervention.status, 200);
     }
 }

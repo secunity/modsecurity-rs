@@ -25,7 +25,7 @@ impl PmFromFile {
     }
 
     /// `PmFromFile(n, param)`
-    pub fn with_name(name: &str, param: RunTimeString) -> Self {
+    pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
         PmFromFile { pm: Pm::with_name(name, param) }
     }
 
@@ -80,10 +80,9 @@ impl Operator for PmFromFile {
                 let content = std::mem::take(&mut client.content);
                 self.add_lines(&content);
             } else {
-                let mut err = String::new();
-                let resource = find_resource(&token, config, &mut err);
-                let Ok(mut file) = std::fs::File::open(&resource) else {
-                    return Err(format!("Failed to open file: '{}'. {}", token, err));
+                let lookup = find_resource(&token, config);
+                let Ok(mut file) = std::fs::File::open(lookup.path.unwrap_or_default()) else {
+                    return Err(format!("Failed to open file: '{}'. {}", token, lookup.looked_at));
                 };
                 let mut content = Vec::new();
                 // A read error ends the stream, like a failing std::getline.
@@ -98,10 +97,10 @@ impl Operator for PmFromFile {
 
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         self.pm.evaluate_pm(t, rule, input, rm)
     }

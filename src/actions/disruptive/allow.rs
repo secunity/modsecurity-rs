@@ -57,7 +57,7 @@ impl Action for Allow {
         true
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(
             t,
             4,
@@ -65,7 +65,6 @@ impl Action for Allow {
             Self::allow_type_to_name(self.allow_type)
         );
         t.allow_type = self.allow_type;
-        true
     }
 }
 

@@ -27,10 +27,10 @@ impl Operator for UnconditionalMatch {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        _t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        _t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         _input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
         true
     }

@@ -66,10 +66,10 @@ impl Operator for ValidateUrlEncoding {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         let mut offset = 0;
 
@@ -79,43 +79,34 @@ impl Operator for ValidateUrlEncoding {
 
         let rc = Self::validate_url_encoding(input, &mut offset);
         let input_s = String::from_utf8_lossy(input);
-        let log = |rm: Option<&mut RuleMessage<'_>>| {
-            if let Some(rm) = rm {
-                log_offset(rm, offset, input.len());
-            }
-        };
         match rc {
             1 => {
                 // Encoding is valid.
-                if let Some(t) = t {
-                    crate::ms_dbg_a!(t, 7, "Valid URL Encoding at '{}'", input_s);
-                }
+                crate::ms_dbg_a!(t, 7, "Valid URL Encoding at '{}'", input_s);
+
                 false
             }
             -2 => {
-                if let Some(t) = t {
-                    crate::ms_dbg_a!(t, 7, "Invalid URL Encoding: Non-hexadecimal digits used at '{}'", input_s);
-                    log(rm);
-                }
+                crate::ms_dbg_a!(t, 7, "Invalid URL Encoding: Non-hexadecimal digits used at '{}'", input_s);
+                log_offset(rm, offset, input.len());
+
                 true // Invalid match.
             }
             -3 => {
-                if let Some(t) = t {
-                    crate::ms_dbg_a!(
-                        t,
-                        7,
-                        "Invalid URL Encoding: Not enough characters at the end of input at '{}'",
-                        input_s
-                    );
-                    log(rm);
-                }
+                crate::ms_dbg_a!(
+                    t,
+                    7,
+                    "Invalid URL Encoding: Not enough characters at the end of input at '{}'",
+                    input_s
+                );
+                log_offset(rm, offset, input.len());
+
                 true // Invalid match.
             }
             _ => {
-                if let Some(t) = t {
-                    crate::ms_dbg_a!(t, 7, "Invalid URL Encoding: Internal Error (rc = {}) at '{}'", rc, input_s);
-                    log(rm);
-                }
+                crate::ms_dbg_a!(t, 7, "Invalid URL Encoding: Internal Error (rc = {}) at '{}'", rc, input_s);
+                log_offset(rm, offset, input.len());
+
                 true
             }
         }

@@ -3,7 +3,7 @@
 
 use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::{RuleWithActions, TransformationPath};
+use crate::rule_with_actions::{LogPoint, RuleWithActions, TransformationPath};
 use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
@@ -23,7 +23,7 @@ impl RuleWithOperator {
 
     /// `getOperatorName`
     pub fn get_operator_name(&self) -> &str {
-        &self.operator.base().op
+        self.operator.base().op
     }
 
     /// `updateMatchedVars`
@@ -52,7 +52,7 @@ impl RuleWithOperator {
             String::from_utf8_lossy(&limit_to(80, to_hex_if_needed(value, false).as_bytes())),
             String::from_utf8_lossy(key)
         );
-        self.operator.evaluate_internal(Some(t), Some(rule), value, Some(rm))
+        self.operator.evaluate_internal(t, rule, value, rm)
     }
 
     /// `getVariablesExceptions`
@@ -227,8 +227,8 @@ impl RuleWithOperator {
                             }
                         }
                         Self::update_matched_vars(t, key, value_after_trans);
-                        rule.execute_actions_independent_of_chained_rule_result(t, &mut contains_block, rm);
-                        rule.perform_logging(t, rm, false, false);
+                        contains_block |= rule.execute_actions_independent_of_chained_rule_result(t, rm);
+                        rule.perform_logging(t, rm, LogPoint::EachMatch);
                         global_ret = true;
                     }
                 }
@@ -260,7 +260,7 @@ impl RuleWithOperator {
 
         rule.execute_actions_after_full_match(t, contains_block, rm);
         // last rule in the chain.
-        rule.perform_logging(t, rm, true, true);
+        rule.perform_logging(t, rm, LogPoint::RuleEnd);
         true
     }
 }

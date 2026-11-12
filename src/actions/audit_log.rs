@@ -21,10 +21,9 @@ impl AuditLog {
 impl Action for AuditLog {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         rm.no_audit_log = false;
         crate::ms_dbg_a!(t, 9, "Saving transaction to logs");
         rm.save_message = true;
-        true
     }
 }

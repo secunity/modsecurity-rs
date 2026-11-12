@@ -30,11 +30,10 @@ impl RuleScript {
         rm: &mut RuleMessage<'a>,
     ) -> bool {
         crate::ms_dbg_a!(t, 4, " Executing script: {}.", self.name);
-        let mut contains_disruptive = false;
-        rule.execute_actions_independent_of_chained_rule_result(t, &mut contains_disruptive, rm);
+        let contains_block = rule.execute_actions_independent_of_chained_rule_result(t, rm);
         let ret = self.lua.run(t, b"") != 0;
         if ret {
-            rule.execute_actions_after_full_match(t, contains_disruptive, rm);
+            rule.execute_actions_after_full_match(t, contains_block, rm);
         }
         ret
     }

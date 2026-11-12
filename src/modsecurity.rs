@@ -199,7 +199,7 @@ impl ModSecurity {
     /// opened containers (yajl does not check them and rejects the last
     /// one).
     pub fn process_content_offset(content: &[u8], match_string: &str) -> Result<Vec<u8>, String> {
-        use crate::actions::transformations::transformation::instantiate;
+        use crate::actions::transformations::transformation::Transformation;
         use crate::utils::json::JsonGen;
         use crate::utils::regex::Regex;
 
@@ -275,7 +275,7 @@ impl ModSecurity {
 
             g.string(m.str());
 
-            let t = instantiate(&String::from_utf8_lossy(m.str()));
+            let t = Transformation::from_name(&String::from_utf8_lossy(m.str()));
             t.transform(&mut var_value, None);
 
             g.string(b"value");

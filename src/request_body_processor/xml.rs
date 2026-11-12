@@ -292,13 +292,68 @@ pub(crate) mod ffi {
 #[cfg(feature = "libxml2")]
 mod with_libxml2 {
     use std::ffi::{c_char, c_int, c_void};
-    use std::ptr;
+    use std::ptr::{self, NonNull};
 
     use super::ffi;
-    use crate::rules_set_properties::{
-        ConfigBoolean, ConfigXMLParseXmlIntoArgs, config_xml_parse_xml_into_args_string,
-    };
+    use crate::rules_set_properties::{ParseXmlIntoArgs, config_xml_parse_xml_into_args_string};
     use crate::transaction::Transaction;
+
+    /// An owned libxml2 parser context, freed on drop.
+    #[derive(Debug)]
+    struct ParserCtxt(NonNull<ffi::xmlParserCtxt>);
+
+    impl ParserCtxt {
+        /// Takes ownership of a context returned by
+        /// `xmlCreatePushParserCtxt` (`None` if it failed).
+        fn from_raw(p: *mut ffi::xmlParserCtxt) -> Option<Self> {
+            NonNull::new(p).map(ParserCtxt)
+        }
+
+        fn as_ptr(&self) -> *mut ffi::xmlParserCtxt {
+            self.0.as_ptr()
+        }
+
+        fn well_formed(&self) -> c_int {
+            // SAFETY: the context is live while `self` exists.
+            unsafe { (*self.as_ptr()).wellFormed }
+        }
+
+        /// `xmlParseChunk` (`terminate` signals the end of the input).
+        fn parse_chunk(&self, buf: &[u8], terminate: bool) -> c_int {
+            let (chunk, size) = if terminate { (ptr::null(), 0) } else { (buf.as_ptr().cast(), c_len(buf)) };
+            // SAFETY: the context is live; chunk/size describe `buf` (or are
+            // null/0 for the final call).
+            unsafe { ffi::xmlParseChunk(self.as_ptr(), chunk, size, c_int::from(terminate)) }
+        }
+
+        /// Disables parser errors being printed to stderr.
+        fn quiet(&self) {
+            // SAFETY: the context is live.
+            unsafe {
+                let options = ffi::xmlCtxtGetOptions(self.as_ptr());
+                ffi::xmlCtxtSetOptions(self.as_ptr(), options | ffi::XML_PARSE_NOWARNING | ffi::XML_PARSE_NOERROR);
+            }
+        }
+    }
+
+    impl Drop for ParserCtxt {
+        fn drop(&mut self) {
+            // SAFETY: the context is owned by `self` and freed only here. The
+            // document it built (if any) is not freed with it.
+            unsafe { ffi::xmlFreeParserCtxt(self.as_ptr()) }
+        }
+    }
+
+    /// An owned libxml2 document, freed on drop.
+    #[derive(Debug)]
+    struct XmlDoc(NonNull<ffi::xmlDoc>);
+
+    impl Drop for XmlDoc {
+        fn drop(&mut self) {
+            // SAFETY: the document is owned by `self` and freed only here.
+            unsafe { ffi::xmlFreeDoc(self.0.as_ptr()) }
+        }
+    }
 
     /// `NodeData` for parsing XML into args.
     #[derive(Debug, Default)]
@@ -315,12 +370,6 @@ mod with_libxml2 {
         currpath: Vec<u8>,
         currval: Vec<u8>,
         currval_is_set: bool,
-        /// The transaction the arguments go to, set only for the duration
-        /// of the libxml2 calls made by `process_chunk` / `complete`.
-        transaction: *mut Transaction<'static>,
-        // need to store context - this is the same as in xml_data
-        // need to stop parsing if the number of arguments reached the limit
-        parsing_ctx_arg: *mut ffi::xmlParserCtxt,
     }
 
     impl XmlNodes {
@@ -328,11 +377,11 @@ mod with_libxml2 {
             XmlNodes {
                 nodes: Vec::new(),
                 node_depth: 0,
-                currpath: Vec::new(),
+                // the XML will contain at least one node, which is the pseudo
+                // root node 'xml'
+                currpath: b"xml.".to_vec(),
                 currval: Vec::new(),
                 currval_is_set: false,
-                transaction: ptr::null_mut(),
-                parsing_ctx_arg: ptr::null_mut(),
             }
         }
 
@@ -357,17 +406,13 @@ mod with_libxml2 {
             self.currval_is_set = false;
         }
 
-        /// `MSCSAXHandler::onEndElement`
-        fn on_end_element(&mut self, t: &mut Transaction<'_>, name: &[u8]) {
+        /// `MSCSAXHandler::onEndElement`: adds the leaf element as an
+        /// argument. Returns `false` when parsing has to stop because the
+        /// number of arguments reached the limit.
+        fn on_end_element(&mut self, t: &mut Transaction<'_>, name: &[u8]) -> bool {
+            let mut keep_parsing = true;
             if self.nodes.last().is_some_and(|nd| !nd.has_child) {
-                // check the return value
-                // if false, then stop parsing
-                // this means the number of arguments reached the limit
-                if !t.add_argument("XML", &self.currpath, &self.currval, 0) && !self.parsing_ctx_arg.is_null() {
-                    // SAFETY: parsing_ctx_arg is the live context that is
-                    // running this callback.
-                    unsafe { ffi::xmlStopParser(self.parsing_ctx_arg) };
-                }
+                keep_parsing = t.add_argument("XML", &self.currpath, &self.currval, 0);
             }
             if !self.currpath.is_empty() {
                 // set an offset to store whether this is the first item, in
@@ -380,6 +425,7 @@ mod with_libxml2 {
             self.node_depth = self.node_depth.wrapping_sub(1);
             self.currval.clear();
             self.currval_is_set = false;
+            keep_parsing
         }
 
         /// `MSCSAXHandler::onCharacters`
@@ -396,6 +442,43 @@ mod with_libxml2 {
         }
     }
 
+    /// What the SAX callbacks receive as libxml2's `userData`: the parser
+    /// state and the transaction the arguments go to, borrowed for the
+    /// duration of a single libxml2 call ([`SaxCall::run`]).
+    struct SaxCall<'a, 't> {
+        nodes: &'a mut XmlNodes,
+        t: &'a mut Transaction<'t>,
+        /// The context running the callbacks (to stop it).
+        ctxt: *mut ffi::xmlParserCtxt,
+    }
+
+    impl SaxCall<'_, '_> {
+        /// Runs `f` (a libxml2 call on `ctxt`) with `self` installed as the
+        /// context's `userData`, and uninstalls it afterwards, so the
+        /// callbacks never see a dangling pointer.
+        fn run<R>(&mut self, ctxt: *mut ffi::xmlParserCtxt, f: impl FnOnce() -> R) -> R {
+            self.ctxt = ctxt;
+            // SAFETY: `ctxt` is a live parser context; `self` outlives the
+            // call to `f`, after which `userData` is cleared again.
+            unsafe { (*ctxt).userData = (self as *mut Self).cast() };
+            let r = f();
+            // SAFETY: as above.
+            unsafe { (*ctxt).userData = ptr::null_mut() };
+            r
+        }
+
+        /// The `SaxCall` installed by [`SaxCall::run`], if any.
+        ///
+        /// # Safety
+        /// `user_data` must be the `userData` libxml2 passes to a SAX
+        /// callback of a context only used through [`SaxCall::run`].
+        unsafe fn from_user_data<'c>(user_data: *mut c_void) -> Option<&'c mut Self> {
+            // SAFETY: per the contract, `user_data` is null or points to the
+            // `SaxCall` borrowed by the running `SaxCall::run`.
+            unsafe { user_data.cast::<Self>().as_mut() }
+        }
+    }
+
     /// `MSC_startElement`
     unsafe extern "C" fn msc_start_element(
         user_data: *mut c_void,
@@ -408,27 +491,25 @@ mod with_libxml2 {
         _nb_defaulted: c_int,
         _attributes: *mut *const u8,
     ) {
-        // SAFETY: user_data is the `XmlNodes` registered with the parsing
-        // context (boxed, so its address is stable, and alive while the
-        // context is); name is a NUL terminated string owned by libxml2.
+        // SAFETY: called by libxml2 on the ARGS context (see
+        // `SaxCall::from_user_data`); name is a NUL terminated string owned
+        // by libxml2.
         unsafe {
-            let state = &mut *(user_data as *mut XmlNodes);
-            state.on_start_element(ffi::c_bytes(name));
+            if let Some(call) = SaxCall::from_user_data(user_data) {
+                call.nodes.on_start_element(ffi::c_bytes(name));
+            }
         }
     }
 
     /// `MSC_endElement`
     unsafe extern "C" fn msc_end_element(user_data: *mut c_void, name: *const u8, _prefix: *const u8, _uri: *const u8) {
-        // SAFETY: as in `msc_start_element`; `transaction` is set by the
-        // `Xml` methods around every libxml2 call that can reach this
-        // callback and points to the transaction they were given.
+        // SAFETY: as in `msc_start_element`.
         unsafe {
-            let state = &mut *(user_data as *mut XmlNodes);
-            if state.transaction.is_null() {
-                return;
+            if let Some(call) = SaxCall::from_user_data(user_data)
+                && !call.nodes.on_end_element(call.t, ffi::c_bytes(name))
+            {
+                ffi::xmlStopParser(call.ctxt);
             }
-            let t = &mut *state.transaction;
-            state.on_end_element(t, ffi::c_bytes(name));
         }
     }
 
@@ -437,9 +518,11 @@ mod with_libxml2 {
         // SAFETY: as in `msc_start_element`; libxml2 passes `len` valid
         // bytes at `ch`.
         unsafe {
-            let state = &mut *(user_data as *mut XmlNodes);
-            let content = if ch.is_null() || len <= 0 { &[][..] } else { std::slice::from_raw_parts(ch, len as usize) };
-            state.on_characters(content);
+            if let Some(call) = SaxCall::from_user_data(user_data) {
+                let content =
+                    if ch.is_null() || len <= 0 { &[][..] } else { std::slice::from_raw_parts(ch, len as usize) };
+                call.nodes.on_characters(content);
+            }
         }
     }
 
@@ -456,23 +539,21 @@ mod with_libxml2 {
     }
 
     /// `XML` (with its `xml_data` member): owns the libxml2 parsing contexts
-    /// and the resulting document, freed on drop.
+    /// and the resulting document.
+    ///
+    /// Fields drop in declaration order: the parser contexts go before the
+    /// SAX handler they reference.
     #[derive(Debug)]
     pub struct Xml {
+        parsing_ctx: Option<ParserCtxt>,
+        /// additional parser context for arguments
+        parsing_ctx_arg: Option<ParserCtxt>,
+        doc: Option<XmlDoc>,
         sax_handler: Option<Box<ffi::xmlSAXHandler>>,
-        parsing_ctx: *mut ffi::xmlParserCtxt,
-        doc: *mut ffi::xmlDoc,
+        /// parser state for SAX parser
+        xml_parser_state: Option<XmlNodes>,
 
         well_formed: u32,
-
-        /// error reporting and XML array flag
-        xml_error: String,
-
-        /// additional parser context for arguments
-        parsing_ctx_arg: *mut ffi::xmlParserCtxt,
-
-        /// parser state for SAX parser
-        xml_parser_state: Option<Box<XmlNodes>>,
     }
 
     // SAFETY: the libxml2 objects referenced by an `Xml` are owned by it
@@ -490,19 +571,18 @@ mod with_libxml2 {
     impl Xml {
         pub fn new() -> Self {
             Xml {
+                parsing_ctx: None,
+                parsing_ctx_arg: None,
+                doc: None,
                 sax_handler: None,
-                parsing_ctx: ptr::null_mut(),
-                doc: ptr::null_mut(),
-                well_formed: 0,
-                xml_error: String::new(),
-                parsing_ctx_arg: ptr::null_mut(),
                 xml_parser_state: None,
+                well_formed: 0,
             }
         }
 
         /// The parsed document (`m_data.doc`), null when there is none.
         pub(crate) fn doc(&self) -> *mut ffi::xmlDoc {
-            self.doc
+            self.doc.as_ref().map_or(ptr::null_mut(), |d| d.0.as_ptr())
         }
 
         /// `m_data.well_formed`
@@ -512,47 +592,21 @@ mod with_libxml2 {
 
         /// Whether the parsed document is available.
         pub fn has_doc(&self) -> bool {
-            !self.doc.is_null()
+            self.doc.is_some()
         }
 
         fn parse_into_args(t: &Transaction<'_>) -> bool {
-            matches!(
-                t.sec_xml_parse_xml_into_args,
-                ConfigXMLParseXmlIntoArgs::TrueConfigXMLParseXmlIntoArgs
-                    | ConfigXMLParseXmlIntoArgs::OnlyArgsConfigXMLParseXmlIntoArgs
-            )
+            matches!(t.sec_xml_parse_xml_into_args, Some(ParseXmlIntoArgs::On) | Some(ParseXmlIntoArgs::OnlyArgs))
         }
 
         fn only_args(t: &Transaction<'_>) -> bool {
-            t.sec_xml_parse_xml_into_args == ConfigXMLParseXmlIntoArgs::OnlyArgsConfigXMLParseXmlIntoArgs
-        }
-
-        /// Makes `t` available to the SAX callbacks.
-        fn attach(&mut self, t: &mut Transaction<'_>) {
-            if let Some(s) = self.xml_parser_state.as_mut() {
-                s.transaction = (t as *mut Transaction<'_>).cast::<Transaction<'static>>();
-            }
-        }
-
-        fn detach(&mut self) {
-            if let Some(s) = self.xml_parser_state.as_mut() {
-                s.transaction = ptr::null_mut();
-            }
-        }
-
-        /// Disables parser errors being printed to stderr.
-        fn quiet(ctxt: *mut ffi::xmlParserCtxt) {
-            // SAFETY: ctxt is a live parser context.
-            unsafe {
-                let options = ffi::xmlCtxtGetOptions(ctxt);
-                ffi::xmlCtxtSetOptions(ctxt, options | ffi::XML_PARSE_NOWARNING | ffi::XML_PARSE_NOERROR);
-            }
+            t.sec_xml_parse_xml_into_args == Some(ParseXmlIntoArgs::OnlyArgs)
         }
 
         /// `init`
         pub fn init(&mut self, t: &mut Transaction<'_>) -> bool {
             let loader: ffi::xmlParserInputBufferCreateFilenameFunc =
-                if t.rules.properties.sec_xml_external_entity == ConfigBoolean::TrueConfigBoolean {
+                if t.rules.properties.sec_xml_external_entity == Some(true) {
                     ffi::__xmlParserInputBufferCreateFilename
                 } else {
                     unload_external_entity
@@ -578,34 +632,32 @@ mod with_libxml2 {
                 self.sax_handler = Some(sax);
 
                 // set the parser state struct
-                let mut state = Box::new(XmlNodes::new());
-                state.node_depth = 0;
-                state.currval.clear();
-                // the XML will contain at least one node, which is the pseudo
-                // root node 'xml'
-                state.currpath = b"xml.".to_vec();
-                self.xml_parser_state = Some(state);
+                self.xml_parser_state = Some(XmlNodes::new());
             }
 
             true
         }
 
-        /// `processChunk`
-        pub fn process_chunk(&mut self, t: &mut Transaction<'_>, buf: &[u8], error: &mut String) -> bool {
-            self.attach(t);
-            let ret = self.process_chunk_inner(t, buf, error);
-            self.detach();
-            ret
+        /// Runs `f` with the SAX callbacks given access to the parser state
+        /// and `t` (a no-op context when there is no parser state).
+        fn with_sax<R>(
+            nodes: &mut Option<XmlNodes>,
+            t: &mut Transaction<'_>,
+            ctxt: *mut ffi::xmlParserCtxt,
+            f: impl FnOnce() -> R,
+        ) -> R {
+            match nodes {
+                Some(nodes) => SaxCall { nodes, t, ctxt }.run(ctxt, f),
+                None => f(),
+            }
         }
 
-        fn process_chunk_inner(&mut self, t: &mut Transaction<'_>, buf: &[u8], error: &mut String) -> bool {
-            let chunk = buf.as_ptr() as *const c_char;
-            let size = c_len(buf);
-
+        /// `processChunk`
+        pub fn process_chunk(&mut self, t: &mut Transaction<'_>, buf: &[u8]) -> Result<(), String> {
             // We want to initialise our parsing context here, to enable us
             // to pass it the first chunk of data so that it can attempt to
             // auto-detect the encoding.
-            if self.parsing_ctx.is_null() && self.parsing_ctx_arg.is_null() {
+            if self.parsing_ctx.is_none() && self.parsing_ctx_arg.is_none() {
                 // First invocation.
 
                 crate::ms_dbg_a!(t, 4, "XML: Initialising parser.");
@@ -616,189 +668,128 @@ mod with_libxml2 {
                 if !Self::only_args(t) {
                     // SAFETY: chunk/size describe `buf`; the filename is a
                     // NUL terminated literal.
-                    self.parsing_ctx = unsafe {
+                    let ctxt = unsafe {
                         ffi::xmlCreatePushParserCtxt(
                             ptr::null_mut(),
                             ptr::null_mut(),
-                            chunk,
-                            size,
+                            buf.as_ptr().cast(),
+                            c_len(buf),
                             c"body.xml".as_ptr(),
                         )
                     };
-
-                    if self.parsing_ctx.is_null() {
+                    let Some(ctxt) = ParserCtxt::from_raw(ctxt) else {
                         crate::ms_dbg_a!(t, 4, "XML: Failed to create parsing context.");
-                        *error = "XML: Failed to create parsing context.".to_string();
-                        return false;
-                    }
+                        return Err("XML: Failed to create parsing context.".to_string());
+                    };
                     // disable parser errors being printed to stderr
-                    Self::quiet(self.parsing_ctx);
+                    ctxt.quiet();
+                    self.parsing_ctx = Some(ctxt);
                 }
 
                 if Self::parse_into_args(t) {
                     let sax: *mut ffi::xmlSAXHandler =
                         self.sax_handler.as_deref_mut().map_or(ptr::null_mut(), |s| s as *mut _);
-                    let state: *mut c_void = self
-                        .xml_parser_state
-                        .as_deref_mut()
-                        .map_or(ptr::null_mut(), |s| s as *mut XmlNodes as *mut c_void);
-                    // SAFETY: the SAX handler and the parser state are boxed
-                    // and owned by `self`, which also owns (and frees first)
-                    // the context they are registered with; chunk/size
-                    // describe `buf`.
-                    self.parsing_ctx_arg =
-                        unsafe { ffi::xmlCreatePushParserCtxt(sax, state, chunk, size, ptr::null()) };
-                    if self.parsing_ctx_arg.is_null() {
-                        *error = "XML: Failed to create parsing context for ARGS.".to_string();
-                        return false;
-                    }
+                    // SAFETY: the SAX handler is boxed and owned by `self`,
+                    // which drops the context before it; chunk/size describe
+                    // `buf`. `userData` is installed by `with_sax` around the
+                    // libxml2 calls that run the callbacks.
+                    let ctxt = unsafe {
+                        ffi::xmlCreatePushParserCtxt(sax, ptr::null_mut(), buf.as_ptr().cast(), c_len(buf), ptr::null())
+                    };
+                    let Some(ctxt) = ParserCtxt::from_raw(ctxt) else {
+                        return Err("XML: Failed to create parsing context for ARGS.".to_string());
+                    };
+                    // SAFETY: the context is live; no callback runs outside
+                    // `with_sax`, which installs its own `userData`.
+                    unsafe { (*ctxt.as_ptr()).userData = ptr::null_mut() };
                     // disable parser errors being printed to stderr
-                    Self::quiet(self.parsing_ctx_arg);
-                    // the SAX callback (onEndElement) stops parsing through
-                    // this context when SecArgumentsLimit is hit; it must be
-                    // set here, not only in the multi-chunk branch below.
-                    if let Some(s) = self.xml_parser_state.as_mut() {
-                        s.parsing_ctx_arg = self.parsing_ctx_arg;
-                    }
+                    ctxt.quiet();
+                    self.parsing_ctx_arg = Some(ctxt);
                 }
 
-                return true;
+                return Ok(());
             }
 
             // Not a first invocation.
-            if !self.parsing_ctx.is_null() && !Self::only_args(t) {
-                // SAFETY: parsing_ctx is live; chunk/size describe `buf`.
-                unsafe {
-                    ffi::xmlParseChunk(self.parsing_ctx, chunk, size, 0);
-                }
-                // (The C++ code dereferenced the parser state here even when
-                // it did not exist.)
-                if let Some(s) = self.xml_parser_state.as_mut() {
-                    s.parsing_ctx_arg = self.parsing_ctx_arg;
-                }
-                // SAFETY: parsing_ctx is live.
-                if unsafe { (*self.parsing_ctx).wellFormed } != 1 {
-                    *error = "XML: Failed to parse document.".to_string();
+            if let Some(ctxt) = &self.parsing_ctx
+                && !Self::only_args(t)
+            {
+                ctxt.parse_chunk(buf, false);
+                if ctxt.well_formed() != 1 {
                     crate::ms_dbg_a!(t, 4, "XML: Failed to parse document.");
-                    return false;
+                    return Err("XML: Failed to parse document.".to_string());
                 }
             }
 
-            if !self.parsing_ctx_arg.is_null() && Self::parse_into_args(t) {
-                // SAFETY: parsing_ctx_arg is live; chunk/size describe `buf`.
-                unsafe {
-                    ffi::xmlParseChunk(self.parsing_ctx_arg, chunk, size, 0);
-                }
-                // SAFETY: parsing_ctx_arg is live.
-                if unsafe { (*self.parsing_ctx_arg).wellFormed } != 1 {
-                    *error = "XML: Failed to parse document for ARGS.".to_string();
+            if let Some(ctxt) = &self.parsing_ctx_arg
+                && Self::parse_into_args(t)
+            {
+                Self::with_sax(&mut self.xml_parser_state, t, ctxt.as_ptr(), || ctxt.parse_chunk(buf, false));
+                if ctxt.well_formed() != 1 {
                     crate::ms_dbg_a!(t, 4, "XML: Failed to parse document for ARGS.");
-                    return false;
+                    return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
             }
 
-            true
+            Ok(())
         }
 
         /// `complete`
-        pub fn complete(&mut self, t: &mut Transaction<'_>, error: &mut String) -> bool {
-            self.attach(t);
-            let ret = self.complete_inner(t, error);
-            self.detach();
-            ret
-        }
-
-        fn complete_inner(&mut self, t: &mut Transaction<'_>, error: &mut String) -> bool {
+        pub fn complete(&mut self, t: &mut Transaction<'_>) -> Result<(), String> {
             // Only if we have a context, meaning we've done some work.
-            if self.parsing_ctx.is_null() && self.parsing_ctx_arg.is_null() {
-                return true;
+            if self.parsing_ctx.is_none() && self.parsing_ctx_arg.is_none() {
+                return Ok(());
             }
-            if !self.parsing_ctx.is_null() && !Self::only_args(t) {
-                // SAFETY: parsing_ctx is live; it is freed (once) right
-                // after its results are taken. The document it built is
-                // not freed with it and is owned by `self` from now on.
-                unsafe {
-                    // This is how we signal the end of parsing to libxml.
-                    ffi::xmlParseChunk(self.parsing_ctx, ptr::null(), 0, 1);
+            if self.parsing_ctx.is_some()
+                && !Self::only_args(t)
+                && let Some(ctxt) = self.parsing_ctx.take()
+            {
+                // This is how we signal the end of parsing to libxml.
+                ctxt.parse_chunk(&[], true);
 
-                    // Preserve the results for our reference.
-                    self.well_formed = (*self.parsing_ctx).wellFormed as u32;
-                    self.doc = (*self.parsing_ctx).myDoc;
+                // Preserve the results for our reference; the document is
+                // owned by `self` from now on.
+                self.well_formed = ctxt.well_formed() as u32;
+                // SAFETY: the context is live; `myDoc` is null or the
+                // document it built, which freeing the context leaves alone.
+                self.doc = NonNull::new(unsafe { (*ctxt.as_ptr()).myDoc }).map(XmlDoc);
 
-                    // Clean up everything else.
-                    ffi::xmlFreeParserCtxt(self.parsing_ctx);
-                }
-                self.parsing_ctx = ptr::null_mut();
+                // Clean up everything else.
+                drop(ctxt);
                 crate::ms_dbg_a!(t, 4, "XML: Parsing complete (well_formed {}).", self.well_formed);
 
                 if self.well_formed != 1 {
-                    *error = "XML: Failed to parse document.".to_string();
                     crate::ms_dbg_a!(t, 4, "XML: Failed to parse document.");
-                    return false;
+                    return Err("XML: Failed to parse document.".to_string());
                 }
             }
-            if !self.parsing_ctx_arg.is_null() && Self::parse_into_args(t) {
-                // SAFETY: parsing_ctx_arg is live and freed exactly once.
-                unsafe {
-                    // This is how we signal the end of parsing to libxml.
-                    let rc = ffi::xmlParseChunk(self.parsing_ctx_arg, ptr::null(), 0, 1);
-                    ffi::xmlFreeParserCtxt(self.parsing_ctx_arg);
-                    self.parsing_ctx_arg = ptr::null_mut();
-                    if let Some(s) = self.xml_parser_state.as_mut() {
-                        s.parsing_ctx_arg = ptr::null_mut();
-                    }
-                    if rc != 0 {
-                        if !self.xml_error.is_empty() {
-                            *error = self.xml_error.clone();
-                        } else {
-                            *error = "XML: Failed to parse document for ARGS.".to_string();
-                        }
-                        return false;
-                    }
+            if self.parsing_ctx_arg.is_some()
+                && Self::parse_into_args(t)
+                && let Some(ctxt) = self.parsing_ctx_arg.take()
+            {
+                // This is how we signal the end of parsing to libxml.
+                let rc = Self::with_sax(&mut self.xml_parser_state, t, ctxt.as_ptr(), || ctxt.parse_chunk(&[], true));
+                drop(ctxt);
+                if rc != 0 {
+                    return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
             }
 
-            true
-        }
-    }
-
-    impl Drop for Xml {
-        fn drop(&mut self) {
-            // SAFETY: the contexts and the document are owned by `self` and
-            // freed exactly once (their pointers are nulled when freed
-            // earlier). The parser contexts go first, as they reference the
-            // SAX handler and parser state boxes dropped afterwards.
-            unsafe {
-                if !self.parsing_ctx.is_null() {
-                    ffi::xmlFreeParserCtxt(self.parsing_ctx);
-                    self.parsing_ctx = ptr::null_mut();
-                }
-                if !self.parsing_ctx_arg.is_null() {
-                    // (Not freed by the C++ destructor: a leak when
-                    // `complete` was never called.)
-                    ffi::xmlFreeParserCtxt(self.parsing_ctx_arg);
-                    self.parsing_ctx_arg = ptr::null_mut();
-                }
-                if !self.doc.is_null() {
-                    ffi::xmlFreeDoc(self.doc);
-                    self.doc = ptr::null_mut();
-                }
-            }
+            Ok(())
         }
     }
 }
 
 #[cfg(all(test, feature = "libxml2"))]
 mod tests {
-    use crate::actions::action::Action;
     use crate::actions::xmlns::XmlNS;
     use crate::modsecurity::ModSecurity;
     use crate::operators::operator::Operator;
     use crate::operators::validate_dtd::ValidateDTD;
     use crate::operators::validate_schema::ValidateSchema;
     use crate::request_body_processor::multipart::test_support::{log, new_rules, run};
-    use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
-    use crate::rules_set_properties::{ConfigBoolean, ConfigXMLParseXmlIntoArgs};
+    use crate::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
+    use crate::rules_set_properties::ParseXmlIntoArgs;
     use crate::run_time_string::RunTimeString;
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::variable_value::VariableValue;
@@ -811,12 +802,12 @@ mod tests {
     }
 
     fn xpath(t: &Transaction<'_>, expr: &str, ns: Option<(&str, &str)>) -> Vec<String> {
-        let mut acts: Vec<Box<dyn Action>> = Vec::new();
+        let mut acts: Vec<RuleAction> = Vec::new();
         if let Some((scope, href)) = ns {
             let mut x = XmlNS::new("xmlns");
             x.scope = scope.to_string();
             x.href = href.to_string();
-            acts.push(Box::new(x));
+            acts.push(RuleAction::Other(Box::new(x)));
         }
         let rule = RuleWithActions::new(Some(acts), None, "f", 1, RuleWithActionsKind::Unconditional);
         let v = crate::variables::xml::Xml::new(&format!("XML:{}", expr));
@@ -868,10 +859,7 @@ mod tests {
     #[test]
     fn parse_into_args() {
         let body = br#"<a x="1"><b>t1</b><c><d>t2</d><d>&amp;</d></c>tail<e/></a>"#;
-        for mode in [
-            ConfigXMLParseXmlIntoArgs::TrueConfigXMLParseXmlIntoArgs,
-            ConfigXMLParseXmlIntoArgs::OnlyArgsConfigXMLParseXmlIntoArgs,
-        ] {
+        for mode in [Some(ParseXmlIntoArgs::On), Some(ParseXmlIntoArgs::OnlyArgs)] {
             let ms = ModSecurity::new();
             let mut rules = new_rules();
             rules.properties.sec_xml_parse_xml_into_args = mode;
@@ -896,24 +884,21 @@ mod tests {
             );
             assert_eq!(t.vars.reqbody_error.value, b"0");
             // OnlyArgs: no document
-            assert_eq!(
-                t.xml.as_ref().unwrap().has_doc(),
-                mode == ConfigXMLParseXmlIntoArgs::TrueConfigXMLParseXmlIntoArgs
-            );
+            assert_eq!(t.xml.as_ref().unwrap().has_doc(), mode == Some(ParseXmlIntoArgs::On));
         }
 
         // SecArgumentsLimit stops the SAX parser
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.sec_xml_parse_xml_into_args = ConfigXMLParseXmlIntoArgs::TrueConfigXMLParseXmlIntoArgs;
-        rules.properties.arguments_limit.parse("2").unwrap();
+        rules.properties.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::On);
+        rules.properties.arguments_limit = Some(2);
         let t = xml(&ms, &rules, b"<a><b>1</b><b>2</b><b>3</b><b>4</b></a>");
         assert_eq!(t.vars.args.len(), 2);
         assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document for ARGS.");
     }
 
     fn validate(op: &dyn Operator, t: &mut Transaction<'_>) -> bool {
-        op.evaluate(Some(t), None, b"", None)
+        crate::operators::operator::test_support::eval_in(op, t, b"")
     }
 
     #[test]
@@ -923,7 +908,7 @@ mod tests {
 <Envelope><Body><getInput><id type="string">12123</id></getInput></Body></Envelope>"#;
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.sec_xml_external_entity = ConfigBoolean::TrueConfigBoolean;
+        rules.properties.sec_xml_external_entity = Some(true);
         let dtd_path = format!("{}SoapEnvelope.dtd", DATA);
         let mut dtd = ValidateDTD::new(RunTimeString::from_text(&dtd_path));
         dtd.init("x.conf").unwrap();
@@ -988,7 +973,7 @@ mod tests {
         let body = br#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE author [<!ELEMENT book ANY><!ENTITY js SYSTEM "/etc/hostname">]><bookstore><book>&js;</book></bookstore>"#;
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.sec_xml_external_entity = ConfigBoolean::FalseConfigBoolean;
+        rules.properties.sec_xml_external_entity = Some(false);
         let mut dtd = ValidateDTD::new(RunTimeString::from_text(&format!("{}SoapEnvelope.dtd", DATA)));
         dtd.init("x.conf").unwrap();
         let mut t = xml(&ms, &rules, body);

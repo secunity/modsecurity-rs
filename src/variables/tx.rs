@@ -90,11 +90,9 @@ impl Variable for TxDictElementRegexp {
         &mut self.base.base
     }
     fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-        t.collections.tx_collection.resolve_regular_expression(
-            self.dict_element.as_bytes(),
-            l,
-            &self.base.base.key_exclusion,
-        );
+        // The pattern was compiled with the options the C++ code uses for
+        // every evaluation.
+        t.collections.tx_collection.resolve_regex(&self.base.r, l, &self.base.base.key_exclusion);
     }
     fn regex(&self) -> Option<&crate::utils::regex::Regex> {
         Some(&self.base.r)

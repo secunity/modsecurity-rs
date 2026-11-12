@@ -19,9 +19,9 @@ impl IpTree {
     }
 
     /// `addFromBuffer(std::istream *, ...)`: one or more comma separated
-    /// entries per line, `#` starts a comment.
-    /// The C code never fills `error` here (`error_msg` stays null).
-    pub fn add_from_buffer(&mut self, buffer: &[u8], _error: &mut String) -> bool {
+    /// entries per line, `#` starts a comment. Returns `false` if an entry
+    /// is invalid; there is no error message (the C code never fills one).
+    pub fn add_from_buffer(&mut self, buffer: &[u8]) -> bool {
         // std::getline: a trailing newline does not produce an extra line.
         let mut lines: Vec<&[u8]> = buffer.split(|&c| c == b'\n').collect();
         if buffer.is_empty() || buffer.ends_with(b"\n") {
@@ -40,27 +40,30 @@ impl IpTree {
         true
     }
 
+    /// The result of loading entries: an invalid entry fails with an empty
+    /// message, as in C++.
+    fn loaded(ok: bool) -> Result<(), String> {
+        if ok { Ok(()) } else { Err(String::new()) }
+    }
+
     /// `addFromFile`
-    pub fn add_from_file(&mut self, file: &str, error: &mut String) -> bool {
+    pub fn add_from_file(&mut self, file: &str) -> Result<(), String> {
         let Ok(mut f) = std::fs::File::open(file) else {
-            *error = format!("Failed to open file: {}", file);
-            return false;
+            return Err(format!("Failed to open file: {}", file));
         };
         let mut content = Vec::new();
         // A read error ends the stream, like a failing std::getline.
         let _ = f.read_to_end(&mut content);
-        self.add_from_buffer(&content, error)
+        Self::loaded(self.add_from_buffer(&content))
     }
 
     /// `addFromUrl`
-    pub fn add_from_url(&mut self, url: &str, error: &mut String) -> bool {
+    pub fn add_from_url(&mut self, url: &str) -> Result<(), String> {
         let mut c = HttpsClient::new();
-        let ret = c.download(url);
-        if !ret {
-            *error = c.error.clone();
-            return false;
+        if !c.download(url) {
+            return Err(c.error);
         }
-        self.add_from_buffer(&c.content, error)
+        Self::loaded(self.add_from_buffer(&c.content))
     }
 
     /// `contains`
@@ -76,11 +79,10 @@ mod tests {
     #[test]
     fn buffer_with_comments_and_lines() {
         let mut t = IpTree::new();
-        let mut e = String::new();
         // The space before the comment is kept: not a valid address.
-        assert!(!t.add_from_buffer(b"# comment\n127.0.0.1 # x\n10.0.0.0/8,::1\n\n", &mut e));
+        assert!(!t.add_from_buffer(b"# comment\n127.0.0.1 # x\n10.0.0.0/8,::1\n\n"));
         let mut t = IpTree::new();
-        assert!(t.add_from_buffer(b"# comment\n127.0.0.1#x\n10.0.0.0/8,::1\n\n", &mut e));
+        assert!(t.add_from_buffer(b"# comment\n127.0.0.1#x\n10.0.0.0/8,::1\n\n"));
         assert!(t.contains(b"127.0.0.1"));
         assert!(t.contains(b"10.1.2.3"));
         assert!(t.contains(b"::1"));
@@ -91,8 +93,6 @@ mod tests {
     #[test]
     fn missing_file() {
         let mut t = IpTree::new();
-        let mut e = String::new();
-        assert!(!t.add_from_file("/nonexistent/ips.txt", &mut e));
-        assert_eq!(e, "Failed to open file: /nonexistent/ips.txt");
+        assert_eq!(t.add_from_file("/nonexistent/ips.txt"), Err("Failed to open file: /nonexistent/ips.txt".into()));
     }
 }

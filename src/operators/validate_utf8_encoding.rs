@@ -110,10 +110,10 @@ impl Operator for ValidateUtf8Encoding {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         let mut i = 0usize;
         while i < input.len() {
@@ -121,15 +121,14 @@ impl Operator for ValidateUtf8Encoding {
 
             let msg = match rc {
                 UNICODE_ERROR_CHARACTERS_MISSING => {
-                    if let Some(t) = t {
-                        crate::ms_dbg_a!(
-                            t,
-                            8,
-                            "Invalid UTF-8 encoding: not enough bytes in character at {}. [offset \"{}\"]",
-                            String::from_utf8_lossy(input),
-                            i
-                        );
-                    }
+                    crate::ms_dbg_a!(
+                        t,
+                        8,
+                        "Invalid UTF-8 encoding: not enough bytes in character at {}. [offset \"{}\"]",
+                        String::from_utf8_lossy(input),
+                        i
+                    );
+
                     return true;
                 }
                 UNICODE_ERROR_INVALID_ENCODING => Some("Invalid UTF-8 encoding: invalid byte value in character at "),
@@ -141,12 +140,9 @@ impl Operator for ValidateUtf8Encoding {
             };
 
             if let Some(msg) = msg {
-                if let Some(t) = t {
-                    crate::ms_dbg_a!(t, 8, "{}{}. [offset \"{}\"]", msg, String::from_utf8_lossy(input), i);
-                    if let Some(rm) = rm {
-                        log_offset(rm, i, input.len());
-                    }
-                }
+                crate::ms_dbg_a!(t, 8, "{}{}. [offset \"{}\"]", msg, String::from_utf8_lossy(input), i);
+                log_offset(rm, i, input.len());
+
                 return true;
             }
 

@@ -1,10 +1,6 @@
 //! Port of `src/actions/transformations/escape_seq_decode.cc`, `src/actions/transformations/escape_seq_decode.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
 use crate::utils::string::{isodigit, x2c};
-
-crate::transformation_struct!(EscapeSeqDecode);
 
 /// `strtol(buf, NULL, base)` for a short buffer of valid digits.
 fn strtol_digits(buf: &[u8], base: u32) -> i64 {
@@ -94,10 +90,9 @@ fn ansi_c_sequences_decode_inplace(input: &mut Vec<u8>) -> bool {
     changed
 }
 
-impl Transformation for EscapeSeqDecode {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        ansi_c_sequences_decode_inplace(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    ansi_c_sequences_decode_inplace(value)
 }
 
 #[cfg(test)]

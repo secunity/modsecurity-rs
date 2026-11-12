@@ -920,7 +920,6 @@ impl Scanner {
     /// pushes one buffer per file matched by the (glob) expansion of the
     /// path, the first file on top.
     fn include(&mut self, driver: &mut Driver, yytext: &str, quoted: bool) -> Result<(), ScanError> {
-        let mut err = String::new();
         // `yytext + strlen("include")`
         let tmp = yytext.get("include".len()..).unwrap_or("");
         let after_whitespace = tmp.trim_start_matches([' ', '\t']);
@@ -930,18 +929,19 @@ impl Scanner {
             after_whitespace
         };
         let current = driver.filename(driver.loc_back().end.filename).to_string();
-        let fi = find_resource(file, &current, &mut err);
-        if fi.is_empty() {
+        let lookup = find_resource(file, &current);
+        let Some(fi) = lookup.path else {
             self.start = Sc::Initial;
             let loc = *driver.loc_back();
-            driver.error(&loc, "", &format!("{}: Not able to open file. {}", file, err));
+            driver.error(&loc, "", &format!("{}: Not able to open file. {}", file, lookup.looked_at));
             return Err(ScanError { loc });
-        }
+        };
         let mut files = expand_env(&fi, 0);
         files.reverse();
         for s in files {
             let current = driver.filename(driver.loc_back().end.filename).to_string();
-            let f = find_resource(&s, &current, &mut err);
+            let lookup = find_resource(&s, &current);
+            let f = lookup.path.unwrap_or_default();
             let idx = driver.add_filename(f.clone());
             driver.loc.push(Location::new(idx));
             match std::fs::read(&f) {
@@ -950,7 +950,7 @@ impl Scanner {
                     self.start = Sc::Initial;
                     driver.loc.pop();
                     let loc = *driver.loc_back();
-                    driver.error(&loc, "", &format!("{}: Not able to open file. {}", s, err));
+                    driver.error(&loc, "", &format!("{}: Not able to open file. {}", s, lookup.looked_at));
                     return Err(ScanError { loc });
                 }
             }
@@ -981,10 +981,10 @@ impl Scanner {
         if !ret {
             self.start = Sc::Initial;
             match driver.properties.remote_rules_action_on_failed {
-                OnFailedRemoteRulesAction::WarnOnFailedRemoteRulesAction => {
+                Some(OnFailedRemoteRulesAction::Warn) => {
                     // TODO (C++): Implement the server logging mechanism.
                 }
-                OnFailedRemoteRulesAction::AbortOnFailedRemoteRulesAction => {
+                Some(OnFailedRemoteRulesAction::Abort) => {
                     let loc = *driver.loc_back();
                     driver.error(&loc, "", &format!("{} - Failed to download: {}", yytext_after_push, c.error));
                     return Err(ScanError { loc });

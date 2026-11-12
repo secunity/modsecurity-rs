@@ -32,8 +32,7 @@ impl Action for RuleRemoveByTag {
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         t.rule_remove_by_tag.push(self.tag.clone());
-        true
     }
 }

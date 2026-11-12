@@ -32,8 +32,7 @@ impl Action for Maturity {
         }
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) -> bool {
+    fn configure(&self, rule: &mut RuleWithActions) {
         rule.maturity = self.maturity;
-        true
     }
 }

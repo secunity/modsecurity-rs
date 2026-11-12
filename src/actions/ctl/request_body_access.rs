@@ -6,7 +6,6 @@
 use crate::actions::action::{Action, ActionBase};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
-use crate::rules_set_properties::ConfigBoolean;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
@@ -37,9 +36,7 @@ impl Action for RequestBodyAccess {
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
-        t.request_body_access =
-            if self.request_body_access { ConfigBoolean::TrueConfigBoolean } else { ConfigBoolean::FalseConfigBoolean };
-        true
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
+        t.request_body_access = if self.request_body_access { Some(true) } else { Some(false) };
     }
 }

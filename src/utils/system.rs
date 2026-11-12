@@ -36,33 +36,33 @@ pub fn cpu_seconds() -> f64 {
     }
 }
 
+/// The result of [`find_resource`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceLookup {
+    /// Where the resource was found. A name matched through shell expansion
+    /// is returned unexpanded (as in C++), so opening it can still fail.
+    pub path: Option<String>,
+    /// `Looking at: '…', '…'`: the places tried before, for error messages
+    /// (also when the resource was found).
+    pub looked_at: String,
+}
+
 /// `find_resource`: looks for `resource` as given, through shell expansion,
-/// and relative to the directory of `config`. On failure returns an empty
-/// string and fills `err` with the places that were tried.
-pub fn find_resource(resource: &str, config: &str, err: &mut String) -> String {
-    *err = "Looking at: ".to_string();
-    if std::fs::File::open(resource).is_ok() {
-        return resource.to_string();
-    } else {
-        err.push_str(&format!("'{}', ", resource));
+/// and relative to the directory of `config`.
+pub fn find_resource(resource: &str, config: &str) -> ResourceLookup {
+    let relative = format!("{}/{}", get_path(config), resource);
+    // Each name is tried as a file, then through shell expansion.
+    let attempts = [(resource, false), (resource, true), (relative.as_str(), false), (relative.as_str(), true)];
+    let mut looked_at = "Looking at: ".to_string();
+    for (i, &(candidate, expand)) in attempts.iter().enumerate() {
+        let found = if expand { !expand_env(candidate, 0).is_empty() } else { std::fs::File::open(candidate).is_ok() };
+        if found {
+            return ResourceLookup { path: Some(candidate.to_string()), looked_at };
+        }
+        let separator = if i + 1 == attempts.len() { "." } else { ", " };
+        looked_at.push_str(&format!("'{}'{}", candidate, separator));
     }
-    if !expand_env(resource, 0).is_empty() {
-        return resource.to_string();
-    } else {
-        err.push_str(&format!("'{}', ", resource));
-    }
-    let f = format!("{}/{}", get_path(config), resource);
-    if std::fs::File::open(&f).is_ok() {
-        return f;
-    } else {
-        err.push_str(&format!("'{}', ", f));
-    }
-    if !expand_env(&f, 0).is_empty() {
-        return f;
-    } else {
-        err.push_str(&format!("'{}'.", f));
-    }
-    String::new()
+    ResourceLookup { path: None, looked_at }
 }
 
 /// `get_path`: directory part of `file`. As in C++, a name without any
@@ -108,21 +108,18 @@ pub fn expand_env(var: &str, flags: i32) -> Vec<String> {
     vars
 }
 
-/// `createDir`
-pub fn create_dir(dir: &str, mode: u32, error: &mut String) -> bool {
-    let Ok(c) = CString::new(dir) else {
-        return false;
-    };
-    // SAFETY: `c` is a valid NUL terminated path.
-    let ret = unsafe { libc::mkdir(c.as_ptr(), mode as libc::mode_t) };
-    if ret != 0 {
-        let e = std::io::Error::last_os_error();
-        if e.raw_os_error() != Some(libc::EEXIST) {
-            *error = format!("Not able to create directory: {}: {}.", dir, strerror(e.raw_os_error().unwrap_or(0)));
-            return false;
-        }
+/// `createDir`: `mkdir(dir, mode)`, accepting an existing directory.
+pub fn create_dir(dir: &str, mode: u32) -> Result<(), String> {
+    use std::os::unix::fs::DirBuilderExt;
+    if dir.contains('\0') {
+        // C++ cannot pass such a name to mkdir; it fails without a message.
+        return Err(String::new());
     }
-    true
+    match std::fs::DirBuilder::new().mode(mode).create(dir) {
+        Ok(()) => Ok(()),
+        Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
+        Err(e) => Err(format!("Not able to create directory: {}: {}.", dir, strerror(e.raw_os_error().unwrap_or(0)))),
+    }
 }
 
 /// `isFile`
@@ -220,5 +217,62 @@ mod tests {
             };
             assert_eq!(i32::from(localtime(t).month()), tm_mon + 1, "t={t}");
         }
+    }
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("msrs-system-{}-{}", name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn find_resource_trace() {
+        let d = temp_dir("find");
+        let dir = d.to_str().unwrap();
+        std::fs::write(d.join("a.conf"), "x").unwrap();
+        let config = format!("{dir}/main.conf");
+
+        // Found as given: nothing tried before.
+        let a = format!("{dir}/a.conf");
+        assert_eq!(find_resource(&a, "").path.as_deref(), Some(a.as_str()));
+        assert_eq!(find_resource(&a, "").looked_at, "Looking at: ");
+
+        // Found relative to the configuration file.
+        let r = find_resource("a.conf", &config);
+        assert_eq!(r.path, Some(format!("{dir}/a.conf")));
+        assert_eq!(r.looked_at, "Looking at: 'a.conf', 'a.conf', ");
+
+        // Found through shell expansion: returned unexpanded.
+        let glob = format!("{dir}/*.conf");
+        let r = find_resource(&glob, "");
+        assert_eq!(r.path.as_deref(), Some(glob.as_str()));
+        assert_eq!(r.looked_at, format!("Looking at: '{glob}', "));
+
+        // Not found.
+        let r = find_resource("missing.txt", &config);
+        assert_eq!(r.path, None);
+        assert_eq!(
+            r.looked_at,
+            format!("Looking at: 'missing.txt', 'missing.txt', '{dir}/missing.txt', '{dir}/missing.txt'.")
+        );
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn create_dir_results() {
+        let d = temp_dir("mkdir");
+        let sub = d.join("sub");
+        let sub = sub.to_str().unwrap();
+        assert_eq!(create_dir(sub, 0o750), Ok(()));
+        assert!(std::path::Path::new(sub).is_dir());
+        // An existing directory is fine.
+        assert_eq!(create_dir(sub, 0o750), Ok(()));
+        let deep = format!("{}/x/y", d.to_str().unwrap());
+        assert_eq!(
+            create_dir(&deep, 0o750),
+            Err(format!("Not able to create directory: {deep}: No such file or directory."))
+        );
+        std::fs::remove_dir_all(&d).unwrap();
     }
 }

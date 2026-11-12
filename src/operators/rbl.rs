@@ -94,12 +94,8 @@ impl Rbl {
     /// `mapIpToAddress`: the DNS name to query for `ip_str` (empty when the
     /// lookup cannot be done).
     pub fn map_ip_to_address(&self, ip_str: &[u8], trans: Option<&Transaction<'_>>) -> Vec<u8> {
-        let mut key: Vec<u8> = Vec::new();
-        if let Some(t) = trans
-            && t.rules.properties.httpbl_key.set
-        {
-            key = t.rules.properties.httpbl_key.value.as_bytes().to_vec();
-        }
+        let key: Vec<u8> =
+            trans.and_then(|t| t.rules.properties.httpbl_key.as_deref()).unwrap_or_default().as_bytes().to_vec();
 
         let Some([h0, h1, h2, h3]) = scan_dotted_quad(ip_str) else {
             crate::ms_dbg_opt!(
@@ -260,12 +256,12 @@ impl Operator for Rbl {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
         ip_str: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let host = self.map_ip_to_address(ip_str, t.as_deref());
+        let host = self.map_ip_to_address(ip_str, Some(&*t));
         let ip_s = String::from_utf8_lossy(ip_str).into_owned();
 
         if host.is_empty() {
@@ -274,21 +270,19 @@ impl Operator for Rbl {
 
         match resolve(&host) {
             Resolved::Failed => {
-                crate::ms_dbg_opt!(t.as_deref(), 5, "RBL lookup of {} failed.", ip_s);
+                crate::ms_dbg_a!(t, 5, "RBL lookup of {} failed.", ip_s);
                 return false;
             }
             Resolved::OtherFamily(family) => {
-                crate::ms_dbg_opt!(t.as_deref(), 7, "Unsupported address family: {}", family);
+                crate::ms_dbg_a!(t, 7, "Unsupported address family: {}", family);
                 return false;
             }
             Resolved::V4(sin_addr) => {
-                Self::further_info(sin_addr, &ip_s, t.as_deref(), self.provider);
+                Self::further_info(sin_addr, &ip_s, Some(&*t), self.provider);
             }
         }
 
-        if let (Some(rule), Some(t)) = (rule, t)
-            && rule.has_capture_action()
-        {
+        if rule.has_capture_action() {
             t.collections.tx_collection.store_or_update_first(b"0", ip_str);
             crate::ms_dbg_a!(t, 7, "Added RXL match TX.0: {}", ip_s);
         }

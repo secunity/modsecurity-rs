@@ -19,7 +19,7 @@ impl IpMatch {
     }
 
     /// `IpMatch(n, param)`: used by `@ipMatchFromFile` / `@ipMatchF`.
-    pub fn with_name(name: &str, param: RunTimeString) -> Self {
+    pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
         IpMatch { base: OperatorBase::with_string(name, param), tree: IpTree::new() }
     }
 }
@@ -28,16 +28,16 @@ impl Operator for IpMatch {
     crate::operator_base_accessors!();
 
     fn init(&mut self, _file: &str) -> Result<(), String> {
-        let mut e = String::new();
-        if self.tree.add_from_buffer(&self.base.param, &mut e) { Ok(()) } else { Err(e) }
+        // An invalid list fails without a message, as in C++.
+        if self.tree.add_from_buffer(&self.base.param) { Ok(()) } else { Err(String::new()) }
     }
 
     fn evaluate(
         &self,
-        _t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        _t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
         self.tree.contains(input)
     }
@@ -46,16 +46,17 @@ impl Operator for IpMatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operators::operator::test_support::eval;
 
     #[test]
     fn ip_match() {
         let mut op = IpMatch::new(RunTimeString::from_text("127.0.0.1,192.168.0.0/24,::1"));
         op.init("").unwrap();
-        assert!(op.evaluate(None, None, b"127.0.0.1", None));
-        assert!(op.evaluate(None, None, b"192.168.0.77", None));
-        assert!(!op.evaluate(None, None, b"192.168.1.77", None));
-        assert!(op.evaluate(None, None, b"::1", None));
-        assert!(!op.evaluate(None, None, b"localhost", None));
+        assert!(eval(&op, b"127.0.0.1"));
+        assert!(eval(&op, b"192.168.0.77"));
+        assert!(!eval(&op, b"192.168.1.77"));
+        assert!(eval(&op, b"::1"));
+        assert!(!eval(&op, b"localhost"));
         let mut bad = IpMatch::new(RunTimeString::from_text("300.1.1.1"));
         assert!(bad.init("").is_err());
     }

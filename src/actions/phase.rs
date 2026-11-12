@@ -67,22 +67,21 @@ impl Action for Phase {
         Ok(())
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) -> bool {
+    fn configure(&self, rule: &mut RuleWithActions) {
         rule.set_phase(self.phase);
-        true
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::block::test_support::rule;
+    use crate::actions::block::test_support::{RuleAction, rule};
 
     fn phase(p: &str) -> Result<(i32, i32), String> {
         let mut a = Phase::new(&format!("phase:{}", p));
         a.init()?;
         let r = (a.phase, a.sec_rules_phase);
-        assert_eq!(rule(vec![Box::new(a)]).get_phase(), r.0);
+        assert_eq!(rule(vec![RuleAction::Phase(a)]).get_phase(), r.0);
         Ok(r)
     }
 

@@ -35,45 +35,50 @@ impl RulesSet {
         }
     }
 
+    /// The error of a failed load or merge: all the parser errors collected
+    /// so far (as the C API reports them, see [`RulesSet::get_parser_error`]).
+    fn failed<T>(&self) -> Result<T, String> {
+        Err(self.properties.parser_error.clone())
+    }
+
     /// `loadFromUri`: loads the rules of a file. Returns the number of rules
-    /// loaded or -1 (see [`RulesSet::get_parser_error`]).
-    pub fn load_from_uri(&mut self, uri: &str) -> i32 {
+    /// loaded.
+    pub fn load_from_uri(&mut self, uri: &str) -> Result<usize, String> {
         let mut driver = Driver::new();
-        if driver.parse_file(uri) == 0 {
+        if !driver.parse_file(uri) {
             self.properties.parser_error.push_str(&driver.properties.parser_error);
-            return -1;
+            return self.failed();
         }
         self.merge_driver(&mut driver)
     }
 
     /// `load(rules, ref)`
-    pub fn load_with_ref(&mut self, rules: &str, reference: &str) -> i32 {
+    pub fn load_with_ref(&mut self, rules: &str, reference: &str) -> Result<usize, String> {
         let mut driver = Driver::new();
-        if driver.parse(rules, reference) == 0 {
+        if !driver.parse(rules, reference) {
             self.properties.parser_error.push_str(&driver.properties.parser_error);
-            return -1;
+            return self.failed();
         }
-        let rules = self.merge_driver(&mut driver);
-        if rules == -1 {
+        self.merge_driver(&mut driver).or_else(|_| {
+            // The C++ code appends the parser errors once more here.
             self.properties.parser_error.push_str(&driver.properties.parser_error);
-            return -1;
-        }
-        rules
+            self.failed()
+        })
     }
 
     /// `loadRemote`
-    pub fn load_remote(&mut self, key: &str, uri: &str) -> i32 {
+    pub fn load_remote(&mut self, key: &str, uri: &str) -> Result<usize, String> {
         let mut client = HttpsClient::new();
         client.set_key(key);
         if client.download(uri) {
             let content = String::from_utf8_lossy(&client.content).into_owned();
             return self.load_with_ref(&content, uri);
         }
-        -1
+        self.failed()
     }
 
     /// `load(plainRules)`
-    pub fn load(&mut self, plain_rules: &str) -> i32 {
+    pub fn load(&mut self, plain_rules: &str) -> Result<usize, String> {
         self.load_with_ref(plain_rules, "")
     }
 
@@ -190,7 +195,7 @@ impl RulesSet {
                 rule.evaluate(t);
                 Self::clean_matched_vars(t);
 
-                if t.it.disruptive != 0 {
+                if t.intervention.disruptive {
                     crate::ms_dbg_a!(t, 8, "Skipping this phase as this request was already intercepted.");
                     break;
                 }
@@ -200,21 +205,28 @@ impl RulesSet {
     }
 
     /// `merge(Parser::Driver *from)`
-    pub fn merge_driver(&mut self, from: &mut Driver) -> i32 {
-        let amount_of_rules = self.rules_set_phases.append(&from.rules_set_phases, &mut self.properties.parser_error);
-        let mut err = String::new();
-        RulesSetProperties::merge_properties(&mut from.properties, &mut self.properties, &mut err);
-        self.properties.parser_error.push_str(&err);
-        amount_of_rules
+    pub fn merge_driver(&mut self, from: &mut Driver) -> Result<usize, String> {
+        self.merge_parts(&from.rules_set_phases, &mut from.properties)
     }
 
-    /// `merge(RulesSet *from)`
-    pub fn merge(&mut self, from: &mut RulesSet) -> i32 {
-        let amount_of_rules = self.rules_set_phases.append(&from.rules_set_phases, &mut self.properties.parser_error);
-        let mut err = String::new();
-        RulesSetProperties::merge_properties(&mut from.properties, &mut self.properties, &mut err);
-        self.properties.parser_error.push_str(&err);
-        amount_of_rules
+    /// `merge(RulesSet *from)`: appends the rules of `from` and merges its
+    /// properties. Returns the number of rules appended.
+    pub fn merge(&mut self, from: &mut RulesSet) -> Result<usize, String> {
+        self.merge_parts(&from.rules_set_phases, &mut from.properties)
+    }
+
+    /// The two `merge` overloads. The properties are merged even when the
+    /// rules could not be (duplicated id), and a failure to merge them is
+    /// only recorded in the parser errors; both as in C++.
+    fn merge_parts(&mut self, phases: &RulesSetPhases, properties: &mut RulesSetProperties) -> Result<usize, String> {
+        let appended = self.rules_set_phases.append(phases);
+        if let Err(e) = &appended {
+            self.properties.parser_error.push_str(e);
+        }
+        if let Err(e) = RulesSetProperties::merge_properties(properties, &mut self.properties) {
+            self.properties.parser_error.push_str(&e);
+        }
+        appended.or_else(|_| self.failed())
     }
 
     /// `debug(level, id, uri, msg)`
@@ -238,6 +250,18 @@ pub mod c_api {
             // SAFETY: the caller passes a valid out-pointer; ownership of the
             // string goes to the caller (free with msc_rules_error_cleanup).
             unsafe { *error = c.into_raw() };
+        }
+    }
+
+    /// The C API result of a load or merge: the number of rules, or -1 with
+    /// the parser errors handed to the caller through `error`.
+    fn c_result(result: Result<usize, String>, error: *mut *const c_char) -> c_int {
+        match result {
+            Ok(n) => c_int::try_from(n).unwrap_or(c_int::MAX),
+            Err(e) => {
+                set_error(error, e);
+                -1
+            }
         }
     }
 
@@ -274,11 +298,7 @@ pub mod c_api {
         let (Some(dst), Some(from)) = (unsafe { rules_dst.as_mut() }, unsafe { rules_from.as_mut() }) else {
             return -1;
         };
-        let ret = dst.merge(from);
-        if ret < 0 {
-            set_error(error, dst.get_parser_error());
-        }
-        ret
+        c_result(dst.merge(from), error)
     }
 
     /// # Safety
@@ -293,11 +313,7 @@ pub mod c_api {
         let Some(r) = (unsafe { rules.as_mut() }) else {
             return -1;
         };
-        let ret = r.load_remote(unsafe { cstr(key) }, unsafe { cstr(uri) });
-        if ret < 0 {
-            set_error(error, r.get_parser_error());
-        }
-        ret
+        c_result(r.load_remote(unsafe { cstr(key) }, unsafe { cstr(uri) }), error)
     }
 
     /// # Safety
@@ -311,11 +327,7 @@ pub mod c_api {
         let Some(r) = (unsafe { rules.as_mut() }) else {
             return -1;
         };
-        let ret = r.load_from_uri(unsafe { cstr(file) });
-        if ret < 0 {
-            set_error(error, r.get_parser_error());
-        }
-        ret
+        c_result(r.load_from_uri(unsafe { cstr(file) }), error)
     }
 
     /// # Safety
@@ -330,11 +342,7 @@ pub mod c_api {
         let Some(r) = (unsafe { rules.as_mut() }) else {
             return -1;
         };
-        let ret = r.load(unsafe { cstr(plain_rules) });
-        if ret < 0 {
-            set_error(error, r.get_parser_error());
-        }
-        ret
+        c_result(r.load(unsafe { cstr(plain_rules) }), error)
     }
 
     /// # Safety
@@ -354,5 +362,62 @@ pub mod c_api {
             drop(unsafe { Box::from_raw(rules) });
         }
         1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::c_api::*;
+    use super::*;
+    use crate::rules_set_properties::RuleEngine;
+    use std::ffi::{CStr, CString, c_char};
+
+    /// `msc_rules_add`: the number of rules, or -1 with the error text.
+    fn add(rules: *mut RulesSet, text: &str) -> (i32, Option<String>) {
+        let text = CString::new(text).unwrap();
+        let mut error: *const c_char = std::ptr::null();
+        // SAFETY: valid rule set, string and out-pointer.
+        let n = unsafe { msc_rules_add(rules, text.as_ptr(), &mut error) };
+        let error = (!error.is_null()).then(|| {
+            // SAFETY: set by msc_rules_add, released right after.
+            let e = unsafe { CStr::from_ptr(error) }.to_string_lossy().into_owned();
+            unsafe { msc_rules_error_cleanup(error) };
+            e
+        });
+        (n, error)
+    }
+
+    #[test]
+    fn c_api_load_and_merge() {
+        let a = msc_create_rules_set();
+        assert_eq!(add(a, "SecRule ARGS \"@rx a\" \"id:1,phase:2,pass\"\nSecAction \"id:2,phase:1,pass\""), (2, None));
+
+        let (n, error) = add(a, "SecRuleEngine Bogus");
+        assert_eq!(n, -1);
+        let first = error.unwrap();
+        assert!(first.starts_with("Rules error. File: <<reference missing or not informed>>. Line: 1."), "{first}");
+        // The errors accumulate: the next failure reports both.
+        let (n, error) = add(a, "SecRuleEngine Bogus");
+        assert_eq!(n, -1);
+        assert!(error.unwrap().starts_with(&first));
+
+        // Merging a duplicated id fails, but the properties are merged.
+        let b = msc_create_rules_set();
+        assert_eq!(add(b, "SecRuleEngine On\nSecRule ARGS \"@rx b\" \"id:1,phase:2,pass\""), (1, None));
+        let mut error: *const c_char = std::ptr::null();
+        // SAFETY: valid rule sets and out-pointer.
+        assert_eq!(unsafe { msc_rules_merge(a, b, &mut error) }, -1);
+        // SAFETY: set by msc_rules_merge.
+        let e = unsafe { CStr::from_ptr(error) }.to_string_lossy().into_owned();
+        unsafe { msc_rules_error_cleanup(error) };
+        assert!(e.ends_with("Rule id: 1 is duplicated\n"), "{e}");
+        // SAFETY: `a` is live.
+        assert_eq!(unsafe { &*a }.properties.sec_rule_engine, Some(RuleEngine::Enabled));
+
+        // SAFETY: created above.
+        unsafe {
+            msc_rules_cleanup(a);
+            msc_rules_cleanup(b);
+        }
     }
 }

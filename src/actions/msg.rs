@@ -40,11 +40,10 @@ impl Msg {
 impl Action for Msg {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         let msg = self.data(t);
         crate::ms_dbg_a!(t, 9, "Saving msg: {}", lossy(&msg));
         rm.message = msg;
-        true
     }
 }
 
@@ -65,7 +64,7 @@ mod tests {
     fn message_actions() {
         let ms = ModSecurity::new();
         let rules = rules();
-        let r = rule(vec![Box::new(Msg::with_rts(rts("hello"))), Box::new(Tag::with_rts(rts("a/b")))]);
+        let r = rule(vec![RuleAction::Msg(Msg::with_rts(rts("hello"))), RuleAction::Tag(Tag::with_rts(rts("a/b")))]);
         assert!(r.has_msg());
         let mut t = Transaction::new(&ms, &rules, None);
         assert_eq!(r.msg(&t), b"hello");

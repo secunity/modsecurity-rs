@@ -44,8 +44,7 @@ impl Action for RuleRemoveTargetById {
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         t.rule_remove_target_by_id.push((self.id, self.target.clone()));
-        true
     }
 }

@@ -21,8 +21,7 @@ impl NoLog {
 impl Action for NoLog {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         rm.save_message = false;
-        true
     }
 }

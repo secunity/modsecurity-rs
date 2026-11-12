@@ -22,22 +22,20 @@ pub use self::with_lua::Lua;
 #[cfg(not(feature = "lua"))]
 pub use self::without_lua::Lua;
 
-/// `Lua::isCompatible` shared by both builds: the script must be a `.lua`
-/// file that compiles.
-fn is_compatible_impl(script: &str, l: &mut Lua, error: &mut String) -> bool {
-    if cfg!(not(feature = "lua")) {
-        *error = "Lua support was not enabled.".to_string();
-        return false;
+impl Lua {
+    /// `Lua::isCompatible`: an engine with `script` loaded. The script must
+    /// be a `.lua` file that compiles.
+    pub fn from_script(script: &str) -> Result<Lua, String> {
+        if cfg!(not(feature = "lua")) {
+            return Err("Lua support was not enabled.".to_string());
+        }
+        if !script.ends_with(".lua") {
+            return Err(format!("Expecting a Lua script: {}", script));
+        }
+        let mut l = Lua::new();
+        l.load(script).map_err(|err| format!("Problems load script: {}", err))?;
+        Ok(l)
     }
-    if !script.ends_with(".lua") {
-        *error = format!("Expecting a Lua script: {}", script);
-        return false;
-    }
-    if let Err(err) = l.load(script) {
-        *error = format!("Problems load script: {}", err);
-        return false;
-    }
-    true
 }
 
 #[cfg(not(feature = "lua"))]
@@ -64,11 +62,6 @@ mod without_lua {
         pub fn run(&self, t: &mut Transaction<'_>, _s: &[u8]) -> i32 {
             crate::ms_dbg_a!(t, 9, "Lua support was not enabled.");
             0
-        }
-
-        /// `isCompatible`
-        pub fn is_compatible(script: &str, l: &mut Lua, error: &mut String) -> bool {
-            super::is_compatible_impl(script, l, error)
         }
     }
 }
@@ -302,11 +295,6 @@ end
             // As in C++, the dump is appended to the blob.
             self.blob.extend_from_slice(&compiled.dump(false));
             Ok(())
-        }
-
-        /// `isCompatible`
-        pub fn is_compatible(script: &str, l: &mut Lua, error: &mut String) -> bool {
-            super::is_compatible_impl(script, l, error)
         }
 
         /// `run`: runs the script with `s` as the argument of `main` (none
@@ -563,7 +551,7 @@ end
         let variable_name = &var_name[pos + 1..];
 
         let c = &t.collections;
-        let web_app_id = Some(t.rules.properties.sec_web_app_id.value.as_bytes());
+        let web_app_id = Some(t.rules.properties.web_app_id());
         match collection.as_str() {
             "TX" => {
                 c.tx_collection.store_or_update_first(variable_name, &var_value);
@@ -633,14 +621,14 @@ end
                     // FIXME (C++): transformation is not yet returning null,
                     // so the "Invalid transformation function" branch of the
                     // C++ code is never taken.
-                    let tfn = transformation::instantiate(&format!("t:{}", lossy(&name)));
+                    let tfn = transformation::Transformation::from_name(&format!("t:{}", lossy(&name)));
                     tfn.transform(var, Some(t));
                 }
                 Ok(())
             }
             Some(v @ (Value::String(_) | Value::Integer(_) | Value::Number(_))) => {
                 let name = check_string(lua, Some(v), 2)?;
-                let tfn = transformation::instantiate(&format!("t:{}", lossy(&name)));
+                let tfn = transformation::Transformation::from_name(&format!("t:{}", lossy(&name)));
                 tfn.transform(var, Some(t));
                 Ok(())
             }
@@ -671,10 +659,8 @@ mod tests {
     const DATA: &str = "test/test-cases/data";
 
     fn loaded(name: &str) -> Lua {
-        let mut l = Lua::new();
-        let mut err = String::new();
         let path = format!("{}/{}", DATA, name);
-        assert!(Lua::is_compatible(&path, &mut l, &mut err), "{}", err);
+        let l = Lua::from_script(&path).unwrap();
         assert_eq!(l.script_name, path);
         l
     }
@@ -690,21 +676,16 @@ mod tests {
 
     #[test]
     fn is_compatible_errors() {
-        let mut l = Lua::new();
-        let mut err = String::new();
-        assert!(!Lua::is_compatible("script.txt", &mut l, &mut err));
-        assert_eq!(err, "Expecting a Lua script: script.txt");
+        assert_eq!(Lua::from_script("script.txt").unwrap_err(), "Expecting a Lua script: script.txt");
 
-        assert!(!Lua::is_compatible("/nonexistent/x.lua", &mut l, &mut err));
         assert_eq!(
-            err,
+            Lua::from_script("/nonexistent/x.lua").unwrap_err(),
             "Problems load script: Failed to compile script '/nonexistent/x.lua: cannot open /nonexistent/x.lua: No such file or directory."
         );
 
         let p = temp_script("syntax.lua", "function main()\n  return (\nend\n");
-        assert!(!Lua::is_compatible(&p, &mut l, &mut err));
         assert_eq!(
-            err,
+            Lua::from_script(&p).unwrap_err(),
             format!("Problems load script: Failed to compile script '{p}: {p}:3: unexpected symbol near 'end'.")
         );
     }
@@ -775,7 +756,7 @@ mod tests {
     fn setvar_and_getvar() {
         let ms = ModSecurity::new();
         let (mut rules, log) = rules_with_log();
-        rules.properties.sec_web_app_id.value = "app".to_string();
+        rules.properties.sec_web_app_id = Some("app".to_string());
         let mut t = Transaction::new(&ms, &rules, None);
         // The persistent collections may live on disk (LMDB).
         let ip_key = format!("lua-test-{}", std::process::id());
@@ -899,10 +880,8 @@ mod tests {
 
     #[test]
     fn lua_disabled() {
+        assert_eq!(Lua::from_script("test/test-cases/data/match.lua").unwrap_err(), "Lua support was not enabled.");
         let mut l = Lua::new();
-        let mut err = String::new();
-        assert!(!Lua::is_compatible("test/test-cases/data/match.lua", &mut l, &mut err));
-        assert_eq!(err, "Lua support was not enabled.");
         assert_eq!(l.load("x.lua"), Err("Lua support was not enabled.".to_string()));
         let ms = ModSecurity::new();
         let (rules, log) = rules_with_log();

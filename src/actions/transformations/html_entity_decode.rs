@@ -1,10 +1,6 @@
 //! Port of `src/actions/transformations/html_entity_decode.cc`, `src/actions/transformations/html_entity_decode.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
 use crate::utils::string::NBSP;
-
-crate::transformation_struct!(HtmlEntityDecode);
 
 /// Named-entity table for t:htmlEntityDecode: `(name, character)`.
 ///
@@ -199,10 +195,9 @@ fn inplace(input: &mut Vec<u8>) -> bool {
     changed
 }
 
-impl Transformation for HtmlEntityDecode {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        inplace(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    inplace(value)
 }
 
 #[cfg(test)]

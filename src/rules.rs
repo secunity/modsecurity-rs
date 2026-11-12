@@ -19,38 +19,22 @@ impl Rules {
         }
     }
 
-    /// `append(from, ids, err)`: fails if a `SecRule` id of `from` is in
-    /// the sorted `ids` list; returns the number of rules of `from`.
-    pub fn append(&mut self, from: &Rules, ids: &[i64], err: &mut String) -> i32 {
-        for r in &from.rules {
-            if let Some(id) = r.rule_with_operator_id()
-                && ids.binary_search(&id).is_ok()
-            {
-                err.push_str(&format!("Rule id: {} is duplicated\n", id));
-                return -1;
-            }
+    /// `append(from, ids, err)`: appends the rules of `from`, unless one of
+    /// its `SecRule` ids is in the sorted `ids` list. Returns the number of
+    /// rules appended.
+    pub fn append(&mut self, from: &Rules, ids: &[i64]) -> Result<usize, String> {
+        if let Some(id) =
+            from.rules.iter().filter_map(|r| r.rule_with_operator_id()).find(|id| ids.binary_search(id).is_ok())
+        {
+            return Err(format!("Rule id: {} is duplicated\n", id));
         }
         self.rules.extend(from.rules.iter().cloned());
-        from.rules.len() as i32
+        Ok(from.rules.len())
     }
 
     /// `insert(rule)`
-    pub fn insert(&mut self, rule: Arc<Rule>) -> bool {
-        self.insert_checked(rule, None, None)
-    }
-
-    /// `insert(rule, ids, err)`
-    pub fn insert_checked(&mut self, rule: Arc<Rule>, ids: Option<&[i64]>, err: Option<&mut String>) -> bool {
-        if let (Some(id), Some(ids)) = (rule.rule_with_operator_id(), ids)
-            && ids.binary_search(&id).is_ok()
-        {
-            if let Some(err) = err {
-                err.push_str(&format!("Rule id: {} is duplicated\n", id));
-            }
-            return false;
-        }
+    pub fn insert(&mut self, rule: Arc<Rule>) {
         self.rules.push(rule);
-        true
     }
 
     pub fn size(&self) -> usize {

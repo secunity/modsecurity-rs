@@ -1,19 +1,23 @@
 //! Port of `src/operators/operator.h` / `src/operators/operator.cc`.
 
+use std::borrow::Cow;
+
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 use crate::utils::regex::{Regex, RegexResult};
 use crate::utils::string::{limit_to, to_hex_if_needed};
-use crate::variables::variable::AsAny;
 
 /// Data members of the C++ `Operator` base class.
 #[derive(Debug, Default)]
 pub struct OperatorBase {
-    pub match_message: String,
+    /// The fixed match message of operators that have one (C++
+    /// `m_match_message`).
+    pub match_message: Option<&'static str>,
     pub negation: bool,
-    pub op: String,
+    /// The operator name used in the match message (e.g. `Rx`).
+    pub op: &'static str,
     pub param: Vec<u8>,
     pub string: Option<RunTimeString>,
     pub could_contain_macro: bool,
@@ -21,25 +25,30 @@ pub struct OperatorBase {
 
 impl OperatorBase {
     /// `Operator(opName)`
-    pub fn new(op_name: &str) -> Self {
-        OperatorBase { op: op_name.to_string(), ..Default::default() }
+    pub fn new(op_name: &'static str) -> Self {
+        OperatorBase { op: op_name, ..Default::default() }
     }
 
     /// `Operator(opName, param)` with a literal parameter.
-    pub fn with_param(op_name: &str, param: &[u8]) -> Self {
-        OperatorBase { op: op_name.to_string(), param: param.to_vec(), ..Default::default() }
+    pub fn with_param(op_name: &'static str, param: &[u8]) -> Self {
+        OperatorBase { op: op_name, param: param.to_vec(), ..Default::default() }
     }
 
     /// `Operator(opName, std::unique_ptr<RunTimeString> param)`: the
     /// parameter is pre-expanded (without a transaction) into `param`.
-    pub fn with_string(op_name: &str, param: RunTimeString) -> Self {
+    pub fn with_string(op_name: &'static str, param: RunTimeString) -> Self {
         let p = param.evaluate_static();
-        OperatorBase { op: op_name.to_string(), param: p, string: Some(param), ..Default::default() }
+        OperatorBase { op: op_name, param: p, string: Some(param), ..Default::default() }
+    }
+
+    /// The parameter expanded for `t`, borrowed when it has no macro.
+    pub fn param_value(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
+        self.string.as_ref().map_or(Cow::Borrowed(&[][..]), |s| s.evaluate_cow(Some(t)))
     }
 }
 
 /// A SecRule operator (`@rx`, `@pm`, ...).
-pub trait Operator: AsAny + Send + Sync + std::fmt::Debug {
+pub trait Operator: Send + Sync + std::fmt::Debug {
     fn base(&self) -> &OperatorBase;
     fn base_mut(&mut self) -> &mut OperatorBase;
 
@@ -49,15 +58,10 @@ pub trait Operator: AsAny + Send + Sync + std::fmt::Debug {
         Ok(())
     }
 
-    /// `evaluate(transaction, rule, str, ruleMessage)`. The transaction,
-    /// rule and rule message may be absent (unit tests, Lua, ...).
-    fn evaluate(
-        &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
-        input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
-    ) -> bool;
+    /// `evaluate(transaction, rule, str, ruleMessage)`: whether `input`
+    /// matches (before the negation of `!@op`).
+    fn evaluate(&self, t: &mut Transaction<'_>, rule: &RuleWithActions, input: &[u8], rm: &mut RuleMessage<'_>)
+    -> bool;
 
     /// `resolveMatchMessage`
     fn resolve_match_message(&self, t: &Transaction<'_>, key: &[u8], value: &[u8]) -> Vec<u8> {
@@ -67,13 +71,13 @@ pub trait Operator: AsAny + Send + Sync + std::fmt::Debug {
 
 /// The default `resolveMatchMessage` body.
 pub fn default_resolve_match_message(b: &OperatorBase, t: &Transaction<'_>, key: &[u8], value: &[u8]) -> Vec<u8> {
-    if !b.match_message.is_empty() {
-        return b.match_message.as_bytes().to_vec();
+    if let Some(m) = b.match_message {
+        return m.as_bytes().to_vec();
     }
-    let p: Vec<u8> = if !b.could_contain_macro {
-        b.param.clone()
+    let p: Cow<'_, [u8]> = if !b.could_contain_macro {
+        Cow::Borrowed(&b.param)
     } else {
-        b.string.as_ref().map(|s| s.evaluate(Some(t))).unwrap_or_default()
+        Cow::Owned(b.string.as_ref().map(|s| s.evaluate(Some(t))).unwrap_or_default())
     };
     let mut ret = Vec::new();
     ret.extend_from_slice(b"Matched \"Operator `");
@@ -92,17 +96,13 @@ impl dyn Operator {
     /// `evaluateInternal`: evaluates and applies the negation (`!@op`).
     pub fn evaluate_internal(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         let res = self.evaluate(t, rule, input, rm);
         if self.base().negation { !res } else { res }
-    }
-
-    pub fn downcast_ref<T: Operator>(&self) -> Option<&T> {
-        self.as_any().downcast_ref::<T>()
     }
 }
 
@@ -112,10 +112,7 @@ pub fn log_offset(rm: &mut RuleMessage<'_>, offset: usize, len: usize) {
 }
 
 /// `Operator::reportRegexCompileError`: shared by `@rx` and `@rxGlobal`.
-pub fn report_regex_compile_error(t: Option<&mut Transaction<'_>>, re: &Regex) {
-    let Some(t) = t else {
-        return;
-    };
+pub fn report_regex_compile_error(t: &mut Transaction<'_>, re: &Regex) {
     crate::ms_dbg_a!(t, 1, "Error with regular expression: \"{}\"", re.pattern);
     let off = t.vars.offset;
     t.vars.msc_pcre_error.set(b"1", off);
@@ -127,11 +124,8 @@ pub fn report_regex_compile_error(t: Option<&mut Transaction<'_>>, re: &Regex) {
 }
 
 /// `Operator::reportRegexSearchError`
-pub fn report_regex_search_error(t: Option<&mut Transaction<'_>>, re: &Regex, result: RegexResult, op_name: &str) {
+pub fn report_regex_search_error(t: &mut Transaction<'_>, re: &Regex, result: RegexResult, op_name: &str) {
     use crate::collection::collection::Collection;
-    let Some(t) = t else {
-        return;
-    };
     let off = t.vars.offset;
     t.vars.msc_pcre_error.set(b"1", off);
     t.collections.tx_collection.store_or_update_first(b"MSC_PCRE_ERROR", b"1");
@@ -193,14 +187,15 @@ pub fn instantiate_with_param(op: &str, param: RunTimeString) -> Option<Box<dyn 
         "gsblookup" => Box::new(gsblookup::GsbLookup::new(param)),
         "gt" => Box::new(gt::Gt::new(param)),
         "inspectfile" => Box::new(inspect_file::InspectFile::new(param)),
-        "ipmatchf" => Box::new(ip_match_f::IpMatchF::new(param)),
+        // `@ipMatchF` and `@pmf` are aliases (C++ `IpMatchF`, `PmF`).
+        "ipmatchf" => Box::new(ip_match_from_file::IpMatchFromFile::new(param)),
         "ipmatchfromfile" => Box::new(ip_match_from_file::IpMatchFromFile::new(param)),
         "ipmatch" => Box::new(ip_match::IpMatch::new(param)),
         "le" => Box::new(le::Le::new(param)),
         "lt" => Box::new(lt::Lt::new(param)),
         "nomatch" => Box::new(no_match::NoMatch::new()),
         "pmfromfile" => Box::new(pm_from_file::PmFromFile::new(param)),
-        "pmf" => Box::new(pm_f::PmF::new(param)),
+        "pmf" => Box::new(pm_from_file::PmFromFile::with_name("PmFromF", param)),
         "pm" => Box::new(pm::Pm::new(param)),
         "rbl" => Box::new(rbl::Rbl::new(param)),
         "rsub" => Box::new(rsub::Rsub::new(param)),
@@ -223,4 +218,30 @@ pub fn instantiate_with_param(op: &str, param: RunTimeString) -> Option<Box<dyn 
         _ => return None,
     };
     Some(b)
+}
+
+/// Evaluating operators in tests, with a fresh transaction and an empty rule.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::Operator;
+    use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rules_set::RulesSet;
+    use crate::transaction::Transaction;
+
+    /// `op` applied to `input` in a new transaction.
+    pub fn eval(op: &dyn Operator, input: &[u8]) -> bool {
+        let ms = ModSecurity::new();
+        let rules = RulesSet::new();
+        let mut t = Transaction::new(&ms, &rules, None);
+        eval_in(op, &mut t, input)
+    }
+
+    /// `op` applied to `input` in `t`, for a rule without actions.
+    pub fn eval_in(op: &dyn Operator, t: &mut Transaction<'_>, input: &[u8]) -> bool {
+        let rule = RuleWithActions::new(None, None, "", 0, RuleWithActionsKind::Unconditional);
+        let mut rm = RuleMessage::new(&rule);
+        op.evaluate(t, &rule, input, &mut rm)
+    }
 }

@@ -1,10 +1,6 @@
 //! Port of `src/actions/transformations/css_decode.cc`, `src/actions/transformations/css_decode.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
 use crate::utils::string::{is_space, valid_hex, x2c, xsingle2c};
-
-crate::transformation_struct!(CssDecode);
 
 /// Decode a string that contains CSS-escaped characters.
 ///
@@ -132,10 +128,9 @@ fn css_decode_inplace(input: &mut Vec<u8>) -> bool {
     changed
 }
 
-impl Transformation for CssDecode {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        css_decode_inplace(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    css_decode_inplace(value)
 }
 
 #[cfg(test)]

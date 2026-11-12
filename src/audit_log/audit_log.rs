@@ -1,11 +1,8 @@
 //! Port of `headers/modsecurity/audit_log.h`, `src/audit_log/audit_log.cc`.
 
-use crate::audit_log::writer::https::Https;
-use crate::audit_log::writer::parallel::Parallel;
-use crate::audit_log::writer::serial::Serial;
 use crate::audit_log::writer::writer::Writer;
 use crate::transaction::Transaction;
-use crate::utils::regex::{Regex, regex_search};
+use crate::utils::regex::Regex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditLogType {
@@ -30,8 +27,24 @@ pub enum AuditLogFormat {
     NativeAuditLogFormat,
 }
 
+/// `SecAuditLogRelevantStatus`: the pattern and its compiled regex (C++
+/// compiles it for every transaction).
+#[derive(Debug)]
+struct RelevantStatus {
+    pattern: String,
+    re: Regex,
+}
+
+impl RelevantStatus {
+    /// `None` for an empty pattern, which matches no status.
+    fn new(pattern: &str) -> Option<Self> {
+        (!pattern.is_empty()).then(|| RelevantStatus { pattern: pattern.to_string(), re: Regex::new(pattern) })
+    }
+}
+
 /// The audit log configuration (`SecAuditEngine`, `SecAuditLog*`) and the
 /// writer that saves the relevant transactions.
+#[derive(Debug)]
 pub struct AuditLog {
     pub path1: String,
     pub path2: String,
@@ -50,33 +63,14 @@ pub struct AuditLog {
 
     status: AuditLogStatus,
     audit_type: AuditLogType,
-    relevant: String,
+    /// `SecAuditLogRelevantStatus` (`None` when not set or empty).
+    relevant: Option<RelevantStatus>,
 
     /// The C++ writer keeps a back pointer (`m_audit`) to its `AuditLog`;
     /// here the owner passes itself to every writer call instead.
-    writer: Option<Box<dyn Writer>>,
+    writer: Option<Writer>,
     /// Rules have at least one `ctl:auditEngine` action On or RelevantOnly.
     ctl_audit_engine_active: bool,
-}
-
-impl std::fmt::Debug for AuditLog {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AuditLog")
-            .field("path1", &self.path1)
-            .field("path2", &self.path2)
-            .field("storage_dir", &self.storage_dir)
-            .field("prefix", &self.prefix)
-            .field("format", &self.format)
-            .field("parts", &self.parts)
-            .field("file_permission", &self.file_permission)
-            .field("directory_permission", &self.directory_permission)
-            .field("status", &self.status)
-            .field("audit_type", &self.audit_type)
-            .field("relevant", &self.relevant)
-            .field("has_writer", &self.writer.is_some())
-            .field("ctl_audit_engine_active", &self.ctl_audit_engine_active)
-            .finish()
-    }
 }
 
 impl Default for AuditLog {
@@ -174,7 +168,7 @@ impl AuditLog {
             default_directory_permission: 0o750,
             status: AuditLogStatus::NotSetLogStatus,
             audit_type: AuditLogType::NotSetAuditLogType,
-            relevant: String::new(),
+            relevant: None,
             writer: None,
             ctl_audit_engine_active: false,
         }
@@ -196,7 +190,7 @@ impl AuditLog {
     }
 
     pub fn set_relevant_status(&mut self, new_relevant_status: &str) -> bool {
-        self.relevant = new_relevant_status.to_string();
+        self.relevant = RelevantStatus::new(new_relevant_status);
         true
     }
 
@@ -275,12 +269,7 @@ impl AuditLog {
             return Ok(());
         }
 
-        let tmp_writer: Box<dyn Writer> = match self.audit_type {
-            AuditLogType::ParallelAuditLogType => Box::new(Parallel::new()),
-            AuditLogType::HttpsAuditLogType => Box::new(Https::new()),
-            // SerialAuditLogType or NotSetAuditLogType
-            AuditLogType::SerialAuditLogType | AuditLogType::NotSetAuditLogType => Box::new(Serial::new()),
-        };
+        let tmp_writer = Writer::for_type(self.audit_type);
 
         if let Err(e) = tmp_writer.init(self) {
             // `delete tmp_writer`: its destructor releases what it opened.
@@ -328,7 +317,7 @@ impl AuditLog {
                 9,
                 "Return code `{}' is not interesting to audit logs, relevant code(s): `{}'.",
                 t.http_code_returned,
-                self.relevant
+                self.relevant.as_ref().map_or("", |r| r.pattern.as_str())
             );
             return false;
         }
@@ -353,17 +342,7 @@ impl AuditLog {
     }
 
     pub fn is_relevant(&self, status: i32) -> bool {
-        let sstatus = status.to_string();
-
-        if self.relevant.is_empty() {
-            return false;
-        }
-
-        if sstatus.is_empty() {
-            return true;
-        }
-
-        regex_search(sstatus.as_bytes(), &Regex::new(&self.relevant)) != 0
+        self.relevant.as_ref().is_some_and(|r| r.re.search(status.to_string().as_bytes()) != 0)
     }
 
     pub fn add_parts(parts: i32, new_parts: &str) -> i32 {
@@ -390,7 +369,9 @@ impl AuditLog {
         merge_string(&from.path1, &mut self.path1);
         merge_string(&from.path2, &mut self.path2);
         merge_string(&from.storage_dir, &mut self.storage_dir);
-        merge_string(&from.relevant, &mut self.relevant);
+        if let Some(r) = &from.relevant {
+            self.relevant = RelevantStatus::new(&r.pattern);
+        }
         merge_string(&from.prefix, &mut self.prefix);
 
         if from.file_permission != -1 {
@@ -470,7 +451,7 @@ mod tests {
 
     fn rules_with(configure: impl FnOnce(&mut AuditLog)) -> RulesSet {
         let mut rules = RulesSet::new();
-        rules.properties.sec_rule_engine = RuleEngine::EnabledRuleEngine;
+        rules.properties.sec_rule_engine = Some(RuleEngine::Enabled);
         let mut from = AuditLog::new();
         from.set_status(AuditLogStatus::OnAuditLogStatus);
         from.set_parts("ABFHZ");
@@ -770,7 +751,7 @@ mod tests {
             a.set_type(AuditLogType::ParallelAuditLogType);
         });
         let t = Transaction::with_id(&ms, &rules, "x", None);
-        let w = Parallel::new();
+        let w = Writer::Parallel;
         assert_eq!(w.write(&rules.properties.audit_log, &t, ABFHZ).unwrap_err(), "Log path is not valid.");
         // Not able to create the storage directory.
         let mut a = AuditLog::new();
@@ -791,9 +772,9 @@ mod tests {
         a.init().unwrap();
         // Re-initialising keeps the file open (new writer opened first).
         a.init().unwrap();
-        let mut e = String::new();
-        assert!(crate::utils::shared_files::SharedFiles::get_instance().write(&log, b"x", &mut e));
+        let files = crate::utils::shared_files::SharedFiles::get_instance();
+        assert!(files.write(&log, b"x").is_ok());
         drop(a);
-        assert!(!crate::utils::shared_files::SharedFiles::get_instance().write(&log, b"x", &mut e));
+        assert!(files.write(&log, b"x").is_err());
     }
 }

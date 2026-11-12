@@ -21,10 +21,9 @@ impl RequestBodyProcessorJSON {
 impl Action for RequestBodyProcessorJSON {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         t.request_body_processor = RequestBodyType::JSONRequestBody;
         let offset = t.vars.offset;
         t.vars.reqbody_processor.set(b"JSON", offset);
-        true
     }
 }

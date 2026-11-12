@@ -1,126 +1,230 @@
 //! Port of `src/actions/transformations/transformation.h` /
 //! `src/actions/transformations/transformation.cc`.
+//!
+//! In C++ every transformation is a subclass of `Transformation` (itself an
+//! `Action`). Here a transformation is one [`Transformation`] value whose
+//! [`TransformationKind`] selects the function applied; the functions live
+//! in the modules of `actions::transformations`.
 
 use crate::actions::action::{Action, ActionBase, Kind};
+use crate::actions::transformations::*;
 use crate::transaction::Transaction;
+use crate::utils::decode::urldecode_nonstrict_inplace;
 
-/// A transformation (`t:xxx`) is an action of kind
+/// The transformation functions (`t:xxx`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransformationKind {
+    Base64Decode,
+    Base64DecodeExt,
+    Base64Encode,
+    CmdLine,
+    CompressWhitespace,
+    CssDecode,
+    EscapeSeqDecode,
+    HexDecode,
+    HexEncode,
+    HtmlEntityDecode,
+    JsDecode,
+    Length,
+    LowerCase,
+    Md5,
+    /// `t:none`: changes nothing, but discards the transformations listed
+    /// before it (see `RuleWithActions::execute_transformations`).
+    None,
+    NormalisePath,
+    NormalisePathWin,
+    ParityEven7bit,
+    ParityOdd7bit,
+    ParityZero7bit,
+    RemoveComments,
+    RemoveCommentsChar,
+    RemoveNulls,
+    RemoveWhitespace,
+    ReplaceComments,
+    ReplaceNulls,
+    Sha1,
+    SqlHexDecode,
+    Trim,
+    TrimLeft,
+    TrimRight,
+    UpperCase,
+    UrlDecode,
+    UrlDecodeUni,
+    UrlEncode,
+    Utf8ToUnicode,
+    /// The plain C++ `Transformation` class (returned for unknown names):
+    /// leaves the value as it is.
+    Identity,
+}
+
+/// A transformation (`t:xxx`): an action of kind
 /// `RunTimeBeforeMatchAttemptKind` that rewrites the target value.
-pub trait Transformation: Action {
-    /// Transforms `value` in place; returns whether it changed.
-    fn transform(&self, value: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool;
-}
-
-/// `ActionBase` for a transformation (kind `RunTimeBeforeMatchAttemptKind`).
-pub fn transformation_base(action: &str) -> ActionBase {
-    ActionBase::with_kind(action, Kind::RunTimeBeforeMatchAttemptKind)
-}
-
-/// Declares a transformation struct named `$n` with a `new(action: &str)`
-/// constructor and its [`Action`] implementation. The module then only
-/// implements [`Transformation`] for it.
-#[macro_export]
-macro_rules! transformation_struct {
-    ($n:ident) => {
-        #[derive(Debug, Clone)]
-        pub struct $n {
-            pub base: $crate::actions::action::ActionBase,
-        }
-
-        impl $n {
-            pub fn new(action: &str) -> Self {
-                $n { base: $crate::actions::transformations::transformation::transformation_base(action) }
-            }
-        }
-
-        impl $crate::actions::action::Action for $n {
-            $crate::action_base_accessors!();
-            fn as_transformation(
-                &self,
-            ) -> Option<&dyn $crate::actions::transformations::transformation::Transformation> {
-                Some(self)
-            }
-        }
-    };
-}
-
-/// The plain C++ `Transformation` class: returned by
-/// [`instantiate`] for unknown names; it never changes the value.
 #[derive(Debug, Clone)]
-pub struct BaseTransformation {
+pub struct Transformation {
+    /// The name as written in the rule (e.g. `t:lowerCase`), which the
+    /// debug log and the transformation paths print.
     pub base: ActionBase,
+    pub kind: TransformationKind,
 }
 
-impl BaseTransformation {
-    pub fn new(action: &str) -> Self {
-        BaseTransformation { base: transformation_base(action) }
+impl Transformation {
+    pub fn new(kind: TransformationKind, action: &str) -> Self {
+        let mut base = ActionBase::with_kind(action, Kind::RunTimeBeforeMatchAttemptKind);
+        base.is_none = kind == TransformationKind::None;
+        Transformation { base, kind }
+    }
+
+    /// `Transformation::instantiate`: the transformation named `a`
+    /// (`t:<name>`). Names are matched by prefix in the C++ order (so
+    /// `t:trimLeftX` is `trimLeft`); unknown names do nothing.
+    pub fn from_name(a: &str) -> Self {
+        use TransformationKind as K;
+        const NAMES: &[(&str, TransformationKind)] = &[
+            ("base64DecodeExt", K::Base64DecodeExt),
+            ("base64Decode", K::Base64Decode),
+            ("base64Encode", K::Base64Encode),
+            ("cmd_line", K::CmdLine),
+            ("compress_whitespace", K::CompressWhitespace),
+            ("cssDecode", K::CssDecode),
+            ("escapeSeqDecode", K::EscapeSeqDecode),
+            ("hexDecode", K::HexDecode),
+            ("hexEncode", K::HexEncode),
+            ("htmlEntityDecode", K::HtmlEntityDecode),
+            ("jsDecode", K::JsDecode),
+            ("length", K::Length),
+            ("lowercase", K::LowerCase),
+            ("md5", K::Md5),
+            ("none", K::None),
+            ("normalizePathWin", K::NormalisePathWin),
+            ("normalisePathWin", K::NormalisePathWin),
+            ("normalizePath", K::NormalisePath),
+            ("normalisePath", K::NormalisePath),
+            ("parityEven7bit", K::ParityEven7bit),
+            ("parityOdd7bit", K::ParityOdd7bit),
+            ("parityZero7bit", K::ParityZero7bit),
+            ("removeCommentsChar", K::RemoveCommentsChar),
+            ("removeComments", K::RemoveComments),
+            ("removeNulls", K::RemoveNulls),
+            ("removeWhitespace", K::RemoveWhitespace),
+            ("compressWhitespace", K::CompressWhitespace),
+            ("replaceComments", K::ReplaceComments),
+            ("replaceNulls", K::ReplaceNulls),
+            ("sha1", K::Sha1),
+            ("sqlHexDecode", K::SqlHexDecode),
+            ("transformation", K::Identity),
+            ("trimLeft", K::TrimLeft),
+            ("trimRight", K::TrimRight),
+            ("trim", K::Trim),
+            ("uppercase", K::UpperCase),
+            ("urlDecodeUni", K::UrlDecodeUni),
+            ("urlDecode", K::UrlDecode),
+            ("urlEncode", K::UrlEncode),
+            ("utf8toUnicode", K::Utf8ToUnicode),
+        ];
+        // `a.compare(2, strlen(name), name) == 0`: the text after the first
+        // two characters starts with `name`.
+        let rest = a.as_bytes().get(2..).unwrap_or_default();
+        let kind = NAMES.iter().find(|(name, _)| rest.starts_with(name.as_bytes())).map_or(K::Identity, |&(_, k)| k);
+        Transformation::new(kind, a)
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.kind == TransformationKind::None
+    }
+
+    /// Transforms `value` in place; returns whether it changed. Only
+    /// `urlDecodeUni` uses the transaction (for `SecUnicodeMapFile`).
+    pub fn transform(&self, value: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
+        use TransformationKind as K;
+        match self.kind {
+            K::Base64Decode => base64_decode::transform(value),
+            K::Base64DecodeExt => base64_decode_ext::transform(value),
+            K::Base64Encode => base64_encode::transform(value),
+            K::CmdLine => cmd_line::transform(value),
+            K::CompressWhitespace => compress_whitespace::transform(value),
+            K::CssDecode => css_decode::transform(value),
+            K::EscapeSeqDecode => escape_seq_decode::transform(value),
+            K::HexDecode => hex_decode::transform(value),
+            K::HexEncode => hex_encode::transform(value),
+            K::HtmlEntityDecode => html_entity_decode::transform(value),
+            K::JsDecode => js_decode::transform(value),
+            K::Length => {
+                *value = value.len().to_string().into_bytes();
+                true
+            }
+            K::LowerCase => case::lower(value),
+            K::UpperCase => case::upper(value),
+            K::Md5 => crate::utils::md5::Md5::digest_replace(value),
+            K::Sha1 => crate::utils::sha1::Sha1::digest_replace(value),
+            K::NormalisePath => normalise_path::normalize_path_inplace(value, false),
+            K::NormalisePathWin => normalise_path::normalize_path_inplace(value, true),
+            K::ParityEven7bit => parity_7bit::even(value),
+            K::ParityOdd7bit => parity_7bit::odd(value),
+            K::ParityZero7bit => parity_7bit::zero(value),
+            K::RemoveComments => remove_comments::transform(value),
+            K::RemoveCommentsChar => remove_comments_char::transform(value),
+            K::RemoveNulls => remove_nulls::transform(value),
+            K::RemoveWhitespace => remove_whitespace::transform(value),
+            K::ReplaceComments => replace_comments::transform(value),
+            K::ReplaceNulls => replace_nulls::transform(value),
+            K::SqlHexDecode => sql_hex_decode::transform(value),
+            K::Trim => trim::trim(value),
+            K::TrimLeft => trim::ltrim(value),
+            K::TrimRight => trim::rtrim(value),
+            K::UrlDecode => urldecode_nonstrict_inplace(value, &mut 0),
+            K::UrlDecodeUni => url_decode_uni::transform(value, t),
+            K::UrlEncode => url_encode::transform(value),
+            K::Utf8ToUnicode => utf8_to_unicode::transform(value),
+            K::None | K::Identity => false,
+        }
     }
 }
 
-impl Action for BaseTransformation {
+impl Action for Transformation {
     crate::action_base_accessors!();
-    fn as_transformation(&self) -> Option<&dyn Transformation> {
+
+    fn as_transformation(&self) -> Option<&Transformation> {
         Some(self)
     }
 }
 
-impl Transformation for BaseTransformation {
-    fn transform(&self, _value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        false
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// `Transformation::instantiate`: the transformation for `t:<name>`.
-pub fn instantiate(a: &str) -> Box<dyn Transformation> {
-    use crate::actions::transformations::*;
-    macro_rules! if_match {
-        ($name:literal, $t:expr) => {
-            // `a.compare(2, strlen(name), name) == 0`: the text after the
-            // first two characters starts with `name`.
-            if a.len() >= 2 && a.as_bytes()[2..].starts_with($name.as_bytes()) {
-                return Box::new($t);
-            }
-        };
+    fn apply(name: &str, input: &[u8]) -> (bool, Vec<u8>) {
+        let mut v = input.to_vec();
+        let changed = Transformation::from_name(name).transform(&mut v, Option::None);
+        (changed, v)
     }
-    if_match!("base64DecodeExt", base64_decode_ext::Base64DecodeExt::new(a));
-    if_match!("base64Decode", base64_decode::Base64Decode::new(a));
-    if_match!("base64Encode", base64_encode::Base64Encode::new(a));
-    if_match!("cmd_line", cmd_line::CmdLine::new(a));
-    if_match!("compress_whitespace", compress_whitespace::CompressWhitespace::new(a));
-    if_match!("cssDecode", css_decode::CssDecode::new(a));
-    if_match!("escapeSeqDecode", escape_seq_decode::EscapeSeqDecode::new(a));
-    if_match!("hexDecode", hex_decode::HexDecode::new(a));
-    if_match!("hexEncode", hex_encode::HexEncode::new(a));
-    if_match!("htmlEntityDecode", html_entity_decode::HtmlEntityDecode::new(a));
-    if_match!("jsDecode", js_decode::JsDecode::new(a));
-    if_match!("length", length::Length::new(a));
-    if_match!("lowercase", lower_case::LowerCase::new(a));
-    if_match!("md5", md5::Md5::new(a));
-    if_match!("none", none::None::new(a));
-    if_match!("normalizePathWin", normalise_path_win::NormalisePathWin::new(a));
-    if_match!("normalisePathWin", normalise_path_win::NormalisePathWin::new(a));
-    if_match!("normalizePath", normalise_path::NormalisePath::new(a));
-    if_match!("normalisePath", normalise_path::NormalisePath::new(a));
-    if_match!("parityEven7bit", parity_even_7bit::ParityEven7bit::new(a));
-    if_match!("parityOdd7bit", parity_odd_7bit::ParityOdd7bit::new(a));
-    if_match!("parityZero7bit", parity_zero_7bit::ParityZero7bit::new(a));
-    if_match!("removeCommentsChar", remove_comments_char::RemoveCommentsChar::new(a));
-    if_match!("removeComments", remove_comments::RemoveComments::new(a));
-    if_match!("removeNulls", remove_nulls::RemoveNulls::new(a));
-    if_match!("removeWhitespace", remove_whitespace::RemoveWhitespace::new(a));
-    if_match!("compressWhitespace", compress_whitespace::CompressWhitespace::new(a));
-    if_match!("replaceComments", replace_comments::ReplaceComments::new(a));
-    if_match!("replaceNulls", replace_nulls::ReplaceNulls::new(a));
-    if_match!("sha1", sha1::Sha1::new(a));
-    if_match!("sqlHexDecode", sql_hex_decode::SqlHexDecode::new(a));
-    if_match!("transformation", BaseTransformation::new(a));
-    if_match!("trimLeft", trim_left::TrimLeft::new(a));
-    if_match!("trimRight", trim_right::TrimRight::new(a));
-    if_match!("trim", trim::Trim::new(a));
-    if_match!("uppercase", upper_case::UpperCase::new(a));
-    if_match!("urlDecodeUni", url_decode_uni::UrlDecodeUni::new(a));
-    if_match!("urlDecode", url_decode::UrlDecode::new(a));
-    if_match!("urlEncode", url_encode::UrlEncode::new(a));
-    if_match!("utf8toUnicode", utf8_to_unicode::Utf8ToUnicode::new(a));
-    Box::new(BaseTransformation::new(a))
+
+    #[test]
+    fn names_match_by_prefix_in_cxx_order() {
+        let kind = |n: &str| Transformation::from_name(n).kind;
+        assert_eq!(kind("t:base64DecodeExt"), TransformationKind::Base64DecodeExt);
+        assert_eq!(kind("t:base64Decode"), TransformationKind::Base64Decode);
+        assert_eq!(kind("t:trimLeft"), TransformationKind::TrimLeft);
+        assert_eq!(kind("t:trimX"), TransformationKind::Trim);
+        assert_eq!(kind("t:normalizePathWin"), TransformationKind::NormalisePathWin);
+        assert_eq!(kind("t:LOWERCASE"), TransformationKind::Identity);
+        assert_eq!(kind("t:nosuch"), TransformationKind::Identity);
+        assert_eq!(Transformation::from_name("t:trimLeft").name(), "t:trimLeft");
+        assert!(Transformation::from_name("t:none").is_none());
+        assert!(Transformation::from_name("t:none").base.is_none);
+    }
+
+    #[test]
+    fn simple_kinds() {
+        assert_eq!(apply("t:length", b"abcd"), (true, b"4".to_vec()));
+        assert_eq!(apply("t:uppercase", b"aB1"), (true, b"AB1".to_vec()));
+        assert_eq!(apply("t:lowercase", b"ab1"), (false, b"ab1".to_vec()));
+        assert_eq!(apply("t:trimLeft", b" a "), (true, b"a ".to_vec()));
+        assert_eq!(apply("t:trimRight", b" a "), (true, b" a".to_vec()));
+        assert_eq!(apply("t:urlDecode", b"a%41+"), (true, b"aA ".to_vec()));
+        assert_eq!(apply("t:md5", b"").1.len(), 16);
+        assert_eq!(apply("t:sha1", b"").1.len(), 20);
+        assert_eq!(apply("t:none", b"x"), (false, b"x".to_vec()));
+        assert_eq!(apply("t:nosuch", b"x"), (false, b"x".to_vec()));
+        assert_eq!(apply("t:normalizePathWin", b"a\\b"), (true, b"a/b".to_vec()));
+    }
 }

@@ -22,3 +22,10 @@ pub fn libinjection_result_to_string(result: InjectionResult) -> &'static str {
         InjectionResult::Error => "parser-error",
     }
 }
+
+/// The input as shown in the libinjection debug messages: hex escaped and
+/// limited to 80 characters. Only built when such a message is logged.
+pub fn loggable_input(input: &[u8]) -> String {
+    use crate::utils::string::{limit_to, to_hex_if_needed};
+    String::from_utf8_lossy(&limit_to(80, to_hex_if_needed(input, false).as_bytes())).into_owned()
+}

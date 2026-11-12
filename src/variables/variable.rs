@@ -5,24 +5,11 @@
 //! [`Variable`] trait plus the shared state in [`VariableBase`]; the
 //! `DEFINE_VARIABLE*` macros become the `macro_rules!` of the same names.
 
-use std::any::Any;
-
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
 use crate::utils::string::toupper_str;
 use crate::variable_value::VariableValue;
-
-/// Upcasting helper so that trait objects can be downcast (`dynamic_cast`).
-pub trait AsAny: Any {
-    fn as_any(&self) -> &dyn Any;
-}
-
-impl<T: Any> AsAny for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Key exclusions (`!ARGS:foo`, `!ARGS:/regex/`)
@@ -48,7 +35,7 @@ impl KeyExclusion {
 
     pub fn matches(&self, a: &[u8]) -> bool {
         match self {
-            KeyExclusion::Regex(r) => !r.search_all(a).is_empty(),
+            KeyExclusion::Regex(r) => r.search(a) > 0,
             KeyExclusion::String(k) => a.len() == k.len() && a.iter().zip(k).all(|(x, y)| x.to_ascii_uppercase() == *y),
         }
     }
@@ -123,7 +110,7 @@ impl VariableBase {
 }
 
 /// A SecRule target.
-pub trait Variable: AsAny + Send + Sync + std::fmt::Debug {
+pub trait Variable: Send + Sync + std::fmt::Debug {
     fn base(&self) -> &VariableBase;
     fn base_mut(&mut self) -> &mut VariableBase;
 
@@ -177,7 +164,7 @@ pub trait Variable: AsAny + Send + Sync + std::fmt::Debug {
     }
 }
 
-impl dyn Variable {
+impl dyn Variable + '_ {
     /// `belongsToCollection`
     pub fn belongs_to_collection(&self, var: &dyn Variable) -> bool {
         let a = self.collection_name().as_bytes();
@@ -221,7 +208,7 @@ impl<'v> Variables<'v> {
     /// `contains(const VariableValue *)`
     pub fn contains_value(&self, v: &VariableValue) -> bool {
         self.0.iter().any(|m| match m.regex() {
-            Some(r) => !r.search_all(v.key()).is_empty(),
+            Some(r) => r.search(v.key()) > 0,
             None => v.key_with_collection() == m.full_name().as_bytes(),
         })
     }
@@ -683,7 +670,7 @@ fn single_anchored<'t>(
 pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u8>, VariableNotFound> {
     let collection = variable.find('.').or_else(|| variable.find(':'));
     use crate::collection::collection::Collection;
-    let web_app_id = t.rules.properties.sec_web_app_id.value.as_bytes();
+    let web_app_id = t.rules.properties.web_app_id();
     let cols = &t.collections;
     let vv: Option<Vec<u8>> = match collection {
         None => {

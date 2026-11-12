@@ -26,7 +26,7 @@ impl ExpireVar {
 impl Action for ExpireVar {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let expire_expression_expanded = self.string.evaluate(Some(t));
         let mut expiry_seconds: i32 = 0;
 
@@ -39,7 +39,7 @@ impl Action for ExpireVar {
                     expiry_seconds = atoi(expiry) as i32;
                 } else {
                     crate::ms_dbg_a!(t, 5, "Non-numeric expiry seconds found in expirevar expression.");
-                    return true;
+                    return;
                 }
                 &expire_expression_expanded[..pos_equals]
             }
@@ -47,7 +47,7 @@ impl Action for ExpireVar {
 
         let Some(pos_dot) = fully_qualified_var.iter().position(|&c| c == b'.') else {
             crate::ms_dbg_a!(t, 5, "No collection found in expirevar expression.");
-            return true;
+            return;
         };
 
         let collection = &fully_qualified_var[..pos_dot];
@@ -67,7 +67,7 @@ impl Action for ExpireVar {
         };
         match target {
             Some((c, key)) => {
-                let web_app_id = t.rules.properties.sec_web_app_id.value.as_bytes();
+                let web_app_id = t.rules.properties.web_app_id();
                 c.set_expiry_c(variable_name, key, Some(web_app_id), expiry_seconds);
             }
             None => {
@@ -81,7 +81,6 @@ impl Action for ExpireVar {
 
         // Logged even for an invalid collection (as in C++).
         crate::ms_dbg_a!(t, 9, "Setting variable `{}' to expire in {} seconds.", lossy(variable_name), expiry_seconds);
-        true
     }
 }
 
@@ -99,7 +98,7 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
         t.collections.ip_collection_key = b"1.2.3.4".to_vec();
-        let app = t.rules.properties.sec_web_app_id.value.clone();
+        let app = t.rules.properties.sec_web_app_id.clone().unwrap_or_default();
         let c = t.collections.ip_collection;
         c.store_or_update_first_c(b"foo", b"1.2.3.4", Some(app.as_bytes()), b"v");
         assert!(c.resolve_first_c(b"foo", b"1.2.3.4", Some(app.as_bytes())).is_some());

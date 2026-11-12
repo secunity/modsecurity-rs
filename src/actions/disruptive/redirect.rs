@@ -4,7 +4,6 @@
 //! already set), with macro expansion of the URL.
 
 use crate::actions::action::{Action, ActionBase};
-use crate::intervention::{free_log, free_url, strdup, strdup_bytes};
 use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, RuleMessage};
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -37,22 +36,18 @@ impl Action for Redirect {
         true
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         let url_expanded = self.string.evaluate(Some(t));
 
         // if it was changed before, lets keep it.
-        if t.it.status == 200 || !(301..=307).contains(&t.it.status) {
-            t.it.status = self.status;
+        if t.intervention.status == 200 || !(301..=307).contains(&t.intervention.status) {
+            t.intervention.status = self.status;
         }
 
-        free_url(&mut t.it);
-        t.it.url = strdup_bytes(&url_expanded);
-        t.it.disruptive = 1;
-        free_log(&mut t.it);
+        t.intervention.url = Some(url_expanded);
+        t.intervention.disruptive = true;
         rm.is_disruptive = true;
-        let log = rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1);
-        t.it.log = strdup(&log);
-        true
+        t.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
     }
 }
 
@@ -74,17 +69,20 @@ mod tests {
         assert!(a.is_disruptive());
 
         a.evaluate(&r, &mut t, &mut rm);
-        assert_eq!((t.it.status, t.it.disruptive), (302, 1));
-        assert_eq!(t.it.url_str().as_deref(), Some("https://www.example.com/"));
-        assert!(rm.is_disruptive && t.it.log_str().is_some());
+        assert_eq!((t.intervention.status, t.intervention.disruptive), (302, true));
+        assert_eq!(t.intervention.url.as_deref(), Some(&b"https://www.example.com/"[..]));
+        assert!(rm.is_disruptive && t.intervention.log.is_some());
 
         // A 301..307 status set before is kept, others are replaced.
-        t.it.status = 301;
+        t.intervention.status = 301;
         a.evaluate(&r, &mut t, &mut rm);
-        assert_eq!(t.it.status, 301);
-        t.it.status = 404;
+        assert_eq!(t.intervention.status, 301);
+        t.intervention.status = 404;
         a.evaluate(&r, &mut t, &mut rm);
-        assert_eq!(t.it.status, 302);
-        crate::intervention::free(&mut t.it);
+        assert_eq!(t.intervention.status, 302);
+
+        // The URL is handed out as raw bytes (C++ copies them unchanged).
+        t.intervention.url = Some(b"/a\xffb".to_vec());
+        assert_eq!(t.intervention().unwrap().url.as_deref(), Some(&b"/a\xffb"[..]));
     }
 }

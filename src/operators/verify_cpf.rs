@@ -98,10 +98,10 @@ impl Operator for VerifyCPF {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
         input: &[u8],
-        mut rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         if self.base.param.is_empty() {
             return false;
@@ -113,12 +113,8 @@ impl Operator for VerifyCPF {
             let matches = self.re.search_all(&input[i..]);
             for m in &matches {
                 if self.verify(m.str()) {
-                    if let Some(rm) = rm.as_deref_mut() {
-                        log_offset(rm, m.offset(), m.str().len());
-                    }
-                    if let (Some(rule), Some(t)) = (rule, t)
-                        && rule.has_capture_action()
-                    {
+                    log_offset(rm, m.offset(), m.str().len());
+                    if rule.has_capture_action() {
                         t.collections.tx_collection.store_or_update_first(b"0", m.str());
                         crate::ms_dbg_a!(t, 7, "Added VerifyCPF match TX.0: {}", String::from_utf8_lossy(m.str()));
                     }

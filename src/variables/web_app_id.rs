@@ -35,7 +35,7 @@ impl Variable for WebAppId {
     fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
         // Note: the C++ code names the value with `m_name`, which is empty
         // for `WEBAPPID` (there is no `:` in the name); kept as is.
-        let rname = t.rules.properties.sec_web_app_id.value.as_bytes();
+        let rname = t.rules.properties.web_app_id();
         l.push(VariableValue::new(self.base.name.as_bytes(), rname));
     }
 }

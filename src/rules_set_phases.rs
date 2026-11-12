@@ -23,27 +23,18 @@ impl RulesSetPhases {
         true
     }
 
-    /// `append`: merges `from` into `self`, refusing duplicated `SecRule`
-    /// ids. Returns the number of appended rules or -1.
-    pub fn append(&mut self, from: &RulesSetPhases, err: &mut String) -> i32 {
+    /// `append`: merges `from` into `self` phase by phase, refusing
+    /// duplicated `SecRule` ids. Returns the number of appended rules. On a
+    /// duplicate the phases before it stay appended (as in C++).
+    pub fn append(&mut self, from: &RulesSetPhases) -> Result<usize, String> {
+        let mut ids: Vec<i64> =
+            self.rules_at_phase.iter().flat_map(|p| &p.rules).filter_map(|r| r.rule_with_operator_id()).collect();
+        ids.sort();
         let mut amount_of_rules = 0;
-        let mut v: Vec<i64> = Vec::new();
-        for i in 0..NUMBER_OF_PHASES {
-            for r in &self.rules_at_phase[i].rules {
-                if let Some(id) = r.rule_with_operator_id() {
-                    v.push(id);
-                }
-            }
+        for (to, from) in self.rules_at_phase.iter_mut().zip(&from.rules_at_phase) {
+            amount_of_rules += to.append(from, &ids)?;
         }
-        v.sort();
-        for phase in 0..NUMBER_OF_PHASES {
-            let res = self.rules_at_phase[phase].append(&from.rules_at_phase[phase], &v, err);
-            if res < 0 {
-                return res;
-            }
-            amount_of_rules += res;
-        }
-        amount_of_rules
+        Ok(amount_of_rules)
     }
 
     pub fn dump(&self) {

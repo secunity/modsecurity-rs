@@ -34,10 +34,9 @@ impl Action for Skip {
         }
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(t, 5, "Skipping the next {} rules.", self.skip_next);
         t.skip_next = self.skip_next;
-        true
     }
 }
 

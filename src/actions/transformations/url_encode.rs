@@ -1,10 +1,6 @@
 //! Port of `src/actions/transformations/url_encode.cc`, `src/actions/transformations/url_encode.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
 use crate::utils::string::c2x;
-
-crate::transformation_struct!(UrlEncode);
 
 fn url_enc(value: &mut Vec<u8>) -> bool {
     let mut ret = Vec::with_capacity(value.len() * 3 + 1);
@@ -28,8 +24,7 @@ fn url_enc(value: &mut Vec<u8>) -> bool {
     changed
 }
 
-impl Transformation for UrlEncode {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        url_enc(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    url_enc(value)
 }

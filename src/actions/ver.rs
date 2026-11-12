@@ -19,8 +19,7 @@ impl Ver {
 impl Action for Ver {
     crate::action_base_accessors!();
 
-    fn configure(&self, rule: &mut RuleWithActions) -> bool {
+    fn configure(&self, rule: &mut RuleWithActions) {
         rule.ver = self.base.parser_payload.clone();
-        true
     }
 }

@@ -20,8 +20,7 @@ impl Chain {
 impl Action for Chain {
     crate::action_base_accessors!();
 
-    fn configure(&self, rule: &mut RuleWithActions) -> bool {
+    fn configure(&self, rule: &mut RuleWithActions) {
         rule.set_chained(true);
-        true
     }
 }

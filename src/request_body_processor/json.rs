@@ -70,32 +70,22 @@ impl Json {
         self.max_depth = f64::from(d);
     }
 
-    /// `init`
-    pub fn init(&mut self, _t: &mut Transaction<'_>) -> bool {
-        true
-    }
-
     /// `processChunk`: feeds the parser.
-    pub fn process_chunk(&mut self, _t: &mut Transaction<'_>, buf: &[u8], _error: &mut String) -> bool {
+    pub fn process_chunk(&mut self, buf: &[u8]) {
         self.data.extend_from_slice(buf);
-        true
     }
 
-    /// `complete`: wraps up the parsing process; on failure `error` gets
-    /// yajl's (non-verbose) error message.
-    pub fn complete(&mut self, t: &mut Transaction<'_>, error: &mut String) -> bool {
+    /// `complete`: wraps up the parsing process; fails with yajl's
+    /// (non-verbose) error message.
+    pub fn complete(&mut self, t: &mut Transaction<'_>) -> Result<(), String> {
         let data = std::mem::take(&mut self.data);
         let mut parser = JsonParser { json: self, t };
-        match parse(&data, &mut parser) {
-            Ok(()) => true,
-            Err(e) => {
-                *error = e;
-                if self.depth_limit_exceeded {
-                    error.push_str(JSON_DEPTH_LIMIT_EXCEEDED_MSG);
-                }
-                false
+        parse(&data, &mut parser).map_err(|mut error| {
+            if self.depth_limit_exceeded {
+                error.push_str(JSON_DEPTH_LIMIT_EXCEEDED_MSG);
             }
-        }
+            error
+        })
     }
 
     /// `isPreviousArray`
@@ -246,16 +236,17 @@ impl JsonHandler for JsonParser<'_, '_, '_> {
 mod tests {
     use crate::modsecurity::ModSecurity;
     use crate::request_body_processor::multipart::test_support::{log, new_rules, run};
+    use crate::rules_set_properties::parse_config_number;
     use crate::transaction::RequestBodyType;
 
     fn args(body: &[u8], depth: Option<&str>, limit: Option<&str>) -> (Vec<(String, String)>, String) {
         let ms = ModSecurity::new();
         let mut rules = new_rules();
         if let Some(d) = depth {
-            rules.properties.request_body_json_depth_limit.parse(d).unwrap();
+            rules.properties.request_body_json_depth_limit = Some(parse_config_number(d).unwrap());
         }
         if let Some(l) = limit {
-            rules.properties.arguments_limit.parse(l).unwrap();
+            rules.properties.arguments_limit = Some(parse_config_number(l).unwrap());
         }
         let t =
             run(&ms, &rules, &[(b"Content-Type", b"application/json")], body, Some(RequestBodyType::JSONRequestBody));

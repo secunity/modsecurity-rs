@@ -21,7 +21,7 @@ use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslati
 use crate::anchored_variable::AnchoredVariable;
 use crate::audit_log::audit_log::{self, AuditLogStatus};
 use crate::collection::collections::Collections;
-use crate::intervention::{self, ModSecurityIntervention};
+use crate::intervention::Intervention;
 use crate::modsecurity::{ModSecurity, Phases};
 use crate::request_body_processor::json::Json;
 use crate::request_body_processor::multipart::{Multipart, MultipartPartTmpFile};
@@ -31,14 +31,13 @@ use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::{RuleWithActions, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set_properties::{
-    BodyLimitAction, ConfigBoolean, ConfigXMLParseXmlIntoArgs, RuleEngine, rule_engine_state_string,
+    BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code, rule_engine_state_string,
 };
 use crate::unique_id::UniqueId;
 use crate::utils::decode::{uri_decode, urldecode_nonstrict_inplace};
 use crate::utils::json::JsonGen;
 use crate::utils::string::{
-    asc_time, dash_if_empty, double_to_string, is_space, replace_all, split, ssplit, ssplit_pair, to_hex_if_needed,
-    tolower,
+    asc_time, dash_if_empty, double_to_string, is_space, split, ssplit, ssplit_pair, to_hex_if_needed, tolower,
 };
 use crate::variable_value::VariableValue;
 use crate::variables::variable::Variable;
@@ -284,7 +283,7 @@ pub struct Transaction<'a> {
     pub rule_remove_by_tag: Vec<String>,
     pub rule_remove_target_by_tag: Vec<(String, String)>,
     pub rule_remove_target_by_id: Vec<(i32, String)>,
-    pub request_body_access: ConfigBoolean,
+    pub request_body_access: Option<bool>,
     /// `ctl:auditLogParts` modifications: (0 = add / 1 = remove, parts).
     pub audit_log_modifier: Vec<(i32, String)>,
     /// This transaction's most recent `ctl:auditEngine`.
@@ -300,8 +299,9 @@ pub struct Transaction<'a> {
     pub allow_type: AllowType,
     /// The decoded URI (raw is `uri`).
     pub uri_decoded: Vec<u8>,
-    pub actions: Vec<ModSecurityIntervention>,
-    pub it: ModSecurityIntervention,
+    /// The pending disruptive action, handed out by
+    /// [`Transaction::intervention`].
+    pub(crate) intervention: Intervention,
     /// Sticky flag set the first time a disruptive intervention is consumed
     /// through [`Transaction::intervention`].
     pub is_interrupted: bool,
@@ -313,8 +313,8 @@ pub struct Transaction<'a> {
     #[cfg(feature = "libxml2")]
     pub xml: Option<Box<Xml>>,
     pub json: Option<Box<Json>>,
-    pub sec_rule_engine: RuleEngine,
-    pub sec_xml_parse_xml_into_args: ConfigXMLParseXmlIntoArgs,
+    pub sec_rule_engine: Option<RuleEngine>,
+    pub sec_xml_parse_xml_into_args: Option<ParseXmlIntoArgs>,
     /// Environment variables set by `setenv`.
     pub variable_envs: BTreeMap<Vec<u8>, Vec<u8>>,
     pub multipart_part_tmp_files: Vec<Arc<MultipartPartTmpFile>>,
@@ -381,7 +381,7 @@ impl<'a> Transaction<'a> {
             rule_remove_by_tag: Vec::new(),
             rule_remove_target_by_tag: Vec::new(),
             rule_remove_target_by_id: Vec::new(),
-            request_body_access: ConfigBoolean::PropertyNotSetConfigBoolean,
+            request_body_access: None,
             audit_log_modifier: Vec::new(),
             ctl_audit_engine: AuditLogStatus::NotSetLogStatus,
             rules_messages: Vec::new(),
@@ -391,8 +391,7 @@ impl<'a> Transaction<'a> {
             skip_next: 0,
             allow_type: AllowType::NoneAllowType,
             uri_decoded: Vec::new(),
-            actions: Vec::new(),
-            it: ModSecurityIntervention::default(),
+            intervention: Intervention::default(),
             is_interrupted: false,
             time_stamp: timestamp,
             matched: Vec::new(),
@@ -406,7 +405,7 @@ impl<'a> Transaction<'a> {
             #[cfg(feature = "libxml2")]
             xml: Some(Box::new(Xml::new())),
             json: Some(Box::new(Json::new())),
-            sec_rule_engine: RuleEngine::PropertyNotSetRuleEngine,
+            sec_rule_engine: None,
             sec_xml_parse_xml_into_args: rules.properties.sec_xml_parse_xml_into_args,
             variable_envs: BTreeMap::new(),
             multipart_part_tmp_files: Vec::new(),
@@ -420,7 +419,6 @@ impl<'a> Transaction<'a> {
         t.vars.msc_pcre_error.set(b"0", 0);
         t.vars.msc_pcre_limits_exceeded.set(b"0", 0);
         crate::ms_dbg_a!(&t, 4, "Initializing transaction");
-        intervention::clean(&mut t.it);
         t
     }
 
@@ -493,11 +491,10 @@ impl<'a> Transaction<'a> {
 
     /// `extractArguments`
     pub fn extract_arguments(&mut self, orig: &str, buf: &[u8], mut offset: usize) -> bool {
-        let mut sep1 = b'&';
-        let sep = &self.rules.properties.sec_argument_separator;
-        if sep.set {
-            sep1 = sep.value.as_bytes().first().copied().unwrap_or(b'&');
-        }
+        let sep1 = match &self.rules.properties.sec_argument_separator {
+            Some(sep) => sep.as_bytes().first().copied().unwrap_or(b'&'),
+            None => b'&',
+        };
         for t in ssplit(buf, sep1) {
             let (mut key, mut value) = ssplit_pair(&t, b'=');
             let mut invalid_count = 0;
@@ -523,9 +520,10 @@ impl<'a> Transaction<'a> {
             String::from_utf8_lossy(key),
             String::from_utf8_lossy(value)
         );
-        let limit = &self.rules.properties.arguments_limit;
-        if limit.set && self.vars.args.len() >= limit.value as usize {
-            crate::ms_dbg_a!(self, 4, "Skipping request argument, over limit ({})", limit.value);
+        if let Some(limit) = self.rules.properties.arguments_limit
+            && self.vars.args.len() >= limit as usize
+        {
+            crate::ms_dbg_a!(self, 4, "Skipping request argument, over limit ({})", limit);
             return false;
         }
         offset = offset + key.len() + 1;
@@ -627,7 +625,7 @@ impl<'a> Transaction<'a> {
     /// `processRequestHeaders`
     pub fn process_request_headers(&mut self) -> i32 {
         crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_HEADERS.  (SecRules 1)");
-        if self.get_rule_engine_state() == RuleEngine::DisabledRuleEngine {
+        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return 1;
         }
@@ -708,7 +706,7 @@ impl<'a> Transaction<'a> {
     pub fn process_request_body(&mut self) -> i32 {
         crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_BODY. (SecRules 2)");
 
-        if self.get_rule_engine_state() == RuleEngine::DisabledRuleEngine {
+        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return 1;
         }
@@ -725,8 +723,8 @@ impl<'a> Transaction<'a> {
         if (self.request_body_type == RequestBodyType::WWWFormUrlEncoded
             || self.request_body_processor == RequestBodyType::JSONRequestBody
             || self.request_body_processor == RequestBodyType::XMLRequestBody)
-            && props.request_body_no_files_limit.set
-            && self.request_body.len() as u64 > props.request_body_no_files_limit.value
+            && let Some(limit) = props.request_body_no_files_limit
+            && self.request_body.len() as u64 > limit
         {
             self.vars.reqbody_error.set(b"1", 0);
             self.vars.reqbody_error_msg.set(b"Request body excluding files is bigger than the maximum expected.", 0);
@@ -736,7 +734,7 @@ impl<'a> Transaction<'a> {
                 self,
                 5,
                 "Request body excluding files is bigger than the maximum expected. Limit: {}",
-                props.request_body_no_files_limit.value
+                limit
             );
             request_body_no_files_limit_exceeded = true;
         }
@@ -766,14 +764,15 @@ impl<'a> Transaction<'a> {
             // large size might cause issues in the parsing itself; omit if
             // exceeded
             if !request_body_no_files_limit_exceeded {
-                let mut error = String::new();
                 let mut xml = self.xml.take().unwrap_or_else(|| Box::new(Xml::new()));
+                let mut error = None;
                 if xml.init(self) {
-                    xml.process_chunk(self, &body, &mut error);
-                    xml.complete(self, &mut error);
+                    // The error of `complete` replaces that of `process_chunk`.
+                    error = xml.process_chunk(self, &body).err();
+                    error = xml.complete(self).err().or(error);
                 }
                 self.xml = Some(xml);
-                if !error.is_empty() {
+                if let Some(error) = error {
                     set_error(self, "XML parsing error: ", &error, true);
                 } else {
                     set_ok(self);
@@ -784,39 +783,40 @@ impl<'a> Transaction<'a> {
             // done
         } else if self.request_body_processor == RequestBodyType::JSONRequestBody {
             if !request_body_no_files_limit_exceeded {
-                let mut error = String::new();
                 let mut json = self.json.take().unwrap_or_else(|| Box::new(Json::new()));
-                let depth = &self.rules.properties.request_body_json_depth_limit;
-                if depth.set {
-                    json.set_max_depth(depth.value);
+                if let Some(depth) = self.rules.properties.request_body_json_depth_limit {
+                    json.set_max_depth(depth);
                 }
-                if json.init(self) {
-                    json.process_chunk(self, &body, &mut error);
-                    json.complete(self, &mut error);
-                }
+                json.process_chunk(&body);
+                let result = json.complete(self);
                 self.json = Some(json);
-                if !error.is_empty() && !body.is_empty() {
+                if let Err(error) = result
+                    && !body.is_empty()
+                {
                     set_error(self, "JSON parsing error: ", &error, true);
                 } else {
                     set_ok(self);
                 }
             }
         } else if self.request_body_type == RequestBodyType::MultiPartRequestBody {
-            let mut error = String::new();
+            let mut error = None;
             let mut reqbody_no_files_length: u64 = 0;
             if let Some(a) = &a {
                 let mut m = Multipart::new(a);
-                if m.init(self, &mut error) {
+                if m.init(self) {
                     let off = self.vars.offset;
-                    m.process(self, &body, &mut error, off);
+                    m.process(self, &body, off);
                 }
                 reqbody_no_files_length = m.reqbody_no_files_length as u64;
-                m.multipart_complete(self, &mut error);
+                m.multipart_complete(self);
+                error = m.error().map(str::to_owned);
             }
-            let limit = &self.rules.properties.request_body_no_files_limit;
-            if !error.is_empty() {
+            let limit = self.rules.properties.request_body_no_files_limit;
+            if let Some(error) = error {
                 set_error(self, "Multipart parsing error: ", &error, true);
-            } else if limit.set && reqbody_no_files_length > limit.value {
+            } else if let Some(limit) = limit
+                && reqbody_no_files_length > limit
+            {
                 self.vars.reqbody_error.set(b"1", 0);
                 self.vars
                     .reqbody_error_msg
@@ -827,7 +827,7 @@ impl<'a> Transaction<'a> {
                     self,
                     5,
                     "Request body excluding files is bigger than the maximum expected. Limit: {}",
-                    limit.value
+                    limit
                 );
             } else {
                 set_ok(self);
@@ -846,8 +846,8 @@ impl<'a> Transaction<'a> {
         }
 
         let props = &self.rules.properties;
-        if props.sec_request_body_access == ConfigBoolean::FalseConfigBoolean {
-            if self.request_body_access != ConfigBoolean::TrueConfigBoolean {
+        if props.sec_request_body_access == Some(false) {
+            if self.request_body_access != Some(true) {
                 crate::ms_dbg_a!(self, 4, "Request body processing is disabled");
                 return 1;
             } else {
@@ -857,7 +857,7 @@ impl<'a> Transaction<'a> {
                     "Request body processing is disabled, but enabled to this transaction due to ctl:requestBodyAccess action"
                 );
             }
-        } else if self.request_body_access == ConfigBoolean::FalseConfigBoolean {
+        } else if self.request_body_access == Some(false) {
             crate::ms_dbg_a!(
                 self,
                 4,
@@ -903,7 +903,7 @@ impl<'a> Transaction<'a> {
             9,
             "Adding request body: {} bytes. Limit set to: {}",
             s.len(),
-            self.rules.properties.request_body_limit.value
+            self.rules.properties.request_body_limit.unwrap_or(0)
         );
         self.append_request_body(&s)
     }
@@ -917,27 +917,31 @@ impl<'a> Transaction<'a> {
             9,
             "Appending request body: {} bytes. Limit set to: {}",
             buf.len(),
-            props.request_body_limit.value
+            props.request_body_limit.unwrap_or(0)
         );
 
-        if props.request_body_limit.value > 0 && props.request_body_limit.value < (buf.len() + current_size) as u64 {
+        if props.request_body_limit.unwrap_or(0) > 0
+            && props.request_body_limit.unwrap_or(0) < (buf.len() + current_size) as u64
+        {
             let off = self.vars.offset;
             self.vars.inbound_data_error.set(b"1", off);
             crate::ms_dbg_a!(self, 5, "Request body is bigger than the maximum expected.");
-            if props.request_body_limit_action == BodyLimitAction::ProcessPartialBodyLimitAction {
-                let space_left = (props.request_body_limit.value as usize).saturating_sub(current_size);
+            if props.request_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
+                let space_left = (props.request_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
                 let n = space_left.min(buf.len());
                 self.request_body.extend_from_slice(&buf[..n]);
                 crate::ms_dbg_a!(self, 5, "Request body limit is marked to process partial");
                 return 0;
             } else {
-                if props.request_body_limit_action == BodyLimitAction::RejectBodyLimitAction {
+                if props.request_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Request body limit is marked to reject the request");
-                    if self.get_rule_engine_state() == RuleEngine::EnabledRuleEngine {
-                        intervention::free(&mut self.it);
-                        self.it.log = intervention::strdup("Request body limit is marked to reject the request");
-                        self.it.status = 403;
-                        self.it.disruptive = 1;
+                    if self.get_rule_engine_state() == Some(RuleEngine::Enabled) {
+                        self.intervention = Intervention {
+                            status: 403,
+                            url: None,
+                            log: Some("Request body limit is marked to reject the request".into()),
+                            disruptive: true,
+                        };
                     } else {
                         crate::ms_dbg_a!(self, 5, "Not rejecting the request as the engine is not Enabled");
                     }
@@ -957,7 +961,7 @@ impl<'a> Transaction<'a> {
         self.vars.response_status.set(code.to_string().as_bytes(), off);
         self.vars.response_protocol.set(proto.as_bytes(), off);
 
-        if self.get_rule_engine_state() == RuleEngine::DisabledRuleEngine {
+        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return 1;
         }
@@ -990,18 +994,18 @@ impl<'a> Transaction<'a> {
     pub fn process_response_body(&mut self) -> i32 {
         crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_BODY. (SecRules 4)");
 
-        if self.get_rule_engine_state() == RuleEngine::DisabledRuleEngine {
+        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return 1;
         }
 
         let props = &self.rules.properties;
-        if props.sec_response_body_access != ConfigBoolean::TrueConfigBoolean {
+        if props.sec_response_body_access != Some(true) {
             crate::ms_dbg_a!(
                 self,
                 4,
                 "Response body is disabled, returning... {}",
-                props.sec_response_body_access as i32
+                config_boolean_code(props.sec_response_body_access)
             );
             return 1;
         }
@@ -1054,27 +1058,31 @@ impl<'a> Transaction<'a> {
             9,
             "Appending response body: {} bytes. Limit set to: {}",
             buf.len() + current_size,
-            props.response_body_limit.value
+            props.response_body_limit.unwrap_or(0)
         );
 
-        if props.response_body_limit.value > 0 && props.response_body_limit.value < (buf.len() + current_size) as u64 {
+        if props.response_body_limit.unwrap_or(0) > 0
+            && props.response_body_limit.unwrap_or(0) < (buf.len() + current_size) as u64
+        {
             let off = self.vars.offset;
             self.vars.outbound_data_error.set(b"1", off);
             crate::ms_dbg_a!(self, 5, "Response body is bigger than the maximum expected.");
-            if props.response_body_limit_action == BodyLimitAction::ProcessPartialBodyLimitAction {
-                let space_left = (props.response_body_limit.value as usize).saturating_sub(current_size);
+            if props.response_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
+                let space_left = (props.response_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
                 let n = space_left.min(buf.len());
                 self.response_body.extend_from_slice(&buf[..n]);
                 crate::ms_dbg_a!(self, 5, "Response body limit is marked to process partial");
                 return 0;
             } else {
-                if props.response_body_limit_action == BodyLimitAction::RejectBodyLimitAction {
+                if props.response_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Response body limit is marked to reject the request");
-                    if self.get_rule_engine_state() == RuleEngine::EnabledRuleEngine {
-                        intervention::free(&mut self.it);
-                        self.it.log = intervention::strdup("Response body limit is marked to reject the request");
-                        self.it.status = 403;
-                        self.it.disruptive = 1;
+                    if self.get_rule_engine_state() == Some(RuleEngine::Enabled) {
+                        self.intervention = Intervention {
+                            status: 403,
+                            url: None,
+                            log: Some("Response body limit is marked to reject the request".into()),
+                            disruptive: true,
+                        };
                     } else {
                         crate::ms_dbg_a!(self, 5, "Not rejecting the request as the engine is not Enabled");
                     }
@@ -1105,7 +1113,7 @@ impl<'a> Transaction<'a> {
     pub fn process_logging(&mut self) -> i32 {
         crate::ms_dbg_a!(self, 4, "Starting phase LOGGING. (SecRules 5)");
 
-        if self.get_rule_engine_state() == RuleEngine::DisabledRuleEngine {
+        if self.get_rule_engine_state() == Some(RuleEngine::Disabled) {
             crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
             return 1;
         }
@@ -1136,30 +1144,20 @@ impl<'a> Transaction<'a> {
         1
     }
 
-    /// `intervention`: copies the pending intervention (if disruptive) into
-    /// `it`, replacing `%d` in the log with the status code, and resets the
-    /// internal one.
-    pub fn intervention(&mut self, it: &mut ModSecurityIntervention) -> bool {
-        let disruptive = self.it.disruptive;
-        if self.it.disruptive != 0 {
-            self.is_interrupted = true;
-            it.url = match self.it.url_str() {
-                Some(u) => intervention::strdup(&u),
-                None => std::ptr::null_mut(),
-            };
-            it.disruptive = self.it.disruptive;
-            it.status = self.it.status;
-            it.log = match self.it.log_str() {
-                Some(log) => {
-                    let mut l = log.into_bytes();
-                    replace_all(&mut l, b"%d", it.status.to_string().as_bytes());
-                    intervention::strdup(&String::from_utf8_lossy(&l))
-                }
-                None => std::ptr::null_mut(),
-            };
-            intervention::reset(&mut self.it);
+    /// `intervention`: the pending disruptive intervention, if any, with
+    /// `%d` in its log replaced by the status code. Handing it out resets
+    /// the status and the disruptive flag (the url and log stay, as in C++).
+    pub fn intervention(&mut self) -> Option<Intervention> {
+        if !self.intervention.disruptive {
+            return None;
         }
-        disruptive != 0
+        self.is_interrupted = true;
+        let mut it = self.intervention.clone();
+        if let Some(log) = &mut it.log {
+            *log = log.replace("%d", &it.status.to_string());
+        }
+        self.intervention.reset();
+        Some(it)
     }
 
     /// `toOldAuditLogFormatIndex`
@@ -1437,12 +1435,10 @@ impl<'a> Transaction<'a> {
         self.ms.server_log(self.log_cb_data.as_deref(), rm, self);
     }
 
-    /// `getRuleEngineState`
-    pub fn get_rule_engine_state(&self) -> RuleEngine {
-        if self.sec_rule_engine == RuleEngine::PropertyNotSetRuleEngine {
-            return self.rules.properties.sec_rule_engine;
-        }
-        self.sec_rule_engine
+    /// `getRuleEngineState`: this transaction's `ctl:ruleEngine`, else
+    /// `SecRuleEngine`.
+    pub fn get_rule_engine_state(&self) -> Option<RuleEngine> {
+        self.sec_rule_engine.or(self.rules.properties.sec_rule_engine)
     }
 
     /// `updateStatusCode`
@@ -1476,8 +1472,6 @@ impl Drop for Transaction<'_> {
         for f in &me.multipart_part_tmp_files {
             f.release(Some(me));
         }
-        intervention::free(&mut self.it);
-        intervention::clean(&mut self.it);
     }
 }
 
@@ -1713,7 +1707,11 @@ pub mod c_api {
         let Some(it) = (unsafe { it.as_mut() }) else {
             return 0;
         };
-        t.intervention(it) as c_int
+        if let Some(pending) = t.intervention() {
+            it.fill_from(&pending);
+        }
+        // C++ returns the caller's field (filled above when there was one).
+        it.disruptive
     }
 
     /// # Safety
@@ -1721,8 +1719,7 @@ pub mod c_api {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn msc_intervention_cleanup(it: *mut ModSecurityIntervention) {
         if let Some(it) = unsafe { it.as_mut() } {
-            intervention::free(it);
-            intervention::clean(it);
+            it.free_and_clean();
         }
     }
 
@@ -1734,7 +1731,9 @@ pub mod c_api {
         let Some(t) = (unsafe { t.as_ref() }) else {
             return std::ptr::null();
         };
-        intervention::strdup(&String::from_utf8_lossy(t.get_response_body()))
+        // strdup(m_responseBody.str().c_str()): the raw bytes up to the
+        // first NUL byte.
+        intervention::strdup(t.get_response_body())
     }
 
     /// # Safety

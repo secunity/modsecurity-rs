@@ -28,11 +28,11 @@ impl Operator for GeoLookup {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        GeoDb::get_instance().lookup(input, t)
+        GeoDb::get_instance().lookup(input, Some(t))
     }
 }

@@ -47,11 +47,11 @@ impl Operator for ValidateDTD {
     #[cfg(feature = "libxml2")]
     fn init(&mut self, file: &str) -> Result<(), String> {
         let param = String::from_utf8_lossy(&self.base.param).into_owned();
-        let mut err = String::new();
-        self.resource = crate::utils::system::find_resource(&param, file, &mut err);
-        if self.resource.is_empty() {
-            return Err(format!("XML: File not found: {}. {}", param, err));
-        }
+        let lookup = crate::utils::system::find_resource(&param, file);
+        let Some(resource) = lookup.path else {
+            return Err(format!("XML: File not found: {}. {}", param, lookup.looked_at));
+        };
+        self.resource = resource;
         Ok(())
     }
 
@@ -59,22 +59,22 @@ impl Operator for ValidateDTD {
     #[cfg(not(feature = "libxml2"))]
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         _input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        crate::ms_dbg_opt!(t, 2, "Operator: {} is not implemented or malfunctioning.", self.base.op);
+        crate::ms_dbg_a!(t, 2, "Operator: {} is not implemented or malfunctioning.", self.base.op);
         true
     }
 
     #[cfg(feature = "libxml2")]
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         _input: &[u8],
-        _rm: Option<&mut RuleMessage<'_>>,
+        _rm: &mut RuleMessage<'_>,
     ) -> bool {
         use crate::operators::validate_schema::callbacks;
         use crate::request_body_processor::xml::ffi;
@@ -86,9 +86,6 @@ impl Operator for ValidateDTD {
         let dtd = XmlDtdPtrManager(unsafe { ffi::xmlParseDTD(std::ptr::null(), resource.as_ptr().cast::<u8>()) });
 
         // (The C++ code needed a transaction: it dereferenced it.)
-        let Some(t) = t else {
-            return true;
-        };
         let t: &Transaction<'_> = t;
 
         if dtd.0.is_null() {

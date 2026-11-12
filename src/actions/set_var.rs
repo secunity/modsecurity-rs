@@ -48,7 +48,7 @@ fn stoi_or_zero(s: &[u8]) -> i32 {
 impl Action for SetVar {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let resolved_pre = match &self.string {
             Some(s) => s.evaluate_rule(Some(t), Some(rule)),
             None => Vec::new(),
@@ -71,7 +71,7 @@ impl Action for SetVar {
                 if dynamic.is_some() {
                     self.variable.dynamic_del(t, &variable_name_expanded);
                 }
-                return true;
+                return;
             }
             SetVarOperation::SumAndSetOperation | SetVarOperation::SubstractAndSetOperation => {
                 let pre = stoi_or_zero(&resolved_pre);
@@ -104,7 +104,6 @@ impl Action for SetVar {
         if dynamic.is_some() {
             self.variable.dynamic_store_or_update_first(t, &variable_name_expanded, &target_value);
         }
-        true
     }
 }
 

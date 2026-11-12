@@ -23,10 +23,9 @@ impl RequestBodyProcessorURLENCODED {
 impl Action for RequestBodyProcessorURLENCODED {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         t.request_body_type = RequestBodyType::WWWFormUrlEncoded;
         let offset = t.vars.offset;
         t.vars.reqbody_processor.set(b"URLENCODED", offset);
-        true
     }
 }

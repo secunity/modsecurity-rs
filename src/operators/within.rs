@@ -24,19 +24,19 @@ impl Operator for Within {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let param_target = self.base.string.as_ref().map_or_else(Vec::new, |s| s.evaluate(t.as_deref()));
+        let param_target = self.base.param_value(t);
 
         if input.is_empty() {
             return true;
         }
 
         let pos = find(&param_target, input);
-        if let (Some(pos), Some(rm)) = (pos, rm) {
+        if let Some(pos) = pos {
             log_offset(rm, pos, input.len());
         }
 

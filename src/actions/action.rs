@@ -7,7 +7,6 @@ use crate::actions::transformations::transformation::Transformation;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
-use crate::variables::variable::AsAny;
 
 /// Define the action kind regarding to the execution time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +27,6 @@ pub enum Kind {
 #[derive(Debug, Clone)]
 pub struct ActionBase {
     pub is_none: bool,
-    pub temporary_action: bool,
     pub action_kind: Kind,
     pub name: String,
     pub parser_payload: String,
@@ -42,13 +40,8 @@ impl ActionBase {
 
     /// `Action(const std::string &_action, Kind kind)`
     pub fn with_kind(action: &str, kind: Kind) -> Self {
-        let mut b = ActionBase {
-            is_none: false,
-            temporary_action: false,
-            action_kind: kind,
-            name: String::new(),
-            parser_payload: String::new(),
-        };
+        let mut b =
+            ActionBase { is_none: false, action_kind: kind, name: String::new(), parser_payload: String::new() };
         b.set_name_and_payload(action);
         b
     }
@@ -74,7 +67,7 @@ impl ActionBase {
 }
 
 /// A SecLang action (`phase:2`, `deny`, `setvar:...`, `t:lowercase`, ...).
-pub trait Action: AsAny + Send + Sync + std::fmt::Debug {
+pub trait Action: Send + Sync + std::fmt::Debug {
     fn base(&self) -> &ActionBase;
     fn base_mut(&mut self) -> &mut ActionBase;
 
@@ -88,20 +81,28 @@ pub trait Action: AsAny + Send + Sync + std::fmt::Debug {
         false
     }
 
+    /// Whether this is the `block` action (C++ `dynamic_cast<Block *>`),
+    /// which rules treat apart from the other actions.
+    fn is_block(&self) -> bool {
+        false
+    }
+
     /// `ConfigurationKind` actions are evaluated once, while the rule is
     /// being built (C++: `evaluate(rule, nullptr)` from the
     /// `RuleWithActions` constructor). They configure the rule.
-    fn configure(&self, _rule: &mut RuleWithActions) -> bool {
-        true
-    }
+    fn configure(&self, _rule: &mut RuleWithActions) {}
 
     /// Run time evaluation (`evaluate(rule, transaction, ruleMessage)`).
-    fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
-        true
+    fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {}
+
+    /// The `(prefix, href)` of an `xmlns` action (C++
+    /// `dynamic_cast<XmlNS *>`), used by the `XML` variable.
+    fn xml_namespace(&self) -> Option<(&str, &str)> {
+        None
     }
 
     /// `dynamic_cast<Transformation *>`
-    fn as_transformation(&self) -> Option<&dyn Transformation> {
+    fn as_transformation(&self) -> Option<&Transformation> {
         None
     }
 
@@ -111,17 +112,6 @@ pub trait Action: AsAny + Send + Sync + std::fmt::Debug {
 
     fn action_kind(&self) -> Kind {
         self.base().action_kind
-    }
-}
-
-impl dyn Action {
-    /// `dynamic_cast<T *>`
-    pub fn downcast_ref<T: Action>(&self) -> Option<&T> {
-        self.as_any().downcast_ref::<T>()
-    }
-
-    pub fn is<T: Action>(&self) -> bool {
-        self.as_any().is::<T>()
     }
 }
 

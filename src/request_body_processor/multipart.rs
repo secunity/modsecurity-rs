@@ -19,7 +19,7 @@ use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::rules_set_properties::{ConfigBoolean, config_boolean_string};
+use crate::rules_set_properties::config_boolean_string;
 use crate::transaction::Transaction;
 use crate::utils::string::{chomp, is_space, lossy};
 
@@ -90,7 +90,7 @@ impl MultipartPartTmpFile {
     fn open(t: &Transaction<'_>) -> Self {
         let tstr = crate::utils::system::strftime_local(crate::utils::system::now(), "/%Y%m%d-%H%M%S");
 
-        let mut path = t.rules.properties.upload_directory.value.clone();
+        let mut path = t.rules.properties.upload_directory.clone().unwrap_or_default();
         path.push_str(&tstr);
         path.push('-');
         path.push_str(&t.id);
@@ -115,7 +115,7 @@ impl MultipartPartTmpFile {
         }
         crate::ms_dbg_a!(t, 4, "MultipartPartTmpFile: Create filename= {}", path);
 
-        let mode = t.rules.properties.upload_file_mode.value();
+        let mode = t.rules.properties.upload_file_mode.unwrap_or(0);
         if mode != 0
             && let Some(f) = &file
         {
@@ -317,6 +317,10 @@ impl MultipartPart {
 #[derive(Debug)]
 pub struct Multipart {
     pub reqbody_no_files_length: usize,
+    /// The most recent parsing error (`MULTIPART_*` failures and the
+    /// upload file limit), reported as `REQBODY_ERROR_MSG`. A later error
+    /// replaces an earlier one, as with the C++ `std::string *error`.
+    error: Option<String>,
     parts: Vec<MultipartPart>,
 
     /// Number of parts that are files
@@ -384,7 +388,7 @@ pub struct Multipart {
 
     header: Vec<u8>,
     /// `SecUploadKeepFiles`, read by the cleanup.
-    upload_keep_files: ConfigBoolean,
+    upload_keep_files: Option<bool>,
     /// Whether the cleanup of the C++ destructor already ran.
     cleaned_up: bool,
 }
@@ -412,6 +416,7 @@ impl Multipart {
             seen_data: false,
             is_complete: false,
             flag_error: 0,
+            error: None,
             flag_data_before: 0,
             flag_data_after: 0,
             flag_duplicate_part_header: 0,
@@ -427,7 +432,7 @@ impl Multipart {
             flag_invalid_header_folding: 0,
             flag_file_limit_exceeded: 0,
             header: header.to_vec(),
-            upload_keep_files: ConfigBoolean::PropertyNotSetConfigBoolean,
+            upload_keep_files: None,
             cleaned_up: false,
         }
     }
@@ -806,7 +811,7 @@ impl Multipart {
     }
 
     /// `process_part_data`
-    fn process_part_data(&mut self, t: &mut Transaction<'_>, error: &mut String, offset: usize) -> i32 {
+    fn process_part_data(&mut self, t: &mut Transaction<'_>, offset: usize) -> bool {
         let p = MULTIPART_BUF_SIZE - self.bufleft;
         let mut localreserve = [0u8; 2];
         let mut bytes_reserved: u8 = 0;
@@ -840,8 +845,7 @@ impl Multipart {
         // add data to the part we are building
         match mpp.type_ {
             PartType::File => {
-                let mut extract = props.upload_keep_files == ConfigBoolean::TrueConfigBoolean
-                    || props.tmp_save_uploaded_files == ConfigBoolean::TrueConfigBoolean;
+                let mut extract = props.upload_keep_files == Some(true) || props.tmp_save_uploaded_files == Some(true);
 
                 // remember where we started
                 if mpp.length == 0 {
@@ -849,7 +853,7 @@ impl Multipart {
                 }
 
                 // check if the file limit has been reached
-                let limit = props.upload_file_limit.value;
+                let limit = props.upload_file_limit.unwrap_or(0);
                 if extract && limit != 0 && self.nfiles as u32 >= limit {
                     if self.flag_file_limit_exceeded == 0 {
                         crate::ms_dbg_a!(
@@ -858,10 +862,10 @@ impl Multipart {
                             "Multipart: Upload file limit exceeded {}. Use SecUploadFileLimit to change the limit.",
                             limit
                         );
-                        *error = format!(
+                        self.error = Some(format!(
                             "Multipart: Upload file limit exceeded {}. Use SecUploadFileLimit to change the limit.",
                             limit
-                        );
+                        ));
                         self.flag_file_limit_exceeded = 1;
                     }
                     extract = false;
@@ -880,8 +884,8 @@ impl Multipart {
                         // do we have an opened file?
                         if !tmp.is_open() {
                             crate::ms_dbg_a!(t, 1, "Multipart: Failed to create file: {}", tmp.get_filename());
-                            *error = format!("Multipart: Failed to create file: {}", tmp.get_filename());
-                            return -1;
+                            self.error = Some(format!("Multipart: Failed to create file: {}", tmp.get_filename()));
+                            return false;
                         }
                         // keep track of the files count
                         self.nfiles += 1;
@@ -891,7 +895,7 @@ impl Multipart {
                             4,
                             "Multipart: Created temporary file {} (mode 0{:o}): {}",
                             self.nfiles,
-                            t.rules.properties.upload_file_mode.value(),
+                            t.rules.properties.upload_file_mode.unwrap_or(0),
                             tmp.get_filename()
                         );
                     }
@@ -901,8 +905,8 @@ impl Multipart {
                     if reserved != 0 {
                         if !tmp.write(&self.reserve[1..1 + reserved]) {
                             crate::ms_dbg_a!(t, 1, "Multipart: writing to \"{}\" failed", tmp.get_filename());
-                            *error = format!("Multipart: writing to \"{}\" failed", tmp.get_filename());
-                            return -1;
+                            self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.get_filename()));
+                            return false;
                         }
 
                         mpp.tmp_file_size.0 += reserved;
@@ -915,8 +919,8 @@ impl Multipart {
                     // write data to the file
                     if !tmp.write(&self.buf[..len]) {
                         crate::ms_dbg_a!(t, 1, "Multipart: writing to \"{}\" failed", tmp.get_filename());
-                        *error = format!("Multipart: writing to \"{}\" failed", tmp.get_filename());
-                        return -1;
+                        self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.get_filename()));
+                        return false;
                     }
 
                     mpp.value.extend_from_slice(&self.buf[..len]);
@@ -972,20 +976,20 @@ impl Multipart {
             self.reserve[0] = 0;
         }
 
-        1
+        true
     }
 
-    /// `process_part_header`. Note: like the C++ code, failures return 0
-    /// (`false`), which the caller (checking for a negative value) does not
-    /// treat as fatal; only `error` is set.
-    fn process_part_header(&mut self, t: &mut Transaction<'_>, error: &mut String, offset: usize) -> i32 {
+    /// `process_part_header`. Like the C++ code (whose failures return 0,
+    /// which its caller does not treat as fatal), a failure only records
+    /// the error.
+    fn process_part_header(&mut self, t: &mut Transaction<'_>, offset: usize) {
         // Check for nul bytes.
         let len = MULTIPART_BUF_SIZE - self.bufleft;
         let mut len_without_termination = len as isize - 1;
         if self.buf[..len].contains(&0) {
             crate::ms_dbg_a!(t, 1, "Multipart: Nul byte in part headers.");
-            *error = "Multipart: Nul byte in part headers.".to_string();
-            return 0;
+            self.error = Some("Multipart: Nul byte in part headers.".to_string());
+            return;
         }
 
         let mut i: usize = 0;
@@ -1019,8 +1023,8 @@ impl Multipart {
 
             let Some((cd_offset, header_value)) = mpp.header(b"Content-Disposition").cloned() else {
                 crate::ms_dbg_a!(t, 1, "Multipart: Part missing Content-Disposition header.");
-                *error = "Multipart: Part missing Content-Disposition header.".to_string();
-                return 0;
+                self.error = Some("Multipart: Part missing Content-Disposition header.".to_string());
+                return;
             };
 
             let rc = self.parse_content_disposition(t, &header_value, cd_offset);
@@ -1032,15 +1036,16 @@ impl Multipart {
                     rc,
                     lossy(&header_value)
                 );
-                *error = format!("Multipart: Invalid Content-Disposition header ({}): {}", rc, lossy(&header_value));
-                return 0;
+                self.error =
+                    Some(format!("Multipart: Invalid Content-Disposition header ({}): {}", rc, lossy(&header_value)));
+                return;
             }
 
             let mpp = self.mpp.as_mut().expect("part being built");
             if mpp.name.is_empty() {
                 crate::ms_dbg_a!(t, 1, "Multipart: Content-Disposition header missing name field.");
-                *error = "Multipart: Content-Disposition header missing name field.".to_string();
-                return 0;
+                self.error = Some("Multipart: Content-Disposition header missing name field.".to_string());
+                return;
             }
 
             if !mpp.filename.is_empty() || !mpp.filename_star.is_empty() {
@@ -1053,8 +1058,8 @@ impl Multipart {
                 let hv = c_str(&header_value);
                 if find(hv, b"filename=").is_none() && find(hv, b"filename*=").is_none() {
                     crate::ms_dbg_a!(t, 1, "Multipart: Invalid Content-Disposition header (filename).");
-                    *error = "Multipart: Invalid Content-Disposition header (filename).".to_string();
-                    return 0;
+                    self.error = Some("Multipart: Invalid Content-Disposition header (filename).".to_string());
+                    return;
                 }
 
                 mpp.type_ = PartType::File;
@@ -1082,8 +1087,8 @@ impl Multipart {
             if mpp.last_header_name.is_empty() {
                 // we are not building a header at this moment
                 crate::ms_dbg_a!(t, 1, "Multipart: Invalid part header (folding error).");
-                *error = "Multipart: Invalid part header (folding error).".to_string();
-                return 0;
+                self.error = Some("Multipart: Invalid part header (folding error).".to_string());
+                return;
             }
 
             // locate the beginning of data
@@ -1119,8 +1124,8 @@ impl Multipart {
 
             if new_value.len() > MULTIPART_BUF_SIZE {
                 crate::ms_dbg_a!(t, 1, "Multipart: Part header too long.");
-                *error = "Multipart: Part header too long.".to_string();
-                return 0;
+                self.error = Some("Multipart: Part header too long.".to_string());
+                return;
             }
 
             let mut l = last_header_name;
@@ -1144,23 +1149,23 @@ impl Multipart {
             }
             if c_at(line, data) == 0 {
                 crate::ms_dbg_a!(t, 1, "Multipart: Invalid part header (colon missing): {}", lossy(line));
-                *error = format!("Multipart: Invalid part header (colon missing): {}", lossy(line));
-                return 0;
+                self.error = Some(format!("Multipart: Invalid part header (colon missing): {}", lossy(line)));
+                return;
             }
 
             // extract header name
             let header_name = line[..data].to_vec();
             if data == 0 {
                 crate::ms_dbg_a!(t, 1, "Multipart: Invalid part header (header name missing).");
-                *error = "Multipart: Invalid part header (header name missing).".to_string();
-                return 0;
+                self.error = Some("Multipart: Invalid part header (header name missing).".to_string());
+                return;
             }
 
             // check if multipart header contains any invalid characters
             if header_name.iter().any(|&ch| !(33..=126).contains(&ch)) {
                 crate::ms_dbg_a!(t, 1, "Multipart: Invalid part header (contains invalid character).");
-                *error = "Multipart: Invalid part header (contains invalid character).".to_string();
-                return 0;
+                self.error = Some("Multipart: Invalid part header (contains invalid character).".to_string());
+                return;
             }
 
             // extract the value value
@@ -1177,7 +1182,7 @@ impl Multipart {
             if mpp.header(&header_name).is_some() {
                 self.flag_duplicate_part_header = 1;
                 crate::ms_dbg_a!(t, 1, "Multipart: Duplicate part header: {}.", lossy(&header_name));
-                return 0;
+                return;
             }
 
             mpp.last_header_name = header_name.clone();
@@ -1196,8 +1201,6 @@ impl Multipart {
                 mpp.last_header_line.clear();
             }
         }
-
-        1
     }
 
     /// `process_boundary`
@@ -1304,13 +1307,18 @@ impl Multipart {
     /// deletion, with its debug messages) needs the transaction, so it runs
     /// at the end of this method: `Transaction::processRequestBody` always
     /// destroyed the processor right after calling `multipart_complete`.
-    pub fn multipart_complete(&mut self, t: &mut Transaction<'_>, error: &mut String) -> bool {
-        let ret = self.complete(t, error);
+    /// The error to report, if processing failed.
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    pub fn multipart_complete(&mut self, t: &mut Transaction<'_>) -> bool {
+        let ret = self.complete(t);
         self.cleanup(Some(t));
         ret
     }
 
-    fn complete(&mut self, t: &mut Transaction<'_>, error: &mut String) -> bool {
+    fn complete(&mut self, t: &mut Transaction<'_>) -> bool {
         fn flag(t: &mut Transaction<'_>, f: i32) -> (Vec<u8>, usize) {
             (f.to_string().into_bytes(), t.vars.offset)
         }
@@ -1444,12 +1452,12 @@ impl Multipart {
 
                 if !self.is_complete {
                     crate::ms_dbg_a!(t, 1, "Multipart: Final boundary missing.");
-                    *error = "Multipart: Final boundary missing.".to_string();
+                    self.error = Some("Multipart: Final boundary missing.".to_string());
                     return false;
                 }
             } else {
                 crate::ms_dbg_a!(t, 1, "Multipart: No boundaries found in payload.");
-                *error = "Multipart: No boundaries found in payload.".to_string();
+                self.error = Some("Multipart: No boundaries found in payload.".to_string());
                 return false;
             }
         }
@@ -1515,7 +1523,7 @@ impl Multipart {
     }
 
     /// `init`: validates the Content-Type header and extracts the boundary.
-    pub fn init(&mut self, t: &mut Transaction<'_>, error: &mut String) -> bool {
+    pub fn init(&mut self, t: &mut Transaction<'_>) -> bool {
         self.upload_keep_files = t.rules.properties.upload_keep_files;
         self.bufleft = MULTIPART_BUF_SIZE;
         self.bufptr = 0;
@@ -1525,14 +1533,14 @@ impl Multipart {
         if self.header.is_empty() {
             self.flag_error = 1;
             crate::ms_dbg_a!(t, 4, "Multipart: Content-Type header not available.");
-            *error = "Multipart: Content-Type header not available.".to_string();
+            self.error = Some("Multipart: Content-Type header not available.".to_string());
             return false;
         }
 
         if self.header.len() > 1024 {
             self.flag_error = 1;
             crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (length).");
-            *error = "Multipart: Invalid boundary in C-T (length).".to_string();
+            self.error = Some("Multipart: Invalid boundary in C-T (length).".to_string());
             return false;
         }
 
@@ -1542,7 +1550,7 @@ impl Multipart {
         if header.len() < 19 || !header[..19].eq_ignore_ascii_case(b"multipart/form-data") {
             self.flag_error = 1;
             crate::ms_dbg_a!(t, 4, "Multipart: Invalid MIME type.");
-            *error = "Multipart: Invalid MIME type.".to_string();
+            self.error = Some("Multipart: Invalid MIME type.".to_string());
             return false;
         }
 
@@ -1551,7 +1559,7 @@ impl Multipart {
         if Self::count_boundary_params(&header) > 1 {
             self.flag_error = 1;
             crate::ms_dbg_a!(t, 4, "Multipart: Multiple boundary parameters in C-T.");
-            *error = "Multipart: Multiple boundary parameters in C-T.".to_string();
+            self.error = Some("Multipart: Multiple boundary parameters in C-T.".to_string());
             return false;
         }
 
@@ -1566,7 +1574,7 @@ impl Multipart {
                     } else {
                         self.flag_error = 1;
                         crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (malformed).");
-                        *error = "Multipart: Invalid boundary in C-T (malformed).".to_string();
+                        self.error = Some("Multipart: Invalid boundary in C-T (malformed).".to_string());
                         return false;
                     }
                 }
@@ -1580,7 +1588,7 @@ impl Multipart {
             let Some(eq) = header[boundary_tmp + 8..].iter().position(|&c| c == b'=') else {
                 self.flag_error = 1;
                 crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (malformed).");
-                *error = "Multipart: Invalid boundary in C-T (malformed).".to_string();
+                self.error = Some("Multipart: Invalid boundary in C-T (malformed).".to_string());
                 return false;
             };
             let b = boundary_tmp + 8 + eq;
@@ -1596,7 +1604,7 @@ impl Multipart {
                 } else {
                     self.flag_error = 1;
                     crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (parameter name).");
-                    *error = "Multipart: Invalid boundary in C-T (parameter name).".to_string();
+                    self.error = Some("Multipart: Invalid boundary in C-T (parameter name).".to_string());
                     return false;
                 }
             }
@@ -1625,7 +1633,7 @@ impl Multipart {
                 if c_at(bv, 0) == b'"' || (len >= 2 && bv[len - 1] == b'"') {
                     self.flag_error = 1;
                     crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (quote).");
-                    *error = "Multipart: Invalid boundary in C-T (quote).".to_string();
+                    self.error = Some("Multipart: Invalid boundary in C-T (quote).".to_string());
                     return false;
                 }
 
@@ -1642,7 +1650,7 @@ impl Multipart {
             if Self::count_boundary_params(&self.boundary) != 0 {
                 self.flag_error = 1;
                 crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (content).");
-                *error = "Multipart: Invalid boundary in C-T (content).".to_string();
+                self.error = Some("Multipart: Invalid boundary in C-T (content).".to_string());
                 return false;
             }
 
@@ -1659,7 +1667,7 @@ impl Multipart {
             if !Self::boundary_characters_valid(&self.boundary) {
                 self.flag_error = 1;
                 crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (characters).");
-                *error = "Multipart: Invalid boundary in C-T (characters).".to_string();
+                self.error = Some("Multipart: Invalid boundary in C-T (characters).".to_string());
                 return false;
             }
 
@@ -1674,7 +1682,7 @@ impl Multipart {
             if self.boundary.is_empty() {
                 self.flag_error = 1;
                 crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (empty).");
-                *error = "Multipart: Invalid boundary in C-T (empty).".to_string();
+                self.error = Some("Multipart: Invalid boundary in C-T (empty).".to_string());
                 return false;
             }
         } else {
@@ -1685,12 +1693,12 @@ impl Multipart {
             // highly unusual.
             if Self::count_boundary_params(&header) > 0 {
                 crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (case sensitivity).");
-                *error = "Multipart: Invalid boundary in C-T (case sensitivity).".to_string();
+                self.error = Some("Multipart: Invalid boundary in C-T (case sensitivity).".to_string());
                 return false;
             }
 
             crate::ms_dbg_a!(t, 4, "Multipart: Boundary not found in C-T.");
-            *error = "Multipart: Boundary not found in C-T.".to_string();
+            self.error = Some("Multipart: Boundary not found in C-T.".to_string());
             return false;
         }
 
@@ -1699,7 +1707,7 @@ impl Multipart {
 
     /// `process`: assumes that all data is in `data` (we are not processing
     /// chunks); `offset` is where the body starts.
-    pub fn process(&mut self, t: &mut Transaction<'_>, data: &[u8], error: &mut String, offset: usize) -> bool {
+    pub fn process(&mut self, t: &mut Transaction<'_>, data: &[u8], offset: usize) -> bool {
         let mut inptr = 0usize;
         let mut inleft = data.len();
         let mut z: usize = 0;
@@ -1788,7 +1796,7 @@ impl Multipart {
                                 if self.is_complete {
                                     self.flag_error = 1;
                                     crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary (final duplicate).");
-                                    *error = "Multipart: Invalid boundary (final duplicate).".to_string();
+                                    self.error = Some("Multipart: Invalid boundary (final duplicate).".to_string());
                                     return false;
                                 }
                             }
@@ -1819,7 +1827,7 @@ impl Multipart {
                                 self.flag_error = 1;
                                 let line = lossy(c_str(&self.buf)).into_owned();
                                 crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary: {}", line);
-                                *error = format!("Multipart: Invalid boundary: {}", line);
+                                self.error = Some(format!("Multipart: Invalid boundary: {}", line));
                                 return false;
                             }
                         }
@@ -1835,7 +1843,7 @@ impl Multipart {
                         {
                             self.flag_error = 1;
                             crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary (quotes).");
-                            *error = "Multipart: Invalid boundary (quotes).".to_string();
+                            self.error = Some("Multipart: Invalid boundary (quotes).".to_string());
                             return false;
                         }
 
@@ -1849,7 +1857,7 @@ impl Multipart {
                             // Found whitespace in front of a boundary.
                             self.flag_error = 1;
                             crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary (whitespace).");
-                            *error = "Multipart: Invalid boundary (whitespace).".to_string();
+                            self.error = Some("Multipart: Invalid boundary (whitespace).".to_string());
                             return false;
                         }
 
@@ -1885,15 +1893,15 @@ impl Multipart {
                                 "Multipart: Part header line over {} bytes long",
                                 MULTIPART_BUF_SIZE
                             );
-                            *error = format!("Multipart: Part header line over {} bytes long", MULTIPART_BUF_SIZE);
+                            self.error =
+                                Some(format!("Multipart: Part header line over {} bytes long", MULTIPART_BUF_SIZE));
                             return false;
                         }
 
-                        if self.process_part_header(t, error, offset.wrapping_add(z)) < 0 {
-                            self.flag_error = 1;
-                            return false;
-                        }
-                    } else if self.process_part_data(t, error, offset.wrapping_add(z)) < 0 {
+                        // Like C++, a failing part header records its error
+                        // but does not stop the processing.
+                        self.process_part_header(t, offset.wrapping_add(z));
+                    } else if !self.process_part_data(t, offset.wrapping_add(z)) {
                         self.flag_error = 1;
                         return false;
                     }
@@ -1951,7 +1959,7 @@ impl Multipart {
             config_boolean_string(self.upload_keep_files)
         );
 
-        if self.upload_keep_files != ConfigBoolean::TrueConfigBoolean {
+        if self.upload_keep_files != Some(true) {
             for m in &self.parts {
                 if m.type_ == PartType::File
                     && let Some(f) = &m.tmp_file
@@ -2006,7 +2014,9 @@ pub(crate) mod test_support {
             true
         }
         fn set_debug_log_level(&mut self, _level: i32) {}
-        fn set_debug_log_file(&mut self, _file_name: &str, _error: &mut String) {}
+        fn set_debug_log_file(&mut self, _file_name: &str) -> Result<(), String> {
+            Ok(())
+        }
         fn get_debug_log_file(&self) -> &str {
             ""
         }
@@ -2247,16 +2257,15 @@ y\r\n\
         std::fs::create_dir_all(&dir).unwrap();
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.tmp_save_uploaded_files = ConfigBoolean::TrueConfigBoolean;
-        rules.properties.upload_directory.set = true;
-        rules.properties.upload_directory.value = dir.to_string_lossy().into_owned();
-        rules.properties.upload_file_mode.parse("0600").unwrap();
+        rules.properties.tmp_save_uploaded_files = Some(true);
+        rules.properties.upload_directory = Some(dir.to_string_lossy().into_owned());
+        rules.properties.upload_file_mode = Some(0o600);
         let ct = ct("0000");
         let name;
         {
             let t = run(&ms, &rules, &[(b"Content-Type", &ct)], NORMAL, None);
             name = String::from_utf8(t.vars.files_tmp_names.iter().next().unwrap().0.to_vec()).unwrap();
-            assert!(name.starts_with(&rules.properties.upload_directory.value), "{}", name);
+            assert!(name.starts_with(rules.properties.upload_directory.as_deref().unwrap()), "{}", name);
             assert!(name.contains("-file-"));
             assert_eq!(std::fs::read(&name).unwrap(), b"BINARYDATA");
             assert_eq!(t.vars.files_tmp_content.resolve_first(b"image").unwrap(), b"BINARYDATA");
@@ -2271,7 +2280,7 @@ y\r\n\
         assert!(!std::path::Path::new(&name).exists());
 
         // SecUploadKeepFiles On keeps them
-        rules.properties.upload_keep_files = ConfigBoolean::TrueConfigBoolean;
+        rules.properties.upload_keep_files = Some(true);
         let name;
         {
             let t = run(&ms, &rules, &[(b"Content-Type", &ct)], NORMAL, None);
@@ -2287,9 +2296,9 @@ y\r\n\
         std::fs::create_dir_all(&dir).unwrap();
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.tmp_save_uploaded_files = ConfigBoolean::TrueConfigBoolean;
-        rules.properties.upload_directory.value = dir.to_string_lossy().into_owned();
-        rules.properties.upload_file_limit.parse("1").unwrap();
+        rules.properties.tmp_save_uploaded_files = Some(true);
+        rules.properties.upload_directory = Some(dir.to_string_lossy().into_owned());
+        rules.properties.upload_file_limit = Some(1);
         let ct = ct("0000");
         let body = b"--0000\r\n\
 Content-Disposition: form-data; name=\"f1\"; filename=\"1.txt\"\r\n\r\none\r\n\
@@ -2331,7 +2340,7 @@ mod regression_dump {
     use super::test_support::{CaptureLog, log};
     use crate::modsecurity::ModSecurity;
     use crate::rules_set::RulesSet;
-    use crate::rules_set_properties::{ConfigBoolean, ConfigXMLParseXmlIntoArgs, RulesSetProperties};
+    use crate::rules_set_properties::{ParseXmlIntoArgs, RulesSetProperties, parse_config_number, parse_octal_mode};
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::utils::json::{JsonValue, parse_tree};
 
@@ -2354,10 +2363,7 @@ mod regression_dump {
         }
     }
 
-    fn configure(
-        rules: &mut RulesSet,
-        lines: &[String],
-    ) -> (Option<RequestBodyType>, Option<ConfigXMLParseXmlIntoArgs>) {
+    fn configure(rules: &mut RulesSet, lines: &[String]) -> (Option<RequestBodyType>, Option<ParseXmlIntoArgs>) {
         let p = &mut rules.properties;
         let mut processor = None;
         let mut ctl_args = None;
@@ -2366,31 +2372,26 @@ mod regression_dump {
             let d = it.next().unwrap_or("").to_ascii_lowercase();
             let v = it.next().unwrap_or("").trim().trim_matches('"').to_string();
             let b = |v: &str| {
-                if v.eq_ignore_ascii_case("on") {
-                    ConfigBoolean::TrueConfigBoolean
-                } else {
-                    ConfigBoolean::FalseConfigBoolean
-                }
+                if v.eq_ignore_ascii_case("on") { Some(true) } else { Some(false) }
             };
             match d.as_str() {
-                "secrequestbodyjsondepthlimit" => p.request_body_json_depth_limit.parse(&v).unwrap(),
-                "secargumentslimit" => p.arguments_limit.parse(&v).unwrap(),
-                "secrequestbodynofileslimit" => p.request_body_no_files_limit.parse(&v).unwrap(),
-                "secrequestbodylimit" => p.request_body_limit.parse(&v).unwrap(),
-                "secuploadfilelimit" => p.upload_file_limit.parse(&v).unwrap(),
-                "secuploadfilemode" => p.upload_file_mode.parse(&v).unwrap(),
-                "secuploaddir" => {
-                    p.upload_directory.set = true;
-                    p.upload_directory.value = v.clone();
+                "secrequestbodyjsondepthlimit" => {
+                    p.request_body_json_depth_limit = Some(parse_config_number(&v).unwrap())
                 }
+                "secargumentslimit" => p.arguments_limit = Some(parse_config_number(&v).unwrap()),
+                "secrequestbodynofileslimit" => p.request_body_no_files_limit = Some(parse_config_number(&v).unwrap()),
+                "secrequestbodylimit" => p.request_body_limit = Some(parse_config_number(&v).unwrap()),
+                "secuploadfilelimit" => p.upload_file_limit = Some(parse_config_number(&v).unwrap()),
+                "secuploadfilemode" => p.upload_file_mode = Some(parse_octal_mode(&v).unwrap()),
+                "secuploaddir" => p.upload_directory = Some(v.clone()),
                 "secuploadkeepfiles" => p.upload_keep_files = b(&v),
                 "sectmpsaveuploadedfiles" => p.tmp_save_uploaded_files = b(&v),
                 "secxmlexternalentity" => p.sec_xml_external_entity = b(&v),
                 "secparsexmlintoargs" => {
                     p.sec_xml_parse_xml_into_args = match v.to_ascii_lowercase().as_str() {
-                        "on" => ConfigXMLParseXmlIntoArgs::TrueConfigXMLParseXmlIntoArgs,
-                        "onlyargs" => ConfigXMLParseXmlIntoArgs::OnlyArgsConfigXMLParseXmlIntoArgs,
-                        _ => ConfigXMLParseXmlIntoArgs::FalseConfigXMLParseXmlIntoArgs,
+                        "on" => Some(ParseXmlIntoArgs::On),
+                        "onlyargs" => Some(ParseXmlIntoArgs::OnlyArgs),
+                        _ => Some(ParseXmlIntoArgs::Off),
                     }
                 }
                 "secrule" => {
@@ -2400,11 +2401,11 @@ mod regression_dump {
                         processor = Some(RequestBodyType::JSONRequestBody);
                     }
                     if l.contains("ctl:parseXmlIntoArgs=OnlyArgs") {
-                        ctl_args = Some(ConfigXMLParseXmlIntoArgs::OnlyArgsConfigXMLParseXmlIntoArgs);
+                        ctl_args = Some(ParseXmlIntoArgs::OnlyArgs);
                     } else if l.contains("ctl:parseXmlIntoArgs=On") {
-                        ctl_args = Some(ConfigXMLParseXmlIntoArgs::TrueConfigXMLParseXmlIntoArgs);
+                        ctl_args = Some(ParseXmlIntoArgs::On);
                     } else if l.contains("ctl:parseXmlIntoArgs=Off") {
-                        ctl_args = Some(ConfigXMLParseXmlIntoArgs::FalseConfigXMLParseXmlIntoArgs);
+                        ctl_args = Some(ParseXmlIntoArgs::Off);
                     }
                 }
                 _ => {}
@@ -2417,7 +2418,6 @@ mod regression_dump {
     /// the rule's `xmlns` actions) and the validation operators.
     #[cfg(feature = "libxml2")]
     fn xml_rules(t: &mut Transaction<'_>, lines: &[String]) {
-        use crate::actions::action::Action;
         use crate::actions::xmlns::XmlNS;
         use crate::operators::operator::Operator;
         use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
@@ -2432,14 +2432,14 @@ mod regression_dump {
             let quoted: Vec<&str> = l.split('"').collect();
             let op = quoted.get(1).copied().unwrap_or("");
             let actions = quoted.get(3).copied().unwrap_or("");
-            let mut acts: Vec<Box<dyn Action>> = Vec::new();
+            let mut acts: Vec<crate::rule_with_actions::RuleAction> = Vec::new();
             for a in actions.split(',') {
                 if let Some(ns) = a.strip_prefix("xmlns:") {
                     let (scope, href) = ns.split_once('=').unwrap();
                     let mut x = XmlNS::new(a);
                     x.scope = scope.to_string();
                     x.href = href.trim_matches('\'').to_string();
-                    acts.push(Box::new(x));
+                    acts.push(crate::rule_with_actions::RuleAction::Other(Box::new(x)));
                 }
             }
             let rule = RuleWithActions::new(Some(acts), None, "x", 1, RuleWithActionsKind::Unconditional);
@@ -2462,7 +2462,8 @@ mod regression_dump {
                 _ => continue,
             };
             o.init("x.json").unwrap();
-            println!("OP {} -> {}", name, o.evaluate(Some(t), Some(&rule), b"", None));
+            let mut rm = crate::rule_message::RuleMessage::new(&rule);
+            println!("OP {} -> {}", name, o.evaluate(t, &rule, b"", &mut rm));
         }
     }
 
@@ -2506,7 +2507,7 @@ mod regression_dump {
                         t.request_body_processor = p;
                     }
                     if let Some(a) = ctl_args {
-                        t.sec_xml_parse_xml_into_args = a;
+                        t.sec_xml_parse_xml_into_args = Some(a);
                     }
                     let mut body = Vec::new();
                     if let Some(JsonValue::Array(b)) = req.get("body") {

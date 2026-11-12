@@ -33,12 +33,12 @@ impl Operator for ContainsWord {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        mut rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let param_target = self.base.string.as_ref().map_or_else(Vec::new, |s| s.evaluate(t.as_deref()));
+        let param_target = self.base.param_value(t);
 
         if param_target.is_empty() {
             return true;
@@ -46,28 +46,22 @@ impl Operator for ContainsWord {
         if input.is_empty() {
             return false;
         }
-        if input == param_target.as_slice() {
+        if input == &*param_target {
             return true;
         }
 
         let mut pos = find(input, &param_target);
         while let Some(p) = pos {
             if p == 0 && Self::acceptable_char(input, param_target.len()) {
-                if let Some(rm) = rm.as_deref_mut() {
-                    log_offset(rm, 0, param_target.len());
-                }
+                log_offset(rm, 0, param_target.len());
                 return true;
             }
             if p + param_target.len() == input.len() && Self::acceptable_char(input, p.wrapping_sub(1)) {
-                if let Some(rm) = rm.as_deref_mut() {
-                    log_offset(rm, p, param_target.len());
-                }
+                log_offset(rm, p, param_target.len());
                 return true;
             }
             if Self::acceptable_char(input, p.wrapping_sub(1)) && Self::acceptable_char(input, p + param_target.len()) {
-                if let Some(rm) = rm.as_deref_mut() {
-                    log_offset(rm, p, param_target.len());
-                }
+                log_offset(rm, p, param_target.len());
                 return true;
             }
             pos = find_from(input, &param_target, p + 1);

@@ -42,7 +42,7 @@ impl Action for Severity {
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(
             t,
             9,
@@ -54,7 +54,6 @@ impl Action for Severity {
         if t.highest_severity_action > self.severity {
             t.highest_severity_action = self.severity;
         }
-        true
     }
 }
 

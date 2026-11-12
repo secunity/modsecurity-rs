@@ -23,17 +23,17 @@ impl Operator for EndsWith {
     crate::operator_base_accessors!();
     fn evaluate(
         &self,
-        t: Option<&mut Transaction<'_>>,
-        _rule: Option<&RuleWithActions>,
+        t: &mut Transaction<'_>,
+        _rule: &RuleWithActions,
         input: &[u8],
-        rm: Option<&mut RuleMessage<'_>>,
+        rm: &mut RuleMessage<'_>,
     ) -> bool {
         let mut ret = false;
-        let p = self.base.string.as_ref().map_or_else(Vec::new, |s| s.evaluate(t.as_deref()));
+        let p = self.base.param_value(t);
 
         if input.len() >= p.len() {
             ret = input.ends_with(&p);
-            if ret && let Some(rm) = rm {
+            if ret {
                 log_offset(rm, input.len() - p.len(), p.len());
             }
         }

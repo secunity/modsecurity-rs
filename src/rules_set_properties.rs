@@ -13,16 +13,9 @@ use crate::debug_log::debug_log::{DebugLog, DefaultDebugLog};
 use crate::modsecurity::NUMBER_OF_PHASES;
 use crate::rules_exceptions::RulesExceptions;
 
-/// `ConfigValue<T>`: an optional numeric configuration value with range
-/// checking (`ConfigInt`, `ConfigUnsignedInt`, `ConfigUnsignedLong`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ConfigValue<T> {
-    pub set: bool,
-    pub value: T,
-}
-
-/// Numeric types usable in [`ConfigValue`], with the range of the C++
-/// specialisation.
+/// Numeric configuration values (`ConfigInt`, `ConfigUnsignedInt`,
+/// `ConfigUnsignedLong` in C++), with the range of the C++ specialisation.
+/// A value that no directive set is `None` in [`RulesSetProperties`].
 pub trait ConfigNumber: Copy + Default {
     const SIGNED: bool;
     fn min_value() -> i128;
@@ -53,33 +46,21 @@ config_number!(i32, true, i32::MIN as i128);
 config_number!(u32, false, 0);
 config_number!(u64, false, 0);
 
-impl<T: ConfigNumber> ConfigValue<T> {
-    pub fn merge(&mut self, from: &ConfigValue<T>) {
-        if self.set || !from.set {
-            return;
-        }
-        self.set = true;
-        self.value = from.value;
+/// `ConfigValue::parse`: `std::stoll` / `std::stoull` plus the range checks
+/// of the C++ type, with its error messages.
+pub fn parse_config_number<T: ConfigNumber>(a: &str) -> Result<T, String> {
+    let val: i128 = match parse_cxx_integer(a, T::SIGNED) {
+        CxxInt::Invalid => return Err("Invalid number format (not numeric)".to_string()),
+        CxxInt::OutOfRange => return Err("Number out of range".to_string()),
+        CxxInt::Value(v) => v,
+    };
+    if val > T::max_value() {
+        return Err("Value is too big.".to_string());
     }
-
-    /// The default parser (`std::stoll`/`std::stoull` plus range checks).
-    pub fn parse(&mut self, a: &str) -> Result<(), String> {
-        let parsed = parse_cxx_integer(a, T::SIGNED);
-        let val: i128 = match parsed {
-            CxxInt::Invalid => return Err("Invalid number format (not numeric)".to_string()),
-            CxxInt::OutOfRange => return Err("Number out of range".to_string()),
-            CxxInt::Value(v) => v,
-        };
-        if val > T::max_value() {
-            return Err("Value is too big.".to_string());
-        }
-        if val < T::min_value() {
-            return Err("Value is too small.".to_string());
-        }
-        self.value = T::from_i128(val);
-        self.set = true;
-        Ok(())
+    if val < T::min_value() {
+        return Err("Value is too small.".to_string());
     }
+    Ok(T::from_i128(val))
 }
 
 enum CxxInt {
@@ -120,56 +101,27 @@ fn parse_cxx_integer(a: &str, signed: bool) -> CxxInt {
     }
 }
 
-pub type ConfigInt = ConfigValue<i32>;
-pub type ConfigUnsignedInt = ConfigValue<u32>;
-pub type ConfigUnsignedLong = ConfigValue<u64>;
-
-/// `ConfigOctalInt`: file modes (`SecUploadFileMode`): "0640" is 0640.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ConfigOctalInt(pub ConfigUnsignedInt);
-
-impl ConfigOctalInt {
-    pub fn parse(&mut self, a: &str) -> Result<(), String> {
-        if a.is_empty() || a.bytes().any(|c| !(b'0'..=b'7').contains(&c)) {
-            return Err("Invalid octal number".to_string());
-        }
-        let first = a.find(|c| c != '0').unwrap_or(a.len());
-        let start = first.min(a.len() - 1);
-        let digits = &a[start..];
-        if digits.len() > 11 {
-            return Err("Value is too big.".to_string());
-        }
-        let v = u64::from_str_radix(digits, 8).unwrap_or(0);
-        self.0.parse(&v.to_string())
+/// `ConfigOctalInt::parse`: a file mode (`SecUploadFileMode`), "0640" is
+/// 0640.
+pub fn parse_octal_mode(a: &str) -> Result<u32, String> {
+    if a.is_empty() || a.bytes().any(|c| !(b'0'..=b'7').contains(&c)) {
+        return Err("Invalid octal number".to_string());
     }
-
-    pub fn merge(&mut self, from: &ConfigOctalInt) {
-        self.0.merge(&from.0);
+    let first = a.find(|c| c != '0').unwrap_or(a.len());
+    let start = first.min(a.len() - 1);
+    let digits = &a[start..];
+    if digits.len() > 11 {
+        return Err("Value is too big.".to_string());
     }
-
-    pub fn set(&self) -> bool {
-        self.0.set
-    }
-
-    pub fn value(&self) -> u32 {
-        self.0.value
-    }
+    let v = u64::from_str_radix(digits, 8).unwrap_or(0);
+    parse_config_number(&v.to_string())
 }
 
-/// `ConfigString`
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ConfigString {
-    pub set: bool,
-    pub value: String,
-}
-
-impl ConfigString {
-    pub fn merge(&mut self, from: &ConfigString) {
-        if self.set || !from.set {
-            return;
-        }
-        self.set = true;
-        self.value = from.value.clone();
+/// The C++ `merge` of the optional configuration values: a value set in
+/// `to` wins over the one of `from`.
+fn merge_value<T: Clone>(to: &mut Option<T>, from: &Option<T>) {
+    if to.is_none() {
+        to.clone_from(from);
     }
 }
 
@@ -283,35 +235,25 @@ fn strtol16(s: &[u8]) -> i64 {
     i64::from_str_radix(&digits, 16).unwrap_or(0)
 }
 
-/// The ConfigBoolean enumerator defines the states for configuration boolean
-/// values. The default value is `PropertyNotSetConfigBoolean`.
+/// `SecParseXmlIntoArgs`: whether the XML body is also parsed into
+/// `ARGS` (the C++ `ConfigXMLParseXmlIntoArgs` without its not-set state,
+/// which is `None`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfigBoolean {
-    TrueConfigBoolean,
-    FalseConfigBoolean,
-    PropertyNotSetConfigBoolean,
+pub enum ParseXmlIntoArgs {
+    On,
+    Off,
+    OnlyArgs,
 }
 
-/// States for `SecParseXmlIntoArgs`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfigXMLParseXmlIntoArgs {
-    TrueConfigXMLParseXmlIntoArgs,
-    FalseConfigXMLParseXmlIntoArgs,
-    OnlyArgsConfigXMLParseXmlIntoArgs,
-    PropertyNotSetConfigXMLParseXmlIntoArgs,
-}
-
-/// The RuleEngine enumerator consists in mapping the different states of the
-/// rule engine.
+/// The state of the rule engine (`SecRuleEngine`, `ctl:ruleEngine`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleEngine {
-    /// Rules won't be evaluated if Rule Engine is set to DisabledRuleEngine
-    DisabledRuleEngine,
+    /// Rules won't be evaluated if Rule Engine is set to Disabled
+    Disabled,
     /// Rules will be evaluated and disturb actions will take place if needed.
-    EnabledRuleEngine,
+    Enabled,
     /// Rules will be evaluated but it won't generate any disruptive action.
-    DetectionOnlyRuleEngine,
-    PropertyNotSetRuleEngine,
+    DetectionOnly,
 }
 
 /// Defines what actions should be taken in case the body (response or
@@ -319,44 +261,56 @@ pub enum RuleEngine {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyLimitAction {
     /// Process partial
-    ProcessPartialBodyLimitAction,
+    ProcessPartial,
     /// Reject the request
-    RejectBodyLimitAction,
-    PropertyNotSetBodyLimitAction,
+    Reject,
 }
 
 /// Defines what actions should be taken in case the remote rules failed to
-/// be downloaded (independent of the circumstances).
+/// be downloaded (independent of the circumstances). When not configured
+/// the failure is ignored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnFailedRemoteRulesAction {
-    AbortOnFailedRemoteRulesAction,
-    WarnOnFailedRemoteRulesAction,
-    PropertyNotSetRemoteRulesAction,
+    Abort,
+    Warn,
 }
 
-pub fn rule_engine_state_string(i: RuleEngine) -> &'static str {
+/// `RulesSetProperties::ruleEngineStateString` (`None` is the C++ not-set
+/// state).
+pub fn rule_engine_state_string(i: Option<RuleEngine>) -> &'static str {
     match i {
-        RuleEngine::DisabledRuleEngine => "Disabled",
-        RuleEngine::EnabledRuleEngine => "Enabled",
-        RuleEngine::DetectionOnlyRuleEngine => "DetectionOnly",
-        RuleEngine::PropertyNotSetRuleEngine => "PropertyNotSet/DetectionOnly",
+        Some(RuleEngine::Disabled) => "Disabled",
+        Some(RuleEngine::Enabled) => "Enabled",
+        Some(RuleEngine::DetectionOnly) => "DetectionOnly",
+        None => "PropertyNotSet/DetectionOnly",
     }
 }
 
-pub fn config_boolean_string(i: ConfigBoolean) -> &'static str {
+/// `RulesSetProperties::configBooleanString`
+pub fn config_boolean_string(i: Option<bool>) -> &'static str {
     match i {
-        ConfigBoolean::TrueConfigBoolean => "True",
-        ConfigBoolean::FalseConfigBoolean => "False",
-        ConfigBoolean::PropertyNotSetConfigBoolean => "Not set",
+        Some(true) => "True",
+        Some(false) => "False",
+        None => "Not set",
     }
 }
 
-pub fn config_xml_parse_xml_into_args_string(i: ConfigXMLParseXmlIntoArgs) -> &'static str {
+/// The value of the C++ `ConfigBoolean` enumerator (`True`, `False`,
+/// `NotSet`), which some debug messages print as a number.
+pub fn config_boolean_code(i: Option<bool>) -> i32 {
     match i {
-        ConfigXMLParseXmlIntoArgs::TrueConfigXMLParseXmlIntoArgs => "True",
-        ConfigXMLParseXmlIntoArgs::FalseConfigXMLParseXmlIntoArgs => "False",
-        ConfigXMLParseXmlIntoArgs::OnlyArgsConfigXMLParseXmlIntoArgs => "OnlyArgs",
-        ConfigXMLParseXmlIntoArgs::PropertyNotSetConfigXMLParseXmlIntoArgs => "Not set",
+        Some(true) => 0,
+        Some(false) => 1,
+        None => 2,
+    }
+}
+
+pub fn config_xml_parse_xml_into_args_string(i: Option<ParseXmlIntoArgs>) -> &'static str {
+    match i {
+        Some(ParseXmlIntoArgs::On) => "True",
+        Some(ParseXmlIntoArgs::Off) => "False",
+        Some(ParseXmlIntoArgs::OnlyArgs) => "OnlyArgs",
+        None => "Not set",
     }
 }
 
@@ -366,34 +320,35 @@ pub type DefaultActions = [Vec<Arc<dyn Action>>; NUMBER_OF_PHASES];
 
 pub struct RulesSetProperties {
     pub audit_log: AuditLog,
-    pub request_body_limit_action: BodyLimitAction,
-    pub response_body_limit_action: BodyLimitAction,
-    pub sec_request_body_access: ConfigBoolean,
-    pub sec_response_body_access: ConfigBoolean,
-    pub sec_xml_external_entity: ConfigBoolean,
-    pub sec_xml_parse_xml_into_args: ConfigXMLParseXmlIntoArgs,
-    pub tmp_save_uploaded_files: ConfigBoolean,
-    pub upload_keep_files: ConfigBoolean,
-    pub arguments_limit: ConfigUnsignedInt,
-    pub request_body_json_depth_limit: ConfigUnsignedInt,
-    pub request_body_limit: ConfigUnsignedLong,
-    pub request_body_no_files_limit: ConfigUnsignedLong,
-    pub response_body_limit: ConfigUnsignedLong,
-    pub pcre_match_limit: ConfigUnsignedInt,
-    pub upload_file_limit: ConfigUnsignedInt,
-    pub upload_file_mode: ConfigOctalInt,
+    pub request_body_limit_action: Option<BodyLimitAction>,
+    pub response_body_limit_action: Option<BodyLimitAction>,
+    pub sec_request_body_access: Option<bool>,
+    pub sec_response_body_access: Option<bool>,
+    pub sec_xml_external_entity: Option<bool>,
+    pub sec_xml_parse_xml_into_args: Option<ParseXmlIntoArgs>,
+    pub tmp_save_uploaded_files: Option<bool>,
+    pub upload_keep_files: Option<bool>,
+    pub arguments_limit: Option<u32>,
+    pub request_body_json_depth_limit: Option<u32>,
+    pub request_body_limit: Option<u64>,
+    pub request_body_no_files_limit: Option<u64>,
+    pub response_body_limit: Option<u64>,
+    pub pcre_match_limit: Option<u32>,
+    pub upload_file_limit: Option<u32>,
+    /// `SecUploadFileMode` (octal).
+    pub upload_file_mode: Option<u32>,
     pub debug_log: Box<dyn DebugLog>,
-    pub remote_rules_action_on_failed: OnFailedRemoteRulesAction,
-    pub sec_rule_engine: RuleEngine,
+    pub remote_rules_action_on_failed: Option<OnFailedRemoteRulesAction>,
+    pub sec_rule_engine: Option<RuleEngine>,
     pub exceptions: RulesExceptions,
     pub components: Vec<String>,
     pub parser_error: String,
     pub response_body_type_to_be_inspected: ConfigSet,
-    pub httpbl_key: ConfigString,
-    pub upload_directory: ConfigString,
-    pub upload_tmp_directory: ConfigString,
-    pub sec_argument_separator: ConfigString,
-    pub sec_web_app_id: ConfigString,
+    pub httpbl_key: Option<String>,
+    pub upload_directory: Option<String>,
+    pub upload_tmp_directory: Option<String>,
+    pub sec_argument_separator: Option<String>,
+    pub sec_web_app_id: Option<String>,
     pub default_actions: DefaultActions,
     pub unicode_map_table: ConfigUnicodeMap,
 }
@@ -413,97 +368,70 @@ impl RulesSetProperties {
     pub fn with_debug_log(debug_log: Box<dyn DebugLog>) -> Self {
         RulesSetProperties {
             audit_log: AuditLog::new(),
-            request_body_limit_action: BodyLimitAction::PropertyNotSetBodyLimitAction,
-            response_body_limit_action: BodyLimitAction::PropertyNotSetBodyLimitAction,
-            sec_request_body_access: ConfigBoolean::PropertyNotSetConfigBoolean,
-            sec_response_body_access: ConfigBoolean::PropertyNotSetConfigBoolean,
-            sec_xml_external_entity: ConfigBoolean::PropertyNotSetConfigBoolean,
-            sec_xml_parse_xml_into_args: ConfigXMLParseXmlIntoArgs::PropertyNotSetConfigXMLParseXmlIntoArgs,
-            tmp_save_uploaded_files: ConfigBoolean::PropertyNotSetConfigBoolean,
-            upload_keep_files: ConfigBoolean::PropertyNotSetConfigBoolean,
-            arguments_limit: ConfigUnsignedInt::default(),
-            request_body_json_depth_limit: ConfigUnsignedInt::default(),
-            request_body_limit: ConfigUnsignedLong::default(),
-            request_body_no_files_limit: ConfigUnsignedLong::default(),
-            response_body_limit: ConfigUnsignedLong::default(),
-            pcre_match_limit: ConfigUnsignedInt::default(),
-            upload_file_limit: ConfigUnsignedInt::default(),
-            upload_file_mode: ConfigOctalInt::default(),
+            request_body_limit_action: None,
+            response_body_limit_action: None,
+            sec_request_body_access: None,
+            sec_response_body_access: None,
+            sec_xml_external_entity: None,
+            sec_xml_parse_xml_into_args: None,
+            tmp_save_uploaded_files: None,
+            upload_keep_files: None,
+            arguments_limit: None,
+            request_body_json_depth_limit: None,
+            request_body_limit: None,
+            request_body_no_files_limit: None,
+            response_body_limit: None,
+            pcre_match_limit: None,
+            upload_file_limit: None,
+            upload_file_mode: None,
             debug_log,
-            remote_rules_action_on_failed: OnFailedRemoteRulesAction::PropertyNotSetRemoteRulesAction,
-            sec_rule_engine: RuleEngine::PropertyNotSetRuleEngine,
+            remote_rules_action_on_failed: None,
+            sec_rule_engine: None,
             exceptions: RulesExceptions::new(),
             components: Vec::new(),
             parser_error: String::new(),
             response_body_type_to_be_inspected: ConfigSet::default(),
-            httpbl_key: ConfigString::default(),
-            upload_directory: ConfigString::default(),
-            upload_tmp_directory: ConfigString::default(),
-            sec_argument_separator: ConfigString::default(),
-            sec_web_app_id: ConfigString::default(),
+            httpbl_key: None,
+            upload_directory: None,
+            upload_tmp_directory: None,
+            sec_argument_separator: None,
+            sec_web_app_id: None,
             default_actions: Default::default(),
             unicode_map_table: ConfigUnicodeMap::default(),
         }
     }
 
-    /// `mergeProperties(from, to, err)`
-    pub fn merge_properties(from: &mut RulesSetProperties, to: &mut RulesSetProperties, err: &mut String) -> i32 {
-        fn merge_enum<T: PartialEq + Copy>(to: &mut T, from: T, not_set: T) {
-            if *to == not_set && from != not_set {
-                *to = from;
-            }
-        }
-        merge_enum(&mut to.sec_rule_engine, from.sec_rule_engine, RuleEngine::PropertyNotSetRuleEngine);
-        merge_enum(
-            &mut to.sec_request_body_access,
-            from.sec_request_body_access,
-            ConfigBoolean::PropertyNotSetConfigBoolean,
-        );
-        merge_enum(
-            &mut to.sec_response_body_access,
-            from.sec_response_body_access,
-            ConfigBoolean::PropertyNotSetConfigBoolean,
-        );
-        merge_enum(
-            &mut to.sec_xml_external_entity,
-            from.sec_xml_external_entity,
-            ConfigBoolean::PropertyNotSetConfigBoolean,
-        );
-        merge_enum(
-            &mut to.sec_xml_parse_xml_into_args,
-            from.sec_xml_parse_xml_into_args,
-            ConfigXMLParseXmlIntoArgs::PropertyNotSetConfigXMLParseXmlIntoArgs,
-        );
-        merge_enum(&mut to.upload_keep_files, from.upload_keep_files, ConfigBoolean::PropertyNotSetConfigBoolean);
-        merge_enum(
-            &mut to.tmp_save_uploaded_files,
-            from.tmp_save_uploaded_files,
-            ConfigBoolean::PropertyNotSetConfigBoolean,
-        );
-        to.arguments_limit.merge(&from.arguments_limit);
-        to.request_body_json_depth_limit.merge(&from.request_body_json_depth_limit);
-        to.request_body_limit.merge(&from.request_body_limit);
-        to.request_body_no_files_limit.merge(&from.request_body_no_files_limit);
-        to.response_body_limit.merge(&from.response_body_limit);
-        merge_enum(
-            &mut to.request_body_limit_action,
-            from.request_body_limit_action,
-            BodyLimitAction::PropertyNotSetBodyLimitAction,
-        );
-        merge_enum(
-            &mut to.response_body_limit_action,
-            from.response_body_limit_action,
-            BodyLimitAction::PropertyNotSetBodyLimitAction,
-        );
-        to.pcre_match_limit.merge(&from.pcre_match_limit);
-        to.upload_file_limit.merge(&from.upload_file_limit);
-        to.upload_file_mode.merge(&from.upload_file_mode);
-        to.upload_directory.merge(&from.upload_directory);
-        to.upload_tmp_directory.merge(&from.upload_tmp_directory);
-        to.sec_argument_separator.merge(&from.sec_argument_separator);
-        to.sec_web_app_id.merge(&from.sec_web_app_id);
+    /// `SecWebAppId` (empty when not set).
+    pub fn web_app_id(&self) -> &[u8] {
+        self.sec_web_app_id.as_deref().unwrap_or_default().as_bytes()
+    }
+
+    /// `mergeProperties(from, to, err)`. A failure (audit log or debug log
+    /// file) stops the merge of the remaining logging properties.
+    pub fn merge_properties(from: &mut RulesSetProperties, to: &mut RulesSetProperties) -> Result<(), String> {
+        merge_value(&mut to.sec_rule_engine, &from.sec_rule_engine);
+        merge_value(&mut to.sec_request_body_access, &from.sec_request_body_access);
+        merge_value(&mut to.sec_response_body_access, &from.sec_response_body_access);
+        merge_value(&mut to.sec_xml_external_entity, &from.sec_xml_external_entity);
+        merge_value(&mut to.sec_xml_parse_xml_into_args, &from.sec_xml_parse_xml_into_args);
+        merge_value(&mut to.upload_keep_files, &from.upload_keep_files);
+        merge_value(&mut to.tmp_save_uploaded_files, &from.tmp_save_uploaded_files);
+        merge_value(&mut to.arguments_limit, &from.arguments_limit);
+        merge_value(&mut to.request_body_json_depth_limit, &from.request_body_json_depth_limit);
+        merge_value(&mut to.request_body_limit, &from.request_body_limit);
+        merge_value(&mut to.request_body_no_files_limit, &from.request_body_no_files_limit);
+        merge_value(&mut to.response_body_limit, &from.response_body_limit);
+        merge_value(&mut to.request_body_limit_action, &from.request_body_limit_action);
+        merge_value(&mut to.response_body_limit_action, &from.response_body_limit_action);
+        merge_value(&mut to.pcre_match_limit, &from.pcre_match_limit);
+        merge_value(&mut to.upload_file_limit, &from.upload_file_limit);
+        merge_value(&mut to.upload_file_mode, &from.upload_file_mode);
+        merge_value(&mut to.upload_directory, &from.upload_directory);
+        merge_value(&mut to.upload_tmp_directory, &from.upload_tmp_directory);
+        merge_value(&mut to.sec_argument_separator, &from.sec_argument_separator);
+        merge_value(&mut to.sec_web_app_id, &from.sec_web_app_id);
         to.unicode_map_table.merge(&from.unicode_map_table);
-        to.httpbl_key.merge(&from.httpbl_key);
+        merge_value(&mut to.httpbl_key, &from.httpbl_key);
         to.exceptions.merge(&from.exceptions);
         to.components.extend(from.components.iter().cloned());
 
@@ -528,25 +456,19 @@ impl RulesSetProperties {
         if let Err(e) = to.audit_log.merge(&from.audit_log)
             && !e.is_empty()
         {
-            err.push_str(&e);
-            return -1;
+            return Err(e);
         }
 
         if from.debug_log.is_log_file_set() && !to.debug_log.is_log_file_set() {
-            let mut error = String::new();
             let f = from.debug_log.get_debug_log_file().to_string();
-            to.debug_log.set_debug_log_file(&f, &mut error);
-            if !error.is_empty() {
-                err.push_str(&error);
-                return -1;
-            }
+            to.debug_log.set_debug_log_file(&f)?;
         }
 
         if from.debug_log.is_log_level_set() && !to.debug_log.is_log_level_set() {
             to.debug_log.set_debug_log_level(from.debug_log.get_debug_log_level());
         }
 
-        1
+        Ok(())
     }
 }
 
@@ -556,16 +478,37 @@ mod tests {
 
     #[test]
     fn config_value_parse() {
-        let mut v = ConfigUnsignedInt::default();
-        assert!(v.parse("10").is_ok());
-        assert_eq!(v.value, 10);
-        assert_eq!(v.parse("99999999999").unwrap_err(), "Value is too big.");
-        assert_eq!(v.parse("x").unwrap_err(), "Invalid number format (not numeric)");
-        let mut l = ConfigUnsignedLong::default();
-        assert_eq!(l.parse("99999999999999999999999").unwrap_err(), "Number out of range");
-        let mut o = ConfigOctalInt::default();
-        assert!(o.parse("0640").is_ok());
-        assert_eq!(o.value(), 0o640);
-        assert_eq!(o.parse("08").unwrap_err(), "Invalid octal number");
+        assert_eq!(parse_config_number::<u32>("10"), Ok(10));
+        assert_eq!(parse_config_number::<u32>("99999999999").unwrap_err(), "Value is too big.");
+        assert_eq!(parse_config_number::<u32>("x").unwrap_err(), "Invalid number format (not numeric)");
+        assert_eq!(parse_config_number::<u64>("99999999999999999999999").unwrap_err(), "Number out of range");
+        // std::stoull negates modulo 2^64.
+        assert_eq!(parse_config_number::<u64>(" -1"), Ok(u64::MAX));
+        assert_eq!(parse_octal_mode("0640"), Ok(0o640));
+        assert_eq!(parse_octal_mode("08").unwrap_err(), "Invalid octal number");
+    }
+
+    #[test]
+    fn merge_keeps_values_set_in_to() {
+        let mut from = RulesSetProperties::new();
+        let mut to = RulesSetProperties::new();
+        from.sec_rule_engine = Some(RuleEngine::Enabled);
+        from.request_body_limit = Some(10);
+        from.sec_web_app_id = Some("a".into());
+        to.request_body_limit = Some(20);
+        RulesSetProperties::merge_properties(&mut from, &mut to).unwrap();
+        assert_eq!(to.sec_rule_engine, Some(RuleEngine::Enabled));
+        assert_eq!(to.request_body_limit, Some(20));
+        assert_eq!(to.web_app_id(), b"a");
+        assert_eq!(RulesSetProperties::new().web_app_id(), b"");
+    }
+
+    #[test]
+    fn c_display_values() {
+        // The C++ enumerator values and texts printed in the logs.
+        assert_eq!([Some(true), Some(false), None].map(config_boolean_code), [0, 1, 2]);
+        assert_eq!([Some(true), Some(false), None].map(config_boolean_string), ["True", "False", "Not set"]);
+        assert_eq!(rule_engine_state_string(None), "PropertyNotSet/DetectionOnly");
+        assert_eq!(config_xml_parse_xml_into_args_string(Some(ParseXmlIntoArgs::On)), "True");
     }
 }

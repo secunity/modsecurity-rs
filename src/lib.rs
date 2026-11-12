@@ -12,7 +12,6 @@
 //! use modsecurity::modsecurity::ModSecurity;
 //! use modsecurity::rules_set::RulesSet;
 //! use modsecurity::transaction::Transaction;
-//! use modsecurity::intervention::ModSecurityIntervention;
 //!
 //! let modsec = ModSecurity::new();
 //! let mut rules = RulesSet::new();
@@ -21,9 +20,8 @@
 //! let mut transaction = Transaction::new(&modsec, &rules, None);
 //! transaction.process_connection("127.0.0.1", 12345, "127.0.0.1", 80);
 //!
-//! let mut it = ModSecurityIntervention::default();
-//! if transaction.intervention(&mut it) {
-//!     println!("There is an intervention");
+//! if let Some(it) = transaction.intervention() {
+//!     println!("There is an intervention: status {}", it.status);
 //! }
 //! ```
 

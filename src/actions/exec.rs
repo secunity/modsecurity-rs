@@ -26,21 +26,18 @@ impl Action for Exec {
     crate::action_base_accessors!();
 
     fn init(&mut self) -> Result<(), String> {
-        let mut err = String::new();
-        self.script = find_resource(&self.base.parser_payload, "", &mut err);
-        if self.script.is_empty() {
-            return Err(format!("exec: Script not found: {}", err));
-        }
-        if !Lua::is_compatible(&self.script, &mut self.lua, &mut err) {
-            return Err(format!("exec: {}", err));
-        }
+        let lookup = find_resource(&self.base.parser_payload, "");
+        let Some(script) = lookup.path else {
+            return Err(format!("exec: Script not found: {}", lookup.looked_at));
+        };
+        self.lua = Lua::from_script(&script).map_err(|e| format!("exec: {}", e))?;
+        self.script = script;
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(t, 8, "Running script... {}", self.script);
         self.lua.run(t, b"");
-        true
     }
 }
 

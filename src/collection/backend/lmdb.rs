@@ -512,8 +512,7 @@ impl Collection for Lmdb {
         move_to_front_reversed(l, start);
     }
 
-    fn resolve_regular_expression(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
-        let r = Regex::with_options(var, true, true);
+    fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let start = l.len();
         self.walk("resolveRegularExpression", ffi::MDB_NEXT, None, |k, d| {
             if r.search(k) <= 0 {

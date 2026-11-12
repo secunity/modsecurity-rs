@@ -1,11 +1,8 @@
 //! Port of `src/actions/transformations/url_decode_uni.cc`, `src/actions/transformations/url_decode_uni.h`.
 
-use crate::actions::transformations::transformation::Transformation;
 use crate::rules_set_properties::UnicodeMapHolder;
 use crate::transaction::Transaction;
 use crate::utils::string::{valid_hex, x2c};
-
-crate::transformation_struct!(UrlDecodeUni);
 
 /// The configured unicode map (`SecUnicodeMapFile`), if any. Without a
 /// transaction no map is used.
@@ -141,10 +138,9 @@ fn inplace(input: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
     changed
 }
 
-impl Transformation for UrlDecodeUni {
-    fn transform(&self, value: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
-        inplace(value, t)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
+    inplace(value, t)
 }
 
 #[cfg(test)]

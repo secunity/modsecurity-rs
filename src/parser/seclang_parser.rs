@@ -13,18 +13,19 @@
 //! its helpers, grouped by nonterminal.
 
 use crate::actions::action::{Action, BaseAction, Kind};
-use crate::actions::transformations::transformation::Transformation;
-use crate::actions::{self, ctl, data, disruptive, transformations as tr};
+use crate::actions::transformations::transformation::{Transformation, TransformationKind as TK};
+use crate::actions::{self, ctl, data, disruptive};
 use crate::audit_log::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
 use crate::modsecurity::Phases;
 use crate::operators::operator::{Operator, instantiate_with_param};
 use crate::parser::driver::Driver;
 use crate::parser::seclang_scanner::{ScanError, Scanner, Token};
 use crate::rule_script::RuleScript;
-use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+use crate::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
 use crate::rule_with_operator::RuleWithOperator;
 use crate::rules_set_properties::{
-    BodyLimitAction, ConfigBoolean, ConfigUnicodeMap, ConfigXMLParseXmlIntoArgs, OnFailedRemoteRulesAction, RuleEngine,
+    BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
+    parse_octal_mode,
 };
 use crate::run_time_string::RunTimeString;
 use crate::utils::string::{atoi, remove_brackets_if_needed, ssplit};
@@ -104,35 +105,40 @@ impl Location {
 /// transformations out with `dynamic_cast` when the rule is built.
 #[derive(Debug)]
 pub(crate) enum ParsedAction {
-    Action(Box<dyn Action>),
-    Transformation(Box<dyn Transformation>),
+    Action(RuleAction),
+    Transformation(Transformation),
 }
 
 impl ParsedAction {
     fn init(&mut self) -> Result<(), String> {
         match self {
-            ParsedAction::Action(a) => a.init(),
+            ParsedAction::Action(a) => a.as_action_mut().init(),
             ParsedAction::Transformation(t) => t.init(),
         }
     }
 
     fn into_action(self) -> Box<dyn Action> {
         match self {
-            ParsedAction::Action(a) => a,
-            ParsedAction::Transformation(t) => t,
+            ParsedAction::Action(a) => a.into_action(),
+            ParsedAction::Transformation(t) => Box::new(t),
         }
     }
 
     fn as_action(&self) -> &dyn Action {
         match self {
-            ParsedAction::Action(a) => a.as_ref(),
-            ParsedAction::Transformation(t) => t.as_ref(),
+            ParsedAction::Action(a) => a.as_action(),
+            ParsedAction::Transformation(t) => t,
         }
     }
 }
 
+/// An action without a slot of its own in the rule.
+fn other(a: Box<dyn Action>) -> ParsedAction {
+    ParsedAction::Action(RuleAction::Other(a))
+}
+
 /// The actions and the transformations of a rule.
-type RuleActions = (Vec<Box<dyn Action>>, Vec<Box<dyn Transformation>>);
+type RuleActions = (Vec<RuleAction>, Vec<Transformation>);
 
 /// Splits the actions of a rule into actions and transformations.
 fn split_actions(list: Vec<ParsedAction>) -> RuleActions {
@@ -699,10 +705,10 @@ impl SeclangParser {
             }
             // Upload
             (sym::CONFIG_UPDLOAD_KEEP_FILES, Some(sym::CONFIG_VALUE_ON)) => {
-                p.upload_keep_files = ConfigBoolean::TrueConfigBoolean;
+                p.upload_keep_files = Some(true);
             }
             (sym::CONFIG_UPDLOAD_KEEP_FILES, Some(sym::CONFIG_VALUE_OFF)) => {
-                p.upload_keep_files = ConfigBoolean::FalseConfigBoolean;
+                p.upload_keep_files = Some(false);
             }
             (sym::CONFIG_UPDLOAD_KEEP_FILES, _) => {
                 driver.error(
@@ -712,27 +718,28 @@ impl SeclangParser {
                 );
                 return Err(Flow::Error);
             }
-            (sym::CONFIG_UPLOAD_FILE_LIMIT, _) => {
-                if let Err(errmsg) = p.upload_file_limit.parse(&rhs[0].string()) {
+            (sym::CONFIG_UPLOAD_FILE_LIMIT, _) => match parse_config_number(&rhs[0].string()) {
+                Ok(v) => p.upload_file_limit = Some(v),
+                Err(errmsg) => {
                     driver.error(at0, &format!("Failed to parse SecUploadFileLimit: {}", errmsg), "");
                     return Err(Flow::Error);
                 }
-            }
-            (sym::CONFIG_UPLOAD_FILE_MODE, _) => {
-                if let Err(errmsg) = p.upload_file_mode.parse(&rhs[0].string()) {
+            },
+            (sym::CONFIG_UPLOAD_FILE_MODE, _) => match parse_octal_mode(&rhs[0].string()) {
+                Ok(v) => p.upload_file_mode = Some(v),
+                Err(errmsg) => {
                     driver.error(at0, &format!("Failed to parse SecUploadFileMode: {}", errmsg), "");
                     return Err(Flow::Error);
                 }
-            }
+            },
             (sym::CONFIG_UPLOAD_DIR, _) => {
-                p.upload_directory.set = true;
-                p.upload_directory.value = rhs[0].string();
+                p.upload_directory = Some(rhs[0].string());
             }
             (sym::CONFIG_UPDLOAD_SAVE_TMP_FILES, Some(sym::CONFIG_VALUE_ON)) => {
-                p.tmp_save_uploaded_files = ConfigBoolean::TrueConfigBoolean;
+                p.tmp_save_uploaded_files = Some(true);
             }
             (sym::CONFIG_UPDLOAD_SAVE_TMP_FILES, _) => {
-                p.tmp_save_uploaded_files = ConfigBoolean::FalseConfigBoolean;
+                p.tmp_save_uploaded_files = Some(false);
             }
             _ => {}
         }
@@ -807,7 +814,7 @@ impl SeclangParser {
             sym::OPERATOR_EQ => "eq",
             sym::OPERATOR_GE => "ge",
             sym::OPERATOR_GT => "gt",
-            // Both `@ipMatchF` and `@ipMatchFromFile` build an `IpMatchF`.
+            // `@ipMatchF` is an alias of `@ipMatchFromFile`.
             sym::OPERATOR_IP_MATCH_FROM_FILE => "ipMatchF",
             sym::OPERATOR_IP_MATCH => "ipMatch",
             sym::OPERATOR_LE => "le",
@@ -927,33 +934,32 @@ impl SeclangParser {
                 driver.add_sec_marker(&marker, &file, line);
             }
             (sym::CONFIG_DIR_RULE_ENG, Some(sym::CONFIG_VALUE_OFF)) => {
-                driver.properties.sec_rule_engine = RuleEngine::DisabledRuleEngine;
+                driver.properties.sec_rule_engine = Some(RuleEngine::Disabled);
             }
             (sym::CONFIG_DIR_RULE_ENG, Some(sym::CONFIG_VALUE_ON)) => {
-                driver.properties.sec_rule_engine = RuleEngine::EnabledRuleEngine;
+                driver.properties.sec_rule_engine = Some(RuleEngine::Enabled);
             }
             (sym::CONFIG_DIR_RULE_ENG, _) => {
-                driver.properties.sec_rule_engine = RuleEngine::DetectionOnlyRuleEngine;
+                driver.properties.sec_rule_engine = Some(RuleEngine::DetectionOnly);
             }
             (sym::CONFIG_DIR_REQ_BODY, Some(sym::CONFIG_VALUE_ON)) => {
-                driver.properties.sec_request_body_access = ConfigBoolean::TrueConfigBoolean;
+                driver.properties.sec_request_body_access = Some(true);
             }
             (sym::CONFIG_DIR_REQ_BODY, _) => {
-                driver.properties.sec_request_body_access = ConfigBoolean::FalseConfigBoolean;
+                driver.properties.sec_request_body_access = Some(false);
             }
             (sym::CONFIG_DIR_RES_BODY, Some(sym::CONFIG_VALUE_ON)) => {
-                driver.properties.sec_response_body_access = ConfigBoolean::TrueConfigBoolean;
+                driver.properties.sec_response_body_access = Some(true);
             }
             (sym::CONFIG_DIR_RES_BODY, _) => {
-                driver.properties.sec_response_body_access = ConfigBoolean::FalseConfigBoolean;
+                driver.properties.sec_response_body_access = Some(false);
             }
             (sym::CONFIG_SEC_ARGUMENT_SEPARATOR, _) => {
                 let v = rhs[0].bytes();
                 if v.len() != 1 {
                     return Self::fail(driver, at0, "Argument separator should be set to a single character.");
                 }
-                driver.properties.sec_argument_separator.value = String::from_utf8_lossy(&v).into_owned();
-                driver.properties.sec_argument_separator.set = true;
+                driver.properties.sec_argument_separator = Some(String::from_utf8_lossy(&v).into_owned());
             }
             (sym::CONFIG_COMPONENT_SIG, _) => {
                 let v = rhs[0].string();
@@ -964,8 +970,7 @@ impl SeclangParser {
             }
             (sym::CONFIG_CONN_ENGINE, _) => {}
             (sym::CONFIG_SEC_WEB_APP_ID, _) => {
-                driver.properties.sec_web_app_id.value = rhs[0].string();
-                driver.properties.sec_web_app_id.set = true;
+                driver.properties.sec_web_app_id = Some(rhs[0].string());
             }
             (sym::CONFIG_SEC_SERVER_SIG, _) => {
                 return Self::fail(driver, at0, "SecServerSignature is not supported.");
@@ -1040,37 +1045,21 @@ impl SeclangParser {
             }
             (sym::CONFIG_SEC_RULE_REMOVE_BY_TAG, _) => {
                 let v = rhs[0].string();
-                if let Err(error) = driver.properties.exceptions.load_remove_rule_by_tag(&v) {
-                    return Self::fail(driver, at0, &format!("SecRuleRemoveByTag: failed to load:{}. {}", v, error));
-                }
+                driver.properties.exceptions.load_remove_rule_by_tag(&v);
             }
             (sym::CONFIG_SEC_RULE_REMOVE_BY_MSG, _) => {
                 let v = rhs[0].string();
-                if let Err(error) = driver.properties.exceptions.load_remove_rule_by_msg(&v) {
-                    return Self::fail(driver, at0, &format!("SecRuleRemoveByMsg: failed to load:{}. {}", v, error));
-                }
+                driver.properties.exceptions.load_remove_rule_by_msg(&v);
             }
             (sym::CONFIG_SEC_RULE_UPDATE_TARGET_BY_TAG, _) => {
                 let v = rhs[0].string();
                 let vars = rhs[1].variables();
-                if let Err(error) = driver.properties.exceptions.load_update_target_by_tag(&v, vars) {
-                    return Self::fail(
-                        driver,
-                        at0,
-                        &format!("SecRuleUpdateTargetByTag: failed to load:{}. {}", v, error),
-                    );
-                }
+                driver.properties.exceptions.load_update_target_by_tag(&v, vars);
             }
             (sym::CONFIG_SEC_RULE_UPDATE_TARGET_BY_MSG, _) => {
                 let v = rhs[0].string();
                 let vars = rhs[1].variables();
-                if let Err(error) = driver.properties.exceptions.load_update_target_by_msg(&v, vars) {
-                    return Self::fail(
-                        driver,
-                        at0,
-                        &format!("SecRuleUpdateTargetByMsg: failed to load:{}. {}", v, error),
-                    );
-                }
+                driver.properties.exceptions.load_update_target_by_msg(&v, vars);
             }
             (sym::CONFIG_SEC_RULE_UPDATE_TARGET_BY_ID, _) => {
                 let v = rhs[0].string();
@@ -1085,13 +1074,7 @@ impl SeclangParser {
                     );
                 };
                 let vars = rhs[1].variables();
-                if let Err(error) = driver.properties.exceptions.load_update_target_by_id(rule_id, vars) {
-                    return Self::fail(
-                        driver,
-                        at0,
-                        &format!("SecRuleUpdateTargetById: failed to load:{}. {}", v, error),
-                    );
-                }
+                driver.properties.exceptions.load_update_target_by_id(rule_id, vars);
             }
             (sym::CONFIG_SEC_RULE_UPDATE_ACTION_BY_ID, _) => {
                 let v = rhs[0].string();
@@ -1106,13 +1089,7 @@ impl SeclangParser {
                     );
                 };
                 let acts: Vec<Box<dyn Action>> = rhs[1].actions().into_iter().map(ParsedAction::into_action).collect();
-                if let Err(error) = driver.properties.exceptions.load_update_action_by_id(rule_id, acts) {
-                    return Self::fail(
-                        driver,
-                        at0,
-                        &format!("SecRuleUpdateActionById: failed to load:{}. {}", v, error),
-                    );
-                }
+                driver.properties.exceptions.load_update_action_by_id(rule_id, acts);
             }
             // Debug log: start
             (sym::CONFIG_DIR_DEBUG_LVL, _) => {
@@ -1121,9 +1098,7 @@ impl SeclangParser {
             }
             (sym::CONFIG_DIR_DEBUG_LOG, _) => {
                 let v = rhs[0].string();
-                let mut error = String::new();
-                driver.properties.debug_log.set_debug_log_file(&v, &mut error);
-                if !error.is_empty() {
+                if let Err(error) = driver.properties.debug_log.set_debug_log_file(&v) {
                     return Self::fail(driver, at0, &format!("Failed to start DebugLog: {}", error));
                 }
             }
@@ -1131,17 +1106,15 @@ impl SeclangParser {
             (sym::CONFIG_DIR_GEO_DB, _) => {
                 let v = rhs[0].string();
                 if cfg!(feature = "maxmind") {
-                    let mut err = String::new();
-                    let file = find_resource(&v, driver.filename(rhs[0].loc.end.filename), &mut err);
-                    if file.is_empty() {
+                    let lookup = find_resource(&v, driver.filename(rhs[0].loc.end.filename));
+                    let Some(file) = lookup.path else {
                         return Self::fail(
                             driver,
                             at0,
-                            &format!("Failed to load locate the GeoDB file from: {} {}", v, err),
+                            &format!("Failed to load locate the GeoDB file from: {} {}", v, lookup.looked_at),
                         );
-                    }
-                    let mut err = String::new();
-                    if !crate::utils::geo_lookup::GeoLookup::get_instance().set_data_base(&file, &mut err) {
+                    };
+                    if let Err(err) = crate::utils::geo_lookup::GeoLookup::get_instance().set_data_base(&file) {
                         return Self::fail(driver, at0, &format!("Failed to load the GeoDB from: {}. {}", file, err));
                     }
                 } else {
@@ -1153,28 +1126,28 @@ impl SeclangParser {
                 }
             }
             (sym::CONFIG_DIR_ARGS_LIMIT, _) => {
-                driver.properties.arguments_limit.set = true;
-                driver.properties.arguments_limit.value = atoi(&rhs[0].bytes()) as i32 as u32;
+                driver.properties.arguments_limit = Some(atoi(&rhs[0].bytes()) as i32 as u32);
             }
             (sym::CONFIG_DIR_REQ_BODY_JSON_DEPTH_LIMIT, _) => {
-                driver.properties.request_body_json_depth_limit.set = true;
-                driver.properties.request_body_json_depth_limit.value = atoi(&rhs[0].bytes()) as i32 as u32;
+                driver.properties.request_body_json_depth_limit = Some(atoi(&rhs[0].bytes()) as i32 as u32);
             }
             // Body limits
-            (sym::CONFIG_DIR_REQ_BODY_LIMIT, _) => {
-                if let Err(errmsg) = driver.properties.request_body_limit.parse(&rhs[0].string()) {
+            (sym::CONFIG_DIR_REQ_BODY_LIMIT, _) => match parse_config_number(&rhs[0].string()) {
+                Ok(v) => driver.properties.request_body_limit = Some(v),
+                Err(errmsg) => {
                     return Self::fail(driver, at0, &format!("Failed to parse SecRequestBodyLimit: {}", errmsg));
                 }
-            }
-            (sym::CONFIG_DIR_REQ_BODY_NO_FILES_LIMIT, _) => {
-                if let Err(errmsg) = driver.properties.request_body_no_files_limit.parse(&rhs[0].string()) {
+            },
+            (sym::CONFIG_DIR_REQ_BODY_NO_FILES_LIMIT, _) => match parse_config_number(&rhs[0].string()) {
+                Ok(v) => driver.properties.request_body_no_files_limit = Some(v),
+                Err(errmsg) => {
                     return Self::fail(
                         driver,
                         at0,
                         &format!("Failed to parse SecRequestsBodyNoFilesLimit: {}", errmsg),
                     );
                 }
-            }
+            },
             (sym::CONFIG_DIR_REQ_BODY_IN_MEMORY_LIMIT, _) => {
                 return Self::fail(
                     driver,
@@ -1182,30 +1155,29 @@ impl SeclangParser {
                     "As of ModSecurity version 3.0, SecRequestBodyInMemoryLimit is no longer supported. Instead, you can use your web server configurations to control those values. ModSecurity will follow the web server decision.",
                 );
             }
-            (sym::CONFIG_DIR_RES_BODY_LIMIT, _) => {
-                if let Err(errmsg) = driver.properties.response_body_limit.parse(&rhs[0].string()) {
+            (sym::CONFIG_DIR_RES_BODY_LIMIT, _) => match parse_config_number(&rhs[0].string()) {
+                Ok(v) => driver.properties.response_body_limit = Some(v),
+                Err(errmsg) => {
                     return Self::fail(driver, at0, &format!("Failed to parse SecResponseBodyLimit: {}", errmsg));
                 }
-            }
+            },
             (sym::CONFIG_DIR_REQ_BODY_LIMIT_ACTION, Some(sym::CONFIG_VALUE_PROCESS_PARTIAL)) => {
-                driver.properties.request_body_limit_action = BodyLimitAction::ProcessPartialBodyLimitAction;
+                driver.properties.request_body_limit_action = Some(BodyLimitAction::ProcessPartial);
             }
             (sym::CONFIG_DIR_REQ_BODY_LIMIT_ACTION, _) => {
-                driver.properties.request_body_limit_action = BodyLimitAction::RejectBodyLimitAction;
+                driver.properties.request_body_limit_action = Some(BodyLimitAction::Reject);
             }
             (sym::CONFIG_DIR_RES_BODY_LIMIT_ACTION, Some(sym::CONFIG_VALUE_PROCESS_PARTIAL)) => {
-                driver.properties.response_body_limit_action = BodyLimitAction::ProcessPartialBodyLimitAction;
+                driver.properties.response_body_limit_action = Some(BodyLimitAction::ProcessPartial);
             }
             (sym::CONFIG_DIR_RES_BODY_LIMIT_ACTION, _) => {
-                driver.properties.response_body_limit_action = BodyLimitAction::RejectBodyLimitAction;
+                driver.properties.response_body_limit_action = Some(BodyLimitAction::Reject);
             }
             (sym::CONFIG_SEC_REMOTE_RULES_FAIL_ACTION, Some(sym::CONFIG_VALUE_ABORT)) => {
-                driver.properties.remote_rules_action_on_failed =
-                    OnFailedRemoteRulesAction::AbortOnFailedRemoteRulesAction;
+                driver.properties.remote_rules_action_on_failed = Some(OnFailedRemoteRulesAction::Abort);
             }
             (sym::CONFIG_SEC_REMOTE_RULES_FAIL_ACTION, _) => {
-                driver.properties.remote_rules_action_on_failed =
-                    OnFailedRemoteRulesAction::WarnOnFailedRemoteRulesAction;
+                driver.properties.remote_rules_action_on_failed = Some(OnFailedRemoteRulesAction::Warn);
             }
             (sym::CONFIG_DIR_PCRE_MATCH_LIMIT_RECURSION, _) => {
                 // Parser error disabled to avoid breaking default
@@ -1213,11 +1185,12 @@ impl SeclangParser {
                 // "SecPcreMatchLimitRecursion is not currently supported.
                 // Default PCRE values are being used for now"
             }
-            (sym::CONFIG_DIR_PCRE_MATCH_LIMIT, _) => {
-                if let Err(errmsg) = driver.properties.pcre_match_limit.parse(&rhs[0].string()) {
+            (sym::CONFIG_DIR_PCRE_MATCH_LIMIT, _) => match parse_config_number(&rhs[0].string()) {
+                Ok(v) => driver.properties.pcre_match_limit = Some(v),
+                Err(errmsg) => {
                     return Self::fail(driver, at0, &format!("Failed to parse SecPcreMatchLimit: {}", errmsg));
                 }
-            }
+            },
             (sym::CONGIG_DIR_RESPONSE_BODY_MP, _) => {
                 let v = rhs[0].string();
                 // std::istream_iterator<std::string> into a std::set.
@@ -1235,22 +1208,19 @@ impl SeclangParser {
                 t.value.clear();
             }
             (sym::CONFIG_XML_EXTERNAL_ENTITY, Some(sym::CONFIG_VALUE_OFF)) => {
-                driver.properties.sec_xml_external_entity = ConfigBoolean::FalseConfigBoolean;
+                driver.properties.sec_xml_external_entity = Some(false);
             }
             (sym::CONFIG_XML_EXTERNAL_ENTITY, _) => {
-                driver.properties.sec_xml_external_entity = ConfigBoolean::TrueConfigBoolean;
+                driver.properties.sec_xml_external_entity = Some(true);
             }
             (sym::CONFIG_XML_PARSE_XML_INTO_ARGS, Some(sym::CONFIG_VALUE_ONLYARGS)) => {
-                driver.properties.sec_xml_parse_xml_into_args =
-                    ConfigXMLParseXmlIntoArgs::OnlyArgsConfigXMLParseXmlIntoArgs;
+                driver.properties.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::OnlyArgs);
             }
             (sym::CONFIG_XML_PARSE_XML_INTO_ARGS, Some(sym::CONFIG_VALUE_OFF)) => {
-                driver.properties.sec_xml_parse_xml_into_args =
-                    ConfigXMLParseXmlIntoArgs::FalseConfigXMLParseXmlIntoArgs;
+                driver.properties.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::Off);
             }
             (sym::CONFIG_XML_PARSE_XML_INTO_ARGS, _) => {
-                driver.properties.sec_xml_parse_xml_into_args =
-                    ConfigXMLParseXmlIntoArgs::TrueConfigXMLParseXmlIntoArgs;
+                driver.properties.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::On);
             }
             (sym::CONGIG_DIR_SEC_TMP_DIR, _) => {
                 // Parser error disabled to avoid breaking default
@@ -1287,8 +1257,7 @@ impl SeclangParser {
                 // "SecCollectionTimeout is not yet supported."
             }
             (sym::CONFIG_SEC_HTTP_BLKEY, _) => {
-                driver.properties.httpbl_key.set = true;
-                driver.properties.httpbl_key.value = rhs[0].string();
+                driver.properties.httpbl_key = Some(rhs[0].string());
             }
             _ => {}
         }
@@ -1303,10 +1272,10 @@ impl SeclangParser {
         let mut sec_rule_defined_phase: i32 = -1;
         for pa in list {
             let a = pa.as_action();
-            if a.is_disruptive() && !a.is::<actions::block::Block>() {
+            if a.is_disruptive() && !a.is_block() {
                 has_disruptive = true;
             }
-            if a.is::<actions::phase::Phase>() {
+            if matches!(pa, ParsedAction::Action(RuleAction::Phase(_))) {
                 // `phase->m_phase`: applied the way the rule constructor
                 // does it (`evaluate(rule, nullptr)`).
                 let mut scratch = RuleWithActions::new(None, None, "", 0, RuleWithActionsKind::Unconditional);
@@ -1318,7 +1287,7 @@ impl SeclangParser {
                 sec_rule_defined_phase =
                     if defined_phase <= Phases::ConnectionPhase as i32 { defined_phase } else { defined_phase - 1 };
             } else if matches!(a.action_kind(), Kind::RunTimeOnlyIfMatchKind | Kind::RunTimeBeforeMatchAttemptKind) {
-                if a.is::<tr::none::None>() {
+                if a.as_transformation().is_some_and(Transformation::is_none) {
                     return Self::fail(
                         driver,
                         at0,
@@ -1385,12 +1354,15 @@ impl SeclangParser {
             }
         }
 
-        let mut err = String::new();
         let config = driver.filename(filename).to_string();
-        let file = find_resource(&f, &config, &mut err);
-        if file.is_empty() {
-            return Self::fail(driver, at0, &format!("Failed to locate the unicode map file from: {} {}", f, err));
-        }
+        let lookup = find_resource(&f, &config);
+        let Some(file) = lookup.path else {
+            return Self::fail(
+                driver,
+                at0,
+                &format!("Failed to locate the unicode map file from: {} {}", f, lookup.looked_at),
+            );
+        };
 
         if let Err(error) = ConfigUnicodeMap::load_config(&file, num, &mut driver.properties)
             && !error.is_empty()
@@ -1408,7 +1380,7 @@ impl SeclangParser {
         let mut new_new_list: Vec<Box<dyn Variable>> = Vec::new();
         let mut exclusion_vars: Vec<Box<dyn Variable>> = Vec::new();
         while let Some(var) = original_list.pop() {
-            if (*var).as_any().is::<VariableModificatorExclusion>() {
+            if var.exclusion_base().is_some() {
                 exclusion_vars.push(var);
             } else {
                 new_list.push(var);
@@ -1533,28 +1505,28 @@ impl SeclangParser {
 
     /// `act:` an action of a rule.
     fn act(driver: &mut Driver, rhs: &mut [StackEntry], at0: &Location) -> Result<ParsedAction, Flow> {
-        use ParsedAction::{Action as A, Transformation as T};
+        use ParsedAction::Transformation as T;
         let kind = rhs[0].kind;
         let second = rhs.get(1).map(|e| e.kind);
         if rhs.len() == 2 && second == Some(nt::RUN_TIME_STRING) {
             let z = rhs[1].run_time_string();
-            let a: Box<dyn Action> = match kind {
-                sym::ACTION_EXPIRE_VAR => Box::new(actions::expire_var::ExpireVar::with_rts(z)),
+            let a: RuleAction = match kind {
+                sym::ACTION_EXPIRE_VAR => RuleAction::Other(Box::new(actions::expire_var::ExpireVar::with_rts(z))),
                 sym::ACTION_INITCOL => {
                     let a = rhs[0].string();
-                    Box::new(actions::init_col::InitCol::with_rts(&a, z))
+                    RuleAction::Other(Box::new(actions::init_col::InitCol::with_rts(&a, z)))
                 }
-                sym::ACTION_LOG_DATA => Box::new(actions::log_data::LogData::with_rts(z)),
-                sym::ACTION_MSG => Box::new(actions::msg::Msg::with_rts(z)),
-                sym::ACTION_REDIRECT => Box::new(disruptive::redirect::Redirect::with_rts(z)),
-                sym::ACTION_SETENV => Box::new(actions::set_env::SetENV::with_rts(z)),
-                sym::ACTION_SETRSC => Box::new(actions::set_rsc::SetRSC::with_rts(z)),
-                sym::ACTION_SETSID => Box::new(actions::set_sid::SetSID::with_rts(z)),
-                sym::ACTION_SETUID => Box::new(actions::set_uid::SetUID::with_rts(z)),
-                sym::ACTION_TAG => Box::new(actions::tag::Tag::with_rts(z)),
+                sym::ACTION_LOG_DATA => RuleAction::LogData(actions::log_data::LogData::with_rts(z)),
+                sym::ACTION_MSG => RuleAction::Msg(actions::msg::Msg::with_rts(z)),
+                sym::ACTION_REDIRECT => RuleAction::Other(Box::new(disruptive::redirect::Redirect::with_rts(z))),
+                sym::ACTION_SETENV => RuleAction::Other(Box::new(actions::set_env::SetENV::with_rts(z))),
+                sym::ACTION_SETRSC => RuleAction::Other(Box::new(actions::set_rsc::SetRSC::with_rts(z))),
+                sym::ACTION_SETSID => RuleAction::Other(Box::new(actions::set_sid::SetSID::with_rts(z))),
+                sym::ACTION_SETUID => RuleAction::Other(Box::new(actions::set_uid::SetUID::with_rts(z))),
+                sym::ACTION_TAG => RuleAction::Tag(actions::tag::Tag::with_rts(z)),
                 _ => return Err(Flow::Error),
             };
-            return Ok(A(a));
+            return Ok(ParsedAction::Action(a));
         }
         if kind == sym::ACTION_SETVAR {
             // ACTION_SETVAR setvar_action
@@ -1604,48 +1576,54 @@ impl SeclangParser {
                 }
                 _ => return Err(Flow::Error),
             };
-            return Ok(A(a));
+            return Ok(other(a));
         }
         let s = rhs[0].string();
         let s = s.as_str();
         Ok(match kind {
-            sym::ACTION_ACCURACY => A(Box::new(actions::accuracy::Accuracy::new(s))),
-            sym::ACTION_ALLOW => A(Box::new(disruptive::allow::Allow::new(s))),
+            sym::ACTION_ACCURACY => other(Box::new(actions::accuracy::Accuracy::new(s))),
+            sym::ACTION_ALLOW => other(Box::new(disruptive::allow::Allow::new(s))),
             sym::ACTION_APPEND => return Self::action_not_supported(driver, "Append", at0),
-            sym::ACTION_AUDIT_LOG => A(Box::new(actions::audit_log::AuditLog::new(s))),
-            sym::ACTION_BLOCK => A(Box::new(actions::block::Block::new(s))),
-            sym::ACTION_CAPTURE => A(Box::new(actions::capture::Capture::new(s))),
-            sym::ACTION_CHAIN => A(Box::new(actions::chain::Chain::new(s))),
-            sym::ACTION_CTL_AUDIT_LOG_PARTS => A(Box::new(ctl::audit_log_parts::AuditLogParts::new(s))),
-            sym::ACTION_CTL_BDY_JSON => A(Box::new(ctl::request_body_processor_json::RequestBodyProcessorJSON::new(s))),
-            sym::ACTION_CTL_BDY_XML => A(Box::new(ctl::request_body_processor_xml::RequestBodyProcessorXML::new(s))),
-            sym::ACTION_CTL_BDY_URLENCODED => {
-                A(Box::new(ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED::new(s)))
+            sym::ACTION_AUDIT_LOG => other(Box::new(actions::audit_log::AuditLog::new(s))),
+            sym::ACTION_BLOCK => ParsedAction::Action(RuleAction::Block(actions::block::Block::new(s))),
+            sym::ACTION_CAPTURE => ParsedAction::Action(RuleAction::Capture(actions::capture::Capture::new(s))),
+            sym::ACTION_CHAIN => other(Box::new(actions::chain::Chain::new(s))),
+            sym::ACTION_CTL_AUDIT_LOG_PARTS => other(Box::new(ctl::audit_log_parts::AuditLogParts::new(s))),
+            sym::ACTION_CTL_BDY_JSON => {
+                other(Box::new(ctl::request_body_processor_json::RequestBodyProcessorJSON::new(s)))
             }
-            sym::ACTION_CTL_RULE_REMOVE_BY_ID => A(Box::new(ctl::rule_remove_by_id::RuleRemoveById::new(s))),
-            sym::ACTION_CTL_RULE_REMOVE_BY_TAG => A(Box::new(ctl::rule_remove_by_tag::RuleRemoveByTag::new(s))),
+            sym::ACTION_CTL_BDY_XML => {
+                other(Box::new(ctl::request_body_processor_xml::RequestBodyProcessorXML::new(s)))
+            }
+            sym::ACTION_CTL_BDY_URLENCODED => {
+                other(Box::new(ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED::new(s)))
+            }
+            sym::ACTION_CTL_RULE_REMOVE_BY_ID => other(Box::new(ctl::rule_remove_by_id::RuleRemoveById::new(s))),
+            sym::ACTION_CTL_RULE_REMOVE_BY_TAG => other(Box::new(ctl::rule_remove_by_tag::RuleRemoveByTag::new(s))),
             sym::ACTION_CTL_RULE_REMOVE_TARGET_BY_ID => {
-                A(Box::new(ctl::rule_remove_target_by_id::RuleRemoveTargetById::new(s)))
+                other(Box::new(ctl::rule_remove_target_by_id::RuleRemoveTargetById::new(s)))
             }
             sym::ACTION_CTL_RULE_REMOVE_TARGET_BY_TAG => {
-                A(Box::new(ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag::new(s)))
+                other(Box::new(ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag::new(s)))
             }
-            sym::ACTION_DENY => A(Box::new(disruptive::deny::Deny::new(s))),
+            sym::ACTION_DENY => other(Box::new(disruptive::deny::Deny::new(s))),
             sym::ACTION_DEPRECATE_VAR => return Self::action_not_supported(driver, "DeprecateVar", at0),
-            sym::ACTION_DROP => A(Box::new(disruptive::drop::Drop::new(s))),
-            sym::ACTION_EXEC => A(Box::new(actions::exec::Exec::new(s))),
-            sym::ACTION_ID => A(Box::new(actions::rule_id::RuleId::new(s))),
-            sym::ACTION_LOG => A(Box::new(actions::log::Log::new(s))),
-            sym::ACTION_MATURITY => A(Box::new(actions::maturity::Maturity::new(s))),
-            sym::ACTION_MULTI_MATCH => A(Box::new(actions::multi_match::MultiMatch::new(s))),
-            sym::ACTION_NO_AUDIT_LOG => A(Box::new(actions::no_audit_log::NoAuditLog::new(s))),
-            sym::ACTION_NO_LOG => A(Box::new(actions::no_log::NoLog::new(s))),
-            sym::ACTION_PASS => A(Box::new(disruptive::pass::Pass::new(s))),
+            sym::ACTION_DROP => other(Box::new(disruptive::drop::Drop::new(s))),
+            sym::ACTION_EXEC => other(Box::new(actions::exec::Exec::new(s))),
+            sym::ACTION_ID => other(Box::new(actions::rule_id::RuleId::new(s))),
+            sym::ACTION_LOG => other(Box::new(actions::log::Log::new(s))),
+            sym::ACTION_MATURITY => other(Box::new(actions::maturity::Maturity::new(s))),
+            sym::ACTION_MULTI_MATCH => {
+                ParsedAction::Action(RuleAction::MultiMatch(actions::multi_match::MultiMatch::new(s)))
+            }
+            sym::ACTION_NO_AUDIT_LOG => other(Box::new(actions::no_audit_log::NoAuditLog::new(s))),
+            sym::ACTION_NO_LOG => other(Box::new(actions::no_log::NoLog::new(s))),
+            sym::ACTION_PASS => other(Box::new(disruptive::pass::Pass::new(s))),
             sym::ACTION_PAUSE => return Self::action_not_supported(driver, "Pause", at0),
-            sym::ACTION_PHASE => A(Box::new(actions::phase::Phase::new(s))),
+            sym::ACTION_PHASE => ParsedAction::Action(RuleAction::Phase(actions::phase::Phase::new(s))),
             sym::ACTION_PREPEND => return Self::action_not_supported(driver, "Prepend", at0),
             sym::ACTION_PROXY => return Self::action_not_supported(driver, "Proxy", at0),
-            sym::ACTION_REV => A(Box::new(actions::rev::Rev::new(s))),
+            sym::ACTION_REV => other(Box::new(actions::rev::Rev::new(s))),
             sym::ACTION_SANITISE_ARG => return Self::action_not_supported(driver, "SanitiseArg", at0),
             sym::ACTION_SANITISE_MATCHED => return Self::action_not_supported(driver, "SanitiseMatched", at0),
             sym::ACTION_SANITISE_MATCHED_BYTES => {
@@ -1657,60 +1635,48 @@ impl SeclangParser {
             sym::ACTION_SANITISE_RESPONSE_HEADER => {
                 return Self::action_not_supported(driver, "SanitiseResponseHeader", at0);
             }
-            sym::ACTION_SEVERITY => A(Box::new(actions::severity::Severity::new(s))),
-            sym::ACTION_SKIP => A(Box::new(actions::skip::Skip::new(s))),
-            sym::ACTION_SKIP_AFTER => A(Box::new(actions::skip_after::SkipAfter::new(s))),
-            sym::ACTION_STATUS => A(Box::new(data::status::Status::new(s))),
-            sym::ACTION_VER => A(Box::new(actions::ver::Ver::new(s))),
-            sym::ACTION_XMLNS => A(Box::new(actions::xmlns::XmlNS::new(s))),
-            sym::ACTION_TRANSFORMATION_PARITY_ZERO_7_BIT => T(Box::new(tr::parity_zero_7bit::ParityZero7bit::new(s))),
-            sym::ACTION_TRANSFORMATION_PARITY_ODD_7_BIT => T(Box::new(tr::parity_odd_7bit::ParityOdd7bit::new(s))),
-            sym::ACTION_TRANSFORMATION_PARITY_EVEN_7_BIT => T(Box::new(tr::parity_even_7bit::ParityEven7bit::new(s))),
-            sym::ACTION_TRANSFORMATION_SQL_HEX_DECODE => T(Box::new(tr::sql_hex_decode::SqlHexDecode::new(s))),
-            sym::ACTION_TRANSFORMATION_BASE_64_ENCODE => T(Box::new(tr::base64_encode::Base64Encode::new(s))),
-            sym::ACTION_TRANSFORMATION_BASE_64_DECODE => T(Box::new(tr::base64_decode::Base64Decode::new(s))),
-            sym::ACTION_TRANSFORMATION_BASE_64_DECODE_EXT => {
-                T(Box::new(tr::base64_decode_ext::Base64DecodeExt::new(s)))
-            }
-            sym::ACTION_TRANSFORMATION_CMD_LINE => T(Box::new(tr::cmd_line::CmdLine::new(s))),
-            sym::ACTION_TRANSFORMATION_SHA1 => T(Box::new(tr::sha1::Sha1::new(s))),
-            sym::ACTION_TRANSFORMATION_MD5 => T(Box::new(tr::md5::Md5::new(s))),
-            sym::ACTION_TRANSFORMATION_ESCAPE_SEQ_DECODE => T(Box::new(tr::escape_seq_decode::EscapeSeqDecode::new(s))),
-            sym::ACTION_TRANSFORMATION_HEX_ENCODE => T(Box::new(tr::hex_encode::HexEncode::new(s))),
-            sym::ACTION_TRANSFORMATION_HEX_DECODE => T(Box::new(tr::hex_decode::HexDecode::new(s))),
-            sym::ACTION_TRANSFORMATION_LOWERCASE => T(Box::new(tr::lower_case::LowerCase::new(s))),
-            sym::ACTION_TRANSFORMATION_UPPERCASE => T(Box::new(tr::upper_case::UpperCase::new(s))),
-            sym::ACTION_TRANSFORMATION_URL_DECODE_UNI => T(Box::new(tr::url_decode_uni::UrlDecodeUni::new(s))),
-            sym::ACTION_TRANSFORMATION_URL_DECODE => T(Box::new(tr::url_decode::UrlDecode::new(s))),
-            sym::ACTION_TRANSFORMATION_URL_ENCODE => T(Box::new(tr::url_encode::UrlEncode::new(s))),
-            sym::ACTION_TRANSFORMATION_NONE => T(Box::new(tr::none::None::new(s))),
-            sym::ACTION_TRANSFORMATION_COMPRESS_WHITESPACE => {
-                T(Box::new(tr::compress_whitespace::CompressWhitespace::new(s)))
-            }
-            sym::ACTION_TRANSFORMATION_REMOVE_WHITESPACE => {
-                T(Box::new(tr::remove_whitespace::RemoveWhitespace::new(s)))
-            }
-            sym::ACTION_TRANSFORMATION_REPLACE_NULLS => T(Box::new(tr::replace_nulls::ReplaceNulls::new(s))),
-            sym::ACTION_TRANSFORMATION_REMOVE_NULLS => T(Box::new(tr::remove_nulls::RemoveNulls::new(s))),
-            sym::ACTION_TRANSFORMATION_HTML_ENTITY_DECODE => {
-                T(Box::new(tr::html_entity_decode::HtmlEntityDecode::new(s)))
-            }
-            sym::ACTION_TRANSFORMATION_JS_DECODE => T(Box::new(tr::js_decode::JsDecode::new(s))),
-            sym::ACTION_TRANSFORMATION_CSS_DECODE => T(Box::new(tr::css_decode::CssDecode::new(s))),
-            sym::ACTION_TRANSFORMATION_TRIM => T(Box::new(tr::trim::Trim::new(s))),
-            sym::ACTION_TRANSFORMATION_TRIM_LEFT => T(Box::new(tr::trim_left::TrimLeft::new(s))),
-            sym::ACTION_TRANSFORMATION_TRIM_RIGHT => T(Box::new(tr::trim_right::TrimRight::new(s))),
-            sym::ACTION_TRANSFORMATION_NORMALISE_PATH_WIN => {
-                T(Box::new(tr::normalise_path_win::NormalisePathWin::new(s)))
-            }
-            sym::ACTION_TRANSFORMATION_NORMALISE_PATH => T(Box::new(tr::normalise_path::NormalisePath::new(s))),
-            sym::ACTION_TRANSFORMATION_LENGTH => T(Box::new(tr::length::Length::new(s))),
-            sym::ACTION_TRANSFORMATION_UTF8_TO_UNICODE => T(Box::new(tr::utf8_to_unicode::Utf8ToUnicode::new(s))),
-            sym::ACTION_TRANSFORMATION_REMOVE_COMMENTS_CHAR => {
-                T(Box::new(tr::remove_comments_char::RemoveCommentsChar::new(s)))
-            }
-            sym::ACTION_TRANSFORMATION_REMOVE_COMMENTS => T(Box::new(tr::remove_comments::RemoveComments::new(s))),
-            sym::ACTION_TRANSFORMATION_REPLACE_COMMENTS => T(Box::new(tr::replace_comments::ReplaceComments::new(s))),
+            sym::ACTION_SEVERITY => ParsedAction::Action(RuleAction::Severity(actions::severity::Severity::new(s))),
+            sym::ACTION_SKIP => other(Box::new(actions::skip::Skip::new(s))),
+            sym::ACTION_SKIP_AFTER => other(Box::new(actions::skip_after::SkipAfter::new(s))),
+            sym::ACTION_STATUS => other(Box::new(data::status::Status::new(s))),
+            sym::ACTION_VER => other(Box::new(actions::ver::Ver::new(s))),
+            sym::ACTION_XMLNS => other(Box::new(actions::xmlns::XmlNS::new(s))),
+            sym::ACTION_TRANSFORMATION_PARITY_ZERO_7_BIT => T(Transformation::new(TK::ParityZero7bit, s)),
+            sym::ACTION_TRANSFORMATION_PARITY_ODD_7_BIT => T(Transformation::new(TK::ParityOdd7bit, s)),
+            sym::ACTION_TRANSFORMATION_PARITY_EVEN_7_BIT => T(Transformation::new(TK::ParityEven7bit, s)),
+            sym::ACTION_TRANSFORMATION_SQL_HEX_DECODE => T(Transformation::new(TK::SqlHexDecode, s)),
+            sym::ACTION_TRANSFORMATION_BASE_64_ENCODE => T(Transformation::new(TK::Base64Encode, s)),
+            sym::ACTION_TRANSFORMATION_BASE_64_DECODE => T(Transformation::new(TK::Base64Decode, s)),
+            sym::ACTION_TRANSFORMATION_BASE_64_DECODE_EXT => T(Transformation::new(TK::Base64DecodeExt, s)),
+            sym::ACTION_TRANSFORMATION_CMD_LINE => T(Transformation::new(TK::CmdLine, s)),
+            sym::ACTION_TRANSFORMATION_SHA1 => T(Transformation::new(TK::Sha1, s)),
+            sym::ACTION_TRANSFORMATION_MD5 => T(Transformation::new(TK::Md5, s)),
+            sym::ACTION_TRANSFORMATION_ESCAPE_SEQ_DECODE => T(Transformation::new(TK::EscapeSeqDecode, s)),
+            sym::ACTION_TRANSFORMATION_HEX_ENCODE => T(Transformation::new(TK::HexEncode, s)),
+            sym::ACTION_TRANSFORMATION_HEX_DECODE => T(Transformation::new(TK::HexDecode, s)),
+            sym::ACTION_TRANSFORMATION_LOWERCASE => T(Transformation::new(TK::LowerCase, s)),
+            sym::ACTION_TRANSFORMATION_UPPERCASE => T(Transformation::new(TK::UpperCase, s)),
+            sym::ACTION_TRANSFORMATION_URL_DECODE_UNI => T(Transformation::new(TK::UrlDecodeUni, s)),
+            sym::ACTION_TRANSFORMATION_URL_DECODE => T(Transformation::new(TK::UrlDecode, s)),
+            sym::ACTION_TRANSFORMATION_URL_ENCODE => T(Transformation::new(TK::UrlEncode, s)),
+            sym::ACTION_TRANSFORMATION_NONE => T(Transformation::new(TK::None, s)),
+            sym::ACTION_TRANSFORMATION_COMPRESS_WHITESPACE => T(Transformation::new(TK::CompressWhitespace, s)),
+            sym::ACTION_TRANSFORMATION_REMOVE_WHITESPACE => T(Transformation::new(TK::RemoveWhitespace, s)),
+            sym::ACTION_TRANSFORMATION_REPLACE_NULLS => T(Transformation::new(TK::ReplaceNulls, s)),
+            sym::ACTION_TRANSFORMATION_REMOVE_NULLS => T(Transformation::new(TK::RemoveNulls, s)),
+            sym::ACTION_TRANSFORMATION_HTML_ENTITY_DECODE => T(Transformation::new(TK::HtmlEntityDecode, s)),
+            sym::ACTION_TRANSFORMATION_JS_DECODE => T(Transformation::new(TK::JsDecode, s)),
+            sym::ACTION_TRANSFORMATION_CSS_DECODE => T(Transformation::new(TK::CssDecode, s)),
+            sym::ACTION_TRANSFORMATION_TRIM => T(Transformation::new(TK::Trim, s)),
+            sym::ACTION_TRANSFORMATION_TRIM_LEFT => T(Transformation::new(TK::TrimLeft, s)),
+            sym::ACTION_TRANSFORMATION_TRIM_RIGHT => T(Transformation::new(TK::TrimRight, s)),
+            sym::ACTION_TRANSFORMATION_NORMALISE_PATH_WIN => T(Transformation::new(TK::NormalisePathWin, s)),
+            sym::ACTION_TRANSFORMATION_NORMALISE_PATH => T(Transformation::new(TK::NormalisePath, s)),
+            sym::ACTION_TRANSFORMATION_LENGTH => T(Transformation::new(TK::Length, s)),
+            sym::ACTION_TRANSFORMATION_UTF8_TO_UNICODE => T(Transformation::new(TK::Utf8ToUnicode, s)),
+            sym::ACTION_TRANSFORMATION_REMOVE_COMMENTS_CHAR => T(Transformation::new(TK::RemoveCommentsChar, s)),
+            sym::ACTION_TRANSFORMATION_REMOVE_COMMENTS => T(Transformation::new(TK::RemoveComments, s)),
+            sym::ACTION_TRANSFORMATION_REPLACE_COMMENTS => T(Transformation::new(TK::ReplaceComments, s)),
             _ => return Err(Flow::Error),
         })
     }
@@ -1741,7 +1707,7 @@ impl SeclangParser {
             Some(v) => v,
             None => Box::new(xml::XmlNoDictElement::new()),
         };
-        ParsedAction::Action(Box::new(SetVar::new(op, var, value)))
+        ParsedAction::Action(RuleAction::SetVar(SetVar::new(op, var, value)))
     }
 
     /// ```text
@@ -3196,9 +3162,11 @@ mod tests {
     use super::*;
     use crate::rules_set::RulesSet;
 
+    /// The C API view of a load: the number of rules or -1, and the
+    /// parser errors.
     fn load(rules: &str, reference: &str) -> (i32, String) {
         let mut r = RulesSet::new();
-        let n = r.load_with_ref(rules, reference);
+        let n = r.load_with_ref(rules, reference).map_or(-1, |n| n as i32);
         (n, r.get_parser_error())
     }
 
@@ -3281,7 +3249,7 @@ mod tests {
     fn chains_and_duplicates() {
         let rules = "SecRule ARGS \"@rx a\" \"id:1,phase:2,chain,deny\"\nSecRule ARGS \"@rx b\" \"chain\"\nSecRule ARGS \"@rx c\" \"t:none\"\nSecRule ARGS \"@rx d\" \"id:2,phase:2,pass\"\n";
         let mut d = Driver::new();
-        assert_eq!(d.parse(rules, "t"), 1, "{}", d.properties.parser_error);
+        assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
         let phase = &d.rules_set_phases.at(Phases::RequestBodyPhase as usize).rules;
         assert_eq!(phase.len(), 2);
         let r = phase[0].as_rule_with_actions().unwrap();
@@ -3500,8 +3468,8 @@ mod tests {
                     _ => None,
                 };
                 let mut r = RulesSet::new();
-                r.load("SecDebugLogLevel 9");
-                let failed = r.load_with_ref(&rules, &filename) < 0;
+                r.load("SecDebugLogLevel 9").expect("valid directive");
+                let failed = r.load_with_ref(&rules, &filename).is_err();
                 let err = r.get_parser_error();
                 let ok = match &expected {
                     Some(e) => failed && regex_search(err.as_bytes(), &Regex::new(e)) > 0,

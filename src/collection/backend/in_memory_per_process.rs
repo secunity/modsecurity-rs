@@ -156,8 +156,7 @@ impl Collection for InMemoryPerProcess {
         self.purge(expired);
     }
 
-    fn resolve_regular_expression(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
-        let r = Regex::with_options(var, true, true);
+    fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let mut expired = Vec::new();
         let start = l.len();
         {

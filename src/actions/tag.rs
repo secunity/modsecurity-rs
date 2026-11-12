@@ -45,10 +45,9 @@ impl Tag {
 impl Action for Tag {
     crate::action_base_accessors!();
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         let tag = self.get_name(t);
         crate::ms_dbg_a!(t, 9, "Rule tag: {}", lossy(&tag));
         rm.tags.push(tag);
-        true
     }
 }

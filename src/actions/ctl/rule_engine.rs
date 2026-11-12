@@ -12,15 +12,12 @@ use crate::transaction::Transaction;
 #[derive(Debug)]
 pub struct RuleEngine {
     pub base: ActionBase,
-    pub rule_engine: rules_set_properties::RuleEngine,
+    pub rule_engine: Option<rules_set_properties::RuleEngine>,
 }
 
 impl RuleEngine {
     pub fn new(action: &str) -> Self {
-        RuleEngine {
-            base: ActionBase::new(action),
-            rule_engine: rules_set_properties::RuleEngine::PropertyNotSetRuleEngine,
-        }
+        RuleEngine { base: ActionBase::new(action), rule_engine: None }
     }
 }
 
@@ -31,9 +28,9 @@ impl Action for RuleEngine {
         // The parser builds the payload as `RuleEngine=<value>`.
         let what = self.base.parser_payload.get(11..).unwrap_or("");
         self.rule_engine = match what {
-            "on" => rules_set_properties::RuleEngine::EnabledRuleEngine,
-            "off" => rules_set_properties::RuleEngine::DisabledRuleEngine,
-            "detectiononly" => rules_set_properties::RuleEngine::DetectionOnlyRuleEngine,
+            "on" => Some(rules_set_properties::RuleEngine::Enabled),
+            "off" => Some(rules_set_properties::RuleEngine::Disabled),
+            "detectiononly" => Some(rules_set_properties::RuleEngine::DetectionOnly),
             _ => {
                 return Err(format!(
                     "Internal error. Expected: On, Off or DetectionOnly; got: {}",
@@ -44,7 +41,7 @@ impl Action for RuleEngine {
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(
             t,
             8,
@@ -52,7 +49,6 @@ impl Action for RuleEngine {
             rule_engine_state_string(self.rule_engine)
         );
         t.sec_rule_engine = self.rule_engine;
-        true
     }
 }
 
@@ -69,7 +65,7 @@ mod tests {
     use crate::actions::ctl::request_body_processor_xml::RequestBodyProcessorXML;
     use crate::audit_log::audit_log::AuditLogStatus;
     use crate::modsecurity::ModSecurity;
-    use crate::rules_set_properties::{ConfigBoolean, ConfigXMLParseXmlIntoArgs};
+    use crate::rules_set_properties::ParseXmlIntoArgs as ParseXmlIntoArgsState;
     use crate::transaction::RequestBodyType;
 
     fn run(a: &mut dyn Action, t: &mut Transaction<'_>) {
@@ -87,7 +83,7 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
 
         run(&mut RuleEngine::new("ctl:RuleEngine=detectiononly"), &mut t);
-        assert_eq!(t.sec_rule_engine, rules_set_properties::RuleEngine::DetectionOnlyRuleEngine);
+        assert_eq!(t.sec_rule_engine, Some(rules_set_properties::RuleEngine::DetectionOnly));
         assert!(has_log(&t, "Setting SecRuleEngine to DetectionOnly as requested by a ctl:ruleEngine action"));
         assert_eq!(
             RuleEngine::new("ctl:RuleEngine=x").init(),
@@ -103,13 +99,13 @@ mod tests {
         );
 
         run(&mut ParseXmlIntoArgs::new("ctl:parseXmlIntoArgs=onlyargs"), &mut t);
-        assert_eq!(t.sec_xml_parse_xml_into_args, ConfigXMLParseXmlIntoArgs::OnlyArgsConfigXMLParseXmlIntoArgs);
+        assert_eq!(t.sec_xml_parse_xml_into_args, Some(ParseXmlIntoArgsState::OnlyArgs));
         assert!(has_log(&t, "Setting SecParseXmlIntoArgs to OnlyArgs as requested by a ctl:parseXmlIntoArgs action"));
 
         run(&mut RequestBodyAccess::new("ctl:requestBodyAccess=false"), &mut t);
-        assert_eq!(t.request_body_access, ConfigBoolean::FalseConfigBoolean);
+        assert_eq!(t.request_body_access, Some(false));
         run(&mut RequestBodyAccess::new("ctl:requestBodyAccess=true"), &mut t);
-        assert_eq!(t.request_body_access, ConfigBoolean::TrueConfigBoolean);
+        assert_eq!(t.request_body_access, Some(true));
         assert_eq!(
             RequestBodyAccess::new("ctl:requestBodyAccess=on").init(),
             Err("Internal error. Expected: true or false, got: requestBodyAccess=on".to_string())

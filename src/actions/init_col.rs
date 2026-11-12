@@ -41,13 +41,13 @@ impl Action for InitCol {
         Ok(())
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let collection_name = self.string.evaluate(Some(t));
         let key = match self.collection_key.as_str() {
             "ip" => &mut t.collections.ip_collection_key,
             "global" => &mut t.collections.global_collection_key,
             "resource" => &mut t.collections.resource_collection_key,
-            _ => return false,
+            _ => return,
         };
         key.clone_from(&collection_name);
         crate::ms_dbg_a!(
@@ -57,6 +57,5 @@ impl Action for InitCol {
             self.collection_key,
             lossy(&collection_name)
         );
-        true
     }
 }

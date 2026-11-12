@@ -54,7 +54,6 @@ builds the core without the optional components.
 ## Using it from Rust
 
 ```rust
-use modsecurity::intervention::ModSecurityIntervention;
 use modsecurity::modsecurity::ModSecurity;
 use modsecurity::rules_set::RulesSet;
 use modsecurity::transaction::Transaction;
@@ -71,8 +70,7 @@ t.process_uri(b"/index.php?id=1", b"GET", b"1.1");
 t.add_request_header(b"Host", b"www.example.com");
 t.process_request_headers();
 // ... request body, response headers/body, process_logging()
-let mut it = ModSecurityIntervention::default();
-if t.intervention(&mut it) {
+if let Some(it) = t.intervention() {
     println!("status {}", it.status);
 }
 ```

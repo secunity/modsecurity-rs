@@ -73,10 +73,9 @@ impl Action for RuleRemoveById {
         Err(format!("Not a number or range: {}", what))
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         t.rule_remove_by_id.extend_from_slice(&self.ids);
         t.rule_remove_by_id_range.extend_from_slice(&self.ranges);
-        true
     }
 }
 

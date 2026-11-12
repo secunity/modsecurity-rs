@@ -6,7 +6,7 @@
 //! Writing happens through `&self` because one `RulesSet` (and therefore
 //! one debug log) is shared by concurrent transactions.
 
-use crate::debug_log::debug_log_writer::DebugLogWriter;
+use crate::utils::shared_files::SharedFiles;
 
 pub trait DebugLog: Send + Sync {
     /// `write(level, msg)`
@@ -21,7 +21,7 @@ pub trait DebugLog: Send + Sync {
 
     fn set_debug_log_level(&mut self, level: i32);
 
-    fn set_debug_log_file(&mut self, file_name: &str, error: &mut String);
+    fn set_debug_log_file(&mut self, file_name: &str) -> Result<(), String>;
 
     fn get_debug_log_file(&self) -> &str;
 
@@ -36,8 +36,8 @@ pub trait DebugLog: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
-/// The stock debug log: writes to a file shared through
-/// [`DebugLogWriter`].
+/// The stock debug log: appends to a file shared through [`SharedFiles`]
+/// (C++ `DebugLogWriter`).
 #[derive(Debug)]
 pub struct DefaultDebugLog {
     pub debug_level: i32,
@@ -58,22 +58,22 @@ impl DefaultDebugLog {
 
 impl Drop for DefaultDebugLog {
     fn drop(&mut self) {
-        DebugLogWriter::close(&self.file_name);
+        SharedFiles::get_instance().close(&self.file_name);
     }
 }
 
 impl DebugLog for DefaultDebugLog {
     fn write(&self, level: i32, msg: &str) {
         if level <= self.debug_level {
-            let msgf = format!("[{}] {}", level, msg);
-            DebugLogWriter::write_log(&self.file_name, &msgf);
+            // Write errors are ignored, as in C++.
+            let _ = SharedFiles::get_instance().write(&self.file_name, format!("[{}] {}\n", level, msg).as_bytes());
         }
     }
 
     fn write_ctx(&self, level: i32, id: &str, uri: &str, msg: &str) {
         if level <= self.debug_level {
-            let msgf = format!("[{}] [{}] [{}] {}", id, uri, level, msg);
-            DebugLogWriter::write_log(&self.file_name, &msgf);
+            let msgf = format!("[{}] [{}] [{}] {}\n", id, uri, level, msg);
+            let _ = SharedFiles::get_instance().write(&self.file_name, msgf.as_bytes());
         }
     }
 
@@ -89,12 +89,12 @@ impl DebugLog for DefaultDebugLog {
         self.debug_level = level;
     }
 
-    fn set_debug_log_file(&mut self, file_name: &str, error: &mut String) {
+    fn set_debug_log_file(&mut self, file_name: &str) -> Result<(), String> {
         if self.is_log_file_set() {
-            DebugLogWriter::close(&self.file_name);
+            SharedFiles::get_instance().close(&self.file_name);
         }
         self.file_name = file_name.to_string();
-        DebugLogWriter::open(&self.file_name, error);
+        SharedFiles::get_instance().open(&self.file_name)
     }
 
     fn get_debug_log_file(&self) -> &str {

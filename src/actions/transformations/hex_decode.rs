@@ -1,10 +1,6 @@
 //! Port of `src/actions/transformations/hex_decode.cc`, `src/actions/transformations/hex_decode.h`.
 
-use crate::actions::transformations::transformation::Transformation;
-use crate::transaction::Transaction;
 use crate::utils::string::x2c;
-
-crate::transformation_struct!(HexDecode);
 
 /// Decodes pairs of hex digits in place (no validation: invalid digits give
 /// garbage bytes, and a trailing odd character is dropped).
@@ -24,8 +20,7 @@ fn inplace(value: &mut Vec<u8>) -> bool {
     true
 }
 
-impl Transformation for HexDecode {
-    fn transform(&self, value: &mut Vec<u8>, _t: Option<&Transaction<'_>>) -> bool {
-        inplace(value)
-    }
+/// Transforms `value` in place; returns whether it changed.
+pub fn transform(value: &mut Vec<u8>) -> bool {
+    inplace(value)
 }
