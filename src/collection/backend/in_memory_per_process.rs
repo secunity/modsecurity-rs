@@ -86,7 +86,7 @@ impl Collection for InMemoryPerProcess {
             return;
         }
         // An expiry may be set for a key that has no value (yet).
-        let mut d = CollectionData::new();
+        let mut d = CollectionData::default();
         d.set_expiry(expiry_seconds);
         m.insert(key.to_vec(), d);
     }
@@ -99,8 +99,8 @@ impl Collection for InMemoryPerProcess {
             for (k, d) in m.equal_range(var) {
                 if d.is_expired() {
                     expired.push(k.to_vec());
-                } else if d.has_value() {
-                    ret = Some(d.value().to_vec());
+                } else if let Some(value) = &d.value {
+                    ret = Some(value.clone());
                 }
             }
         }
@@ -115,8 +115,8 @@ impl Collection for InMemoryPerProcess {
             for (k, d) in m.equal_range(var) {
                 if d.is_expired() {
                     expired.push(k.to_vec());
-                } else if d.has_value() {
-                    l.push(VariableValue::with_collection(self.name.as_bytes(), k, d.value()));
+                } else if let Some(value) = &d.value {
+                    l.push(VariableValue::with_collection(self.name.as_bytes(), k, value));
                 }
             }
         }
@@ -135,8 +135,8 @@ impl Collection for InMemoryPerProcess {
                     }
                     if d.is_expired() {
                         expired.push(k.to_vec());
-                    } else if d.has_value() {
-                        l.push(VariableValue::with_collection(self.name.as_bytes(), k, d.value()));
+                    } else if let Some(value) = &d.value {
+                        l.push(VariableValue::with_collection(self.name.as_bytes(), k, value));
                     }
                 }
             } else {
@@ -146,8 +146,8 @@ impl Collection for InMemoryPerProcess {
                     }
                     if d.is_expired() {
                         expired.push(k.to_vec());
-                    } else if d.has_value() {
-                        l.push(VariableValue::with_collection(self.name.as_bytes(), var, d.value()));
+                    } else if let Some(value) = &d.value {
+                        l.push(VariableValue::with_collection(self.name.as_bytes(), var, value));
                     }
                 }
             }
@@ -170,12 +170,50 @@ impl Collection for InMemoryPerProcess {
                 }
                 if d.is_expired() {
                     expired.push(k.to_vec());
-                } else if d.has_value() {
-                    l.push(VariableValue::with_collection(self.name.as_bytes(), k, d.value()));
+                } else if let Some(value) = &d.value {
+                    l.push(VariableValue::with_collection(self.name.as_bytes(), k, value));
                 }
             }
         }
         move_to_front_reversed(l, start);
         self.purge(expired);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expiry_only_and_empty_values_remain_distinct() {
+        let collection = InMemoryPerProcess::new("TX");
+        collection.set_expiry(b"key", 100);
+        assert_eq!(collection.resolve_first(b"key"), None);
+        collection.store_or_update_first(b"key", b"");
+        assert_eq!(collection.resolve_first(b"key"), Some(Vec::new()));
+        collection.set_expiry(b"key", 0);
+        assert_eq!(collection.resolve_first(b"key"), None);
+        assert!(!collection.update_first(b"key", b"gone"));
+    }
+
+    #[test]
+    fn duplicate_resolution_and_expiry_keep_their_order() {
+        let collection = InMemoryPerProcess::new("TX");
+        collection.store(b"key", b"older");
+        collection.store(b"key", b"newer");
+        // resolve_first walks all equivalents, returning the last live one.
+        assert_eq!(collection.resolve_first(b"key"), Some(b"older".to_vec()));
+        let mut values = Vec::new();
+        collection.resolve_single_match(b"key", &mut values);
+        assert_eq!(values.iter().map(VariableValue::value).collect::<Vec<_>>(), [b"newer", b"older"]);
+        values = vec![VariableValue::new(b"existing", b"value")];
+        collection.resolve_multi_matches(b"key", &mut values, &KeyExclusions::default());
+        assert_eq!(values.iter().map(VariableValue::value).collect::<Vec<_>>(), [b"older", b"newer", b"value"]);
+
+        // Expiring the first equivalent removes the whole group, but the
+        // current resolution still returns the other live value it visited.
+        collection.set_expiry(b"key", 0);
+        assert_eq!(collection.resolve_first(b"key"), Some(b"older".to_vec()));
+        assert_eq!(collection.resolve_first(b"key"), None);
     }
 }

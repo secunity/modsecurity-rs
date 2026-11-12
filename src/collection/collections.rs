@@ -18,7 +18,7 @@ pub struct Collections<'a> {
     pub session_collection: &'a dyn Collection,
     pub user_collection: &'a dyn Collection,
     pub resource_collection: &'a dyn Collection,
-    pub tx_collection: Box<InMemoryPerProcess>,
+    pub tx_collection: InMemoryPerProcess,
 }
 
 impl<'a> Collections<'a> {
@@ -40,7 +40,7 @@ impl<'a> Collections<'a> {
             session_collection: session,
             user_collection: user,
             resource_collection: resource,
-            tx_collection: Box::new(InMemoryPerProcess::new("TX")),
+            tx_collection: InMemoryPerProcess::new("TX"),
         }
     }
 }

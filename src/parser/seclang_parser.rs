@@ -1676,17 +1676,19 @@ impl SeclangParser {
     /// ```
     fn setvar_action(rhs: &mut [StackEntry]) -> ParsedAction {
         use crate::actions::set_var::{SetVar, SetVarOperation};
-        let (op, var, value) = if rhs[0].kind == sym::NOT {
-            (SetVarOperation::UnsetOperation, rhs[1].variable(), None)
+        let (var, operation) = if rhs[0].kind == sym::NOT {
+            (rhs[1].variable(), SetVarOperation::Unset)
         } else if rhs.len() == 1 {
-            (SetVarOperation::SetToOneOperation, rhs[0].variable(), None)
+            (rhs[0].variable(), SetVarOperation::SetToOne)
         } else {
-            let op = match rhs[1].kind {
-                sym::SETVAR_OPERATION_EQUALS_PLUS => SetVarOperation::SumAndSetOperation,
-                sym::SETVAR_OPERATION_EQUALS_MINUS => SetVarOperation::SubstractAndSetOperation,
-                _ => SetVarOperation::SetOperation,
+            let var = rhs[0].variable();
+            let value = rhs[2].run_time_string();
+            let operation = match rhs[1].kind {
+                sym::SETVAR_OPERATION_EQUALS_PLUS => SetVarOperation::Add(value),
+                sym::SETVAR_OPERATION_EQUALS_MINUS => SetVarOperation::Subtract(value),
+                _ => SetVarOperation::Set(value),
             };
-            (op, rhs[0].variable(), Some(rhs[2].run_time_string()))
+            (var, operation)
         };
         let var: Variable = match var {
             Some(v) => v,
@@ -1694,7 +1696,7 @@ impl SeclangParser {
             // placeholder stands in (setvar ignores it).
             None => new_variable("XML", VariableSelector::None).expect("XML is a variable"),
         };
-        ParsedAction::Action(RuleAction::SetVar(SetVar::new(op, var, value)))
+        ParsedAction::Action(RuleAction::SetVar(SetVar::new(var, operation)))
     }
 
     /// ```text
@@ -3237,7 +3239,7 @@ mod tests {
         let rules = "SecRule ARGS \"@rx a\" \"id:1,phase:2,chain,deny\"\nSecRule ARGS \"@rx b\" \"chain\"\nSecRule ARGS \"@rx c\" \"t:none\"\nSecRule ARGS \"@rx d\" \"id:2,phase:2,pass\"\n";
         let mut d = Driver::new();
         assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
-        let phase = &d.rules_set_phases.at(Phases::RequestBody).rules;
+        let phase = d.rules_set_phases.for_phase(Phases::RequestBody);
         assert_eq!(phase.len(), 2);
         let r = phase[0].as_rule_with_actions().unwrap();
         let child = r.chained_rule_child.as_ref().unwrap();

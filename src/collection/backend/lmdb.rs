@@ -6,8 +6,8 @@
 //! Values are stored as `CollectionData::serialize` (value + expiry).
 //!
 //! All the `unsafe` code of the backend (the LMDB C API) lives in this
-//! file; every LMDB handle is created, used and released within one method,
-//! except the environment and the database handle, which live for the
+//! file. Transactions and cursors release their handles on drop;
+//! the environment and database handle live for the
 //! whole process (`MdbEnvProvider`).
 #![cfg(feature = "lmdb")]
 
@@ -118,6 +118,62 @@ impl Drop for Txn {
     }
 }
 
+/// Only forward traversal is used here. Unlike seek operations, both
+/// operations return keys owned by LMDB, never the caller's input buffer.
+#[derive(Clone, Copy)]
+enum CursorStep {
+    Next,
+    NextDuplicate,
+}
+
+/// A cursor borrows its transaction and closes before that transaction can
+/// end, including when a collection visitor unwinds.
+struct Cursor<'txn> {
+    ptr: *mut ffi::MDB_cursor,
+    txn: &'txn Txn,
+}
+
+impl<'txn> Cursor<'txn> {
+    fn open(txn: &'txn Txn, dbi: MDB_dbi) -> Result<Self, c_int> {
+        let mut ptr = ptr::null_mut();
+        // SAFETY: `txn` is live, `dbi` belongs to its environment, and the
+        // output pointer is valid. Only successful opens construct a guard.
+        let rc = unsafe { ffi::mdb_cursor_open(txn.ptr, dbi, &mut ptr) };
+        if rc != 0 {
+            return Err(rc);
+        }
+        Ok(Self { ptr, txn })
+    }
+
+    /// Returned bytes cannot outlive the cursor or its transaction, or be
+    /// retained across the next cursor operation.
+    fn next(&mut self, step: CursorStep) -> Result<(&[u8], &[u8]), c_int> {
+        let op = match step {
+            CursorStep::Next => ffi::MDB_NEXT,
+            CursorStep::NextDuplicate => ffi::MDB_NEXT_DUP,
+        };
+        let mut key = empty_val();
+        let mut data = empty_val();
+        // SAFETY: the cursor and transaction are live; both output values
+        // remain valid throughout the call. Neither operation reads a key.
+        let rc = unsafe { ffi::mdb_cursor_get(self.ptr, &mut key, &mut data, op) };
+        if rc != 0 {
+            return Err(rc);
+        }
+        // SAFETY: LMDB returned these values in the borrowed transaction.
+        // The mutable cursor borrow prevents advancing while they are used.
+        unsafe { Ok((val_bytes(&key, self.txn), val_bytes(&data, self.txn))) }
+    }
+}
+
+impl Drop for Cursor<'_> {
+    fn drop(&mut self) {
+        // SAFETY: successfully opened, uniquely owned, and the borrowed
+        // transaction is still alive. This is the only cursor close.
+        unsafe { ffi::mdb_cursor_close(self.ptr) };
+    }
+}
+
 /// `string2val`: an `MDB_val` pointing at `s` (LMDB only reads it).
 fn string2val(s: &[u8]) -> MDB_val {
     MDB_val { mv_size: s.len(), mv_data: s.as_ptr() as *mut _ }
@@ -133,7 +189,7 @@ fn empty_val() -> MDB_val {
 /// `v` must come from LMDB within a transaction that is still open, and the
 /// slice must not be used after that transaction ends or the database is
 /// written.
-unsafe fn val_bytes<'a>(v: &MDB_val) -> &'a [u8] {
+unsafe fn val_bytes<'txn>(v: &MDB_val, _txn: &'txn Txn) -> &'txn [u8] {
     if v.mv_size == 0 || v.mv_data.is_null() {
         return &[];
     }
@@ -265,7 +321,7 @@ impl Lmdb {
 
         let mut mdb_key = string2val(key);
         let mut mdb_value_ret = empty_val();
-        let mut previous_data = CollectionData::new();
+        let mut previous_data = CollectionData::default();
 
         // SAFETY: live write txn, valid dbi and MDB_vals.
         let rc = unsafe { ffi::mdb_get(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
@@ -273,7 +329,7 @@ impl Lmdb {
         if rc == 0 {
             // SAFETY: the value belongs to the open txn and is copied
             // before the database is modified.
-            previous_data.deserialize(unsafe { val_bytes(&mdb_value_ret) });
+            previous_data = CollectionData::from_bytes(unsafe { val_bytes(&mdb_value_ret, &txn) });
             // SAFETY: as above; deletes the pair just read.
             let rc = unsafe { ffi::mdb_del(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
             lmdb_debug(rc, "del", scope);
@@ -320,9 +376,8 @@ impl Lmdb {
             return;
         }
 
-        let mut collection_data = CollectionData::new();
         // SAFETY: the value belongs to the open txn and is copied.
-        collection_data.deserialize(unsafe { val_bytes(&mdb_value_ret) });
+        let collection_data = CollectionData::from_bytes(unsafe { val_bytes(&mdb_value_ret, &txn) });
         if collection_data.is_expired() {
             // SAFETY: deletes the pair just read in the live write txn.
             let rc = unsafe { ffi::mdb_del(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
@@ -340,47 +395,26 @@ impl Lmdb {
     /// `f(key, data)` for every non expired entry holding a value; the
     /// expired entries are deleted afterwards (`delIfExpired`).
     ///
-    /// `op` is the cursor operation; `start_key` the key given to the first
-    /// `mdb_cursor_get` (only `resolveSingleMatch` passes one, and LMDB
-    /// ignores it for the "next" operations).
-    fn walk(
-        &self,
-        scope: &str,
-        op: ffi::MDB_cursor_op,
-        start_key: Option<&[u8]>,
-        mut f: impl FnMut(&[u8], &CollectionData),
-    ) {
+    /// Both traversal modes start at the first database entry. In particular,
+    /// duplicate traversal deliberately does not seek to a requested key.
+    fn walk(&self, scope: &str, step: CursorStep, mut f: impl FnMut(&[u8], &[u8])) {
         let mut expired_vars: Vec<Vec<u8>> = Vec::new();
 
         match self.txn_begin(ffi::MDB_RDONLY) {
             Err(rc) => lmdb_debug(rc, "txn", scope),
             Ok((txn, dbi)) => {
-                let mut cursor: *mut ffi::MDB_cursor = ptr::null_mut();
-                // SAFETY: live txn, valid dbi, valid out pointer.
-                let rc = unsafe { ffi::mdb_cursor_open(txn.ptr, dbi, &mut cursor) };
-                lmdb_debug(rc, "cursor_open", scope);
-                if rc == 0 {
-                    let mut key = start_key.map(string2val).unwrap_or_else(empty_val);
-                    let mut data = empty_val();
-                    let mut collection_data = CollectionData::new();
-                    // SAFETY: the cursor belongs to the live txn; the
-                    // returned key/data are only read before the next
-                    // cursor call.
-                    while unsafe { ffi::mdb_cursor_get(cursor, &mut key, &mut data, op) } == 0 {
-                        // SAFETY: as above.
-                        let (k, d) = unsafe { (val_bytes(&key), val_bytes(&data)) };
-                        collection_data.deserialize(d);
-                        if collection_data.is_expired() {
-                            expired_vars.push(k.to_vec());
-                            continue;
+                match Cursor::open(&txn, dbi) {
+                    Err(rc) => lmdb_debug(rc, "cursor_open", scope),
+                    Ok(mut cursor) => {
+                        while let Ok((key, data)) = cursor.next(step) {
+                            let record = CollectionData::from_bytes(data);
+                            if record.is_expired() {
+                                expired_vars.push(key.to_vec());
+                            } else if let Some(value) = &record.value {
+                                f(key, value);
+                            }
                         }
-                        if !collection_data.has_value() {
-                            continue;
-                        }
-                        f(k, &collection_data);
                     }
-                    // SAFETY: the cursor is closed before its txn ends.
-                    unsafe { ffi::mdb_cursor_close(cursor) };
                 }
                 drop(txn); // mdb_txn_abort
             }
@@ -398,19 +432,17 @@ impl Collection for Lmdb {
     }
 
     fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> bool {
-        self.replace(key, "storeOrUpdateFirst", false, |previous_data| {
-            let mut new_data = if previous_data.has_expiry() { previous_data } else { CollectionData::new() };
-            new_data.set_value(value);
-            new_data
+        self.replace(key, "storeOrUpdateFirst", false, |mut record| {
+            record.set_value(value);
+            record
         });
         true
     }
 
     fn update_first(&self, key: &[u8], value: &[u8]) -> bool {
-        let rc = self.replace(key, "updateFirst", true, |previous_data| {
-            let mut new_data = if previous_data.has_expiry() { previous_data } else { CollectionData::new() };
-            new_data.set_value(value);
-            new_data
+        let rc = self.replace(key, "updateFirst", true, |mut record| {
+            record.set_value(value);
+            record
         });
         rc == 0
     }
@@ -446,16 +478,15 @@ impl Collection for Lmdb {
     }
 
     fn set_expiry(&self, key: &[u8], expiry_seconds: i32) {
-        self.replace(key, "setExpiry", false, |previous_data| {
-            let mut new_data = if previous_data.has_value() { previous_data } else { CollectionData::new() };
-            new_data.set_expiry(expiry_seconds);
-            new_data
+        self.replace(key, "setExpiry", false, |mut record| {
+            record.set_expiry(expiry_seconds);
+            record
         });
     }
 
     fn resolve_first(&self, var: &[u8]) -> Option<Vec<u8>> {
         let mut ret = None;
-        let mut collection_data = CollectionData::new();
+        let mut collection_data = CollectionData::default();
 
         match self.txn_begin(ffi::MDB_RDONLY) {
             Err(rc) => lmdb_debug(rc, "txn", "resolveFirst"),
@@ -467,9 +498,9 @@ impl Collection for Lmdb {
                 lmdb_debug(rc, "get", "resolveFirst");
                 if rc == 0 {
                     // SAFETY: the value belongs to the open txn and is copied.
-                    collection_data.deserialize(unsafe { val_bytes(&mdb_value_ret) });
-                    if !collection_data.is_expired() && collection_data.has_value() {
-                        ret = Some(collection_data.value().to_vec());
+                    collection_data = CollectionData::from_bytes(unsafe { val_bytes(&mdb_value_ret, &txn) });
+                    if !collection_data.is_expired() {
+                        ret = collection_data.value.take();
                     }
                 }
                 drop(txn); // mdb_txn_abort
@@ -488,8 +519,8 @@ impl Collection for Lmdb {
     /// `MDB_NEXT_DUP` on a fresh cursor returns the first entry of the
     /// database), and the result is named after `var`.
     fn resolve_single_match(&self, var: &[u8], l: &mut Vec<VariableValue>) {
-        self.walk("resolveSingleMatch", ffi::MDB_NEXT_DUP, Some(var), |_k, d| {
-            l.push(VariableValue::new(var, d.value()));
+        self.walk("resolveSingleMatch", CursorStep::NextDuplicate, |_k, d| {
+            l.push(VariableValue::new(var, d));
         });
     }
 
@@ -499,13 +530,13 @@ impl Collection for Lmdb {
         let name = self.name.as_bytes();
         let start = l.len();
         if var.is_empty() {
-            self.walk("resolveMultiMatches", ffi::MDB_NEXT, None, |k, d| {
-                l.push(VariableValue::with_collection(name, k, d.value()));
+            self.walk("resolveMultiMatches", CursorStep::Next, |k, d| {
+                l.push(VariableValue::with_collection(name, k, d));
             });
         } else {
-            self.walk("resolveMultiMatches", ffi::MDB_NEXT, None, |k, d| {
+            self.walk("resolveMultiMatches", CursorStep::Next, |k, d| {
                 if key_matches_prefix(var, k) {
-                    l.push(VariableValue::with_collection(name, k, d.value()));
+                    l.push(VariableValue::with_collection(name, k, d));
                 }
             });
         }
@@ -514,14 +545,14 @@ impl Collection for Lmdb {
 
     fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let start = l.len();
-        self.walk("resolveRegularExpression", ffi::MDB_NEXT, None, |k, d| {
+        self.walk("resolveRegularExpression", CursorStep::Next, |k, d| {
             if r.search(k) <= 0 {
                 return;
             }
             if ke.to_omit(k) {
                 return;
             }
-            l.push(VariableValue::new(k, d.value()));
+            l.push(VariableValue::new(k, d));
         });
         move_to_front_reversed(l, start);
     }

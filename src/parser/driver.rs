@@ -108,7 +108,7 @@ impl Driver {
     /// The rule `m_lastRule` points to.
     fn last_rule_mut(&mut self) -> Option<&mut RuleWithActions> {
         let lr = self.last_rule?;
-        let arc = self.rules_set_phases.at_mut(lr.phase).rules.get_mut(lr.index)?;
+        let arc = self.rules_set_phases.for_phase_mut(lr.phase).get_mut(lr.index)?;
         // While parsing, the driver holds the only reference to its rules.
         let mut r = Arc::get_mut(arc)?.as_rule_with_actions_mut()?;
         for _ in 0..lr.depth {
@@ -149,8 +149,8 @@ impl Driver {
         }
 
         for phase in Phases::ALL {
-            let rules = self.rules_set_phases.at(phase);
-            for lr in &rules.rules {
+            let rules = self.rules_set_phases.for_phase(phase);
+            for lr in rules {
                 if lr.rule_with_operator_id() == Some(r.rule_id) {
                     self.properties.parser_error.push_str(&format!("Rule id: {} is duplicated\n", r.rule_id));
                     return false;
@@ -163,7 +163,7 @@ impl Driver {
         if let Some(phase) = phase
             && self.rules_set_phases.insert(Arc::new(Rule::WithActions(r)))
         {
-            let index = self.rules_set_phases.at(phase).rules.len() - 1;
+            let index = self.rules_set_phases.for_phase(phase).len() - 1;
             self.last_rule = Some(LastRule { phase, index, depth: 0 });
         } else {
             self.last_rule = None;

@@ -12,30 +12,26 @@ use crate::transaction::Transaction;
 use crate::utils::string::{lossy, stoi};
 use crate::variables::variable::Variable;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Each operation owns exactly the operand it needs. Bare assignment and
+/// removal cannot accidentally carry an ignored predicate.
+#[derive(Debug)]
 pub enum SetVarOperation {
-    /// Set variable to something
-    SetOperation,
-    /// read variable, sum predicate and set
-    SumAndSetOperation,
-    /// read variable, substract predicate and set
-    SubstractAndSetOperation,
-    /// set variable to 1
-    SetToOneOperation,
-    /// unset operation
-    UnsetOperation,
+    Set(RunTimeString),
+    Add(RunTimeString),
+    Subtract(RunTimeString),
+    SetToOne,
+    Unset,
 }
 
 #[derive(Debug)]
 pub struct SetVar {
-    pub operation: SetVarOperation,
-    pub variable: Variable,
-    pub string: Option<RunTimeString>,
+    variable: Variable,
+    operation: SetVarOperation,
 }
 
 impl SetVar {
-    pub fn new(operation: SetVarOperation, variable: Variable, predicate: Option<RunTimeString>) -> Self {
-        SetVar { operation, variable, string: predicate }
+    pub fn new(variable: Variable, operation: SetVarOperation) -> Self {
+        Self { variable, operation }
     }
 }
 
@@ -50,9 +46,11 @@ impl Action for SetVar {
     }
 
     fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        let resolved_pre = match &self.string {
-            Some(s) => s.evaluate_rule(Some(t), Some(rule)),
-            None => Vec::new(),
+        let resolved_pre = match &self.operation {
+            SetVarOperation::Set(s) | SetVarOperation::Add(s) | SetVarOperation::Subtract(s) => {
+                s.evaluate_rule(Some(t), Some(rule))
+            }
+            SetVarOperation::SetToOne | SetVarOperation::Unset => Vec::new(),
         };
 
         // C++ `dynamic_cast`s the variable to the six `*_DynamicElement`
@@ -65,16 +63,16 @@ impl Action for SetVar {
             None => self.variable.name().as_bytes().to_vec(),
         };
 
-        let target_value: Vec<u8> = match self.operation {
-            SetVarOperation::SetOperation => resolved_pre,
-            SetVarOperation::SetToOneOperation => b"1".to_vec(),
-            SetVarOperation::UnsetOperation => {
+        let target_value: Vec<u8> = match &self.operation {
+            SetVarOperation::Set(_) => resolved_pre,
+            SetVarOperation::SetToOne => b"1".to_vec(),
+            SetVarOperation::Unset => {
                 if dynamic.is_some() {
                     self.variable.dynamic_del(t, &variable_name_expanded);
                 }
                 return;
             }
-            SetVarOperation::SumAndSetOperation | SetVarOperation::SubstractAndSetOperation => {
+            SetVarOperation::Add(_) | SetVarOperation::Subtract(_) => {
                 let pre = stoi_or_zero(&resolved_pre);
 
                 let mut l = Vec::new();
@@ -84,7 +82,7 @@ impl Action for SetVar {
                 let value = l.first().map(|v| stoi_or_zero(v.value())).unwrap_or(0);
 
                 // Signed overflow is undefined in C++; wrap.
-                let r = if self.operation == SetVarOperation::SumAndSetOperation {
+                let r = if matches!(self.operation, SetVarOperation::Add(_)) {
                     value.wrapping_add(pre)
                 } else {
                     value.wrapping_sub(pre)
@@ -115,8 +113,10 @@ mod tests {
     use crate::collection::Collection;
     use crate::modsecurity::ModSecurity;
 
-    fn setvar(op: SetVarOperation, name: &str, pre: Option<&str>) -> SetVar {
-        SetVar::new(op, tx(name), pre.map(rts))
+    use SetVarOperation::{Add, Set, SetToOne, Subtract, Unset};
+
+    fn setvar(name: &str, operation: SetVarOperation) -> SetVar {
+        SetVar::new(tx(name), operation)
     }
 
     #[test]
@@ -128,32 +128,79 @@ mod tests {
         let mut rm = RuleMessage::new(&r);
         let tx = |t: &Transaction<'_>, k: &str| t.collections.tx_collection.resolve_first(k.as_bytes());
 
-        setvar(SetVarOperation::SetOperation, "foo", Some("abc")).evaluate(&r, &mut t, &mut rm);
+        setvar("foo", Set(rts("abc"))).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "foo"), Some(b"abc".to_vec()));
         assert!(has_log(&t, "Saving variable: TX:foo with value: abc"));
 
-        setvar(SetVarOperation::SetToOneOperation, "one", None).evaluate(&r, &mut t, &mut rm);
+        setvar("one", SetToOne).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "one"), Some(b"1".to_vec()));
 
-        setvar(SetVarOperation::SumAndSetOperation, "score", Some("5")).evaluate(&r, &mut t, &mut rm);
+        setvar("score", Add(rts("5"))).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "score"), Some(b"5".to_vec()));
-        setvar(SetVarOperation::SumAndSetOperation, "score", Some("10")).evaluate(&r, &mut t, &mut rm);
+        setvar("score", Add(rts("10"))).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "score"), Some(b"15".to_vec()));
-        setvar(SetVarOperation::SubstractAndSetOperation, "score", Some("20")).evaluate(&r, &mut t, &mut rm);
+        setvar("score", Subtract(rts("20"))).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "score"), Some(b"-5".to_vec()));
         assert!(has_log(&t, "Saving variable: TX:score with value: -5"));
 
         // Non numeric operands count as 0 (C++ `stoi` failures).
-        setvar(SetVarOperation::SumAndSetOperation, "score", Some("x")).evaluate(&r, &mut t, &mut rm);
+        setvar("score", Add(rts("x"))).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "score"), Some(b"-5".to_vec()));
-        setvar(SetVarOperation::SumAndSetOperation, "foo", Some("3")).evaluate(&r, &mut t, &mut rm);
+        setvar("foo", Add(rts("3"))).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "foo"), Some(b"3".to_vec()));
         // Out of `int` range is a failure too.
-        setvar(SetVarOperation::SumAndSetOperation, "big", Some("99999999999")).evaluate(&r, &mut t, &mut rm);
+        setvar("big", Add(rts("99999999999"))).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "big"), Some(b"0".to_vec()));
 
-        setvar(SetVarOperation::UnsetOperation, "foo", None).evaluate(&r, &mut t, &mut rm);
+        setvar("foo", Unset).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "foo"), None);
         assert!(!has_log(&t, "Saving variable: TX:foo with value: "));
+    }
+
+    #[test]
+    fn arithmetic_keeps_prefix_parsing_and_wrapping() {
+        let ms = ModSecurity::new();
+        let rules = rules();
+        let r = rule(vec![]);
+        let mut t = Transaction::new(&ms, &rules, None);
+        let mut rm = RuleMessage::new(&r);
+        for (previous, operand, subtract, expected) in [
+            ("2147483647", "1", false, "-2147483648"),
+            ("-2147483648", "1", true, "2147483647"),
+            ("2suffix", " \t+3tail", false, "5"),
+            ("2\0tail", "3", false, "5"),
+            ("2147483648", "1", false, "1"),
+            ("7", "-2147483649", false, "7"),
+            ("7", "", false, "7"),
+        ] {
+            t.collections.tx_collection.store_or_update_first(b"score", previous.as_bytes());
+            let operation = if subtract { Subtract(rts(operand)) } else { Add(rts(operand)) };
+            setvar("score", operation).evaluate(&r, &mut t, &mut rm);
+            assert_eq!(t.collections.tx_collection.resolve_first(b"score").unwrap(), expected.as_bytes());
+        }
+    }
+
+    #[test]
+    fn parsed_operations_expand_macros_before_updating() {
+        let ms = ModSecurity::new();
+        let mut rules = crate::rules_set::RulesSet::new();
+        rules
+            .load(
+                r#"
+            SecRuleEngine On
+            SecAction "id:1,phase:1,pass,nolog,setvar:tx.key=score,setvar:tx.score=4"
+            SecAction "id:2,phase:1,pass,nolog,setvar:tx.%{tx.key}=+%{tx.score},setvar:tx.score=-3"
+            SecAction "id:3,phase:1,pass,nolog,setvar:tx.one,setvar:tx.empty=%{tx.missing},setvar:!tx.key"
+        "#,
+            )
+            .unwrap();
+        let mut t = Transaction::new(&ms, &rules, None);
+        t.process_uri(b"/", b"GET", b"1.1");
+        t.process_request_headers();
+        for (key, expected) in
+            [(&b"score"[..], Some(&b"5"[..])), (b"one", Some(&b"1"[..])), (b"empty", Some(&b""[..])), (b"key", None)]
+        {
+            assert_eq!(t.collections.tx_collection.resolve_first(key).as_deref(), expected);
+        }
     }
 }

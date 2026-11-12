@@ -5,9 +5,11 @@ the ModSecurity web application firewall engine: it loads SecLang rule sets
 (e.g. the OWASP Core Rule Set) and inspects HTTP transactions handed to it by
 a connector.
 
-The port keeps the C++ project's structure (see [MIGRATION.md](MIGRATION.md)),
-its behaviour, and its C API (`msc_*` functions), so existing C connectors can
-link against the Rust library instead of the C++ one.
+The port preserves the C++ project's behaviour and C API (`msc_*` functions),
+so existing C connectors can link against the Rust library. The initial
+[migration](MIGRATION.md) followed the C++ source layout; subsequent
+[Rust refactoring](REFACTORING.md) simplifies internal ownership and types
+while retaining the engine's domain boundaries.
 
 ## Building
 

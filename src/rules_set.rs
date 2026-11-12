@@ -103,8 +103,8 @@ impl RulesSet {
 
     /// `evaluate(phase, transaction)`
     pub fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
-        let rules = self.rules_set_phases.at(phase);
-        crate::ms_dbg_a!(t, 9, "This phase consists of {} rule(s).", rules.size());
+        let rules = self.rules_set_phases.for_phase(phase);
+        crate::ms_dbg_a!(t, 9, "This phase consists of {} rule(s).", rules.len());
 
         if t.allow_type == Some(AllowType::FromNowOn) && phase != Phases::Logging {
             crate::ms_dbg_a!(
@@ -125,7 +125,7 @@ impl RulesSet {
         t.allow_type = None;
 
         let ex = &self.properties.exceptions;
-        for rule in &rules.rules {
+        for rule in rules {
             let rule: &'a crate::rule::Rule = rule.as_ref();
             if t.is_inside_a_marker() && !rule.is_marker() {
                 crate::ms_dbg_a!(

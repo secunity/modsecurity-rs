@@ -1,10 +1,9 @@
 //! libmodsecurity v3, ported from C++ to Rust.
 //!
-//! The module tree mirrors the C++ source tree: every `src/<dir>/<file>.cc`
-//! (together with its header) became `src/<dir>/<file>.rs`, and the public
-//! headers under `headers/modsecurity/` became the modules at the crate root
-//! (or, for `actions/`, `collection/`, `audit_log.h` and `debug_log.h`, the
-//! module of the same name in the matching directory).
+//! Modules separate configuration parsing, rule evaluation, transactions,
+//! collections, body processors and logging. The initial port followed the
+//! C++ source layout; internal Rust representations can evolve independently
+//! while preserving SecLang behaviour and the `msc_*` C API.
 //!
 //! Example usage (compare with the `@mainpage` example of `modsecurity.h`):
 //!
@@ -69,7 +68,6 @@ pub(crate) mod rule_script;
 pub(crate) mod rule_unconditional;
 pub mod rule_with_actions;
 pub(crate) mod rule_with_operator;
-pub(crate) mod rules;
 pub(crate) mod rules_exceptions;
 pub mod rules_set;
 pub(crate) mod rules_set_phases;
