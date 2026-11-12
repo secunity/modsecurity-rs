@@ -3,7 +3,7 @@
 //! `pass` — continues with the next rule; discards any pending
 //! intervention.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 use crate::intervention::Intervention;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -11,17 +11,19 @@ use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct Pass {
-    pub base: ActionBase,
+    name: String,
 }
 
 impl Pass {
     pub fn new(action: &str) -> Self {
-        Pass { base: ActionBase::new(action) }
+        Pass { name: name_of(action) }
     }
 }
 
 impl Action for Pass {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn is_disruptive(&self) -> bool {
         true

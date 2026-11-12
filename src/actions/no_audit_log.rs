@@ -3,24 +3,26 @@
 //! `noauditlog` — the rule match does not make the transaction relevant for
 //! the audit log.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct NoAuditLog {
-    pub base: ActionBase,
+    name: String,
 }
 
 impl NoAuditLog {
     pub fn new(action: &str) -> Self {
-        NoAuditLog { base: ActionBase::new(action) }
+        NoAuditLog { name: name_of(action) }
     }
 }
 
 impl Action for NoAuditLog {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         rm.no_audit_log = true;

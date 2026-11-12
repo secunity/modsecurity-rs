@@ -18,7 +18,7 @@
 //! slashes to create a hierarchy of categories (as in the example). Since
 //! ModSecurity 2.6.0 tag supports macro expansion.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -27,13 +27,12 @@ use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct Tag {
-    pub base: ActionBase,
     pub string: RunTimeString,
 }
 
 impl Tag {
     pub fn with_rts(z: RunTimeString) -> Self {
-        Tag { base: ActionBase::new("tag"), string: z }
+        Tag { string: z }
     }
 
     /// `getName`
@@ -43,7 +42,9 @@ impl Tag {
 }
 
 impl Action for Tag {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        "tag"
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         let tag = self.get_name(t);

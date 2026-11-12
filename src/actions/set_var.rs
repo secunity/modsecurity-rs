@@ -4,7 +4,7 @@
 //! `setvar:tx.name`, `setvar:!tx.name` — creates, updates or removes a
 //! variable of the TX or of a persistent collection.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -28,7 +28,6 @@ pub enum SetVarOperation {
 
 #[derive(Debug)]
 pub struct SetVar {
-    pub base: ActionBase,
     pub operation: SetVarOperation,
     pub variable: Box<dyn Variable>,
     pub string: Option<RunTimeString>,
@@ -36,7 +35,7 @@ pub struct SetVar {
 
 impl SetVar {
     pub fn new(operation: SetVarOperation, variable: Box<dyn Variable>, predicate: Option<RunTimeString>) -> Self {
-        SetVar { base: ActionBase::new("setvar"), operation, variable, string: predicate }
+        SetVar { operation, variable, string: predicate }
     }
 }
 
@@ -46,7 +45,9 @@ fn stoi_or_zero(s: &[u8]) -> i32 {
 }
 
 impl Action for SetVar {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        "setvar"
+    }
 
     fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let resolved_pre = match &self.string {

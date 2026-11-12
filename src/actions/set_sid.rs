@@ -2,7 +2,7 @@
 //!
 //! `setsid:'...'` — sets the session id (SESSION collection key and SESSIONID).
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -11,18 +11,19 @@ use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct SetSID {
-    pub base: ActionBase,
     pub string: RunTimeString,
 }
 
 impl SetSID {
     pub fn with_rts(z: RunTimeString) -> Self {
-        SetSID { base: ActionBase::new("setsid"), string: z }
+        SetSID { string: z }
     }
 }
 
 impl Action for SetSID {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        "setsid"
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let col_name_expanded = self.string.evaluate(Some(t));
@@ -62,15 +63,14 @@ mod tests {
         assert!(has_log(&t, "RESOURCE initiated with value: 'r1'."));
 
         for (col, field) in [("ip", 0), ("global", 1), ("resource", 2)] {
-            let mut a = InitCol::with_rts(&format!("initcol:{}=", col), rts("k"));
-            a.init().unwrap();
+            let a = InitCol::with_rts(&format!("initcol:{}=", col), rts("k")).unwrap();
             a.evaluate(&r, &mut t, &mut rm);
             let c = &t.collections;
             let key = [&c.ip_collection_key, &c.global_collection_key, &c.resource_collection_key][field];
             assert_eq!(key, b"k");
             assert!(has_log(&t, &format!("Collection `{}' initialized with value: k", col)));
         }
-        let e = |a: &str| InitCol::with_rts(a, rts("x")).init().unwrap_err();
+        let e = |a: &str| InitCol::with_rts(a, rts("x")).unwrap_err();
         assert_eq!(e("initcol:i"), "Something wrong with initcol format: too small");
         assert_eq!(e("initcol:ip"), "Something wrong with initcol format: missing equals sign");
         assert_eq!(

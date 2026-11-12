@@ -3,7 +3,7 @@
 //! `allow`, `allow:phase`, `allow:request` — stops the evaluation of the
 //! rules (from now on, for the current phase, or for the request phases).
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_and_payload};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -19,13 +19,21 @@ pub enum AllowType {
 
 #[derive(Debug)]
 pub struct Allow {
-    pub base: ActionBase,
-    pub allow_type: AllowType,
+    name: String,
+    allow_type: AllowType,
 }
 
 impl Allow {
-    pub fn new(action: &str) -> Self {
-        Allow { base: ActionBase::new(action), allow_type: AllowType::NoneAllowType }
+    /// `allow`, `allow:phase` or `allow:request`.
+    pub fn new(action: &str) -> Result<Self, String> {
+        let (name, payload) = name_and_payload(action);
+        let allow_type = match payload.to_ascii_lowercase().as_str() {
+            "phase" => AllowType::PhaseAllowType,
+            "request" => AllowType::RequestAllowType,
+            "" => AllowType::FromNowOnAllowType,
+            _ => return Err("Allow: if specified, the parameter most be: phase, request".to_string()),
+        };
+        Ok(Allow { name: name.to_string(), allow_type })
     }
 
     /// `allowTypeToName`
@@ -40,17 +48,8 @@ impl Allow {
 }
 
 impl Action for Allow {
-    crate::action_base_accessors!();
-
-    fn init(&mut self) -> Result<(), String> {
-        let a = self.base.parser_payload.to_ascii_lowercase();
-        self.allow_type = match a.as_str() {
-            "phase" => AllowType::PhaseAllowType,
-            "request" => AllowType::RequestAllowType,
-            "" => AllowType::FromNowOnAllowType,
-            _ => return Err("Allow: if specified, the parameter most be: phase, request".to_string()),
-        };
-        Ok(())
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn is_disruptive(&self) -> bool {
@@ -76,10 +75,7 @@ mod tests {
 
     #[test]
     fn allow() {
-        let ty = |a: &str| {
-            let mut x = Allow::new(a);
-            x.init().map(|_| x.allow_type)
-        };
+        let ty = |a: &str| Allow::new(a).map(|x| x.allow_type);
         assert_eq!(ty("allow"), Ok(AllowType::FromNowOnAllowType));
         assert_eq!(ty("allow:phase"), Ok(AllowType::PhaseAllowType));
         assert_eq!(ty("allow:REQUEST"), Ok(AllowType::RequestAllowType));
@@ -90,8 +86,7 @@ mod tests {
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
-        let mut a = Allow::new("allow:phase");
-        a.init().unwrap();
+        let a = Allow::new("allow:phase").unwrap();
         a.evaluate(&r, &mut t, &mut rm);
         assert_eq!(t.allow_type, AllowType::PhaseAllowType);
         assert!(has_log(&t, "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: Phase"));

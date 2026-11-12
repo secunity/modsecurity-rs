@@ -14,7 +14,7 @@
 //! Note 2: The msg action can appear multiple times in the SecRule, however
 //!         just the last one will be take into consideration.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -23,13 +23,12 @@ use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct Msg {
-    pub base: ActionBase,
     pub string: RunTimeString,
 }
 
 impl Msg {
     pub fn with_rts(z: RunTimeString) -> Self {
-        Msg { base: ActionBase::new("msg"), string: z }
+        Msg { string: z }
     }
 
     pub fn data(&self, t: &Transaction<'_>) -> Vec<u8> {
@@ -38,7 +37,9 @@ impl Msg {
 }
 
 impl Action for Msg {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        "msg"
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         let msg = self.data(t);

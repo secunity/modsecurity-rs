@@ -3,50 +3,44 @@
 //! `xmlns:prefix=http://...` — declares an XML namespace for the `XML`
 //! variable's XPath expressions (read by that variable).
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_and_payload};
 
 #[derive(Debug)]
 pub struct XmlNS {
-    pub base: ActionBase,
-    pub scope: String,
-    pub href: String,
+    name: String,
+    scope: String,
+    href: String,
 }
 
 impl XmlNS {
-    pub fn new(action: &str) -> Self {
-        XmlNS { base: ActionBase::new(action), scope: String::new(), href: String::new() }
+    /// The payload is `<prefix>=<href>`.
+    pub fn new(action: &str) -> Result<Self, String> {
+        let (name, payload) = name_and_payload(action);
+        let Some((scope, href)) = payload.split_once('=') else {
+            return Err("XMLS: Bad format, missing equals sign.".to_string());
+        };
+        if href.is_empty() || scope.is_empty() {
+            return Err("XMLS: XMLNS is invalid. Expecting a name=value format.".to_string());
+        }
+        let mut href = href.to_string();
+        if href.starts_with('\'') && href.len() > 3 {
+            href.remove(0);
+            href.pop();
+        }
+        if !href.starts_with("http://") {
+            return Err(format!("XMLS: Missing xmlns href for prefix: `{}'.", href));
+        }
+        Ok(XmlNS { name: name.to_string(), scope: scope.to_string(), href })
     }
 }
 
 impl Action for XmlNS {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn xml_namespace(&self) -> Option<(&str, &str)> {
         Some((&self.scope, &self.href))
-    }
-
-    fn init(&mut self) -> Result<(), String> {
-        let http = "http://";
-        let payload = &self.base.parser_payload;
-        let Some(pos) = payload.find('=') else {
-            return Err("XMLS: Bad format, missing equals sign.".to_string());
-        };
-        self.scope = payload[..pos].to_string();
-        self.href = payload[pos + 1..].to_string();
-
-        if self.href.is_empty() || self.scope.is_empty() {
-            return Err("XMLS: XMLNS is invalid. Expecting a name=value format.".to_string());
-        }
-
-        if self.href.starts_with('\'') && self.href.len() > 3 {
-            self.href.remove(0);
-            self.href.pop();
-        }
-
-        if !self.href.starts_with(http) {
-            return Err(format!("XMLS: Missing xmlns href for prefix: `{}'.", self.href));
-        }
-        Ok(())
     }
 }
 
@@ -55,8 +49,7 @@ mod tests {
     use super::*;
 
     fn ns(p: &str) -> Result<(String, String), String> {
-        let mut a = XmlNS::new(&format!("xmlns:{}", p));
-        a.init().map(|_| (a.scope, a.href))
+        XmlNS::new(&format!("xmlns:{}", p)).map(|a| (a.scope, a.href))
     }
 
     #[test]

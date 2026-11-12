@@ -3,24 +3,26 @@
 //! `deny` — stops the transaction with the configured status (403 by
 //! default).
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, RuleMessage};
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct Deny {
-    pub base: ActionBase,
+    name: String,
 }
 
 impl Deny {
     pub fn new(action: &str) -> Self {
-        Deny { base: ActionBase::new(action) }
+        Deny { name: name_of(action) }
     }
 }
 
 impl Action for Deny {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn is_disruptive(&self) -> bool {
         true
@@ -68,14 +70,13 @@ mod tests {
         assert_eq!(t.intervention, crate::intervention::Intervention::default());
 
         // A status set before is kept.
-        let mut s = Status::new("status:404");
-        s.init().unwrap();
+        let s = Status::new("status:404").unwrap();
         s.evaluate(&r, &mut t, &mut rm);
         Drop::new("drop").evaluate(&r, &mut t, &mut rm);
         assert!(has_log(&t, "Running action drop [executing deny instead of drop.]"));
         assert_eq!((t.intervention.status, t.intervention.disruptive), (404, true));
         assert!(t.intervention.log.is_some());
 
-        assert_eq!(Status::new("status:abc").init(), Err("Not a valid number: abc".to_string()));
+        assert_eq!(Status::new("status:abc").unwrap_err(), "Not a valid number: abc");
     }
 }

@@ -3,7 +3,7 @@
 //! `setrsc:'...'` — sets the key of the RESOURCE collection (the C++ action
 //! name is `setsrc`; kept as is).
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -12,18 +12,19 @@ use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct SetRSC {
-    pub base: ActionBase,
     pub string: RunTimeString,
 }
 
 impl SetRSC {
     pub fn with_rts(z: RunTimeString) -> Self {
-        SetRSC { base: ActionBase::new("setsrc"), string: z }
+        SetRSC { string: z }
     }
 }
 
 impl Action for SetRSC {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        "setsrc"
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let col_name_expanded = self.string.evaluate(Some(t));

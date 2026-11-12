@@ -2,7 +2,7 @@
 //!
 //! `setuid:'...'` — sets the user id (USER collection key and USERID).
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -11,18 +11,19 @@ use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct SetUID {
-    pub base: ActionBase,
     pub string: RunTimeString,
 }
 
 impl SetUID {
     pub fn with_rts(z: RunTimeString) -> Self {
-        SetUID { base: ActionBase::new("setuid"), string: z }
+        SetUID { string: z }
     }
 }
 
 impl Action for SetUID {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        "setuid"
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let col_name_expanded = self.string.evaluate(Some(t));

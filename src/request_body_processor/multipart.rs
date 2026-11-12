@@ -2434,11 +2434,8 @@ mod regression_dump {
             let actions = quoted.get(3).copied().unwrap_or("");
             let mut acts: Vec<crate::rule_with_actions::RuleAction> = Vec::new();
             for a in actions.split(',') {
-                if let Some(ns) = a.strip_prefix("xmlns:") {
-                    let (scope, href) = ns.split_once('=').unwrap();
-                    let mut x = XmlNS::new(a);
-                    x.scope = scope.to_string();
-                    x.href = href.trim_matches('\'').to_string();
+                if a.starts_with("xmlns:") {
+                    let x = XmlNS::new(a).unwrap();
                     acts.push(crate::rule_with_actions::RuleAction::Other(Box::new(x)));
                 }
             }

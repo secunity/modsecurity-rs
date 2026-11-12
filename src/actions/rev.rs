@@ -2,30 +2,32 @@
 //!
 //! `rev:'1.2'` — the rule revision (configuration time).
 
-use crate::actions::action::{Action, ActionBase, Kind};
+use crate::actions::action::{Action, Kind, name_and_payload};
 use crate::rule_with_actions::RuleWithActions;
 
 #[derive(Debug)]
 pub struct Rev {
-    pub base: ActionBase,
+    name: String,
     rev: String,
 }
 
 impl Rev {
     pub fn new(action: &str) -> Self {
-        Rev { base: ActionBase::with_kind(action, Kind::ConfigurationKind), rev: String::new() }
+        let (name, rev) = name_and_payload(action);
+        Rev { name: name.to_string(), rev: rev.to_string() }
     }
 }
 
 impl Action for Rev {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
-    fn init(&mut self) -> Result<(), String> {
-        self.rev = self.base.parser_payload.clone();
-        Ok(())
+    fn kind(&self) -> Kind {
+        Kind::Configuration
     }
 
     fn configure(&self, rule: &mut RuleWithActions) {
-        rule.rev = self.rev.clone();
+        rule.rev.clone_from(&self.rev);
     }
 }

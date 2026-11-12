@@ -4,7 +4,7 @@
 
 use std::ffi::CString;
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -13,18 +13,19 @@ use crate::utils::string::{lossy, ssplit_pair};
 
 #[derive(Debug)]
 pub struct SetENV {
-    pub base: ActionBase,
     pub string: RunTimeString,
 }
 
 impl SetENV {
     pub fn with_rts(z: RunTimeString) -> Self {
-        SetENV { base: ActionBase::new("setenv"), string: z }
+        SetENV { string: z }
     }
 }
 
 impl Action for SetENV {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        "setenv"
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let col_name_expanded = self.string.evaluate(Some(t));

@@ -3,40 +3,30 @@
 //! `ctl:requestBodyAccess=On|Off` — overrides `SecRequestBodyAccess` for
 //! the transaction.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct RequestBodyAccess {
-    pub base: ActionBase,
-    pub request_body_access: bool,
+    name: String,
+    request_body_access: bool,
 }
 
 impl RequestBodyAccess {
-    pub fn new(action: &str) -> Self {
-        RequestBodyAccess { base: ActionBase::new(action), request_body_access: false }
+    /// `action` is the `ctl:requestBodyAccess=` text of the rule.
+    pub fn new(action: &str, request_body_access: bool) -> Self {
+        RequestBodyAccess { name: name_of(action), request_body_access }
     }
 }
 
 impl Action for RequestBodyAccess {
-    crate::action_base_accessors!();
-
-    fn init(&mut self) -> Result<(), String> {
-        // The parser builds the payload as `requestBodyAccess=<true|false>`.
-        let what = self.base.parser_payload.get(18..).unwrap_or("");
-        self.request_body_access = match what {
-            "true" => true,
-            "false" => false,
-            _ => {
-                return Err(format!("Internal error. Expected: true or false, got: {}", self.base.parser_payload));
-            }
-        };
-        Ok(())
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.request_body_access = if self.request_body_access { Some(true) } else { Some(false) };
+        t.request_body_access = Some(self.request_body_access);
     }
 }

@@ -238,13 +238,13 @@ impl RuleWithActions {
                     r.actions_runtime_pos.push(Box::new(a));
                     r.contains_static_block_action = true;
                 }
-                RuleAction::Other(a) => match a.action_kind() {
-                    Kind::ConfigurationKind => {
+                RuleAction::Other(a) => match a.kind() {
+                    Kind::Configuration => {
                         a.configure(&mut r);
                     }
-                    Kind::RunTimeOnlyIfMatchKind if a.is_disruptive() => r.disruptive_action = Some(a),
-                    Kind::RunTimeOnlyIfMatchKind => r.actions_runtime_pos.push(a),
-                    Kind::RunTimeBeforeMatchAttemptKind => {
+                    Kind::RunTimeOnlyIfMatch if a.is_disruptive() => r.disruptive_action = Some(a),
+                    Kind::RunTimeOnlyIfMatch => r.actions_runtime_pos.push(a),
+                    Kind::RunTimeBeforeMatchAttempt => {
                         println!("General failure, action: {} has an unknown type.", a.name());
                     }
                 },
@@ -437,7 +437,7 @@ impl RuleWithActions {
         let phase = self.get_phase() as usize;
         if let Some(defaults) = rules.properties.default_actions.get(phase) {
             for a in defaults {
-                if a.action_kind() != Kind::RunTimeOnlyIfMatchKind {
+                if a.kind() != Kind::RunTimeOnlyIfMatch {
                     continue;
                 }
                 if !a.is_disruptive() {
@@ -513,7 +513,7 @@ impl RuleWithActions {
         let mut none = 0;
 
         for a in &self.transformations {
-            if a.base().is_none {
+            if a.is_none() {
                 none += 1;
             }
         }
@@ -525,7 +525,7 @@ impl RuleWithActions {
             && let Some(defaults) = rules.properties.default_actions.get(self.get_phase() as usize)
         {
             for a in defaults {
-                if a.action_kind() != Kind::RunTimeBeforeMatchAttemptKind {
+                if a.kind() != Kind::RunTimeBeforeMatchAttempt {
                     continue;
                 }
                 if let Some(tr) = a.as_transformation() {
@@ -538,14 +538,14 @@ impl RuleWithActions {
             if none == 0 {
                 f(a);
             }
-            if a.base().is_none {
+            if a.is_none() {
                 none -= 1;
             }
         }
 
         let pre = &rules.properties.exceptions.action_pre_update_target_by_id;
         for a in pre.for_id(self.rule_id as f64) {
-            if a.base().is_none {
+            if a.as_transformation().is_some_and(Transformation::is_none) {
                 none += 1;
             }
         }
@@ -555,7 +555,7 @@ impl RuleWithActions {
             {
                 f(tr);
             }
-            if a.base().is_none {
+            if a.as_transformation().is_some_and(Transformation::is_none) {
                 none -= 1;
             }
         }

@@ -2,24 +2,26 @@
 //!
 //! `auditlog` — marks the transaction for audit logging.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct AuditLog {
-    pub base: ActionBase,
+    name: String,
 }
 
 impl AuditLog {
     pub fn new(action: &str) -> Self {
-        AuditLog { base: ActionBase::new(action) }
+        AuditLog { name: name_of(action) }
     }
 }
 
 impl Action for AuditLog {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         rm.no_audit_log = false;

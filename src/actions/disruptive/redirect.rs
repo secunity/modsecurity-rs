@@ -3,7 +3,7 @@
 //! `redirect:URL` — redirects the client (302 unless a 301..307 status was
 //! already set), with macro expansion of the URL.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, RuleMessage};
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -11,25 +11,24 @@ use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct Redirect {
-    pub base: ActionBase,
-    status: i32,
-    pub string: RunTimeString,
+    string: RunTimeString,
 }
 
 impl Redirect {
+    /// The status sent with the redirection, unless a 301..307 one was set
+    /// before.
+    const STATUS: i32 = 302;
+
     pub fn with_rts(z: RunTimeString) -> Self {
-        // "redirert" (sic): the action name used by C++, kept for identical
-        // debug output.
-        Redirect { base: ActionBase::new("redirert"), status: 0, string: z }
+        Redirect { string: z }
     }
 }
 
 impl Action for Redirect {
-    crate::action_base_accessors!();
-
-    fn init(&mut self) -> Result<(), String> {
-        self.status = 302;
-        Ok(())
+    fn name(&self) -> &str {
+        // "redirert" (sic): the action name used by C++, kept for identical
+        // debug output.
+        "redirert"
     }
 
     fn is_disruptive(&self) -> bool {
@@ -38,12 +37,10 @@ impl Action for Redirect {
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         let url_expanded = self.string.evaluate(Some(t));
-
         // if it was changed before, lets keep it.
         if t.intervention.status == 200 || !(301..=307).contains(&t.intervention.status) {
-            t.intervention.status = self.status;
+            t.intervention.status = Self::STATUS;
         }
-
         t.intervention.url = Some(url_expanded);
         t.intervention.disruptive = true;
         rm.is_disruptive = true;
@@ -64,8 +61,7 @@ mod tests {
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
-        let mut a = Redirect::with_rts(rts("https://www.example.com/"));
-        a.init().unwrap();
+        let a = Redirect::with_rts(rts("https://www.example.com/"));
         assert!(a.is_disruptive());
 
         a.evaluate(&r, &mut t, &mut rm);

@@ -3,7 +3,7 @@
 //! `expirevar:collection.variable=seconds` — sets the expiry of a variable
 //! of a persistent collection.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::Action;
 use crate::collection::collection::Collection;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -13,18 +13,19 @@ use crate::utils::string::{atoi, lossy};
 
 #[derive(Debug)]
 pub struct ExpireVar {
-    pub base: ActionBase,
     pub string: RunTimeString,
 }
 
 impl ExpireVar {
     pub fn with_rts(z: RunTimeString) -> Self {
-        ExpireVar { base: ActionBase::new("expirevar"), string: z }
+        ExpireVar { string: z }
     }
 }
 
 impl Action for ExpireVar {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        "expirevar"
+    }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let expire_expression_expanded = self.string.evaluate(Some(t));

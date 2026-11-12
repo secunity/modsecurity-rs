@@ -6,7 +6,7 @@
 //! [`TransformationKind`] selects the function applied; the functions live
 //! in the modules of `actions::transformations`.
 
-use crate::actions::action::{Action, ActionBase, Kind};
+use crate::actions::action::{Action, Kind, name_of};
 use crate::actions::transformations::*;
 use crate::transaction::Transaction;
 use crate::utils::decode::urldecode_nonstrict_inplace;
@@ -63,15 +63,13 @@ pub enum TransformationKind {
 pub struct Transformation {
     /// The name as written in the rule (e.g. `t:lowerCase`), which the
     /// debug log and the transformation paths print.
-    pub base: ActionBase,
+    name: String,
     pub kind: TransformationKind,
 }
 
 impl Transformation {
     pub fn new(kind: TransformationKind, action: &str) -> Self {
-        let mut base = ActionBase::with_kind(action, Kind::RunTimeBeforeMatchAttemptKind);
-        base.is_none = kind == TransformationKind::None;
-        Transformation { base, kind }
+        Transformation { name: name_of(action), kind }
     }
 
     /// `Transformation::instantiate`: the transformation named `a`
@@ -181,7 +179,13 @@ impl Transformation {
 }
 
 impl Action for Transformation {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn kind(&self) -> Kind {
+        Kind::RunTimeBeforeMatchAttempt
+    }
 
     fn as_transformation(&self) -> Option<&Transformation> {
         Some(self)
@@ -210,7 +214,7 @@ mod tests {
         assert_eq!(kind("t:nosuch"), TransformationKind::Identity);
         assert_eq!(Transformation::from_name("t:trimLeft").name(), "t:trimLeft");
         assert!(Transformation::from_name("t:none").is_none());
-        assert!(Transformation::from_name("t:none").base.is_none);
+        assert!(Transformation::from_name("t:none").is_none());
     }
 
     #[test]

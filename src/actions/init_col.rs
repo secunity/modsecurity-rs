@@ -3,7 +3,7 @@
 //! `initcol:ip=%{REMOTE_ADDR}` — selects the record (key) of a persistent
 //! collection for this transaction.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_and_payload};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -12,33 +12,31 @@ use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct InitCol {
-    pub base: ActionBase,
+    name: String,
     collection_key: String,
-    pub string: RunTimeString,
+    string: RunTimeString,
 }
 
 impl InitCol {
-    pub fn with_rts(action: &str, z: RunTimeString) -> Self {
-        InitCol { base: ActionBase::new(action), collection_key: String::new(), string: z }
+    /// `action` is `initcol:<collection>=`; `z` is the value.
+    pub fn with_rts(action: &str, z: RunTimeString) -> Result<Self, String> {
+        let (name, payload) = name_and_payload(action);
+        if payload.len() < 2 {
+            return Err("Something wrong with initcol format: too small".to_string());
+        }
+        let Some((collection_key, _)) = payload.split_once('=') else {
+            return Err("Something wrong with initcol format: missing equals sign".to_string());
+        };
+        if !matches!(collection_key, "ip" | "global" | "resource") {
+            return Err("Something wrong with initcol: collection must be `ip', `global' or `resource'".to_string());
+        }
+        Ok(InitCol { name: name.to_string(), collection_key: collection_key.to_string(), string: z })
     }
 }
 
 impl Action for InitCol {
-    crate::action_base_accessors!();
-
-    fn init(&mut self) -> Result<(), String> {
-        let payload = &self.base.parser_payload;
-        if payload.len() < 2 {
-            return Err("Something wrong with initcol format: too small".to_string());
-        }
-        let Some(pos_equals) = payload.find('=') else {
-            return Err("Something wrong with initcol format: missing equals sign".to_string());
-        };
-        self.collection_key = payload[..pos_equals].to_string();
-        if self.collection_key != "ip" && self.collection_key != "global" && self.collection_key != "resource" {
-            return Err("Something wrong with initcol: collection must be `ip', `global' or `resource'".to_string());
-        }
-        Ok(())
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {

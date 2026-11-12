@@ -2,7 +2,7 @@
 //!
 //! `severity:N` or `severity:'CRITICAL'` — the severity of the rule match.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_and_payload};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -10,22 +10,16 @@ use crate::utils::string::stoi;
 
 #[derive(Debug)]
 pub struct Severity {
-    pub base: ActionBase,
+    name: String,
     pub severity: i32,
 }
 
 impl Severity {
-    pub fn new(action: &str) -> Self {
-        Severity { base: ActionBase::new(action), severity: 0 }
-    }
-}
-
-impl Action for Severity {
-    crate::action_base_accessors!();
-
-    fn init(&mut self) -> Result<(), String> {
-        let a = self.base.parser_payload.to_ascii_lowercase();
-        self.severity = match a.as_str() {
+    /// The payload is a severity name or its number.
+    pub fn new(action: &str) -> Result<Self, String> {
+        let (name, payload) = name_and_payload(action);
+        let a = payload.to_ascii_lowercase();
+        let severity = match a.as_str() {
             "emergency" => 0,
             "alert" => 1,
             "critical" => 2,
@@ -34,12 +28,17 @@ impl Action for Severity {
             "notice" => 5,
             "info" => 6,
             "debug" => 7,
-            _ => match stoi(a.as_bytes()).and_then(|v| i32::try_from(v).ok()) {
-                Some(n) => n,
-                None => return Err(format!("Severity: The input \"{}\" is not a number.", a)),
-            },
+            _ => stoi(a.as_bytes())
+                .and_then(|v| i32::try_from(v).ok())
+                .ok_or_else(|| format!("Severity: The input \"{}\" is not a number.", a))?,
         };
-        Ok(())
+        Ok(Severity { name: name.to_string(), severity })
+    }
+}
+
+impl Action for Severity {
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
@@ -64,8 +63,7 @@ mod tests {
     use crate::modsecurity::ModSecurity;
 
     fn sev(p: &str) -> Result<i32, String> {
-        let mut s = Severity::new(&format!("severity:{}", p));
-        s.init().map(|_| s.severity)
+        Severity::new(&format!("severity:{}", p)).map(|s| s.severity)
     }
 
     #[test]
@@ -81,8 +79,7 @@ mod tests {
     fn evaluate() {
         let ms = ModSecurity::new();
         let rules = rules();
-        let mut s = Severity::new("severity:2");
-        s.init().unwrap();
+        let s = Severity::new("severity:2").unwrap();
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
@@ -91,8 +88,7 @@ mod tests {
         assert_eq!(rm.severity, 2);
         assert_eq!(t.highest_severity_action, 2.min(before));
         assert!(has_log(&t, &format!("This rule severity is: 2 current transaction is: {}", before)));
-        let mut s5 = Severity::new("severity:5");
-        s5.init().unwrap();
+        let s5 = Severity::new("severity:5").unwrap();
         s5.evaluate(&r, &mut t, &mut rm);
         assert_eq!(rm.severity, 5);
         assert_eq!(t.highest_severity_action, 2.min(before));

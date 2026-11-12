@@ -5,24 +5,26 @@
 //! `RuleWithActions` (it is kept with the run time actions and flags the
 //! rule as containing a static block action).
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct Block {
-    pub base: ActionBase,
+    name: String,
 }
 
 impl Block {
     pub fn new(action: &str) -> Self {
-        Block { base: ActionBase::new(action) }
+        Block { name: name_of(action) }
     }
 }
 
 impl Action for Block {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn is_block(&self) -> bool {
         true
@@ -177,8 +179,7 @@ mod tests {
         let defaults = &mut rules.properties.default_actions[Phases::RequestBodyPhase as usize];
         defaults.push(Arc::new(Log::new("log")));
         defaults.push(Arc::new(Deny::new("deny")));
-        let mut phase = Phase::new("phase:2");
-        phase.init().unwrap();
+        let phase = Phase::new("phase:2").unwrap();
         let r = rule(vec![RuleAction::Phase(phase), RuleAction::Block(Block::new("block"))]);
         assert!(r.has_block_action());
 

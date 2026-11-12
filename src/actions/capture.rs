@@ -3,19 +3,21 @@
 //! `capture` — a marker: `RuleWithActions` records its presence and the
 //! operators store their captures in `TX:0..9` when it is set.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 
 #[derive(Debug)]
 pub struct Capture {
-    pub base: ActionBase,
+    name: String,
 }
 
 impl Capture {
     pub fn new(action: &str) -> Self {
-        Capture { base: ActionBase::new(action) }
+        Capture { name: name_of(action) }
     }
 }
 
 impl Action for Capture {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 }

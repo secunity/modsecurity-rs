@@ -3,19 +3,21 @@
 //! `multiMatch` — a marker: `RuleWithActions` records its presence and then
 //! runs the operator against every intermediate transformation result.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 
 #[derive(Debug)]
 pub struct MultiMatch {
-    pub base: ActionBase,
+    name: String,
 }
 
 impl MultiMatch {
     pub fn new(action: &str) -> Self {
-        MultiMatch { base: ActionBase::new(action) }
+        MultiMatch { name: name_of(action) }
     }
 }
 
 impl Action for MultiMatch {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 }

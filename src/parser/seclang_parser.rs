@@ -12,7 +12,7 @@
 //! The semantic actions of the grammar are in [`SeclangParser::reduce`] and
 //! its helpers, grouped by nonterminal.
 
-use crate::actions::action::{Action, BaseAction, Kind};
+use crate::actions::action::{Action, InertAction, Kind};
 use crate::actions::transformations::transformation::{Transformation, TransformationKind as TK};
 use crate::actions::{self, ctl, data, disruptive};
 use crate::audit_log::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
@@ -109,14 +109,12 @@ pub(crate) enum ParsedAction {
     Transformation(Transformation),
 }
 
-impl ParsedAction {
-    fn init(&mut self) -> Result<(), String> {
-        match self {
-            ParsedAction::Action(a) => a.as_action_mut().init(),
-            ParsedAction::Transformation(t) => t.init(),
-        }
-    }
+/// What `act` yields: the action, or the error of an invalid payload. The
+/// error is reported when the action joins its list (the C++ `ACTION_INIT`
+/// of `actions_may_quoted`), with that reduction's location.
+type ActResult = Result<ParsedAction, String>;
 
+impl ParsedAction {
     fn into_action(self) -> Box<dyn Action> {
         match self {
             ParsedAction::Action(a) => a.into_action(),
@@ -133,8 +131,8 @@ impl ParsedAction {
 }
 
 /// An action without a slot of its own in the rule.
-fn other(a: Box<dyn Action>) -> ParsedAction {
-    ParsedAction::Action(RuleAction::Other(a))
+fn other(a: impl Action + 'static) -> ParsedAction {
+    ParsedAction::Action(RuleAction::Other(Box::new(a)))
 }
 
 /// The actions and the transformations of a rule.
@@ -162,7 +160,7 @@ enum Value {
     Operator(Box<dyn Operator>),
     RunTimeString(RunTimeString),
     Variable(Box<dyn Variable>),
-    Action(ParsedAction),
+    Action(ActResult),
     Variables(Vec<Box<dyn Variable>>),
     Actions(Vec<ParsedAction>),
 }
@@ -215,7 +213,7 @@ impl StackEntry {
         }
     }
 
-    fn action(&mut self) -> Option<ParsedAction> {
+    fn action(&mut self) -> Option<ActResult> {
         match self.take() {
             Value::Action(a) => Some(a),
             _ => None,
@@ -602,16 +600,17 @@ impl SeclangParser {
             //     actions_may_quoted COMMA act
             //   | act
             nt::ACTIONS_MAY_QUOTED => {
-                let (mut list, mut a) =
+                let (mut list, a) =
                     if rhs.len() == 3 { (rhs[0].actions(), rhs[2].action()) } else { (Vec::new(), rhs[0].action()) };
-                if let Some(a) = a.as_mut() {
+                match a {
+                    Some(Ok(a)) => list.push(a),
                     // ACTION_INIT($n, @0)
-                    if let Err(error) = a.init() {
+                    Some(Err(error)) => {
                         driver.error(at0, &error, "");
                         return Err(Flow::Error);
                     }
+                    None => {}
                 }
-                list.extend(a);
                 Ok(Value::Actions(list))
             }
             nt::OP => Self::op(driver, rhs, at0),
@@ -628,7 +627,7 @@ impl SeclangParser {
             nt::VARIABLES_MAY_BE_QUOTED => Ok(Value::Variables(Self::variables_may_be_quoted(rhs))),
             nt::VAR => Self::var(driver, rhs, at0).map(Value::Variable),
             nt::ACT => Self::act(driver, rhs, at0).map(Value::Action),
-            nt::SETVAR_ACTION => Ok(Value::Action(Self::setvar_action(rhs))),
+            nt::SETVAR_ACTION => Ok(Value::Action(Ok(Self::setvar_action(rhs)))),
             nt::RUN_TIME_STRING => Ok(Value::RunTimeString(Self::run_time_string(rhs))),
             // $accept: input $end -- never reduced (the parser accepts
             // when it reaches the final state).
@@ -856,7 +855,7 @@ impl SeclangParser {
     }
 
     /// `ACTION_NOT_SUPPORTED(a, b)`
-    fn action_not_supported(driver: &mut Driver, name: &str, at0: &Location) -> Result<ParsedAction, Flow> {
+    fn action_not_supported(driver: &mut Driver, name: &str, at0: &Location) -> Result<ActResult, Flow> {
         driver.error(at0, &format!("Action: {} is not yet supported.", name), "");
         Err(Flow::Error)
     }
@@ -1286,7 +1285,7 @@ impl SeclangParser {
                 // name (phase:0 is the connection phase).
                 sec_rule_defined_phase =
                     if defined_phase <= Phases::ConnectionPhase as i32 { defined_phase } else { defined_phase - 1 };
-            } else if matches!(a.action_kind(), Kind::RunTimeOnlyIfMatchKind | Kind::RunTimeBeforeMatchAttemptKind) {
+            } else if matches!(a.kind(), Kind::RunTimeOnlyIfMatch | Kind::RunTimeBeforeMatchAttempt) {
                 if a.as_transformation().is_some_and(Transformation::is_none) {
                     return Self::fail(
                         driver,
@@ -1504,7 +1503,7 @@ impl SeclangParser {
     }
 
     /// `act:` an action of a rule.
-    fn act(driver: &mut Driver, rhs: &mut [StackEntry], at0: &Location) -> Result<ParsedAction, Flow> {
+    fn act(driver: &mut Driver, rhs: &mut [StackEntry], at0: &Location) -> Result<ActResult, Flow> {
         use ParsedAction::Transformation as T;
         let kind = rhs[0].kind;
         let second = rhs.get(1).map(|e| e.kind);
@@ -1514,7 +1513,7 @@ impl SeclangParser {
                 sym::ACTION_EXPIRE_VAR => RuleAction::Other(Box::new(actions::expire_var::ExpireVar::with_rts(z))),
                 sym::ACTION_INITCOL => {
                     let a = rhs[0].string();
-                    RuleAction::Other(Box::new(actions::init_col::InitCol::with_rts(&a, z)))
+                    return Ok(actions::init_col::InitCol::with_rts(&a, z).map(other));
                 }
                 sym::ACTION_LOG_DATA => RuleAction::LogData(actions::log_data::LogData::with_rts(z)),
                 sym::ACTION_MSG => RuleAction::Msg(actions::msg::Msg::with_rts(z)),
@@ -1526,7 +1525,7 @@ impl SeclangParser {
                 sym::ACTION_TAG => RuleAction::Tag(actions::tag::Tag::with_rts(z)),
                 _ => return Err(Flow::Error),
             };
-            return Ok(ParsedAction::Action(a));
+            return Ok(Ok(ParsedAction::Action(a)));
         }
         if kind == sym::ACTION_SETVAR {
             // ACTION_SETVAR setvar_action
@@ -1535,95 +1534,92 @@ impl SeclangParser {
         if let Some(value) = second {
             // ctl:<option>=<value>
             let t = rhs[0].string();
-            let a: Box<dyn Action> = match (kind, value) {
+            use crate::audit_log::audit_log::AuditLogStatus;
+            use crate::rules_set_properties::{ParseXmlIntoArgs, RuleEngine};
+            let a = match (kind, value) {
                 (sym::ACTION_CTL_AUDIT_ENGINE, sym::CONFIG_VALUE_ON) => {
                     driver.properties.audit_log.set_ctl_audit_engine_active();
-                    Box::new(ctl::audit_engine::AuditEngine::new("ctl:auditengine=on"))
+                    other(ctl::audit_engine::AuditEngine::new(AuditLogStatus::On))
                 }
                 (sym::ACTION_CTL_AUDIT_ENGINE, sym::CONFIG_VALUE_OFF) => {
-                    Box::new(ctl::audit_engine::AuditEngine::new("ctl:auditengine=off"))
+                    other(ctl::audit_engine::AuditEngine::new(AuditLogStatus::Off))
                 }
                 (sym::ACTION_CTL_AUDIT_ENGINE, _) => {
                     driver.properties.audit_log.set_ctl_audit_engine_active();
-                    Box::new(ctl::audit_engine::AuditEngine::new("ctl:auditengine=relevantonly"))
+                    other(ctl::audit_engine::AuditEngine::new(AuditLogStatus::RelevantOnly))
                 }
                 // ACTION_NOT_SUPPORTED("CtlForceReequestBody", @0) is
                 // commented out in C++: a plain action is built.
-                (sym::ACTION_CTL_FORCE_REQ_BODY_VAR, _) => Box::new(BaseAction::new(&t)),
+                (sym::ACTION_CTL_FORCE_REQ_BODY_VAR, _) => other(InertAction::new(&t)),
                 (sym::ACTION_CTL_PARSE_XML_INTO_ARGS, sym::CONFIG_VALUE_ON) => {
-                    Box::new(ctl::parse_xml_into_args::ParseXmlIntoArgs::new("ctl:parseXmlIntoArgs=on"))
+                    other(ctl::parse_xml_into_args::ParseXmlIntoArgs::new(ParseXmlIntoArgs::On))
                 }
                 (sym::ACTION_CTL_PARSE_XML_INTO_ARGS, sym::CONFIG_VALUE_OFF) => {
-                    Box::new(ctl::parse_xml_into_args::ParseXmlIntoArgs::new("ctl:parseXmlIntoArgs=off"))
+                    other(ctl::parse_xml_into_args::ParseXmlIntoArgs::new(ParseXmlIntoArgs::Off))
                 }
                 (sym::ACTION_CTL_PARSE_XML_INTO_ARGS, _) => {
-                    Box::new(ctl::parse_xml_into_args::ParseXmlIntoArgs::new("ctl:parseXmlIntoArgs=onlyargs"))
+                    other(ctl::parse_xml_into_args::ParseXmlIntoArgs::new(ParseXmlIntoArgs::OnlyArgs))
                 }
-                (sym::ACTION_CTL_REQUEST_BODY_ACCESS, sym::CONFIG_VALUE_ON) => {
-                    Box::new(ctl::request_body_access::RequestBodyAccess::new(&format!("{}true", t)))
-                }
-                (sym::ACTION_CTL_REQUEST_BODY_ACCESS, _) => {
-                    Box::new(ctl::request_body_access::RequestBodyAccess::new(&format!("{}false", t)))
+                (sym::ACTION_CTL_REQUEST_BODY_ACCESS, v) => {
+                    other(ctl::request_body_access::RequestBodyAccess::new(&t, v == sym::CONFIG_VALUE_ON))
                 }
                 (sym::ACTION_CTL_RULE_ENGINE, sym::CONFIG_VALUE_ON) => {
-                    Box::new(ctl::rule_engine::RuleEngine::new("ctl:RuleEngine=on"))
+                    other(ctl::rule_engine::RuleEngine::new(RuleEngine::Enabled))
                 }
                 (sym::ACTION_CTL_RULE_ENGINE, sym::CONFIG_VALUE_OFF) => {
-                    Box::new(ctl::rule_engine::RuleEngine::new("ctl:RuleEngine=off"))
+                    other(ctl::rule_engine::RuleEngine::new(RuleEngine::Disabled))
                 }
-                (sym::ACTION_CTL_RULE_ENGINE, _) => {
-                    Box::new(ctl::rule_engine::RuleEngine::new("ctl:RuleEngine=detectiononly"))
-                }
+                (sym::ACTION_CTL_RULE_ENGINE, _) => other(ctl::rule_engine::RuleEngine::new(RuleEngine::DetectionOnly)),
                 _ => return Err(Flow::Error),
             };
-            return Ok(other(a));
+            return Ok(Ok(a));
         }
         let s = rhs[0].string();
         let s = s.as_str();
-        Ok(match kind {
-            sym::ACTION_ACCURACY => other(Box::new(actions::accuracy::Accuracy::new(s))),
-            sym::ACTION_ALLOW => other(Box::new(disruptive::allow::Allow::new(s))),
+        Ok(Ok(match kind {
+            sym::ACTION_ACCURACY => return Ok(actions::accuracy::Accuracy::new(s).map(other)),
+            sym::ACTION_ALLOW => return Ok(disruptive::allow::Allow::new(s).map(other)),
             sym::ACTION_APPEND => return Self::action_not_supported(driver, "Append", at0),
-            sym::ACTION_AUDIT_LOG => other(Box::new(actions::audit_log::AuditLog::new(s))),
+            sym::ACTION_AUDIT_LOG => other(actions::audit_log::AuditLog::new(s)),
             sym::ACTION_BLOCK => ParsedAction::Action(RuleAction::Block(actions::block::Block::new(s))),
             sym::ACTION_CAPTURE => ParsedAction::Action(RuleAction::Capture(actions::capture::Capture::new(s))),
-            sym::ACTION_CHAIN => other(Box::new(actions::chain::Chain::new(s))),
-            sym::ACTION_CTL_AUDIT_LOG_PARTS => other(Box::new(ctl::audit_log_parts::AuditLogParts::new(s))),
-            sym::ACTION_CTL_BDY_JSON => {
-                other(Box::new(ctl::request_body_processor_json::RequestBodyProcessorJSON::new(s)))
-            }
-            sym::ACTION_CTL_BDY_XML => {
-                other(Box::new(ctl::request_body_processor_xml::RequestBodyProcessorXML::new(s)))
-            }
+            sym::ACTION_CHAIN => other(actions::chain::Chain::new(s)),
+            sym::ACTION_CTL_AUDIT_LOG_PARTS => other(ctl::audit_log_parts::AuditLogParts::new(s)),
+            sym::ACTION_CTL_BDY_JSON => other(ctl::request_body_processor_json::RequestBodyProcessorJSON::new(s)),
+            sym::ACTION_CTL_BDY_XML => other(ctl::request_body_processor_xml::RequestBodyProcessorXML::new(s)),
             sym::ACTION_CTL_BDY_URLENCODED => {
-                other(Box::new(ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED::new(s)))
+                other(ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED::new(s))
             }
-            sym::ACTION_CTL_RULE_REMOVE_BY_ID => other(Box::new(ctl::rule_remove_by_id::RuleRemoveById::new(s))),
-            sym::ACTION_CTL_RULE_REMOVE_BY_TAG => other(Box::new(ctl::rule_remove_by_tag::RuleRemoveByTag::new(s))),
+            sym::ACTION_CTL_RULE_REMOVE_BY_ID => return Ok(ctl::rule_remove_by_id::RuleRemoveById::new(s).map(other)),
+            sym::ACTION_CTL_RULE_REMOVE_BY_TAG => {
+                return Ok(ctl::rule_remove_by_tag::RuleRemoveByTag::new(s).map(other));
+            }
             sym::ACTION_CTL_RULE_REMOVE_TARGET_BY_ID => {
-                other(Box::new(ctl::rule_remove_target_by_id::RuleRemoveTargetById::new(s)))
+                return Ok(ctl::rule_remove_target_by_id::RuleRemoveTargetById::new(s).map(other));
             }
             sym::ACTION_CTL_RULE_REMOVE_TARGET_BY_TAG => {
-                other(Box::new(ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag::new(s)))
+                return Ok(ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag::new(s).map(other));
             }
-            sym::ACTION_DENY => other(Box::new(disruptive::deny::Deny::new(s))),
+            sym::ACTION_DENY => other(disruptive::deny::Deny::new(s)),
             sym::ACTION_DEPRECATE_VAR => return Self::action_not_supported(driver, "DeprecateVar", at0),
-            sym::ACTION_DROP => other(Box::new(disruptive::drop::Drop::new(s))),
-            sym::ACTION_EXEC => other(Box::new(actions::exec::Exec::new(s))),
-            sym::ACTION_ID => other(Box::new(actions::rule_id::RuleId::new(s))),
-            sym::ACTION_LOG => other(Box::new(actions::log::Log::new(s))),
-            sym::ACTION_MATURITY => other(Box::new(actions::maturity::Maturity::new(s))),
+            sym::ACTION_DROP => other(disruptive::drop::Drop::new(s)),
+            sym::ACTION_EXEC => return Ok(actions::exec::Exec::new(s).map(other)),
+            sym::ACTION_ID => return Ok(actions::rule_id::RuleId::new(s).map(other)),
+            sym::ACTION_LOG => other(actions::log::Log::new(s)),
+            sym::ACTION_MATURITY => return Ok(actions::maturity::Maturity::new(s).map(other)),
             sym::ACTION_MULTI_MATCH => {
                 ParsedAction::Action(RuleAction::MultiMatch(actions::multi_match::MultiMatch::new(s)))
             }
-            sym::ACTION_NO_AUDIT_LOG => other(Box::new(actions::no_audit_log::NoAuditLog::new(s))),
-            sym::ACTION_NO_LOG => other(Box::new(actions::no_log::NoLog::new(s))),
-            sym::ACTION_PASS => other(Box::new(disruptive::pass::Pass::new(s))),
+            sym::ACTION_NO_AUDIT_LOG => other(actions::no_audit_log::NoAuditLog::new(s)),
+            sym::ACTION_NO_LOG => other(actions::no_log::NoLog::new(s)),
+            sym::ACTION_PASS => other(disruptive::pass::Pass::new(s)),
             sym::ACTION_PAUSE => return Self::action_not_supported(driver, "Pause", at0),
-            sym::ACTION_PHASE => ParsedAction::Action(RuleAction::Phase(actions::phase::Phase::new(s))),
+            sym::ACTION_PHASE => {
+                return Ok(actions::phase::Phase::new(s).map(|a| ParsedAction::Action(RuleAction::Phase(a))));
+            }
             sym::ACTION_PREPEND => return Self::action_not_supported(driver, "Prepend", at0),
             sym::ACTION_PROXY => return Self::action_not_supported(driver, "Proxy", at0),
-            sym::ACTION_REV => other(Box::new(actions::rev::Rev::new(s))),
+            sym::ACTION_REV => other(actions::rev::Rev::new(s)),
             sym::ACTION_SANITISE_ARG => return Self::action_not_supported(driver, "SanitiseArg", at0),
             sym::ACTION_SANITISE_MATCHED => return Self::action_not_supported(driver, "SanitiseMatched", at0),
             sym::ACTION_SANITISE_MATCHED_BYTES => {
@@ -1635,12 +1631,14 @@ impl SeclangParser {
             sym::ACTION_SANITISE_RESPONSE_HEADER => {
                 return Self::action_not_supported(driver, "SanitiseResponseHeader", at0);
             }
-            sym::ACTION_SEVERITY => ParsedAction::Action(RuleAction::Severity(actions::severity::Severity::new(s))),
-            sym::ACTION_SKIP => other(Box::new(actions::skip::Skip::new(s))),
-            sym::ACTION_SKIP_AFTER => other(Box::new(actions::skip_after::SkipAfter::new(s))),
-            sym::ACTION_STATUS => other(Box::new(data::status::Status::new(s))),
-            sym::ACTION_VER => other(Box::new(actions::ver::Ver::new(s))),
-            sym::ACTION_XMLNS => other(Box::new(actions::xmlns::XmlNS::new(s))),
+            sym::ACTION_SEVERITY => {
+                return Ok(actions::severity::Severity::new(s).map(|a| ParsedAction::Action(RuleAction::Severity(a))));
+            }
+            sym::ACTION_SKIP => return Ok(actions::skip::Skip::new(s).map(other)),
+            sym::ACTION_SKIP_AFTER => other(actions::skip_after::SkipAfter::new(s)),
+            sym::ACTION_STATUS => return Ok(data::status::Status::new(s).map(other)),
+            sym::ACTION_VER => other(actions::ver::Ver::new(s)),
+            sym::ACTION_XMLNS => return Ok(actions::xmlns::XmlNS::new(s).map(other)),
             sym::ACTION_TRANSFORMATION_PARITY_ZERO_7_BIT => T(Transformation::new(TK::ParityZero7bit, s)),
             sym::ACTION_TRANSFORMATION_PARITY_ODD_7_BIT => T(Transformation::new(TK::ParityOdd7bit, s)),
             sym::ACTION_TRANSFORMATION_PARITY_EVEN_7_BIT => T(Transformation::new(TK::ParityEven7bit, s)),
@@ -1678,7 +1676,7 @@ impl SeclangParser {
             sym::ACTION_TRANSFORMATION_REMOVE_COMMENTS => T(Transformation::new(TK::RemoveComments, s)),
             sym::ACTION_TRANSFORMATION_REPLACE_COMMENTS => T(Transformation::new(TK::ReplaceComments, s)),
             _ => return Err(Flow::Error),
-        })
+        }))
     }
 
     /// ```text

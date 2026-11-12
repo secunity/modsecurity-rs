@@ -3,14 +3,14 @@
 //! `phase:N` (or `request`/`response`/`logging`) — the phase in which the
 //! rule runs (configuration time).
 
-use crate::actions::action::{Action, ActionBase, Kind};
+use crate::actions::action::{Action, Kind, name_and_payload};
 use crate::modsecurity::Phases;
 use crate::rule_with_actions::RuleWithActions;
 use crate::utils::string::stoi;
 
 #[derive(Debug)]
 pub struct Phase {
-    pub base: ActionBase,
+    name: String,
     /// The internal phase (`Phases` value).
     pub phase: i32,
     /// The SecLang phase number (0..5).
@@ -18,53 +18,40 @@ pub struct Phase {
 }
 
 impl Phase {
-    pub fn new(action: &str) -> Self {
-        Phase { base: ActionBase::with_kind(action, Kind::ConfigurationKind), phase: 0, sec_rules_phase: 0 }
+    /// The payload is a phase number (0..5) or `request`, `response` or
+    /// `logging`.
+    pub fn new(action: &str) -> Result<Self, String> {
+        let (name, payload) = name_and_payload(action);
+        // `std::stoi` throws for non numbers and for values out of the
+        // `int` range.
+        let (phase, sec_rules_phase) = match stoi(payload.as_bytes()).and_then(|v| i32::try_from(v).ok()) {
+            Some(0) => (Phases::ConnectionPhase as i32, 0),
+            Some(1) => (Phases::RequestHeadersPhase as i32, 1),
+            Some(2) => (Phases::RequestBodyPhase as i32, 2),
+            Some(3) => (Phases::ResponseHeadersPhase as i32, 3),
+            Some(4) => (Phases::ResponseBodyPhase as i32, 4),
+            Some(5) => (Phases::LoggingPhase as i32, 5),
+            Some(_) => return Err(format!("Unknown phase: {}", payload)),
+            None => match payload.to_ascii_lowercase().as_str() {
+                "request" => (Phases::RequestBodyPhase as i32, 2),
+                "response" => (Phases::ResponseBodyPhase as i32, 4),
+                "logging" => (Phases::LoggingPhase as i32, 5),
+                // Quirk kept from C++: an unknown name is not reported and
+                // leaves the phase at -1.
+                _ => (-1, 0),
+            },
+        };
+        Ok(Phase { name: name.to_string(), phase, sec_rules_phase })
     }
 }
 
 impl Action for Phase {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
-    fn init(&mut self) -> Result<(), String> {
-        let a = self.base.parser_payload.to_ascii_lowercase();
-        self.phase = -1;
-
-        // `std::stoi` throws for non numbers and for values out of the
-        // `int` range.
-        match stoi(self.base.parser_payload.as_bytes()).and_then(|v| i32::try_from(v).ok()) {
-            Some(n) => {
-                let (phase, sec_rules_phase) = match n {
-                    0 => (Phases::ConnectionPhase, 0),
-                    1 => (Phases::RequestHeadersPhase, 1),
-                    2 => (Phases::RequestBodyPhase, 2),
-                    3 => (Phases::ResponseHeadersPhase, 3),
-                    4 => (Phases::ResponseBodyPhase, 4),
-                    5 => (Phases::LoggingPhase, 5),
-                    _ => {
-                        self.phase = n;
-                        return Err(format!("Unknown phase: {}", self.base.parser_payload));
-                    }
-                };
-                self.phase = phase as i32;
-                self.sec_rules_phase = sec_rules_phase;
-            }
-            None => {
-                // Quirk kept from C++: an unknown name is not reported and
-                // leaves the phase at -1.
-                if a == "request" {
-                    self.phase = Phases::RequestBodyPhase as i32;
-                    self.sec_rules_phase = 2;
-                } else if a == "response" {
-                    self.phase = Phases::ResponseBodyPhase as i32;
-                    self.sec_rules_phase = 4;
-                } else if a == "logging" {
-                    self.phase = Phases::LoggingPhase as i32;
-                    self.sec_rules_phase = 5;
-                }
-            }
-        }
-        Ok(())
+    fn kind(&self) -> Kind {
+        Kind::Configuration
     }
 
     fn configure(&self, rule: &mut RuleWithActions) {
@@ -78,8 +65,7 @@ mod tests {
     use crate::actions::block::test_support::{RuleAction, rule};
 
     fn phase(p: &str) -> Result<(i32, i32), String> {
-        let mut a = Phase::new(&format!("phase:{}", p));
-        a.init()?;
+        let a = Phase::new(&format!("phase:{}", p))?;
         let r = (a.phase, a.sec_rules_phase);
         assert_eq!(rule(vec![RuleAction::Phase(a)]).get_phase(), r.0);
         Ok(r)

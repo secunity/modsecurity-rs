@@ -2,7 +2,7 @@
 //!
 //! `skip:N` — skips the next N rules (or chains) when the rule matches.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_and_payload};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -10,28 +10,24 @@ use crate::utils::string::stoi;
 
 #[derive(Debug)]
 pub struct Skip {
-    pub base: ActionBase,
-    pub skip_next: i32,
+    name: String,
+    skip_next: i32,
 }
 
 impl Skip {
-    pub fn new(action: &str) -> Self {
-        Skip { base: ActionBase::new(action), skip_next: 0 }
+    pub fn new(action: &str) -> Result<Self, String> {
+        let (name, payload) = name_and_payload(action);
+        // `std::stoi`: no digits or out of `int` range -> error.
+        let skip_next = stoi(payload.as_bytes())
+            .and_then(|v| i32::try_from(v).ok())
+            .ok_or_else(|| format!("Skip: The input \"{}\" is not a number.", payload))?;
+        Ok(Skip { name: name.to_string(), skip_next })
     }
 }
 
 impl Action for Skip {
-    crate::action_base_accessors!();
-
-    fn init(&mut self) -> Result<(), String> {
-        // `std::stoi`: no digits or out of `int` range -> error.
-        match stoi(self.base.parser_payload.as_bytes()).and_then(|v| i32::try_from(v).ok()) {
-            Some(n) => {
-                self.skip_next = n;
-                Ok(())
-            }
-            None => Err(format!("Skip: The input \"{}\" is not a number.", self.base.parser_payload)),
-        }
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
@@ -49,14 +45,13 @@ mod tests {
 
     #[test]
     fn skip_and_skip_after() {
-        assert_eq!(Skip::new("skip:a").init(), Err("Skip: The input \"a\" is not a number.".to_string()));
+        assert_eq!(Skip::new("skip:a").unwrap_err(), "Skip: The input \"a\" is not a number.");
         let ms = ModSecurity::new();
         let rules = rules();
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
-        let mut s = Skip::new("skip:2");
-        s.init().unwrap();
+        let s = Skip::new("skip:2").unwrap();
         s.evaluate(&r, &mut t, &mut rm);
         assert_eq!(t.skip_next, 2);
         assert!(has_log(&t, "Skipping the next 2 rules."));

@@ -4,18 +4,24 @@
 
 use std::ffi::{CStr, c_char};
 
-use crate::actions::action::{Action, ActionBase, Kind};
+use crate::actions::action::{Action, Kind, name_and_payload};
 use crate::rule_with_actions::RuleWithActions;
 
 #[derive(Debug)]
 pub struct RuleId {
-    pub base: ActionBase,
+    name: String,
     rule_id: f64,
 }
 
 impl RuleId {
-    pub fn new(action: &str) -> Self {
-        RuleId { base: ActionBase::with_kind(action, Kind::ConfigurationKind), rule_id: 0.0 }
+    pub fn new(action: &str) -> Result<Self, String> {
+        let (name, a) = name_and_payload(action);
+        // `std::stod`; whatever it accepts must also print back as the very
+        // same text, so a stricter parser yields the same verdicts.
+        match a.parse::<f64>() {
+            Ok(rule_id) if a == format_g40(rule_id) && rule_id >= 0.0 => Ok(RuleId { name: name.to_string(), rule_id }),
+            _ => Err(format!("The input \"{}\" does not seems to be a valid rule id.", a)),
+        }
     }
 }
 
@@ -32,21 +38,12 @@ fn format_g40(d: f64) -> String {
 }
 
 impl Action for RuleId {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
-    fn init(&mut self) -> Result<(), String> {
-        let a = &self.base.parser_payload;
-        // `std::stod`; whatever it accepts must also print back as the very
-        // same text, so a stricter parser yields the same verdicts.
-        let Ok(v) = a.parse::<f64>() else {
-            self.rule_id = 0.0;
-            return Err(format!("The input \"{}\" does not seems to be a valid rule id.", a));
-        };
-        self.rule_id = v;
-        if *a != format_g40(v) || v < 0.0 {
-            return Err(format!("The input \"{}\" does not seems to be a valid rule id.", a));
-        }
-        Ok(())
+    fn kind(&self) -> Kind {
+        Kind::Configuration
     }
 
     fn configure(&self, rule: &mut RuleWithActions) {
@@ -60,8 +57,7 @@ mod tests {
     use crate::actions::block::test_support::{RuleAction, rule};
 
     fn id(p: &str) -> Result<i64, String> {
-        let mut a = RuleId::new(&format!("id:{}", p));
-        a.init()?;
+        let a = RuleId::new(&format!("id:{}", p))?;
         Ok(rule(vec![RuleAction::Other(Box::new(a))]).rule_id)
     }
 

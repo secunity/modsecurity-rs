@@ -2,24 +2,26 @@
 //!
 //! `drop` — meant to close the connection; executes `deny` instead.
 
-use crate::actions::action::{Action, ActionBase};
+use crate::actions::action::{Action, name_of};
 use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, RuleMessage};
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct Drop {
-    pub base: ActionBase,
+    name: String,
 }
 
 impl Drop {
     pub fn new(action: &str) -> Self {
-        Drop { base: ActionBase::new(action) }
+        Drop { name: name_of(action) }
     }
 }
 
 impl Action for Drop {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn is_disruptive(&self) -> bool {
         true

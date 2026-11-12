@@ -85,17 +85,17 @@ impl RulesExceptions {
     /// `loadUpdateActionById`
     pub fn load_update_action_by_id(&mut self, id: f64, actions: Vec<Box<dyn Action>>) {
         for a in actions {
-            match a.action_kind() {
-                Kind::ConfigurationKind => {
+            match a.kind() {
+                Kind::Configuration => {
                     println!(
                         "General failure, action: {} has not expected to be used with UpdateActionByID.",
                         a.name()
                     );
                 }
-                Kind::RunTimeBeforeMatchAttemptKind => {
+                Kind::RunTimeBeforeMatchAttempt => {
                     self.action_pre_update_target_by_id.emplace(id, Arc::from(a));
                 }
-                Kind::RunTimeOnlyIfMatchKind => {
+                Kind::RunTimeOnlyIfMatch => {
                     self.action_pos_update_target_by_id.emplace(id, Arc::from(a));
                 }
             }

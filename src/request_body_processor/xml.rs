@@ -804,9 +804,7 @@ mod tests {
     fn xpath(t: &Transaction<'_>, expr: &str, ns: Option<(&str, &str)>) -> Vec<String> {
         let mut acts: Vec<RuleAction> = Vec::new();
         if let Some((scope, href)) = ns {
-            let mut x = XmlNS::new("xmlns");
-            x.scope = scope.to_string();
-            x.href = href.to_string();
+            let x = XmlNS::new(&format!("xmlns:{}={}", scope, href)).unwrap();
             acts.push(RuleAction::Other(Box::new(x)));
         }
         let rule = RuleWithActions::new(Some(acts), None, "f", 1, RuleWithActionsKind::Unconditional);

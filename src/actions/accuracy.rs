@@ -2,34 +2,34 @@
 //!
 //! `accuracy:N` — the accuracy level of the rule (configuration time).
 
-use crate::actions::action::{Action, ActionBase, Kind};
+use crate::actions::action::{Action, Kind, name_and_payload};
 use crate::rule_with_actions::RuleWithActions;
 use crate::utils::string::stoi;
 
 #[derive(Debug)]
 pub struct Accuracy {
-    pub base: ActionBase,
+    name: String,
     accuracy: i32,
 }
 
 impl Accuracy {
-    pub fn new(action: &str) -> Self {
-        Accuracy { base: ActionBase::with_kind(action, Kind::ConfigurationKind), accuracy: 0 }
+    pub fn new(action: &str) -> Result<Self, String> {
+        let (name, payload) = name_and_payload(action);
+        // `std::stoi`: no digits or out of `int` range -> error.
+        let accuracy = stoi(payload.as_bytes())
+            .and_then(|v| i32::try_from(v).ok())
+            .ok_or_else(|| format!("Accuracy: The input \"{}\" is not a number.", payload))?;
+        Ok(Accuracy { name: name.to_string(), accuracy })
     }
 }
 
 impl Action for Accuracy {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
 
-    fn init(&mut self) -> Result<(), String> {
-        // `std::stoi`: no digits or out of `int` range -> error.
-        match stoi(self.base.parser_payload.as_bytes()).and_then(|v| i32::try_from(v).ok()) {
-            Some(a) => {
-                self.accuracy = a;
-                Ok(())
-            }
-            None => Err(format!("Accuracy: The input \"{}\" is not a number.", self.base.parser_payload)),
-        }
+    fn kind(&self) -> Kind {
+        Kind::Configuration
     }
 
     fn configure(&self, rule: &mut RuleWithActions) {
@@ -49,15 +49,15 @@ mod tests {
     /// Configuration actions: accuracy, maturity, rev, ver, chain.
     #[test]
     fn configuration_actions() {
-        let mut a = Accuracy::new("accuracy:'8'");
-        let mut m = Maturity::new("maturity:9");
-        let mut rev = Rev::new("rev:'2.1.3'");
-        let mut ver = Ver::new("ver:'CRS/3'");
-        let mut c = Chain::new("chain");
-        for x in [&mut a as &mut dyn Action, &mut m, &mut rev, &mut ver, &mut c] {
-            assert_eq!(x.action_kind(), Kind::ConfigurationKind);
-            x.init().unwrap();
+        let a = Accuracy::new("accuracy:'8'").unwrap();
+        let m = Maturity::new("maturity:9").unwrap();
+        let rev = Rev::new("rev:'2.1.3'");
+        let ver = Ver::new("ver:'CRS/3'");
+        let c = Chain::new("chain");
+        for x in [&a as &dyn Action, &m, &rev, &ver, &c] {
+            assert_eq!(x.kind(), Kind::Configuration);
         }
+        assert_eq!((a.name(), rev.name(), c.name()), ("accuracy", "rev", "chain"));
         let r = rule(vec![
             RuleAction::Other(Box::new(a)),
             RuleAction::Other(Box::new(m)),
@@ -71,7 +71,7 @@ mod tests {
         assert_eq!(r.ver, "CRS/3");
         assert!(r.is_chained());
 
-        assert_eq!(Accuracy::new("accuracy:x").init(), Err("Accuracy: The input \"x\" is not a number.".to_string()));
-        assert_eq!(Maturity::new("maturity:").init(), Err("Maturity: The input \"\" is not a number.".to_string()));
+        assert_eq!(Accuracy::new("accuracy:x").unwrap_err(), "Accuracy: The input \"x\" is not a number.");
+        assert_eq!(Maturity::new("maturity:").unwrap_err(), "Maturity: The input \"\" is not a number.");
     }
 }

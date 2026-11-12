@@ -2,24 +2,32 @@
 //!
 //! `ver:'...'` — the rule set version (configuration time).
 
-use crate::actions::action::{Action, ActionBase, Kind};
+use crate::actions::action::{Action, Kind, name_and_payload};
 use crate::rule_with_actions::RuleWithActions;
 
 #[derive(Debug)]
 pub struct Ver {
-    pub base: ActionBase,
+    name: String,
+    ver: String,
 }
 
 impl Ver {
     pub fn new(action: &str) -> Self {
-        Ver { base: ActionBase::with_kind(action, Kind::ConfigurationKind) }
+        let (name, ver) = name_and_payload(action);
+        Ver { name: name.to_string(), ver: ver.to_string() }
     }
 }
 
 impl Action for Ver {
-    crate::action_base_accessors!();
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn kind(&self) -> Kind {
+        Kind::Configuration
+    }
 
     fn configure(&self, rule: &mut RuleWithActions) {
-        rule.ver = self.base.parser_payload.clone();
+        rule.ver.clone_from(&self.ver);
     }
 }
