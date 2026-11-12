@@ -2422,7 +2422,6 @@ mod regression_dump {
         use crate::operators::operator::Operator;
         use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
         use crate::run_time_string::RunTimeString;
-        use crate::variables::variable::Variable;
 
         for l in lines {
             let Some(rest) = l.strip_prefix("SecRule XML") else {
@@ -2441,7 +2440,13 @@ mod regression_dump {
             }
             let rule = RuleWithActions::new(Some(acts), None, "x", 1, RuleWithActionsKind::Unconditional);
             if target != "XML" {
-                let v = crate::variables::xml::Xml::new(&target);
+                let v = crate::variables::new_variable(
+                    "XML",
+                    crate::variables::VariableSelector::DictElement(
+                        target.strip_prefix("XML:").unwrap_or(&target).to_string(),
+                    ),
+                )
+                .unwrap();
                 let mut values = Vec::new();
                 v.evaluate(t, Some(&rule), &mut values);
                 for x in values {

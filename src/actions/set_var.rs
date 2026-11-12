@@ -29,12 +29,12 @@ pub enum SetVarOperation {
 #[derive(Debug)]
 pub struct SetVar {
     pub operation: SetVarOperation,
-    pub variable: Box<dyn Variable>,
+    pub variable: Variable,
     pub string: Option<RunTimeString>,
 }
 
 impl SetVar {
-    pub fn new(operation: SetVarOperation, variable: Box<dyn Variable>, predicate: Option<RunTimeString>) -> Self {
+    pub fn new(operation: SetVarOperation, variable: Variable, predicate: Option<RunTimeString>) -> Self {
         SetVar { operation, variable, string: predicate }
     }
 }
@@ -116,7 +116,7 @@ mod tests {
     use crate::modsecurity::ModSecurity;
 
     fn setvar(op: SetVarOperation, name: &str, pre: Option<&str>) -> SetVar {
-        SetVar::new(op, Box::new(TestTx::new(name)), pre.map(rts))
+        SetVar::new(op, tx(name), pre.map(rts))
     }
 
     #[test]

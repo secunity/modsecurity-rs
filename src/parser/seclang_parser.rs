@@ -30,8 +30,8 @@ use crate::rules_set_properties::{
 use crate::run_time_string::RunTimeString;
 use crate::utils::string::{atoi, remove_brackets_if_needed, ssplit};
 use crate::utils::system::find_resource;
-use crate::variables::variable::{Variable, VariableModificatorCount, VariableModificatorExclusion};
-use crate::variables::{VariableSelector, new_variable, xml};
+use crate::variables::variable::Variable;
+use crate::variables::{VariableSelector, new_variable};
 
 // ---------------------------------------------------------------------------
 // location.hh
@@ -159,9 +159,9 @@ enum Value {
     Str(Vec<u8>),
     Operator(RuleOperator),
     RunTimeString(RunTimeString),
-    Variable(Box<dyn Variable>),
+    Variable(Variable),
     Action(ActResult),
-    Variables(Vec<Box<dyn Variable>>),
+    Variables(Vec<Variable>),
     Actions(Vec<ParsedAction>),
 }
 
@@ -206,7 +206,7 @@ impl StackEntry {
         }
     }
 
-    fn variable(&mut self) -> Option<Box<dyn Variable>> {
+    fn variable(&mut self) -> Option<Variable> {
         match self.take() {
             Value::Variable(v) => Some(v),
             _ => None,
@@ -220,7 +220,7 @@ impl StackEntry {
         }
     }
 
-    fn variables(&mut self) -> Vec<Box<dyn Variable>> {
+    fn variables(&mut self) -> Vec<Variable> {
         match self.take() {
             Value::Variables(v) => v,
             _ => Vec::new(),
@@ -1372,10 +1372,10 @@ impl SeclangParser {
     /// `variables: variables_pre_process`: removes the excluded variables
     /// (`!ARGS:foo`) from the list, recording their keys as exclusions of
     /// the variables of the same collection.
-    fn variables(mut original_list: Vec<Box<dyn Variable>>) -> Vec<Box<dyn Variable>> {
-        let mut new_list: Vec<Box<dyn Variable>> = Vec::new();
-        let mut new_new_list: Vec<Box<dyn Variable>> = Vec::new();
-        let mut exclusion_vars: Vec<Box<dyn Variable>> = Vec::new();
+    fn variables(mut original_list: Vec<Variable>) -> Vec<Variable> {
+        let mut new_list: Vec<Variable> = Vec::new();
+        let mut new_new_list: Vec<Variable> = Vec::new();
+        let mut exclusion_vars: Vec<Variable> = Vec::new();
         while let Some(var) = original_list.pop() {
             if var.exclusion_base().is_some() {
                 exclusion_vars.push(var);
@@ -1387,11 +1387,11 @@ impl SeclangParser {
         while let Some(mut var) = new_list.pop() {
             let mut do_not_add = false;
             for i in &exclusion_vars {
-                if var.same_as(i.as_ref()) {
+                if var.same_as(i) {
                     do_not_add = true;
                 }
-                if i.belongs_to_collection(var.as_ref()) {
-                    var.adds_key_exclusion(i.as_ref());
+                if i.belongs_to_collection(&var) {
+                    var.adds_key_exclusion(i);
                 }
             }
             if !do_not_add {
@@ -1410,7 +1410,7 @@ impl SeclangParser {
     ///   | VAR_EXCLUSION var
     ///   | VAR_COUNT var
     /// ```
-    fn variables_may_be_quoted(rhs: &mut [StackEntry]) -> Vec<Box<dyn Variable>> {
+    fn variables_may_be_quoted(rhs: &mut [StackEntry]) -> Vec<Variable> {
         let (mut list, rest) = if rhs[0].kind == nt::VARIABLES_MAY_BE_QUOTED {
             let l = rhs[0].variables();
             (l, &mut rhs[2..])
@@ -1421,9 +1421,9 @@ impl SeclangParser {
         let Some(var) = rest[rest.len() - 1].variable() else {
             return list;
         };
-        let var: Box<dyn Variable> = match modifier {
-            Some(sym::VAR_EXCLUSION) => Box::new(VariableModificatorExclusion::new(var)),
-            Some(sym::VAR_COUNT) => Box::new(VariableModificatorCount::new(var)),
+        let var: Variable = match modifier {
+            Some(sym::VAR_EXCLUSION) => Variable::exclusion(var),
+            Some(sym::VAR_COUNT) => Variable::count(var),
             _ => var,
         };
         list.push(var);
@@ -1431,7 +1431,7 @@ impl SeclangParser {
     }
 
     /// `var:` a variable (rule target or macro).
-    fn var(driver: &mut Driver, rhs: &mut [StackEntry], at0: &Location) -> Result<Box<dyn Variable>, Flow> {
+    fn var(driver: &mut Driver, rhs: &mut [StackEntry], at0: &Location) -> Result<Variable, Flow> {
         let kind = rhs[0].kind;
         let selector = match rhs.get(1).map(|e| e.kind) {
             Some(sym::DICT_ELEMENT) => VariableSelector::DictElement(rhs[1].string()),
@@ -1449,12 +1449,13 @@ impl SeclangParser {
                 Self::new_var(driver, "ENV", selector, at0)
             }
             // XML("XML:" + $2) / XML_NoDictElement()
-            sym::RUN_TIME_VAR_XML => match selector {
-                VariableSelector::DictElement(s) | VariableSelector::Regexp(s) => {
-                    Ok(Box::new(xml::Xml::new(&format!("XML:{}", s))))
-                }
-                _ => Ok(Box::new(xml::XmlNoDictElement::new())),
-            },
+            sym::RUN_TIME_VAR_XML => {
+                let selector = match selector {
+                    VariableSelector::DictElement(s) | VariableSelector::Regexp(s) => VariableSelector::DictElement(s),
+                    _ => VariableSelector::None,
+                };
+                Self::new_var(driver, "XML", selector, at0)
+            }
             // The variables built from the text as written (`new
             // Duration(name)`, `new TimeHour(name)`, ...).
             sym::RUN_TIME_VAR_DUR
@@ -1483,12 +1484,7 @@ impl SeclangParser {
         }
     }
 
-    fn new_var(
-        driver: &mut Driver,
-        name: &str,
-        selector: VariableSelector,
-        at0: &Location,
-    ) -> Result<Box<dyn Variable>, Flow> {
+    fn new_var(driver: &mut Driver, name: &str, selector: VariableSelector, at0: &Location) -> Result<Variable, Flow> {
         match new_variable(name, selector) {
             Some(v) => Ok(v),
             None => {
@@ -1699,9 +1695,11 @@ impl SeclangParser {
             };
             (op, rhs[0].variable(), Some(rhs[2].run_time_string()))
         };
-        let var: Box<dyn Variable> = match var {
+        let var: Variable = match var {
             Some(v) => v,
-            None => Box::new(xml::XmlNoDictElement::new()),
+            // Without a variable C++ would use a null pointer; the `XML`
+            // placeholder stands in (setvar ignores it).
+            None => new_variable("XML", VariableSelector::None).expect("XML is a variable"),
         };
         ParsedAction::Action(RuleAction::SetVar(SetVar::new(op, var, value)))
     }

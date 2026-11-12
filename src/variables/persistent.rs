@@ -7,18 +7,17 @@
 //! compartmentalised with the collection key set by
 //! `initcol`/`setsid`/`setuid` and the `SecWebAppId`.
 //!
-//! The C++ code has one set of four classes per collection; they only
-//! differ by the collection they use and two quirks, both kept (see
+//! The C++ code has one set of four classes per collection; here the
+//! collection is a value and the variables are built by
+//! [`Persistent::variable`]. Two quirks of the C++ classes are kept (see
 //! [`Persistent::regex_name`] and [`Persistent::del`]).
 
 use crate::collection::collection::Collection;
-use crate::rule_with_actions::RuleWithActions;
-use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
 use crate::variable_value::VariableValue;
 use crate::variables::VariableSelector;
-use crate::variables::variable::{Variable, VariableBase, VariableRegex};
+use crate::variables::variable::{CollectionKey, KeyExclusions, Source, Variable, regex_name};
 
 /// One of the persistent collections.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,150 +87,41 @@ impl Persistent {
     }
 
     /// `resolveMultiMatches(var, collectionKey, webAppId)`
-    fn resolve_multi_matches(self, t: &Transaction<'_>, var: &[u8], l: &mut Vec<VariableValue>, base: &VariableBase) {
+    pub(crate) fn resolve_multi_matches(
+        self,
+        t: &Transaction<'_>,
+        var: &[u8],
+        l: &mut Vec<VariableValue>,
+        ke: &KeyExclusions,
+    ) {
         let (col, key) = self.of(t);
-        col.resolve_multi_matches_c(var, key, Some(t.rules.properties.web_app_id()), l, &base.key_exclusion);
+        col.resolve_multi_matches_c(var, key, Some(t.rules.properties.web_app_id()), l, ke);
     }
 
-    /// The variable of this collection with `selector`.
-    pub fn variable(self, selector: VariableSelector) -> Box<dyn Variable> {
-        match selector {
-            VariableSelector::None => Box::new(PersistentNoDictElement::new(self)),
-            VariableSelector::DictElement(e) => Box::new(PersistentDictElement::new(self, &e)),
-            VariableSelector::Regexp(r) => Box::new(PersistentDictElementRegexp::new(self, &r)),
-            VariableSelector::Dynamic(m) => Box::new(PersistentDynamicElement::new(self, m)),
-        }
+    /// `COL:/regex/`: the pattern is compiled per evaluation, prefixed
+    /// with the compartments, as in C++.
+    pub(crate) fn resolve_regular_expression(
+        self,
+        t: &Transaction<'_>,
+        pattern: &[u8],
+        l: &mut Vec<VariableValue>,
+        ke: &KeyExclusions,
+    ) {
+        let (col, key) = self.of(t);
+        col.resolve_regular_expression_c(pattern, key, Some(t.rules.properties.web_app_id()), l, ke);
     }
-}
 
-/// `*_NoDictElement`: `COL`.
-#[derive(Debug)]
-pub struct PersistentNoDictElement {
-    pub base: VariableBase,
-    collection: Persistent,
-}
-
-impl PersistentNoDictElement {
-    pub fn new(collection: Persistent) -> Self {
-        PersistentNoDictElement { base: VariableBase::new(collection.name()), collection }
-    }
-}
-
-impl Variable for PersistentNoDictElement {
-    fn base(&self) -> &VariableBase {
-        &self.base
-    }
-    fn base_mut(&mut self) -> &mut VariableBase {
-        &mut self.base
-    }
-    fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-        // The key is `m_name`, which is empty for these variables.
-        self.collection.resolve_multi_matches(t, self.base.name.as_bytes(), l, &self.base);
-    }
-}
-
-/// `*_DictElement`: `COL:key`.
-#[derive(Debug)]
-pub struct PersistentDictElement {
-    pub base: VariableBase,
-    collection: Persistent,
-}
-
-impl PersistentDictElement {
-    pub fn new(collection: Persistent, dict_element: &str) -> Self {
-        PersistentDictElement {
-            base: VariableBase::new(&format!("{}:{}", collection.name(), dict_element)),
-            collection,
-        }
-    }
-}
-
-impl Variable for PersistentDictElement {
-    fn base(&self) -> &VariableBase {
-        &self.base
-    }
-    fn base_mut(&mut self) -> &mut VariableBase {
-        &mut self.base
-    }
-    fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-        self.collection.resolve_multi_matches(t, self.base.name.as_bytes(), l, &self.base);
-    }
-}
-
-/// `*_DictElementRegexp`: `COL:/regex/`.
-#[derive(Debug)]
-pub struct PersistentDictElementRegexp {
-    pub base: VariableRegex,
-    collection: Persistent,
-}
-
-impl PersistentDictElementRegexp {
-    pub fn new(collection: Persistent, dict_element: &str) -> Self {
-        PersistentDictElementRegexp { base: VariableRegex::new(collection.regex_name(), dict_element), collection }
-    }
-}
-
-impl Variable for PersistentDictElementRegexp {
-    fn base(&self) -> &VariableBase {
-        &self.base.base
-    }
-    fn base_mut(&mut self) -> &mut VariableBase {
-        &mut self.base.base
-    }
-    fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-        // The pattern is compiled per evaluation, prefixed with the
-        // compartments, as in C++.
-        let (col, key) = self.collection.of(t);
-        col.resolve_regular_expression_c(
-            self.base.regex.as_bytes(),
-            key,
-            Some(t.rules.properties.web_app_id()),
-            l,
-            &self.base.base.key_exclusion,
-        );
-    }
-    fn regex(&self) -> Option<&Regex> {
-        Some(&self.base.r)
-    }
-}
-
-/// `*_DynamicElement`: `COL:%{...}`, the key is a macro expanded at run
-/// time.
-#[derive(Debug)]
-pub struct PersistentDynamicElement {
-    pub base: VariableBase,
-    pub string: RunTimeString,
-    collection: Persistent,
-}
-
-impl PersistentDynamicElement {
-    pub fn new(collection: Persistent, dict_element: RunTimeString) -> Self {
-        PersistentDynamicElement {
-            base: VariableBase::new(&format!("{}:dynamic", collection.name())),
-            string: dict_element,
-            collection,
-        }
-    }
-}
-
-impl Variable for PersistentDynamicElement {
-    fn base(&self) -> &VariableBase {
-        &self.base
-    }
-    fn base_mut(&mut self) -> &mut VariableBase {
-        &mut self.base
-    }
-    fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-        let string = self.string.evaluate(Some(t));
-        self.collection.resolve_multi_matches(t, &string, l, &self.base);
-    }
-    fn dynamic_name(&self) -> Option<&RunTimeString> {
-        Some(&self.string)
-    }
-    fn dynamic_del(&self, t: &Transaction<'_>, key: &[u8]) {
-        self.collection.del(t, key);
-    }
-    fn dynamic_store_or_update_first(&self, t: &Transaction<'_>, key: &[u8], value: &[u8]) {
-        self.collection.store_or_update_first(t, key, value);
+    /// The variable of this collection with `selector`: `COL`, `COL:key`,
+    /// `COL:/regex/` or `COL:%{macro}`.
+    pub fn variable(self, selector: VariableSelector) -> Variable {
+        let (name, key) = match selector {
+            VariableSelector::None => (self.name().to_string(), CollectionKey::All),
+            VariableSelector::DictElement(e) => (format!("{}:{}", self.name(), e), CollectionKey::Key),
+            VariableSelector::Regexp(r) => {
+                (regex_name(self.regex_name(), &r), CollectionKey::Regex(Regex::new_case(&r, true), r))
+            }
+            VariableSelector::Dynamic(m) => (format!("{}:dynamic", self.name()), CollectionKey::Dynamic(m)),
+        };
+        Variable::new(&name, Source::Persistent(self, key))
     }
 }

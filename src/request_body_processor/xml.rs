@@ -793,7 +793,7 @@ mod tests {
     use crate::run_time_string::RunTimeString;
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::variable_value::VariableValue;
-    use crate::variables::variable::Variable;
+    use crate::variables::{VariableSelector, new_variable};
 
     const DATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test/test-cases/data/");
 
@@ -808,7 +808,7 @@ mod tests {
             acts.push(RuleAction::Other(Box::new(x)));
         }
         let rule = RuleWithActions::new(Some(acts), None, "f", 1, RuleWithActionsKind::Unconditional);
-        let v = crate::variables::xml::Xml::new(&format!("XML:{}", expr));
+        let v = new_variable("XML", VariableSelector::DictElement(expr.to_string())).unwrap();
         let mut l: Vec<VariableValue> = Vec::new();
         v.evaluate(t, Some(&rule), &mut l);
         l.iter()
@@ -837,7 +837,7 @@ mod tests {
 
         // XML (no element) is the whole tree, keyed by its empty name.
         let mut l = Vec::new();
-        crate::variables::xml::XmlNoDictElement::new().evaluate(&t, None, &mut l);
+        new_variable("XML", VariableSelector::None).unwrap().evaluate(&t, None, &mut l);
         assert_eq!(l[0].key(), b"");
         assert_eq!(l[0].value(), b"[XML document tree]");
     }

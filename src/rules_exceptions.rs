@@ -66,9 +66,9 @@ impl<V: Clone> IdMultimap<V> {
 
 #[derive(Debug, Default)]
 pub struct RulesExceptions {
-    pub variable_update_target_by_tag: Vec<(Arc<String>, Arc<dyn Variable>)>,
-    pub variable_update_target_by_msg: Vec<(Arc<String>, Arc<dyn Variable>)>,
-    pub variable_update_target_by_id: IdMultimap<Arc<dyn Variable>>,
+    pub variable_update_target_by_tag: Vec<(Arc<String>, Arc<Variable>)>,
+    pub variable_update_target_by_msg: Vec<(Arc<String>, Arc<Variable>)>,
+    pub variable_update_target_by_id: IdMultimap<Arc<Variable>>,
     pub action_pre_update_target_by_id: IdMultimap<Arc<dyn Action>>,
     pub action_pos_update_target_by_id: IdMultimap<Arc<dyn Action>>,
     pub remove_rule_by_msg: Vec<String>,
@@ -113,21 +113,21 @@ impl RulesExceptions {
     }
 
     /// `loadUpdateTargetByMsg`
-    pub fn load_update_target_by_msg(&mut self, msg: &str, vars: Vec<Box<dyn Variable>>) {
+    pub fn load_update_target_by_msg(&mut self, msg: &str, vars: Vec<Variable>) {
         for v in vars {
             self.variable_update_target_by_msg.push((Arc::new(msg.to_string()), Arc::from(v)));
         }
     }
 
     /// `loadUpdateTargetByTag`
-    pub fn load_update_target_by_tag(&mut self, tag: &str, vars: Vec<Box<dyn Variable>>) {
+    pub fn load_update_target_by_tag(&mut self, tag: &str, vars: Vec<Variable>) {
         for v in vars {
             self.variable_update_target_by_tag.push((Arc::new(tag.to_string()), Arc::from(v)));
         }
     }
 
     /// `loadUpdateTargetById`
-    pub fn load_update_target_by_id(&mut self, id: f64, vars: Vec<Box<dyn Variable>>) {
+    pub fn load_update_target_by_id(&mut self, id: f64, vars: Vec<Variable>) {
         for v in vars {
             self.variable_update_target_by_id.emplace(id, Arc::from(v));
         }

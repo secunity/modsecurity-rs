@@ -51,15 +51,14 @@ impl Action for Block {
 pub(crate) mod test_support {
     use std::sync::Mutex;
 
-    use crate::collection::collection::Collection;
     use crate::debug_log::debug_log::DebugLog;
     pub use crate::rule_with_actions::RuleAction;
     use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;
     use crate::transaction::Transaction;
-    use crate::variable_value::VariableValue;
-    use crate::variables::variable::{Variable, VariableBase};
+    use crate::variables::variable::Variable;
+    use crate::variables::{VariableSelector, new_variable};
 
     /// Debug log that keeps every message (level 9).
     #[derive(Default)]
@@ -121,41 +120,9 @@ pub(crate) mod test_support {
         RunTimeString::from_text(s)
     }
 
-    /// Minimal `Tx_DynamicElement` (`TX:<name>`).
-    #[derive(Debug)]
-    pub struct TestTx {
-        base: VariableBase,
-        string: RunTimeString,
-    }
-
-    impl TestTx {
-        pub fn new(name: &str) -> Self {
-            TestTx { base: VariableBase::new(&format!("TX:{}", name)), string: rts(name) }
-        }
-    }
-
-    impl Variable for TestTx {
-        fn base(&self) -> &VariableBase {
-            &self.base
-        }
-        fn base_mut(&mut self) -> &mut VariableBase {
-            &mut self.base
-        }
-        fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-            let name = self.string.evaluate(Some(t));
-            if let Some(v) = t.collections.tx_collection.resolve_first(&name) {
-                l.push(VariableValue::new(&name, &v));
-            }
-        }
-        fn dynamic_name(&self) -> Option<&RunTimeString> {
-            Some(&self.string)
-        }
-        fn dynamic_del(&self, t: &Transaction<'_>, key: &[u8]) {
-            t.collections.tx_collection.del(key);
-        }
-        fn dynamic_store_or_update_first(&self, t: &Transaction<'_>, key: &[u8], value: &[u8]) {
-            t.collections.tx_collection.store_or_update_first(key, value);
-        }
+    /// `TX:<name>` as a `setvar` target (the key is a macro string).
+    pub fn tx(name: &str) -> Variable {
+        new_variable("TX", VariableSelector::Dynamic(rts(name))).expect("TX is a variable")
     }
 }
 

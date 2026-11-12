@@ -12,12 +12,14 @@ use crate::variables::variable::{Variable, Variables, variables_to_string};
 /// The `SecRule` specific part of a rule: its targets and its operator.
 #[derive(Debug)]
 pub struct RuleWithOperator {
-    pub variables: Vec<Box<dyn Variable>>,
+    pub variables: Vec<Variable>,
     pub operator: RuleOperator,
 }
 
 impl RuleWithOperator {
-    pub fn new(op: RuleOperator, variables: Vec<Box<dyn Variable>>) -> Self {
+    pub fn new(op: RuleOperator, mut variables: Vec<Variable>) -> Self {
+        // The list is final: give back what the parser over-allocated.
+        variables.shrink_to_fit();
         RuleWithOperator { variables, operator: op }
     }
 
@@ -63,7 +65,7 @@ impl RuleWithOperator {
         addition: &mut Variables<'a>,
     ) {
         let ex = &t.rules.properties.exceptions;
-        let mut helper = |v: &'a dyn Variable| match v.exclusion_base() {
+        let mut helper = |v: &'a Variable| match v.exclusion_base() {
             Some(base) => exclusion.push(base),
             None => addition.push(v),
         };
@@ -87,13 +89,12 @@ impl RuleWithOperator {
         &'a self,
         rule: &'a RuleWithActions,
         t: &Transaction<'a>,
-        vars: &mut Vec<&'a dyn Variable>,
+        vars: &mut Vec<&'a Variable>,
         exclusion: &mut Variables<'a>,
     ) {
         let mut addition = Variables::new();
         Self::get_variables_exceptions(rule, t, exclusion, &mut addition);
         for variable in &self.variables {
-            let variable: &dyn Variable = variable.as_ref();
             if exclusion.contains_var(variable) {
                 continue;
             }
@@ -144,7 +145,7 @@ impl RuleWithOperator {
         }
 
         // Only needed for the debug log (C++ builds it unconditionally).
-        let vars_str = || variables_to_string(self.variables.iter().map(|v| v.as_ref()));
+        let vars_str = || variables_to_string(&self.variables);
         if let Some(s) = self.operator.op.param().map(|p| &p.string) {
             if t.debug_enabled(4) {
                 let mut eparam = s.evaluate(Some(t));

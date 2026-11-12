@@ -247,7 +247,7 @@ impl TransactionAnchoredVariables {
 #[derive(Default)]
 pub struct EvalScratch<'a> {
     /// The rule's final list of variables.
-    pub vars: Vec<&'a dyn Variable>,
+    pub vars: Vec<&'a Variable>,
     /// The values of one variable.
     pub e: Vec<VariableValue>,
     /// The transformation results of one value.
@@ -1169,7 +1169,7 @@ impl<'a> Transaction<'a> {
         ss.push(b' ');
         ss.extend_from_slice(&dash_if_empty(Some(self.client_ip_address.as_bytes())));
         ss.push(b' ');
-        let remote_user = crate::variables::remote_user::RemoteUser::compute(self);
+        let remote_user = crate::variables::computed::remote_user_name(self);
         ss.extend_from_slice(&dash_if_empty(Some(&remote_user)));
         ss.push(b' ');
         ss.extend_from_slice(tstr.as_bytes());

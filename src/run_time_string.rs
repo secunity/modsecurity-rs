@@ -12,7 +12,9 @@ use crate::variables::variable::Variable;
 #[derive(Debug)]
 pub enum RunTimeElementHolder {
     String(Vec<u8>),
-    Var(Box<dyn Variable>),
+    /// Boxed: most elements are literals, and a `Variable` is several
+    /// times their size.
+    Var(Box<Variable>),
 }
 
 #[derive(Debug, Default)]
@@ -44,8 +46,8 @@ impl RunTimeString {
     }
 
     /// `appendVar`
-    pub fn append_var(&mut self, var: Box<dyn Variable>) {
-        self.elements.push(RunTimeElementHolder::Var(var));
+    pub fn append_var(&mut self, var: Variable) {
+        self.elements.push(RunTimeElementHolder::Var(Box::new(var)));
         self.contains_macro = true;
     }
 

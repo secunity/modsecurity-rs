@@ -1,214 +1,26 @@
-//! `variables` (mirrors `src/variables/`).
+//! `variables` (C++ `src/variables/`): the targets of rules.
 //!
-//! One module per C++ header/source pair. The C++ `DEFINE_VARIABLE*`
-//! macros are the `define_variable!` / `define_variable_dict!` macros of
-//! [`variable`]; the hand written classes (collections, `RULE`, `ENV`,
-//! `TIME*`, ...) live in their own modules. [`new_variable`] is the part of
-//! the C++ grammar (`var:` in `seclang-parser.yy`) that builds them.
+//! [`variable::Variable`] is a target; [`new_variable`] builds it from its
+//! name in the rule (the `var:` rule of the C++ grammar). The C++ project
+//! has one header per variable, each defining one to three classes with the
+//! `DEFINE_VARIABLE*` macros; here those are rows of the table in
+//! [`new_variable`]. The variables with logic of their own have a module:
+//! the collections ([`persistent`], and `TX` in [`variable`]), [`rule`],
+//! [`env`], [`xml`] and the [`computed`] ones (`TIME*`, `DURATION`, ...).
 
-/// `DEFINE_VARIABLE_DICT(n, N, e)` for the `*_NAMES` variables whose
-/// transaction member is an `AnchoredSetVariableTranslationProxy`
-/// (`ARGS_NAMES`, `ARGS_GET_NAMES`, `ARGS_POST_NAMES`). In C++ the proxy
-/// keeps a pointer to the set variable it translates (`$fount`); here that
-/// source is passed in at resolution time. Generates the same module layout
-/// as `define_variable_dict!`: `n::DictElement`, `n::NoDictElement` and
-/// `n::DictElementRegexp`.
-macro_rules! define_variable_dict_proxy {
-    ($n:ident, $N:literal, $e:ident, $fount:ident) => {
-        #[allow(non_snake_case)]
-        pub mod $n {
-            use $crate::rule_with_actions::RuleWithActions;
-            use $crate::transaction::Transaction;
-            use $crate::variable_value::VariableValue;
-            use $crate::variables::variable::{Variable, VariableBase, VariableDictElement, VariableRegex};
-
-            /// `<n>_DictElement`
-            #[derive(Debug)]
-            pub struct DictElement(pub VariableDictElement);
-
-            impl DictElement {
-                pub fn new(dict_element: &str) -> Self {
-                    DictElement(VariableDictElement::new($N, dict_element))
-                }
-            }
-
-            impl Variable for DictElement {
-                fn base(&self) -> &VariableBase {
-                    &self.0.base
-                }
-                fn base_mut(&mut self) -> &mut VariableBase {
-                    &mut self.0.base
-                }
-                fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-                    t.vars.$e.resolve_key(&t.vars.$fount, self.0.dict_element.as_bytes(), l);
-                }
-            }
-
-            /// `<n>_NoDictElement`
-            #[derive(Debug)]
-            pub struct NoDictElement(pub VariableBase);
-
-            impl NoDictElement {
-                pub fn new() -> Self {
-                    NoDictElement(VariableBase::new($N))
-                }
-            }
-
-            impl Default for NoDictElement {
-                fn default() -> Self {
-                    Self::new()
-                }
-            }
-
-            impl Variable for NoDictElement {
-                fn base(&self) -> &VariableBase {
-                    &self.0
-                }
-                fn base_mut(&mut self) -> &mut VariableBase {
-                    &mut self.0
-                }
-                fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-                    t.vars.$e.resolve_with_exclusions(&t.vars.$fount, l, &self.0.key_exclusion, Some(t));
-                }
-            }
-
-            /// `<n>_DictElementRegexp`
-            #[derive(Debug)]
-            pub struct DictElementRegexp(pub VariableRegex);
-
-            impl DictElementRegexp {
-                pub fn new(regex: &str) -> Self {
-                    DictElementRegexp(VariableRegex::new($N, regex))
-                }
-            }
-
-            impl Variable for DictElementRegexp {
-                fn base(&self) -> &VariableBase {
-                    &self.0.base
-                }
-                fn base_mut(&mut self) -> &mut VariableBase {
-                    &mut self.0.base
-                }
-                fn evaluate(&self, t: &Transaction<'_>, _rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
-                    t.vars.$e.resolve_regular_expression_with_exclusions(
-                        &t.vars.$fount,
-                        &self.0.r,
-                        l,
-                        &self.0.base.key_exclusion,
-                        Some(t),
-                    );
-                }
-                fn regex(&self) -> Option<&$crate::utils::regex::Regex> {
-                    Some(&self.0.r)
-                }
-            }
-        }
-    };
-}
-
-pub mod args;
-pub mod args_combined_size;
-pub mod args_get;
-pub mod args_get_names;
-pub mod args_names;
-pub mod args_post;
-pub mod args_post_names;
-pub mod auth_type;
-pub mod duration;
+pub(crate) mod computed;
 pub mod env;
-pub mod files;
-pub mod files_combined_size;
-pub mod files_names;
-pub mod files_sizes;
-pub mod files_tmp_content;
-pub mod files_tmp_names;
-pub mod full_request;
-pub mod full_request_length;
-pub mod geo;
-pub mod highest_severity;
-pub mod inbound_data_error;
-pub mod matched_var;
-pub mod matched_var_name;
-pub mod matched_vars;
-pub mod matched_vars_names;
-pub mod modsec_build;
-pub mod msc_pcre_error;
-pub mod msc_pcre_limits_exceeded;
-pub mod multipart_boundary_quoted;
-pub mod multipart_boundary_whitespace;
-pub mod multipart_crlf_lf_lines;
-pub mod multipart_data_after;
-pub mod multipart_data_before;
-pub mod multipart_duplicate_part_header;
-pub mod multipart_file_limit_exceeded;
-pub mod multipart_file_name;
-pub mod multipart_file_name_charset;
-pub mod multipart_file_name_language;
-pub mod multipart_header_folding;
-pub mod multipart_invalid_header_folding;
-pub mod multipart_invalid_part;
-pub mod multipart_invalid_quoting;
-pub mod multipart_lf_line;
-pub mod multipart_missing_semicolon;
-pub mod multipart_name;
-pub mod multipart_part_headers;
-pub mod multipart_strict_error;
-pub mod multipart_unmatched_boundary;
-pub mod outbound_data_error;
-pub mod path_info;
 pub mod persistent;
-pub mod query_string;
-pub mod remote_addr;
-pub mod remote_host;
-pub mod remote_port;
-pub mod remote_user;
-pub mod reqbody_error;
-pub mod reqbody_error_msg;
-pub mod reqbody_processor;
-pub mod reqbody_processor_error;
-pub mod reqbody_processor_error_msg;
-pub mod request_base_name;
-pub mod request_body;
-pub mod request_body_length;
-pub mod request_cookies;
-pub mod request_cookies_names;
-pub mod request_file_name;
-pub mod request_headers;
-pub mod request_headers_names;
-pub mod request_line;
-pub mod request_method;
-pub mod request_protocol;
-pub mod request_uri;
-pub mod request_uri_raw;
-pub mod response_body;
-pub mod response_content_length;
-pub mod response_content_type;
-pub mod response_headers;
-pub mod response_headers_names;
-pub mod response_protocol;
-pub mod response_status;
 pub mod rule;
-pub mod server_addr;
-pub mod server_name;
-pub mod server_port;
-pub mod session_id;
-pub mod status;
-pub mod time;
-pub mod time_day;
-pub mod time_epoch;
-pub mod time_hour;
-pub mod time_min;
-pub mod time_mon;
-pub mod time_sec;
-pub mod time_wday;
-pub mod time_year;
-pub mod tx;
-pub mod unique_id;
-pub mod url_encoded_error;
-pub mod user_id;
 pub mod variable;
-pub mod web_app_id;
 pub mod xml;
+
+use crate::anchored_set_variable::AnchoredSetVariable;
+use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
+use crate::anchored_variable::AnchoredVariable;
+use crate::transaction::TransactionAnchoredVariables as Vars;
+use crate::utils::regex::Regex;
+use variable::{CollectionKey, Source, Variable, regex_name};
 
 /// How a variable is selected in a rule target: `ARGS`, `ARGS:foo`,
 /// `ARGS:/regex/` or, for the collections that accept it, a key built from
@@ -236,196 +48,205 @@ pub enum VariableSelector {
 ///
 /// | token(s) | `None` | `DictElement(e)` | `Regexp(r)` | `Dynamic(m)` |
 /// |---|---|---|---|---|
-/// | `ARGS`, `ARGS_GET`, `ARGS_POST`, `ARGS_NAMES`, `ARGS_GET_NAMES`, `ARGS_POST_NAMES`, `FILES`, `FILES_NAMES`, `FILES_SIZES`, `FILES_TMP_CONTENT`, `FILES_TMPNAMES`, `GEO`, `MATCHED_VARS`, `MATCHED_VARS_NAMES`, `MULTIPART_FILENAME`, `MULTIPART_FILENAME_CHARSET`, `MULTIPART_FILENAME_LANGUAGE`, `MULTIPART_NAME`, `MULTIPART_PART_HEADERS`, `REQUEST_COOKIES`, `REQUEST_COOKIES_NAMES`, `REQUEST_HEADERS`, `REQUEST_HEADERS_NAMES`, `RESPONSE_HEADERS`, `RESPONSE_HEADERS_NAMES` | `X::NoDictElement` | `X::DictElement` | `X::DictElementRegexp` | - |
-/// | `RULE` | `RuleNoDictElement` | `RuleDictElement` | `RuleDictElementRegexp` | - |
-/// | `TX`, `IP`, `GLOBAL`, `SESSION`, `USER`, `RESOURCE` | `XNoDictElement` | `XDictElement` | `XDictElementRegexp` | `XDynamicElement` |
-/// | `ENV` | `Env("ENV")` | `Env("ENV:" + e)` | `Env("ENV:" + r)` | - |
-/// | `XML` | `XmlNoDictElement` | `Xml("XML:" + e)` | `Xml("XML:" + r)` | - |
-/// | `DURATION`, `MODSEC_BUILD`, `HIGHEST_SEVERITY`, `REMOTE_USER`, `TIME`, `TIME_DAY`, `TIME_EPOCH`, `TIME_HOUR`, `TIME_MIN`, `TIME_MON`, `TIME_SEC`, `TIME_WDAY`, `TIME_YEAR` | `X(name)` | - | - | - |
-/// | `STATUS`, `STATUS_LINE` | `Status` | - | - | - |
-/// | `MULTIPART_MISSING_SEMICOLON`, `MULTIPART_SEMICOLON_MISSING` | `MultipartMissingSemicolon` | - | - | - |
-/// | `WEBAPPID` | `WebAppId` | - | - | - |
-/// | every other single valued variable (`REQUEST_METHOD`, `UNIQUE_ID`, `SESSIONID`, `USERID`, `REQUEST_FILENAME`, ...) | its `define_variable!` type | - | - | - |
+/// | the multi valued variables (`ARGS`, `REQUEST_HEADERS`, `FILES`, ..., and their `*_NAMES`), `RULE` | all entries | one key | keys matching | - |
+/// | `TX`, `IP`, `GLOBAL`, `SESSION`, `USER`, `RESOURCE` | all entries | one key | keys matching | key from macros |
+/// | `ENV` | all | `ENV:e` | `ENV:r` | - |
+/// | `XML` | the document | `XML:e` (XPath) | `XML:r` (XPath) | - |
+/// | every single valued variable (`REQUEST_METHOD`, `TIME`, `DURATION`, ...) | the value | - | - | - |
 ///
 /// (The `ENV:/regex/` and `XML:/regex/` forms are not regular expressions
 /// in C++ either: the text between the slashes is used as the key.)
-pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Box<dyn variable::Variable>> {
+pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> {
     use VariableSelector as S;
+    use computed::Computed as C;
     use persistent::Persistent;
-    use variable::Variable;
 
-    /// The `DEFINE_VARIABLE_DICT` style variables (module `$m` with the
-    /// three `DictElement` / `NoDictElement` / `DictElementRegexp` types).
-    macro_rules! dict {
-        ($m:path) => {{
-            use $m as m;
-            match selector {
-                S::None => Some(Box::new(m::NoDictElement::new()) as Box<dyn Variable>),
-                S::DictElement(e) => Some(Box::new(m::DictElement::new(&e)) as Box<dyn Variable>),
-                S::Regexp(r) => Some(Box::new(m::DictElementRegexp::new(&r)) as Box<dyn Variable>),
-                S::Dynamic(_) => None,
-            }
-        }};
-    }
-    /// The collections (`X_DictElement`, `X_NoDictElement`,
-    /// `X_DictElementRegexp`, `X_DynamicElement`).
-    macro_rules! collection {
-        ($dict:path, $no:path, $re:path, $dyn:path) => {{
-            match selector {
-                S::None => Some(Box::new(<$no>::new()) as Box<dyn Variable>),
-                S::DictElement(e) => Some(Box::new(<$dict>::new(&e)) as Box<dyn Variable>),
-                S::Regexp(r) => Some(Box::new(<$re>::new(&r)) as Box<dyn Variable>),
-                S::Dynamic(m) => Some(Box::new(<$dyn>::new(m)) as Box<dyn Variable>),
-            }
-        }};
-    }
-    /// The single valued variables: no selector accepted.
+    /// A single valued variable: the transaction field `$field`.
     macro_rules! single {
-        ($e:expr) => {{
+        ($n:literal, $field:ident) => {{
+            fn get(v: &Vars) -> &AnchoredVariable {
+                &v.$field
+            }
             match selector {
-                S::None => Some(Box::new($e) as Box<dyn Variable>),
+                S::None => Some(Variable::new($n, Source::Single(get))),
                 _ => None,
             }
         }};
     }
+    /// A multi valued variable: the transaction field `$field`.
+    macro_rules! set {
+        ($n:literal, $field:ident) => {{
+            fn get(v: &Vars) -> &AnchoredSetVariable {
+                &v.$field
+            }
+            let (name, selector) = Variable::selected($n, selector)?;
+            Some(Variable::new(&name, Source::Set(get, selector)))
+        }};
+    }
+    /// The names of the multi valued variable `$fount`, through the proxy
+    /// `$field`.
+    macro_rules! names {
+        ($n:literal, $field:ident, $fount:ident) => {{
+            fn get(v: &Vars) -> (&AnchoredSetVariableTranslationProxy, &AnchoredSetVariable) {
+                (&v.$field, &v.$fount)
+            }
+            let (name, selector) = Variable::selected($n, selector)?;
+            Some(Variable::new(&name, Source::Names(get, selector)))
+        }};
+    }
+    // A computed variable, named after the token text as written in the
+    // rule (the `RUN_TIME_VAR_*` tokens).
+    let computed = |selector: VariableSelector, c: C| match selector {
+        S::None => Some(Variable::new(name, Source::Computed(c))),
+        _ => None,
+    };
 
     let token = name.to_ascii_uppercase();
     match token.as_str() {
-        // DEFINE_VARIABLE_DICT
-        "ARGS" => dict!(args::Args),
-        "ARGS_POST" => dict!(args_post::ArgsPost),
-        "ARGS_GET" => dict!(args_get::ArgsGet),
-        "FILES_SIZES" => dict!(files_sizes::FilesSizes),
-        "FILES_NAMES" => dict!(files_names::FilesNames),
-        "FILES_TMP_CONTENT" => dict!(files_tmp_content::FilesTmpContent),
-        "MULTIPART_FILENAME" => dict!(multipart_file_name::MultiPartFileName),
-        "MULTIPART_FILENAME_CHARSET" => dict!(multipart_file_name_charset::MultiPartFileNameCharset),
-        "MULTIPART_FILENAME_LANGUAGE" => dict!(multipart_file_name_language::MultiPartFileNameLanguage),
-        "MULTIPART_NAME" => dict!(multipart_name::MultiPartName),
-        "MATCHED_VARS_NAMES" => dict!(matched_vars_names::MatchedVarsNames),
-        "MATCHED_VARS" => dict!(matched_vars::MatchedVars),
-        "FILES" => dict!(files::Files),
-        "REQUEST_COOKIES" => dict!(request_cookies::RequestCookies),
-        "REQUEST_HEADERS" => dict!(request_headers::RequestHeaders),
-        "RESPONSE_HEADERS" => dict!(response_headers::ResponseHeaders),
-        "GEO" => dict!(geo::Geo),
-        "REQUEST_COOKIES_NAMES" => dict!(request_cookies_names::RequestCookiesNames),
-        "MULTIPART_PART_HEADERS" => dict!(multipart_part_headers::MultipartPartHeaders),
-        "FILES_TMPNAMES" => dict!(files_tmp_names::FilesTmpNames),
-        "ARGS_NAMES" => dict!(args_names::ArgsNames),
-        "ARGS_GET_NAMES" => dict!(args_get_names::ArgsGetNames),
-        "ARGS_POST_NAMES" => dict!(args_post_names::ArgsPostNames),
-        "REQUEST_HEADERS_NAMES" => dict!(request_headers_names::RequestHeadersNames),
-        "RESPONSE_HEADERS_NAMES" => dict!(response_headers_names::ResponseHeadersNames),
+        // Multi valued (C++ DEFINE_VARIABLE_DICT)
+        "ARGS" => set!("ARGS", args),
+        "ARGS_POST" => set!("ARGS_POST", args_post),
+        "ARGS_GET" => set!("ARGS_GET", args_get),
+        "FILES_SIZES" => set!("FILES_SIZES", files_sizes),
+        "FILES_NAMES" => set!("FILES_NAMES", files_names),
+        "FILES_TMP_CONTENT" => set!("FILES_TMP_CONTENT", files_tmp_content),
+        "MULTIPART_FILENAME" => set!("MULTIPART_FILENAME", multipart_file_name),
+        "MULTIPART_FILENAME_CHARSET" => set!("MULTIPART_FILENAME_CHARSET", multipart_file_name_charset),
+        "MULTIPART_FILENAME_LANGUAGE" => set!("MULTIPART_FILENAME_LANGUAGE", multipart_file_name_language),
+        "MULTIPART_NAME" => set!("MULTIPART_NAME", multipart_name),
+        "MATCHED_VARS_NAMES" => set!("MATCHED_VARS_NAMES", matched_vars_names),
+        "MATCHED_VARS" => set!("MATCHED_VARS", matched_vars),
+        "FILES" => set!("FILES", files),
+        "REQUEST_COOKIES" => set!("REQUEST_COOKIES", request_cookies),
+        "REQUEST_HEADERS" => set!("REQUEST_HEADERS", request_headers),
+        "RESPONSE_HEADERS" => set!("RESPONSE_HEADERS", response_headers),
+        "GEO" => set!("GEO", geo),
+        "REQUEST_COOKIES_NAMES" => set!("REQUEST_COOKIES_NAMES", request_cookies_names),
+        "MULTIPART_PART_HEADERS" => set!("MULTIPART_PART_HEADERS", multipart_part_headers),
+        "FILES_TMPNAMES" => set!("FILES_TMPNAMES", files_tmp_names),
+        "REQUEST_HEADERS_NAMES" => set!("REQUEST_HEADERS_NAMES", request_headers_names),
+        "RESPONSE_HEADERS_NAMES" => set!("RESPONSE_HEADERS_NAMES", response_headers_names),
+        "ARGS_NAMES" => names!("ARGS_NAMES", args_names, args),
+        "ARGS_GET_NAMES" => names!("ARGS_GET_NAMES", args_get_names, args_get),
+        "ARGS_POST_NAMES" => names!("ARGS_POST_NAMES", args_post_names, args_post),
 
-        "RULE" => match selector {
-            S::None => Some(Box::new(rule::RuleNoDictElement::new())),
-            S::DictElement(e) => Some(Box::new(rule::RuleDictElement::new(&e))),
-            S::Regexp(r) => Some(Box::new(rule::RuleDictElementRegexp::new(&r))),
-            S::Dynamic(_) => None,
-        },
+        "RULE" => {
+            let (name, selector) = Variable::selected(rule::RULE, selector)?;
+            Some(Variable::new(&name, Source::Rule(selector)))
+        }
 
         // Collections
         "RESOURCE" => Some(Persistent::Resource.variable(selector)),
         "IP" => Some(Persistent::Ip.variable(selector)),
         "GLOBAL" => Some(Persistent::Global.variable(selector)),
         "USER" => Some(Persistent::User.variable(selector)),
-        "TX" => collection!(tx::TxDictElement, tx::TxNoDictElement, tx::TxDictElementRegexp, tx::TxDynamicElement),
         "SESSION" => Some(Persistent::Session.variable(selector)),
+        "TX" => {
+            let (name, key) = match selector {
+                S::None => ("TX".to_string(), CollectionKey::All),
+                S::DictElement(e) => (format!("TX:{}", e), CollectionKey::Key),
+                S::Regexp(r) => (regex_name("TX", &r), CollectionKey::Regex(Regex::new_case(&r, true), r)),
+                S::Dynamic(m) => ("TX:dynamic".to_string(), CollectionKey::Dynamic(m)),
+            };
+            Some(Variable::new(&name, Source::Tx(key)))
+        }
 
         // RUN_TIME_VAR_ENV / RUN_TIME_VAR_XML
         "ENV" => match selector {
-            S::None => Some(Box::new(env::Env::new("ENV"))),
-            S::DictElement(e) | S::Regexp(e) => Some(Box::new(env::Env::new(&format!("ENV:{}", e)))),
+            S::None => Some(Variable::new("ENV", Source::Env)),
+            S::DictElement(e) | S::Regexp(e) => Some(Variable::new(&format!("ENV:{}", e), Source::Env)),
             S::Dynamic(_) => None,
         },
         "XML" => match selector {
-            S::None => Some(Box::new(xml::XmlNoDictElement::new())),
-            S::DictElement(e) | S::Regexp(e) => Some(Box::new(xml::Xml::new(&format!("XML:{}", e)))),
+            S::None => Some(Variable::new("XML", Source::XmlDocument)),
+            S::DictElement(e) | S::Regexp(e) => Some(Variable::new(&format!("XML:{}", e), Source::XmlPath)),
             S::Dynamic(_) => None,
         },
 
-        // DEFINE_VARIABLE
-        "RESPONSE_CONTENT_TYPE" => single!(response_content_type::ResponseContentType::new()),
-        "ARGS_COMBINED_SIZE" => single!(args_combined_size::ArgsCombinedSize::new()),
-        "AUTH_TYPE" => single!(auth_type::AuthType::new()),
-        "FILES_COMBINED_SIZE" => single!(files_combined_size::FilesCombinedSize::new()),
-        "FULL_REQUEST" => single!(full_request::FullRequest::new()),
-        "FULL_REQUEST_LENGTH" => single!(full_request_length::FullRequestLength::new()),
-        "INBOUND_DATA_ERROR" => single!(inbound_data_error::InboundDataError::new()),
-        "MATCHED_VAR" => single!(matched_var::MatchedVar::new()),
-        "MATCHED_VAR_NAME" => single!(matched_var_name::MatchedVarName::new()),
-        "MSC_PCRE_ERROR" => single!(msc_pcre_error::MscPcreError::new()),
-        "MSC_PCRE_LIMITS_EXCEEDED" => single!(msc_pcre_limits_exceeded::MscPcreLimitsExceeded::new()),
-        "MULTIPART_BOUNDARY_QUOTED" => single!(multipart_boundary_quoted::MultipartBoundaryQuoted::new()),
-        "MULTIPART_BOUNDARY_WHITESPACE" => single!(multipart_boundary_whitespace::MultipartBoundaryWhiteSpace::new()),
-        "MULTIPART_CRLF_LF_LINES" => single!(multipart_crlf_lf_lines::MultipartCrlfLFLines::new()),
-        "MULTIPART_DATA_AFTER" => single!(multipart_data_after::MultipartDateAfter::new()),
-        "MULTIPART_DATA_BEFORE" => single!(multipart_data_before::MultipartDateBefore::new()),
+        // Single valued (C++ DEFINE_VARIABLE). The name is the one of the
+        // C++ class, which for a few differs from the token (sic).
+        "RESPONSE_CONTENT_TYPE" => single!("RESPONSE_CONTENT_TYPE", response_content_type),
+        "ARGS_COMBINED_SIZE" => single!("ARGS_COMBINED_SIZE", args_combined_size),
+        "AUTH_TYPE" => single!("AUTH_TYPE", auth_type),
+        "FILES_COMBINED_SIZE" => single!("FILES_COMBINED_SIZE", files_combined_size),
+        "FULL_REQUEST" => single!("FULL_REQUEST", full_request),
+        "FULL_REQUEST_LENGTH" => single!("FULL_REQUEST_LENGTH", full_request_length),
+        "INBOUND_DATA_ERROR" => single!("INBOUND_DATA_ERROR", inbound_data_error),
+        "MATCHED_VAR" => single!("MATCHED_VAR", matched_var),
+        "MATCHED_VAR_NAME" => single!("MATCHED_VAR_NAME", matched_var_name),
+        "MSC_PCRE_ERROR" => single!("MSC_PCRE_ERROR", msc_pcre_error),
+        "MSC_PCRE_LIMITS_EXCEEDED" => single!("MSC_PCRE_LIMITS_EXCEEDED", msc_pcre_limits_exceeded),
+        "MULTIPART_BOUNDARY_QUOTED" => single!("MULTIPART_BOUNDARY_QUOTED", multipart_boundary_quoted),
+        "MULTIPART_BOUNDARY_WHITESPACE" => single!("MULTIPART_BOUNDARY_WHITESPACE", multipart_boundary_white_space),
+        "MULTIPART_CRLF_LF_LINES" => single!("MULTIPART_CRLF_LF_LINES", multipart_crlf_lf_lines),
+        "MULTIPART_DATA_AFTER" => single!("MULTIPART_DATA_AFTER", multipart_data_after),
+        "MULTIPART_DATA_BEFORE" => single!("MULTIPART_DATA_BEFORE", multipart_data_before),
         "MULTIPART_DUPLICATE_PART_HEADER" => {
-            single!(multipart_duplicate_part_header::MultipartDuplicatePartHeader::new())
+            single!("MULTIPART_DUPLICATE_PART_HEADER", multipart_duplicate_part_header)
         }
-        "MULTIPART_FILE_LIMIT_EXCEEDED" => single!(multipart_file_limit_exceeded::MultipartFileLimitExceeded::new()),
-        "MULTIPART_HEADER_FOLDING" => single!(multipart_header_folding::MultipartHeaderFolding::new()),
+        "MULTIPART_FILE_LIMIT_EXCEEDED" => single!("MULTIPART_FILE_LIMIT_EXCEEDED", multipart_file_limit_exceeded),
+        "MULTIPART_HEADER_FOLDING" => single!("MULTIPART_HEADER_FOLDING", multipart_header_folding),
         "MULTIPART_INVALID_HEADER_FOLDING" => {
-            single!(multipart_invalid_header_folding::MultipartInvalidHeaderFolding::new())
+            single!("MULTIPART_INVALID_HEADER_FOLDING", multipart_invalid_header_folding)
         }
-        "MULTIPART_INVALID_PART" => single!(multipart_invalid_part::MultipartInvalidPart::new()),
-        "MULTIPART_INVALID_QUOTING" => single!(multipart_invalid_quoting::MultipartInvalidQuoting::new()),
-        "MULTIPART_LF_LINE" => single!(multipart_lf_line::MultipartLFLine::new()),
+        "MULTIPART_INVALID_PART" => single!("MULTIPART_INVALID_PART", multipart_invalid_part),
+        "MULTIPART_INVALID_QUOTING" => single!("MULTIPART_INVALID_QUOTING", multipart_invalid_quoting),
+        "MULTIPART_LF_LINE" => single!("MULTIPART_LF_LINE", multipart_lf_line),
         "MULTIPART_MISSING_SEMICOLON" | "MULTIPART_SEMICOLON_MISSING" => {
-            single!(multipart_missing_semicolon::MultipartMissingSemicolon::new())
+            single!("MULTIPART_MISSING_SEMICOLON", multipart_missing_semicolon)
         }
-        "MULTIPART_STRICT_ERROR" => single!(multipart_strict_error::MultipartStrictError::new()),
-        "MULTIPART_UNMATCHED_BOUNDARY" => single!(multipart_unmatched_boundary::MultipartUnmatchedBoundary::new()),
-        "OUTBOUND_DATA_ERROR" => single!(outbound_data_error::OutboundDataError::new()),
-        "PATH_INFO" => single!(path_info::PathInfo::new()),
-        "QUERY_STRING" => single!(query_string::QueryString::new()),
-        "REMOTE_ADDR" => single!(remote_addr::RemoteAddr::new()),
-        "REMOTE_HOST" => single!(remote_host::RemoteHost::new()),
-        "REMOTE_PORT" => single!(remote_port::RemotePort::new()),
-        "REQBODY_ERROR" => single!(reqbody_error::ReqbodyError::new()),
-        "REQBODY_ERROR_MSG" => single!(reqbody_error_msg::ReqbodyErrorMsg::new()),
-        "REQBODY_PROCESSOR" => single!(reqbody_processor::ReqbodyProcessor::new()),
-        "REQBODY_PROCESSOR_ERROR" => single!(reqbody_processor_error::ReqbodyProcessorError::new()),
-        "REQBODY_PROCESSOR_ERROR_MSG" => single!(reqbody_processor_error_msg::ReqbodyProcessorErrorMsg::new()),
-        "REQUEST_BASENAME" => single!(request_base_name::RequestBasename::new()),
-        "REQUEST_BODY" => single!(request_body::RequestBody::new()),
-        "REQUEST_BODY_LENGTH" => single!(request_body_length::RequestBodyLength::new()),
-        "REQUEST_FILENAME" => single!(request_file_name::RequestFilename::new()),
-        "REQUEST_LINE" => single!(request_line::RequestLine::new()),
-        "REQUEST_METHOD" => single!(request_method::RequestMethod::new()),
-        "REQUEST_PROTOCOL" => single!(request_protocol::RequestProtocol::new()),
-        "REQUEST_URI" => single!(request_uri::RequestURI::new()),
-        "REQUEST_URI_RAW" => single!(request_uri_raw::RequestURIRaw::new()),
-        "RESPONSE_BODY" => single!(response_body::ResponseBody::new()),
-        "RESPONSE_CONTENT_LENGTH" => single!(response_content_length::ResponseContentLength::new()),
-        "RESPONSE_PROTOCOL" => single!(response_protocol::ResponseProtocol::new()),
-        "RESPONSE_STATUS" => single!(response_status::ResponseStatus::new()),
-        "SERVER_ADDR" => single!(server_addr::ServerAddr::new()),
-        "SERVER_NAME" => single!(server_name::ServerName::new()),
-        "SERVER_PORT" => single!(server_port::ServerPort::new()),
-        "SESSIONID" => single!(session_id::SessionID::new()),
-        "UNIQUE_ID" => single!(unique_id::UniqueID::new()),
-        "URLENCODED_ERROR" => single!(url_encoded_error::UrlEncodedError::new()),
-        "USERID" => single!(user_id::UserID::new()),
-        "STATUS" | "STATUS_LINE" => single!(status::Status::new()),
-        "WEBAPPID" => single!(web_app_id::WebAppId::new()),
+        "MULTIPART_STRICT_ERROR" => single!("MULTIPART_STRICT_ERROR", multipart_strict_error),
+        "MULTIPART_UNMATCHED_BOUNDARY" => single!("MULTIPART_UNMATCHED_BOUNDARY", multipart_unmatched_boundary),
+        "OUTBOUND_DATA_ERROR" => single!("OUTBOUND_DATA_ERROR", outbound_data_error),
+        "PATH_INFO" => single!("PATH_INFO", path_info),
+        "QUERY_STRING" => single!("QUERY_STRING", query_string),
+        "REMOTE_ADDR" => single!("REMOTE_ADDR", remote_addr),
+        "REMOTE_HOST" => single!("REMOTE_HOST", remote_host),
+        "REMOTE_PORT" => single!("REMOTE_PORT", remote_port),
+        "REQBODY_ERROR" => single!("REQBODY_ERROR", reqbody_error),
+        "REQBODY_ERROR_MSG" => single!("REQBODY_ERROR_MSG", reqbody_error_msg),
+        "REQBODY_PROCESSOR" => single!("REQBODY_PROCESSOR", reqbody_processor),
+        "REQBODY_PROCESSOR_ERROR" => single!("REQBODY_PROCESSOR_ERROR", reqbody_processor_error),
+        "REQBODY_PROCESSOR_ERROR_MSG" => single!("PROCESSOR_ERROR_MSG", reqbody_processor_error_msg),
+        "REQUEST_BASENAME" => single!("REQUEST_BASENAME", request_basename),
+        "REQUEST_BODY" => single!("REQUEST_BODY", request_body),
+        "REQUEST_BODY_LENGTH" => single!("REQUEST_BODY_LENGTH", request_body_length),
+        "REQUEST_FILENAME" => single!("REQUEST_FILENAME", request_filename),
+        "REQUEST_LINE" => single!("REQUEST_LINE", request_line),
+        "REQUEST_METHOD" => single!("REQUEST_METHOD", request_method),
+        "REQUEST_PROTOCOL" => single!("REQUEST_PROTOCOL", request_protocol),
+        "REQUEST_URI" => single!("REQUEST_URI", request_uri),
+        "REQUEST_URI_RAW" => single!("REQUEST_URI_RAW", request_uri_raw),
+        "RESPONSE_BODY" => single!("RESPONSE_BODY", response_body),
+        "RESPONSE_CONTENT_LENGTH" => single!("RESPONSE_CONTENT_LENGTH", response_content_length),
+        "RESPONSE_PROTOCOL" => single!("RESPONSE_PROTOCOL", response_protocol),
+        "RESPONSE_STATUS" => single!("RESPONSE_STATUS", response_status),
+        "SERVER_ADDR" => single!("SERVER_ADDR", server_addr),
+        "SERVER_NAME" => single!("SERVER_NAME", server_name),
+        "SERVER_PORT" => single!("SERVER_PORT", server_port),
+        "SESSIONID" => single!("SESSIONID", session_id),
+        "UNIQUE_ID" => single!("UNIQUEID", unique_id),
+        "URLENCODED_ERROR" => single!("URLENCODED_ERROR", url_encoded_error),
+        "USERID" => single!("USERID", user_id),
+        "STATUS" | "STATUS_LINE" => single!("STATUS", response_status),
+        "WEBAPPID" => match selector {
+            S::None => Some(Variable::new("WEBAPPID", Source::Computed(C::WebAppId))),
+            _ => None,
+        },
 
-        // RUN_TIME_VAR_*: named after the token text as written.
-        "DURATION" => single!(duration::Duration::new(name)),
-        "MODSEC_BUILD" => single!(modsec_build::ModsecBuild::new(name)),
-        "HIGHEST_SEVERITY" => single!(highest_severity::HighestSeverity::new(name)),
-        "REMOTE_USER" => single!(remote_user::RemoteUser::new(name)),
-        "TIME" => single!(time::Time::new(name)),
-        "TIME_DAY" => single!(time_day::TimeDay::new(name)),
-        "TIME_EPOCH" => single!(time_epoch::TimeEpoch::new(name)),
-        "TIME_HOUR" => single!(time_hour::TimeHour::new(name)),
-        "TIME_MIN" => single!(time_min::TimeMin::new(name)),
-        "TIME_MON" => single!(time_mon::TimeMon::new(name)),
-        "TIME_SEC" => single!(time_sec::TimeSec::new(name)),
-        "TIME_WDAY" => single!(time_wday::TimeWDay::new(name)),
-        "TIME_YEAR" => single!(time_year::TimeYear::new(name)),
+        "DURATION" => computed(selector, C::Duration),
+        "MODSEC_BUILD" => computed(selector, C::ModsecBuild),
+        "HIGHEST_SEVERITY" => computed(selector, C::HighestSeverity),
+        "REMOTE_USER" => computed(selector, C::RemoteUser),
+        "TIME" => computed(selector, C::Time),
+        "TIME_DAY" => computed(selector, C::TimeDay),
+        "TIME_EPOCH" => computed(selector, C::TimeEpoch),
+        "TIME_HOUR" => computed(selector, C::TimeHour),
+        "TIME_MIN" => computed(selector, C::TimeMin),
+        "TIME_MON" => computed(selector, C::TimeMon),
+        "TIME_SEC" => computed(selector, C::TimeSec),
+        "TIME_WDAY" => computed(selector, C::TimeWDay),
+        "TIME_YEAR" => computed(selector, C::TimeYear),
 
         // `WEBSERVER_ERROR_LOG` is rejected by the C++ scanner ("not
         // supported by libModSecurity"); anything else is unknown.
@@ -498,7 +319,7 @@ mod tests {
     use crate::transaction::Transaction;
     use crate::variable_value::VariableValue;
 
-    fn eval(v: &dyn Variable, t: &Transaction<'_>, rule: Option<&RuleWithActions>) -> Vec<(String, String)> {
+    fn eval(v: &Variable, t: &Transaction<'_>, rule: Option<&RuleWithActions>) -> Vec<(String, String)> {
         let mut l: Vec<VariableValue> = Vec::new();
         v.evaluate(t, rule, &mut l);
         l.iter()
@@ -511,7 +332,7 @@ mod tests {
             .collect()
     }
 
-    fn var(token: &str, sel: VariableSelector) -> Box<dyn Variable> {
+    fn var(token: &str, sel: VariableSelector) -> Variable {
         new_variable(token, sel).unwrap_or_else(|| panic!("no variable for {}", token))
     }
 
@@ -650,7 +471,7 @@ mod tests {
             assert!(v.regex().is_none());
             let v = var(n, sel_re("^f"));
             assert_eq!(v.full_name(), format!("{}:regex(^f)", n));
-            assert_eq!(v.regex_pattern(), Some("^f"));
+            assert_eq!(v.regex().map(|r| r.pattern.as_str()), Some("^f"));
             assert!(new_variable(n, sel_dyn("x")).is_none(), "{}", n);
             // Case insensitive token.
             assert!(new_variable(&n.to_lowercase(), sel_none()).is_some());
@@ -666,7 +487,7 @@ mod tests {
             let v = var(n, sel_key("foo"));
             assert_eq!(v.full_name(), format!("{}:foo", n));
             let v = var(n, sel_re("^f"));
-            assert_eq!(v.regex_pattern(), Some("^f"));
+            assert_eq!(v.regex().map(|r| r.pattern.as_str()), Some("^f"));
             let expected = if n == "RESOURCE" { "RESOURCE::regex(^f)".to_string() } else { format!("{}:regex(^f)", n) };
             assert_eq!(v.full_name(), expected);
             let v = var(n, sel_dyn("x"));
@@ -709,26 +530,26 @@ mod tests {
         t.add_request_header(b"Host", b"example.com");
         t.add_request_header(b"Cookie", b"c1=v1");
 
-        assert_eq!(eval(&*var("REMOTE_ADDR", sel_none()), &t, None), vec![("REMOTE_ADDR".into(), "1.2.3.4".into())]);
-        assert_eq!(eval(&*var("REQUEST_METHOD", sel_none()), &t, None), vec![("REQUEST_METHOD".into(), "GET".into())]);
-        assert_eq!(eval(&*var("STATUS", sel_none()), &t, None), eval(&*var("RESPONSE_STATUS", sel_none()), &t, None));
+        assert_eq!(eval(&var("REMOTE_ADDR", sel_none()), &t, None), vec![("REMOTE_ADDR".into(), "1.2.3.4".into())]);
+        assert_eq!(eval(&var("REQUEST_METHOD", sel_none()), &t, None), vec![("REQUEST_METHOD".into(), "GET".into())]);
+        assert_eq!(eval(&var("STATUS", sel_none()), &t, None), eval(&var("RESPONSE_STATUS", sel_none()), &t, None));
 
-        let mut a = eval(&*var("ARGS", sel_none()), &t, None);
+        let mut a = eval(&var("ARGS", sel_none()), &t, None);
         a.sort();
         assert_eq!(
             a,
             vec![("ARGS:a".into(), "1".into()), ("ARGS:a".into(), "3".into()), ("ARGS:b".into(), "2".into())]
         );
-        assert_eq!(eval(&*var("ARGS", sel_key("B")), &t, None), vec![("ARGS:b".into(), "2".into())]);
-        assert_eq!(eval(&*var("ARGS", sel_re("^b$")), &t, None), vec![("ARGS:b".into(), "2".into())]);
+        assert_eq!(eval(&var("ARGS", sel_key("B")), &t, None), vec![("ARGS:b".into(), "2".into())]);
+        assert_eq!(eval(&var("ARGS", sel_re("^b$")), &t, None), vec![("ARGS:b".into(), "2".into())]);
 
         // Exclusions (`!ARGS:a`).
         let mut args = var("ARGS", sel_none());
-        args.base_mut().key_exclusion.push(KeyExclusion::string("a"));
-        assert_eq!(eval(&*args, &t, None), vec![("ARGS:b".into(), "2".into())]);
+        args.exclude(KeyExclusion::string("a"));
+        assert_eq!(eval(&args, &t, None), vec![("ARGS:b".into(), "2".into())]);
 
         // The *_NAMES proxies.
-        let mut n = eval(&*var("ARGS_NAMES", sel_none()), &t, None);
+        let mut n = eval(&var("ARGS_NAMES", sel_none()), &t, None);
         n.sort();
         assert_eq!(
             n,
@@ -738,19 +559,16 @@ mod tests {
                 ("ARGS_NAMES:b".into(), "b".into())
             ]
         );
-        assert_eq!(
-            eval(&*var("ARGS_GET_NAMES", sel_key("b")), &t, None),
-            vec![("ARGS_GET_NAMES:b".into(), "b".into())]
-        );
-        assert_eq!(eval(&*var("ARGS_GET_NAMES", sel_re("b")), &t, None), vec![("ARGS_GET_NAMES:b".into(), "b".into())]);
-        assert!(eval(&*var("ARGS_POST_NAMES", sel_none()), &t, None).is_empty());
+        assert_eq!(eval(&var("ARGS_GET_NAMES", sel_key("b")), &t, None), vec![("ARGS_GET_NAMES:b".into(), "b".into())]);
+        assert_eq!(eval(&var("ARGS_GET_NAMES", sel_re("b")), &t, None), vec![("ARGS_GET_NAMES:b".into(), "b".into())]);
+        assert!(eval(&var("ARGS_POST_NAMES", sel_none()), &t, None).is_empty());
 
         assert_eq!(
-            eval(&*var("REQUEST_HEADERS", sel_key("host")), &t, None),
+            eval(&var("REQUEST_HEADERS", sel_key("host")), &t, None),
             vec![("REQUEST_HEADERS:Host".into(), "example.com".into())]
         );
         assert_eq!(
-            eval(&*var("REQUEST_COOKIES", sel_none()), &t, None),
+            eval(&var("REQUEST_COOKIES", sel_none()), &t, None),
             vec![("REQUEST_COOKIES:c1".into(), "v1".into())]
         );
     }
@@ -764,17 +582,17 @@ mod tests {
         dynamic.dynamic_store_or_update_first(&t, b"score", b"5");
         dynamic.dynamic_store_or_update_first(&t, b"other", b"7");
 
-        assert_eq!(eval(&*var("TX", sel_key("score")), &t, None), vec![("TX:score".into(), "5".into())]);
+        assert_eq!(eval(&var("TX", sel_key("score")), &t, None), vec![("TX:score".into(), "5".into())]);
         // The backend names the value with the requested key.
-        assert_eq!(eval(&*var("TX", sel_key("SCORE")), &t, None), vec![("TX:SCORE".into(), "5".into())]);
-        assert_eq!(eval(&*dynamic, &t, None), vec![("TX:score".into(), "5".into())]);
-        assert_eq!(eval(&*var("TX", sel_re("^oth")), &t, None), vec![("TX:other".into(), "7".into())]);
-        let mut all = eval(&*var("TX", sel_none()), &t, None);
+        assert_eq!(eval(&var("TX", sel_key("SCORE")), &t, None), vec![("TX:SCORE".into(), "5".into())]);
+        assert_eq!(eval(&dynamic, &t, None), vec![("TX:score".into(), "5".into())]);
+        assert_eq!(eval(&var("TX", sel_re("^oth")), &t, None), vec![("TX:other".into(), "7".into())]);
+        let mut all = eval(&var("TX", sel_none()), &t, None);
         all.sort();
         assert_eq!(all, vec![("TX:other".into(), "7".into()), ("TX:score".into(), "5".into())]);
 
         dynamic.dynamic_del(&t, b"score");
-        assert!(eval(&*var("TX", sel_key("score")), &t, None).is_empty());
+        assert!(eval(&var("TX", sel_key("score")), &t, None).is_empty());
     }
 
     #[test]
@@ -800,10 +618,10 @@ mod tests {
         for c in ["IP", "GLOBAL", "SESSION", "USER", "RESOURCE"] {
             let d = var(c, sel_dyn("zz"));
             d.dynamic_store_or_update_first(&t, b"key1", b"v1");
-            let got = eval(&*var(c, sel_key("key1")), &t, None);
+            let got = eval(&var(c, sel_key("key1")), &t, None);
             assert_eq!(got.len(), 1, "{}", c);
             assert_eq!(got[0].1, "v1", "{}", c);
-            assert_eq!(eval(&*d, &t, None).len(), 0, "{} (dynamic name `zz`)", c);
+            assert_eq!(eval(&d, &t, None).len(), 0, "{} (dynamic name `zz`)", c);
         }
         // The stored key carries the collection key and the web app id.
         assert_eq!(
@@ -813,11 +631,11 @@ mod tests {
 
         // IP del uses the same compartments.
         persistent::Persistent::Ip.del(&t, b"key1");
-        assert!(eval(&*var("IP", sel_key("key1")), &t, None).is_empty());
+        assert!(eval(&var("IP", sel_key("key1")), &t, None).is_empty());
         // Sic: SESSION del uses the IP collection key as second compartment,
         // so it does not remove the value.
         persistent::Persistent::Session.del(&t, b"key1");
-        assert_eq!(eval(&*var("SESSION", sel_key("key1")), &t, None).len(), 1);
+        assert_eq!(eval(&var("SESSION", sel_key("key1")), &t, None).len(), 1);
     }
 
     #[test]
@@ -841,20 +659,20 @@ mod tests {
 
         let mut t = Transaction::new(&ms, &rules, None);
         // Outside of the chain evaluation the child has no parent.
-        assert!(eval(&*var("RULE", sel_key("id")), &t, Some(child)).is_empty());
+        assert!(eval(&var("RULE", sel_key("id")), &t, Some(child)).is_empty());
 
         t.chained_rule_parents.push(&parent);
-        assert_eq!(eval(&*var("RULE", sel_key("id")), &t, Some(child)), vec![("RULE:id".into(), "10".into())]);
-        assert_eq!(eval(&*var("RULE", sel_key("rev")), &t, Some(child)), vec![("RULE:rev".into(), "3".into())]);
+        assert_eq!(eval(&var("RULE", sel_key("id")), &t, Some(child)), vec![("RULE:id".into(), "10".into())]);
+        assert_eq!(eval(&var("RULE", sel_key("rev")), &t, Some(child)), vec![("RULE:rev".into(), "3".into())]);
         assert_eq!(
-            eval(&*var("RULE", sel_key("severity")), &t, Some(child)),
+            eval(&var("RULE", sel_key("severity")), &t, Some(child)),
             vec![("RULE:severity".into(), "2".into())]
         );
-        assert_eq!(eval(&*var("RULE", sel_re("^rev")), &t, Some(child)), vec![("RULE:rev".into(), "3".into())]);
+        assert_eq!(eval(&var("RULE", sel_re("^rev")), &t, Some(child)), vec![("RULE:rev".into(), "3".into())]);
         // Case sensitive element.
-        assert!(eval(&*var("RULE", sel_key("ID")), &t, Some(child)).is_empty());
+        assert!(eval(&var("RULE", sel_key("ID")), &t, Some(child)).is_empty());
         assert_eq!(
-            eval(&*var("RULE", sel_none()), &t, Some(child)),
+            eval(&var("RULE", sel_none()), &t, Some(child)),
             vec![
                 ("RULE:id".into(), "10".into()),
                 ("RULE:rev".into(), "3".into()),
@@ -862,7 +680,7 @@ mod tests {
             ]
         );
         // No rule: id is still looked up (finds nothing), rev needs a rule.
-        assert!(eval(&*var("RULE", sel_key("id")), &t, None).is_empty());
+        assert!(eval(&var("RULE", sel_key("id")), &t, None).is_empty());
         let mut l = Vec::new();
         var("RULE", sel_key("id")).evaluate(&t, Some(&parent), &mut l);
         assert_eq!(l[0].origin().len(), 1);
@@ -878,22 +696,22 @@ mod tests {
         // concurrently.
         unsafe { std::env::set_var("MSRS_TEST_ENV", "regression tests") };
 
-        assert_eq!(eval(&*var("ENV", sel_key("modfoo")), &t, None), vec![("ENV:modfoo".into(), "bar".into())]);
-        assert!(eval(&*var("ENV", sel_key("MODFOO")), &t, None).is_empty());
+        assert_eq!(eval(&var("ENV", sel_key("modfoo")), &t, None), vec![("ENV:modfoo".into(), "bar".into())]);
+        assert!(eval(&var("ENV", sel_key("MODFOO")), &t, None).is_empty());
         assert_eq!(
-            eval(&*var("ENV", sel_key("MSRS_TEST_ENV")), &t, None),
+            eval(&var("ENV", sel_key("MSRS_TEST_ENV")), &t, None),
             vec![("ENV:MSRS_TEST_ENV".into(), "regression tests".into())]
         );
-        let all = eval(&*var("ENV", sel_none()), &t, None);
+        let all = eval(&var("ENV", sel_none()), &t, None);
         assert!(all.contains(&("ENV:modfoo".into(), "bar".into())));
         assert!(all.contains(&("ENV:MSRS_TEST_ENV".into(), "regression tests".into())));
         // setenv wins over the process environment.
         t.variable_envs.insert(b"MSRS_TEST_ENV".to_vec(), b"mine".to_vec());
-        assert_eq!(eval(&*var("ENV", sel_key("MSRS_TEST_ENV")), &t, None)[0].1, "mine");
+        assert_eq!(eval(&var("ENV", sel_key("MSRS_TEST_ENV")), &t, None)[0].1, "mine");
         // Exclusions.
         let mut e = var("ENV", sel_none());
-        e.base_mut().key_exclusion.push(KeyExclusion::string("modfoo"));
-        assert!(!eval(&*e, &t, None).iter().any(|(k, _)| k == "ENV:modfoo"));
+        e.exclude(KeyExclusion::string("modfoo"));
+        assert!(!eval(&e, &t, None).iter().any(|(k, _)| k == "ENV:modfoo"));
     }
 
     #[test]
@@ -901,16 +719,16 @@ mod tests {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
         let mut t = Transaction::new(&ms, &rules, None);
-        assert!(eval(&*var("REMOTE_USER", sel_none()), &t, None).is_empty());
-        assert_eq!(remote_user::RemoteUser::compute(&t), b"");
+        assert!(eval(&var("REMOTE_USER", sel_none()), &t, None).is_empty());
+        assert_eq!(computed::remote_user_name(&t), b"");
         t.add_request_header(b"Authorization", b"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-        let got = eval(&*var("REMOTE_USER", sel_none()), &t, None);
+        let got = eval(&var("REMOTE_USER", sel_none()), &t, None);
         assert_eq!(got, vec![("REQUEST_HEADERS:Authorization".into(), "Aladdin".into())]);
-        assert_eq!(remote_user::RemoteUser::compute(&t), b"Aladdin");
+        assert_eq!(computed::remote_user_name(&t), b"Aladdin");
 
         let mut t = Transaction::new(&ms, &rules, None);
         t.add_request_header(b"Authorization", b"Digest QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-        assert!(eval(&*var("REMOTE_USER", sel_none()), &t, None).is_empty());
+        assert!(eval(&var("REMOTE_USER", sel_none()), &t, None).is_empty());
     }
 
     #[test]
@@ -920,18 +738,15 @@ mod tests {
         rules.properties.sec_web_app_id = Some("bisteka".to_string());
         let t = Transaction::new(&ms, &rules, None);
 
+        assert_eq!(eval(&var("MODSEC_BUILD", sel_none()), &t, None), vec![("MODSEC_BUILD".into(), "030017100".into())]);
         assert_eq!(
-            eval(&*var("MODSEC_BUILD", sel_none()), &t, None),
-            vec![("MODSEC_BUILD".into(), "030017100".into())]
-        );
-        assert_eq!(
-            eval(&*var("HIGHEST_SEVERITY", sel_none()), &t, None),
+            eval(&var("HIGHEST_SEVERITY", sel_none()), &t, None),
             vec![("HIGHEST_SEVERITY".into(), "255".into())]
         );
         // Sic: WEBAPPID values are named with the (empty) `m_name`.
-        assert_eq!(eval(&*var("WEBAPPID", sel_none()), &t, None), vec![("".into(), "bisteka".into())]);
+        assert_eq!(eval(&var("WEBAPPID", sel_none()), &t, None), vec![("".into(), "bisteka".into())]);
 
-        let d = eval(&*var("DURATION", sel_none()), &t, None);
+        let d = eval(&var("DURATION", sel_none()), &t, None);
         assert_eq!(d[0].0, "DURATION");
         assert!(d[0].1.contains('.') && d[0].1.split('.').nth(1).unwrap().len() == 6);
 
@@ -939,14 +754,14 @@ mod tests {
         for (tok, len) in
             [("TIME_DAY", 2), ("TIME_HOUR", 2), ("TIME_MIN", 2), ("TIME_SEC", 2), ("TIME_WDAY", 1), ("TIME_YEAR", 4)]
         {
-            let v = eval(&*var(tok, sel_none()), &t, None);
+            let v = eval(&var(tok, sel_none()), &t, None);
             assert_eq!(v[0].0, tok);
             assert!(all_digits(&v[0].1) && v[0].1.len() == len, "{} {}", tok, v[0].1);
         }
-        let mon: i32 = eval(&*var("TIME_MON", sel_none()), &t, None)[0].1.parse().unwrap();
+        let mon: i32 = eval(&var("TIME_MON", sel_none()), &t, None)[0].1.parse().unwrap();
         assert!((1..=12).contains(&mon));
-        assert!(all_digits(&eval(&*var("TIME_EPOCH", sel_none()), &t, None)[0].1));
-        let time = &eval(&*var("TIME", sel_none()), &t, None)[0];
+        assert!(all_digits(&eval(&var("TIME_EPOCH", sel_none()), &t, None)[0].1));
+        let time = &eval(&var("TIME", sel_none()), &t, None)[0];
         assert_eq!(time.0, "TIME");
         assert_eq!(time.1.len(), 8);
         assert_eq!(&time.1[2..3], ":");
