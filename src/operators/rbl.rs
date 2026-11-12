@@ -3,8 +3,7 @@
 //! The DNS lookup uses the platform `getaddrinfo` (no hints, first result),
 //! exactly as the C++ operator does.
 
-use std::ffi::CString;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
 
 use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param};
@@ -218,37 +217,16 @@ enum Resolved {
 /// `getaddrinfo(host, NULL, NULL, &info)` and the family/address of the
 /// first returned entry.
 fn resolve(host: &[u8]) -> Resolved {
-    let Ok(c_host) = CString::new(c_str(host)) else {
+    let Ok(host) = std::str::from_utf8(c_str(host)) else {
         return Resolved::Failed;
     };
-    let mut info: *mut libc::addrinfo = std::ptr::null_mut();
-    // SAFETY: `c_host` is NUL terminated, null service and hints are
-    // allowed; the result list is freed below.
-    let rc = unsafe { libc::getaddrinfo(c_host.as_ptr(), std::ptr::null(), std::ptr::null(), &mut info) };
-    if rc != 0 {
-        if !info.is_null() {
-            // SAFETY: allocated by getaddrinfo.
-            unsafe { libc::freeaddrinfo(info) };
-        }
-        return Resolved::Failed;
-    }
-    if info.is_null() {
-        return Resolved::Failed;
-    }
-    // SAFETY: on success `info` points to a valid addrinfo whose `ai_addr`
-    // (when non-null) is a sockaddr of family `sa_family`.
-    unsafe {
-        let addr = (*info).ai_addr;
-        let r = if addr.is_null() {
-            Resolved::Failed
-        } else if i32::from((*addr).sa_family) == libc::AF_INET {
-            let sin = &*(addr as *const libc::sockaddr_in);
-            Resolved::V4(Ipv4Addr::from(sin.sin_addr.s_addr.to_ne_bytes()))
-        } else {
-            Resolved::OtherFamily(i32::from((*addr).sa_family))
-        };
-        libc::freeaddrinfo(info);
-        r
+    let first = dns_lookup::getaddrinfo(Some(host), None, None).ok().and_then(|mut entries| entries.next());
+    match first {
+        Some(Ok(info)) => match info.sockaddr {
+            SocketAddr::V4(a) => Resolved::V4(*a.ip()),
+            SocketAddr::V6(_) => Resolved::OtherFamily(info.address),
+        },
+        _ => Resolved::Failed,
     }
 }
 

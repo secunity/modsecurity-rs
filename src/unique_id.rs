@@ -32,77 +32,40 @@ impl UniqueId {
         string_to_hex(&Sha1::digest(data.as_bytes()))
     }
 
-    /// `machineName`: the `uname` node name, or an empty string.
+    /// `machineName`: the `uname` node name.
     // Based on:
     // http://stackoverflow.com/questions/16858782/how-to-obtain-almost-unique-system-identifier-in-a-cross-platform-way
     pub fn machine_name() -> String {
-        // SAFETY: utsname is a plain C struct that uname fills in.
-        let mut u: libc::utsname = unsafe { std::mem::zeroed() };
-        // SAFETY: `u` is a valid, writable utsname.
-        if unsafe { libc::uname(&mut u) } < 0 {
-            return String::new();
-        }
-        let bytes: Vec<u8> = u.nodename.iter().take_while(|&&c| c != 0).map(|&c| c.to_ne_bytes()[0]).collect();
+        let uname = rustix::system::uname();
+        let name = uname.nodename().to_bytes();
         // snprintf(machine_name, MAX_MACHINE_NAME_SIZE - 1, "%s", ...)
         let max = MAX_MACHINE_NAME_SIZE - 2;
-        String::from_utf8_lossy(&bytes[..bytes.len().min(max)]).into_owned()
+        String::from_utf8_lossy(&name[..name.len().min(max)]).into_owned()
     }
 
     /// `ethernetMacAddress`: the hardware address of the first interface
-    /// with a non zero one, as `xx:xx:xx:xx:xx:xx`, or an empty string.
+    /// with an IPv4 address whose hardware address does not start with
+    /// three zero bytes, as `xx:xx:xx:xx:xx:xx`, or an empty string.
     ///
-    /// Deviation (C++ bug): the C++ loop bound mixes the byte length
-    /// returned by `SIOCGIFCONF` with `ifreq` pointer arithmetic and can
-    /// read past its buffer; only the returned entries are walked here.
+    /// The C++ code asks the kernel for the interfaces with `SIOCGIFCONF`,
+    /// which lists the ones that have an IPv4 address, in index order;
+    /// `getifaddrs` gives the same interfaces in the same order.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     pub fn ethernet_mac_address() -> String {
-        use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-
-        // SAFETY: plain socket creation.
-        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, libc::IPPROTO_IP) };
-        if fd < 0 {
+        let Ok(addrs) = nix::ifaddrs::getifaddrs() else {
             return String::new();
-        }
-        // SAFETY: `fd` is a new descriptor owned by nothing else; it is
-        // closed when `owned` goes out of scope, on every return path.
-        let owned = unsafe { OwnedFd::from_raw_fd(fd) };
-        let sock = owned.as_raw_fd();
-
-        const N: usize = 128;
-        // SAFETY: ifreq is a plain C struct (name + union), all zeroes is valid.
-        let mut ifconfbuf: Vec<libc::ifreq> = (0..N).map(|_| unsafe { std::mem::zeroed() }).collect();
-        // SAFETY: ifconf is a plain C struct, all zeroes is valid.
-        let mut conf: libc::ifconf = unsafe { std::mem::zeroed() };
-        conf.ifc_len = (N * std::mem::size_of::<libc::ifreq>()) as libc::c_int;
-        conf.ifc_ifcu.ifcu_req = ifconfbuf.as_mut_ptr();
-        // SAFETY: `conf` describes the writable buffer `ifconfbuf` of
-        // `ifc_len` bytes, which outlives the call.
-        if unsafe { libc::ioctl(sock, libc::SIOCGIFCONF as _, &mut conf) } != 0 {
-            return String::new();
-        }
-
-        let count = (conf.ifc_len.max(0) as usize / std::mem::size_of::<libc::ifreq>()).min(N);
-        let mut mac = String::new();
-        for ifr in ifconfbuf.iter_mut().take(count) {
-            // SAFETY: `ifr` is a valid ifreq naming an interface.
-            if unsafe { libc::ioctl(sock, libc::SIOCGIFFLAGS as _, ifr as *mut libc::ifreq) } != 0 {
-                continue; // failed to get flags, skip it
-            }
-
-            // SAFETY: as above.
-            if unsafe { libc::ioctl(sock, libc::SIOCGIFHWADDR as _, ifr as *mut libc::ifreq) } == 0 {
-                // SAFETY: SIOCGIFHWADDR filled the hwaddr member of the union.
-                // (`c_char` is signed or not depending on the target.)
-                let d = unsafe { ifr.ifr_ifru.ifru_hwaddr.sa_data }.map(|c| c.to_ne_bytes()[0]);
-                if d[0] == 0 && d[1] == 0 && d[2] == 0 {
-                    continue;
-                }
-
-                mac = format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", d[0], d[1], d[2], d[3], d[4], d[5]);
-                break;
-            }
-        }
-        mac
+        };
+        let addrs: Vec<_> = addrs.collect();
+        let hardware = |name: &str| {
+            addrs.iter().filter(|a| a.interface_name == name).find_map(|a| a.address.as_ref()?.as_link_addr()?.addr())
+        };
+        addrs
+            .iter()
+            .filter(|a| a.address.as_ref().is_some_and(|ad| ad.as_sockaddr_in().is_some()))
+            .filter_map(|a| hardware(&a.interface_name))
+            .find(|d| d[..3] != [0, 0, 0])
+            .map(|d| format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", d[0], d[1], d[2], d[3], d[4], d[5]))
+            .unwrap_or_default()
     }
 
     /// `ethernetMacAddress` on the other platforms: as the C++ code does

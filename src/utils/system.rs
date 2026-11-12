@@ -1,6 +1,6 @@
 //! Port of `src/utils/system.h` / `src/utils/system.cc`.
 
-use std::ffi::{CStr, CString, c_char, c_int, c_long};
+use std::ffi::{CStr, CString, c_char, c_int};
 
 use jiff::fmt::strtime;
 use jiff::tz::TimeZone;
@@ -15,25 +15,16 @@ struct WordExpT {
 }
 
 const WRDE_NOCMD: c_int = 1 << 2;
-/// POSIX requires CLOCKS_PER_SEC to be one million on XSI systems.
-const CLOCKS_PER_SEC: f64 = 1_000_000.0;
 
 unsafe extern "C" {
     fn wordexp(words: *const c_char, pwordexp: *mut WordExpT, flags: c_int) -> c_int;
     fn wordfree(pwordexp: *mut WordExpT);
-    fn clock() -> c_long;
 }
 
 /// `cpu_seconds`: process CPU time in seconds.
 pub fn cpu_seconds() -> f64 {
-    let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0 };
-    // SAFETY: clock_gettime only writes into `t`.
-    if unsafe { libc::clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &mut t) } == 0 {
-        t.tv_sec as f64 + (t.tv_nsec as f64 / 1_000_000_000.0)
-    } else {
-        // SAFETY: clock() has no preconditions.
-        unsafe { clock() as f64 / CLOCKS_PER_SEC }
-    }
+    let t = rustix::time::clock_gettime(rustix::time::ClockId::ProcessCPUTime);
+    t.tv_sec as f64 + (t.tv_nsec as f64 / 1_000_000_000.0)
 }
 
 /// The result of [`find_resource`].

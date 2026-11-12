@@ -2,7 +2,8 @@
 //!
 //! `setenv:name=value` — sets an environment variable.
 
-use std::ffi::CString;
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
 
 use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
@@ -35,14 +36,14 @@ impl Action for SetENV {
         // `setenv(3)` with overwrite, as in C++. Names/values with an
         // embedded NUL cannot be represented (C++ silently truncates them);
         // an empty name makes setenv fail with EINVAL, which C++ ignores.
-        if let (Ok(n), Ok(v)) = (CString::new(name.clone()), CString::new(value.clone())) {
-            // SAFETY: both arguments are valid NUL terminated strings.
-            // Like the C++ code, this mutates the process environment and is
-            // subject to the usual caveat about concurrent getenv(3) calls
-            // from other threads.
-            unsafe {
-                libc::setenv(n.as_ptr(), v.as_ptr(), 1);
-            }
+        // `setenv(3)` rejects an empty name and one with `=` (EINVAL,
+        // which C++ ignores); `set_var` would panic on those and on NULs.
+        let valid = !name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0);
+        if valid {
+            // SAFETY: like the C++ code, this mutates the process
+            // environment and is subject to the usual caveat about
+            // concurrent getenv(3) calls from other threads.
+            unsafe { std::env::set_var(OsStr::from_bytes(&name), OsStr::from_bytes(&value)) };
         }
         // The transaction's view of the environment (the `ENV` variable).
         t.variable_envs.insert(name, value);

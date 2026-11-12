@@ -30,7 +30,7 @@
 //! branches whose outcome does not depend on the value read are replaced by
 //! their (constant) outcome; see the comments at those places.
 
-use std::ffi::CString;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 pub const IPV4_TREE: i32 = 0x1;
 pub const IPV6_TREE: i32 = 0x2;
@@ -590,11 +590,7 @@ pub fn parse_ipv4(buffer: &[u8]) -> Option<([u8; 4], u8)> {
     } else if let Some(p) = pos.filter(|&p| p < ip_strv4.len()) {
         ip_strv4.truncate(p);
     }
-    let mut addr4 = [0u8; 4];
-    if !inet_pton(libc::AF_INET, &ip_strv4, &mut addr4) {
-        return None;
-    }
-    Some((addr4, netmask_v4))
+    Some((parse_v4(&ip_strv4)?, netmask_v4))
 }
 
 /// The parsing half of `TreeAddIP` for `IPV6_TREE`: the address and CIDR of
@@ -615,11 +611,7 @@ pub fn parse_ipv6(buffer: &[u8]) -> Option<([u8; 16], u8)> {
     {
         ip_strv6.truncate(p);
     }
-    let mut addr6 = [0u8; 16];
-    if !inet_pton(libc::AF_INET6, &ip_strv6, &mut addr6) {
-        return None;
-    }
-    Some((addr6, netmask_v6))
+    Some((parse_v6(&ip_strv6)?, netmask_v6))
 }
 
 impl TreeRoot {
@@ -633,18 +625,16 @@ impl TreeRoot {
     pub fn contains_ip(&self, value: &[u8]) -> i32 {
         let value = c_str(value);
         if !value.contains(&b':') {
-            let mut in4 = [0u8; 4];
-            if !inet_pton(libc::AF_INET, value, &mut in4) {
+            let Some(in4) = parse_v4(value) else {
                 return -1;
-            }
+            };
             if self.match_ipv4(&in4) {
                 return 1;
             }
         } else {
-            let mut in6 = [0u8; 16];
-            if !inet_pton(libc::AF_INET6, value, &mut in6) {
+            let Some(in6) = parse_v6(value) else {
                 return -1;
-            }
+            };
             if self.match_ipv6(&in6) {
                 return 1;
             }
@@ -740,25 +730,15 @@ fn c_str(s: &[u8]) -> &[u8] {
     &s[..end]
 }
 
-// `inet_pton` is part of the C library but not exposed by the `libc` crate.
-unsafe extern "C" {
-    #[link_name = "inet_pton"]
-    fn c_inet_pton(af: libc::c_int, src: *const libc::c_char, dst: *mut libc::c_void) -> libc::c_int;
+/// `inet_pton(AF_INET, ..)`: strict dotted decimal (no leading zeros, no
+/// short forms), which is also what `Ipv4Addr` parses.
+fn parse_v4(src: &[u8]) -> Option<[u8; 4]> {
+    std::str::from_utf8(c_str(src)).ok()?.parse::<Ipv4Addr>().ok().map(|a| a.octets())
 }
 
-/// `inet_pton(af, src, dst) > 0`; the platform implementation is used so
-/// that the accepted address syntax is the one of the C++ build.
-fn inet_pton(af: i32, src: &[u8], dst: &mut [u8]) -> bool {
-    let Ok(c) = CString::new(c_str(src)) else {
-        return false;
-    };
-    let need = if af == libc::AF_INET { 4 } else { 16 };
-    if dst.len() < need {
-        return false;
-    }
-    // SAFETY: `c` is a NUL terminated string and `dst` has room for the
-    // address of family `af` (4 bytes for AF_INET, 16 for AF_INET6).
-    unsafe { c_inet_pton(af, c.as_ptr(), dst.as_mut_ptr().cast()) > 0 }
+/// `inet_pton(AF_INET6, ..)`
+fn parse_v6(src: &[u8]) -> Option<[u8; 16]> {
+    std::str::from_utf8(c_str(src)).ok()?.parse::<Ipv6Addr>().ok().map(|a| a.octets())
 }
 
 /// `atoi` (glibc: `(int) strtol(s, NULL, 10)`).
@@ -829,6 +809,87 @@ pub fn is_netmask_v6(ip_strv6: &[u8]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // `inet_pton` is part of the C library but not exposed by `libc`.
+    unsafe extern "C" {
+        fn inet_pton(af: libc::c_int, src: *const libc::c_char, dst: *mut libc::c_void) -> libc::c_int;
+    }
+
+    /// The C library's verdict and address, the reference for `parse_v4` /
+    /// `parse_v6` (the C++ code calls `inet_pton`).
+    fn c_inet_pton(af: i32, src: &[u8]) -> Option<Vec<u8>> {
+        let c = std::ffi::CString::new(src).ok()?;
+        let mut dst = [0u8; 16];
+        // SAFETY: `c` is NUL terminated and `dst` has room for either family.
+        let ok = unsafe { inet_pton(af, c.as_ptr(), dst.as_mut_ptr().cast()) > 0 };
+        ok.then(|| dst[..if af == libc::AF_INET { 4 } else { 16 }].to_vec())
+    }
+
+    /// The std parsers accept exactly what `inet_pton` accepts, on valid
+    /// addresses and on mutations of them.
+    #[test]
+    fn address_parsing_matches_inet_pton() {
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut next = move |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % n as u64) as usize
+        };
+        let v4_parts =
+            ["0", "1", "9", "10", "127", "255", "256", "01", "001", "0x1", "", " ", "1e1", "-1", "999", "00"];
+        let v6_parts =
+            ["0", "1", "ff", "FFFF", "10000", "", "0000", "g", "1.2.3.4", "01.2.3.4", "::", "abcd", "00001", " "];
+        let mut cases: Vec<String> = [
+            "1.2.3.4",
+            "1.2.3",
+            "1.2.3.4.5",
+            "1.2.3.4 ",
+            " 1.2.3.4",
+            "1..3.4",
+            "::",
+            "::1",
+            "1::",
+            ":::",
+            "::ffff:1.2.3.4",
+            "1:2:3:4:5:6:7:8",
+            "1:2:3:4:5:6:7",
+            "1:2:3:4:5:6:7:8:9",
+            "1::2::3",
+            "fe80::1%eth0",
+            "::1.2.3",
+            "1:2:3:4:5:6:1.2.3.4",
+            "1:2:3:4:5:6:7:1.2.3.4",
+            "::01.2.3.4",
+            "[::1]",
+            "0:0:0:0:0:0:0:0",
+            "",
+            ":",
+            "1:",
+            ":1",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        for _ in 0..20_000 {
+            let n = 1 + next(6);
+            cases.push((0..n).map(|_| v4_parts[next(v4_parts.len())]).collect::<Vec<_>>().join("."));
+            let n = 1 + next(10);
+            let sep = [":", "::"];
+            let mut s = String::new();
+            for i in 0..n {
+                if i > 0 || next(8) == 0 {
+                    s.push_str(sep[usize::from(next(6) == 0)]);
+                }
+                s.push_str(v6_parts[next(v6_parts.len())]);
+            }
+            cases.push(s);
+        }
+        for c in &cases {
+            assert_eq!(parse_v4(c.as_bytes()).map(|a| a.to_vec()), c_inet_pton(libc::AF_INET, c.as_bytes()), "{c:?}");
+            assert_eq!(parse_v6(c.as_bytes()).map(|a| a.to_vec()), c_inet_pton(libc::AF_INET6, c.as_bytes()), "{c:?}");
+        }
+    }
 
     fn tree(param: &str) -> TreeRoot {
         TreeRoot::from_param(param.as_bytes()).expect("valid param")

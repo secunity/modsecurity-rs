@@ -12,8 +12,9 @@
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::os::unix::io::AsRawFd;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+
+use rustix::fs::{FlockOperation, fcntl_lock};
 
 /// A registered file and the number of `open`s not yet `close`d.
 struct HandlerInfo {
@@ -25,32 +26,21 @@ pub struct SharedFiles {
     handlers: Mutex<HashMap<String, HandlerInfo>>,
 }
 
-/// An exclusive `fcntl` lock on a whole file, released on drop.
+/// An exclusive `fcntl` lock on a whole file, released on drop. Errors
+/// are ignored, as in C++.
 struct FileLock<'f>(&'f File);
 
 impl<'f> FileLock<'f> {
     fn exclusive(file: &'f File) -> Self {
-        set_lock(file, libc::F_WRLCK);
+        let _ = fcntl_lock(file, FlockOperation::LockExclusive);
         FileLock(file)
     }
 }
 
 impl Drop for FileLock<'_> {
     fn drop(&mut self) {
-        set_lock(self.0, libc::F_UNLCK);
+        let _ = fcntl_lock(self.0, FlockOperation::Unlock);
     }
-}
-
-/// `fcntl(fd, F_SETLKW, ...)` on the whole file; errors are ignored, as in
-/// C++.
-fn set_lock(file: &File, l_type: libc::c_int) {
-    // SAFETY: `flock` is a plain C struct for which all zeroes is valid (a
-    // lock of the whole file, from offset 0).
-    let mut lock: libc::flock = unsafe { std::mem::zeroed() };
-    lock.l_type = l_type as _;
-    // SAFETY: the descriptor is open (owned by `file`) and `lock` is
-    // initialised.
-    unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETLKW, &lock) };
 }
 
 impl SharedFiles {

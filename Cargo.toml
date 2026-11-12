@@ -92,6 +92,9 @@ jiff = "0.2"
 aho-corasick = { version = "1", optional = true }
 prefix-trie = { version = "0.10", default-features = false, features = ["ipnet"], optional = true }
 ipnet = { version = "2", optional = true }
+rustix = { version = "1.1.6", features = ["system", "fs", "process", "time"] }
+dns-lookup = "4.0.2"
+nix = { version = "0.31.3", default-features = false, features = ["net"] }
 
 [profile.dev]
 opt-level = 1

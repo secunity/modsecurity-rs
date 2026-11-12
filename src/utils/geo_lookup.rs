@@ -140,48 +140,30 @@ fn mmdb_open_strerror(e: &maxminddb::MaxMindDbError) -> &'static str {
 /// `AI_NUMERICHOST`. Returns the address or the `gai_strerror` message.
 #[cfg(feature = "maxmind")]
 fn parse_numeric_host(target: &[u8]) -> Result<std::net::IpAddr, String> {
-    use std::ffi::{CStr, CString};
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    use dns_lookup::{AddrInfoHints, SockType, getaddrinfo};
 
     let end = target.iter().position(|&c| c == 0).unwrap_or(target.len());
-    let host = CString::new(&target[..end]).unwrap_or_default();
-
-    // SAFETY: an all-zero addrinfo is a valid "no hints" value.
-    let mut hints: libc::addrinfo = unsafe { std::mem::zeroed() };
-    hints.ai_family = libc::AF_UNSPEC;
-    hints.ai_flags = libc::AI_NUMERICHOST;
-    hints.ai_socktype = libc::SOCK_STREAM;
-    let mut res: *mut libc::addrinfo = std::ptr::null_mut();
-    // SAFETY: `host` is NUL terminated, `hints` and `res` are valid; the
-    // result list is freed below.
-    let rc = unsafe { libc::getaddrinfo(host.as_ptr(), std::ptr::null(), &hints, &mut res) };
-    if rc != 0 {
-        // SAFETY: gai_strerror returns a static NUL terminated string.
-        let msg = unsafe { CStr::from_ptr(libc::gai_strerror(rc)) }.to_string_lossy().into_owned();
-        if !res.is_null() {
-            // SAFETY: allocated by getaddrinfo.
-            unsafe { libc::freeaddrinfo(res) };
-        }
-        return Err(msg);
-    }
-    // SAFETY: on success `res` points to at least one addrinfo whose
-    // `ai_addr` matches `ai_family`.
-    let ip = unsafe {
-        let ai = &*res;
-        let ip = if ai.ai_family == libc::AF_INET && !ai.ai_addr.is_null() {
-            let sin = &*(ai.ai_addr as *const libc::sockaddr_in);
-            Some(IpAddr::V4(Ipv4Addr::from(sin.sin_addr.s_addr.to_ne_bytes())))
-        } else if ai.ai_family == libc::AF_INET6 && !ai.ai_addr.is_null() {
-            let sin6 = &*(ai.ai_addr as *const libc::sockaddr_in6);
-            Some(IpAddr::V6(Ipv6Addr::from(sin6.sin6_addr.s6_addr)))
-        } else {
-            None
-        };
-        libc::freeaddrinfo(res);
-        ip
+    // A name that is not text cannot be a numeric address.
+    let host = std::str::from_utf8(&target[..end]).unwrap_or("\u{fffd}");
+    let hints = AddrInfoHints {
+        flags: libc::AI_NUMERICHOST,
+        address: libc::AF_UNSPEC,
+        socktype: SockType::Stream.into(),
+        protocol: 0,
     };
-    // libmaxminddb rejects other families as an invalid lookup.
-    ip.ok_or_else(|| "ai_family not supported".to_string())
+    let mut entries = getaddrinfo(Some(host), None, Some(hints)).map_err(|e| gai_message(e.error_num()))?;
+    match entries.next() {
+        Some(Ok(info)) => Ok(info.sockaddr.ip()),
+        // libmaxminddb rejects other families as an invalid lookup.
+        _ => Err("ai_family not supported".to_string()),
+    }
+}
+
+/// `gai_strerror(code)`
+#[cfg(feature = "maxmind")]
+fn gai_message(code: i32) -> String {
+    // SAFETY: gai_strerror returns a static NUL terminated string.
+    unsafe { std::ffi::CStr::from_ptr(libc::gai_strerror(code)) }.to_string_lossy().into_owned()
 }
 
 #[cfg(feature = "maxmind")]

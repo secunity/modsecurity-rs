@@ -640,12 +640,11 @@ mod tests {
     #[test]
     fn parallel_writer() {
         // The directories are created with mkdir (umask applies).
-        // SAFETY: umask has no preconditions.
-        let umask = unsafe {
-            let m = libc::umask(0o022);
-            libc::umask(m);
-            m
-        } as u32;
+        let umask = {
+            let m = rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o022));
+            rustix::process::umask(m);
+            m.as_raw_mode()
+        };
         let d = temp_dir("parallel");
         let storage = d.join("par");
         let before = crate::utils::system::now();
