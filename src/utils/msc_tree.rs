@@ -15,6 +15,17 @@
 //! * the netblock search applies the netmask of the first entry of a node
 //!   only (the byte index is not reset between entries).
 //!
+//! Together these make an address that lies in a listed network go
+//! unmatched when other, overlapping networks are listed next to it (for
+//! example `@ipMatch 10.0.49.87/16,10.0.42.94/18` does not match
+//! `10.0.70.67`; C++ v3 behaves the same).
+//!
+//! With the `ipmatch-prefix-trie` feature (off by default, not a C++
+//! option), [`TreeRoot`] stores the networks in prefix tries (the
+//! `prefix-trie` and `ipnet` crates) instead: entries are still parsed and
+//! rejected exactly as by `TreeAddIP` ([`parse_ipv4`], [`parse_ipv6`]), but an
+//! address matches whenever any listed network contains it.
+//!
 //! Reads past the end of the prefix buffers that the C code performs in
 //! branches whose outcome does not depend on the value read are replaced by
 //! their (constant) outcome; see the comments at those places.
@@ -122,10 +133,21 @@ pub struct CptTree {
 }
 
 /// `TreeRoot`
+///
+/// With the `ipmatch-prefix-trie` feature the networks are kept in prefix
+/// tries instead of [`CptTree`]s: entries are parsed and validated as in C++,
+/// but an address matches whenever any listed network contains it (see the
+/// module documentation).
 #[derive(Debug, Default)]
 pub struct TreeRoot {
+    #[cfg(not(feature = "ipmatch-prefix-trie"))]
     pub ipv4_tree: CptTree,
+    #[cfg(not(feature = "ipmatch-prefix-trie"))]
     pub ipv6_tree: CptTree,
+    #[cfg(feature = "ipmatch-prefix-trie")]
+    ipv4_set: prefix_trie::PrefixSet<ipnet::Ipv4Net>,
+    #[cfg(feature = "ipmatch-prefix-trie")]
+    ipv6_set: prefix_trie::PrefixSet<ipnet::Ipv6Net>,
 }
 
 /// `ConvertIPNetmask`: clears the host bits of `buffer`.
@@ -533,54 +555,71 @@ impl CptTree {
 
     /// `TreeAddIP`: `buffer` is an address with an optional `/cidr`.
     pub fn add_ip(&mut self, buffer: &[u8], ty: i32) -> Option<usize> {
-        let buffer = c_str(buffer);
-        // `strchr(buffer, '/') - buffer`. Without a `/` the C code computes
-        // a meaningless position that never truncates the address.
-        let pos = buffer.iter().position(|&c| c == b'/');
-
         match ty {
             IPV4_TREE => {
-                // `char ip_strv4[NETMASK_32]` filled with `strncpy`.
-                let mut ip_strv4 = buffer[..buffer.len().min(NETMASK_32 as usize - 1)].to_vec();
-                let netmask_v4 = is_netmask_v4(&ip_strv4);
-                if u32::from(netmask_v4) > NETMASK_32 {
-                    return None;
-                }
-                if netmask_v4 == 0 {
-                    return None;
-                } else if let Some(p) = pos.filter(|&p| p < ip_strv4.len()) {
-                    ip_strv4.truncate(p);
-                }
-                let mut addr4 = [0u8; 4];
-                if !inet_pton(libc::AF_INET, &ip_strv4, &mut addr4) {
-                    return None;
-                }
+                let (mut addr4, netmask_v4) = parse_ipv4(buffer)?;
                 self.count += 1;
                 self.add_element(&mut addr4, NETMASK_32, netmask_v4)
             }
             IPV6_TREE => {
-                let mut ip_strv6 = buffer[..buffer.len().min(NETMASK_128 as usize - 1)].to_vec();
-                let netmask_v6 = is_netmask_v6(&ip_strv6);
-                if u32::from(netmask_v6) > NETMASK_128 {
-                    return None;
-                }
-                if netmask_v6 == 0 {
-                    return None;
-                } else if u32::from(netmask_v6) != NETMASK_128
-                    && let Some(p) = pos.filter(|&p| p < ip_strv6.len())
-                {
-                    ip_strv6.truncate(p);
-                }
-                let mut addr6 = [0u8; 16];
-                if !inet_pton(libc::AF_INET6, &ip_strv6, &mut addr6) {
-                    return None;
-                }
+                let (mut addr6, netmask_v6) = parse_ipv6(buffer)?;
                 self.count += 1;
                 self.add_element(&mut addr6, NETMASK_128, netmask_v6)
             }
             _ => None,
         }
     }
+}
+
+/// The parsing half of `TreeAddIP` for `IPV4_TREE`: the address and CIDR of
+/// `buffer` (an address with an optional `/cidr`), `None` when invalid.
+pub fn parse_ipv4(buffer: &[u8]) -> Option<([u8; 4], u8)> {
+    let buffer = c_str(buffer);
+    // `strchr(buffer, '/') - buffer`. Without a `/` the C code computes
+    // a meaningless position that never truncates the address.
+    let pos = buffer.iter().position(|&c| c == b'/');
+
+    // `char ip_strv4[NETMASK_32]` filled with `strncpy`.
+    let mut ip_strv4 = buffer[..buffer.len().min(NETMASK_32 as usize - 1)].to_vec();
+    let netmask_v4 = is_netmask_v4(&ip_strv4);
+    if u32::from(netmask_v4) > NETMASK_32 {
+        return None;
+    }
+    if netmask_v4 == 0 {
+        return None;
+    } else if let Some(p) = pos.filter(|&p| p < ip_strv4.len()) {
+        ip_strv4.truncate(p);
+    }
+    let mut addr4 = [0u8; 4];
+    if !inet_pton(libc::AF_INET, &ip_strv4, &mut addr4) {
+        return None;
+    }
+    Some((addr4, netmask_v4))
+}
+
+/// The parsing half of `TreeAddIP` for `IPV6_TREE`: the address and CIDR of
+/// `buffer` (an address with an optional `/cidr`), `None` when invalid.
+pub fn parse_ipv6(buffer: &[u8]) -> Option<([u8; 16], u8)> {
+    let buffer = c_str(buffer);
+    let pos = buffer.iter().position(|&c| c == b'/');
+
+    let mut ip_strv6 = buffer[..buffer.len().min(NETMASK_128 as usize - 1)].to_vec();
+    let netmask_v6 = is_netmask_v6(&ip_strv6);
+    if u32::from(netmask_v6) > NETMASK_128 {
+        return None;
+    }
+    if netmask_v6 == 0 {
+        return None;
+    } else if u32::from(netmask_v6) != NETMASK_128
+        && let Some(p) = pos.filter(|&p| p < ip_strv6.len())
+    {
+        ip_strv6.truncate(p);
+    }
+    let mut addr6 = [0u8; 16];
+    if !inet_pton(libc::AF_INET6, &ip_strv6, &mut addr6) {
+        return None;
+    }
+    Some((addr6, netmask_v6))
 }
 
 impl TreeRoot {
@@ -598,7 +637,7 @@ impl TreeRoot {
             if !inet_pton(libc::AF_INET, value, &mut in4) {
                 return -1;
             }
-            if self.ipv4_tree.ip_match(&in4, IPV4_TREE).is_some() {
+            if self.match_ipv4(&in4) {
                 return 1;
             }
         } else {
@@ -606,7 +645,7 @@ impl TreeRoot {
             if !inet_pton(libc::AF_INET6, value, &mut in6) {
                 return -1;
             }
-            if self.ipv6_tree.ip_match(&in6, IPV6_TREE).is_some() {
+            if self.match_ipv6(&in6) {
                 return 1;
             }
         }
@@ -619,12 +658,8 @@ impl TreeRoot {
         let param = c_str(param);
         // strtok_r(..., ",") skips empty tokens.
         for s in param.split(|&c| c == b',').filter(|s| !s.is_empty()) {
-            let tnode = if !s.contains(&b':') {
-                self.ipv4_tree.add_ip(s, IPV4_TREE)
-            } else {
-                self.ipv6_tree.add_ip(s, IPV6_TREE)
-            };
-            if tnode.is_none() {
+            let added = if !s.contains(&b':') { self.add_ipv4(s) } else { self.add_ipv6(s) };
+            if !added {
                 return -1;
             }
         }
@@ -638,6 +673,64 @@ impl TreeRoot {
             return None;
         }
         Some(t)
+    }
+
+    /// `TreeAddIP(..., tree->ipv4_tree, IPV4_TREE) != NULL`
+    #[cfg(not(feature = "ipmatch-prefix-trie"))]
+    fn add_ipv4(&mut self, s: &[u8]) -> bool {
+        self.ipv4_tree.add_ip(s, IPV4_TREE).is_some()
+    }
+
+    /// `TreeAddIP(..., tree->ipv6_tree, IPV6_TREE) != NULL`
+    #[cfg(not(feature = "ipmatch-prefix-trie"))]
+    fn add_ipv6(&mut self, s: &[u8]) -> bool {
+        self.ipv6_tree.add_ip(s, IPV6_TREE).is_some()
+    }
+
+    /// `CPTIpMatch(..., tree->ipv4_tree, IPV4_TREE) != NULL`
+    #[cfg(not(feature = "ipmatch-prefix-trie"))]
+    fn match_ipv4(&self, in4: &[u8; 4]) -> bool {
+        self.ipv4_tree.ip_match(in4, IPV4_TREE).is_some()
+    }
+
+    /// `CPTIpMatch(..., tree->ipv6_tree, IPV6_TREE) != NULL`
+    #[cfg(not(feature = "ipmatch-prefix-trie"))]
+    fn match_ipv6(&self, in6: &[u8; 16]) -> bool {
+        self.ipv6_tree.ip_match(in6, IPV6_TREE).is_some()
+    }
+
+    #[cfg(feature = "ipmatch-prefix-trie")]
+    fn add_ipv4(&mut self, s: &[u8]) -> bool {
+        let Some((addr4, netmask_v4)) = parse_ipv4(s) else {
+            return false;
+        };
+        // The parser only returns CIDRs 1..=32.
+        let net = ipnet::Ipv4Net::new_assert(addr4.into(), netmask_v4).trunc();
+        self.ipv4_set.insert(net);
+        true
+    }
+
+    #[cfg(feature = "ipmatch-prefix-trie")]
+    fn add_ipv6(&mut self, s: &[u8]) -> bool {
+        let Some((addr6, netmask_v6)) = parse_ipv6(s) else {
+            return false;
+        };
+        // The parser only returns CIDRs 1..=128.
+        let net = ipnet::Ipv6Net::new_assert(addr6.into(), netmask_v6).trunc();
+        self.ipv6_set.insert(net);
+        true
+    }
+
+    /// Whether any IPv4 network of the set contains `in4`.
+    #[cfg(feature = "ipmatch-prefix-trie")]
+    fn match_ipv4(&self, in4: &[u8; 4]) -> bool {
+        self.ipv4_set.get_spm(&ipnet::Ipv4Net::new_assert((*in4).into(), 32)).is_some()
+    }
+
+    /// Whether any IPv6 network of the set contains `in6`.
+    #[cfg(feature = "ipmatch-prefix-trie")]
+    fn match_ipv6(&self, in6: &[u8; 16]) -> bool {
+        self.ipv6_set.get_spm(&ipnet::Ipv6Net::new_assert((*in6).into(), 128)).is_some()
     }
 }
 
@@ -779,5 +872,76 @@ mod tests {
         assert!(TreeRoot::from_param(b"::1/128").is_none());
         // Empty tokens are skipped.
         assert!(TreeRoot::from_param(b",1.2.3.4,,").is_some());
+    }
+
+    #[test]
+    fn host_bits_of_networks_are_ignored() {
+        let t = tree("10.0.49.87/16,2001:db8::1:2/112");
+        assert_eq!(t.contains_ip(b"10.0.0.1"), 1);
+        assert_eq!(t.contains_ip(b"10.1.0.1"), 0);
+        assert_eq!(t.contains_ip(b"2001:db8::1:ffff"), 1);
+        assert_eq!(t.contains_ip(b"2001:db8::2:0"), 0);
+    }
+
+    /// The crit-bit tree misses addresses of a listed network when other,
+    /// overlapping networks are listed (as C++ does); the prefix trie
+    /// matches them.
+    #[test]
+    fn overlapping_networks() {
+        let t = tree("10.0.23.108/31,10.0.42.94/18,10.0.49.87/16,10.0.146.197/26,10.0.149.150/25");
+        assert_eq!(t.contains_ip(b"10.0.49.87"), 1);
+        assert_eq!(t.contains_ip(b"10.0.23.108"), 1);
+        assert_eq!(t.contains_ip(b"10.1.0.1"), 0);
+        let expected = if cfg!(feature = "ipmatch-prefix-trie") { 1 } else { 0 };
+        assert_eq!(t.contains_ip(b"10.0.70.67"), expected);
+        assert_eq!(t.contains_ip(b"10.0.160.198"), expected);
+    }
+
+    /// With the prefix trie, `contains_ip` agrees with plain CIDR
+    /// containment on random overlapping lists.
+    #[cfg(feature = "ipmatch-prefix-trie")]
+    #[test]
+    fn prefix_trie_matches_cidr_containment() {
+        use rand::{Rng, SeedableRng};
+
+        fn contains(nets: &[(u128, u8)], bits: u32, ip: u128) -> bool {
+            nets.iter().any(|&(a, m)| {
+                let shift = bits - u32::from(m);
+                (a >> shift) == (ip >> shift)
+            })
+        }
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x0069_706d_6174_6368);
+        for v6 in [false, true] {
+            let bits = if v6 { 128 } else { 32 };
+            // Addresses differ in their low 16 bits only, so that the
+            // networks overlap.
+            let base: u128 = if v6 { 0x2001_0db8 << 96 } else { 0x0a00_0000 };
+            let fmt = |a: u128| {
+                if v6 {
+                    std::net::Ipv6Addr::from(a).to_string()
+                } else {
+                    std::net::Ipv4Addr::from(a as u32).to_string()
+                }
+            };
+            for _ in 0..5000 {
+                let n = rng.random_range(1..8);
+                let nets: Vec<(u128, u8)> = (0..n)
+                    .map(|_| {
+                        let a = base | u128::from(rng.random::<u16>());
+                        // 127 at most: C++ does not accept an explicit /128.
+                        let m = rng.random_range(bits - 16..bits.min(127) + 1) as u8;
+                        (a, m)
+                    })
+                    .collect();
+                let param = nets.iter().map(|&(a, m)| format!("{}/{}", fmt(a), m)).collect::<Vec<_>>().join(",");
+                let t = tree(&param);
+                for _ in 0..20 {
+                    let ip = base | u128::from(rng.random::<u16>());
+                    let want = contains(&nets, bits, ip);
+                    assert_eq!(t.contains_ip(fmt(ip).as_bytes()) == 1, want, "{param} {}", fmt(ip));
+                }
+            }
+        }
     }
 }

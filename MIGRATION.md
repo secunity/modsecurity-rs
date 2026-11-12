@@ -112,6 +112,7 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
 | `libc`, `bstr` | — | POSIX calls; byte-string helpers |
 | `jiff` | libc `localtime_r`/`strftime` | local time zone and timestamp formatting (C-locale output) |
 | `aho-corasick` (optional) | — | `pm-aho-corasick` feature: alternative `@pm` matcher (off by default) |
+| `prefix-trie`, `ipnet` (optional) | — | `ipmatch-prefix-trie` feature: alternative `@ipMatch` network set (off by default) |
 | `rand` | `<random>`, `rand()`/`srand()` | transaction id suffix, audit log boundaries |
 | — | yajl | `src/utils/json.rs` (yajl-compatible event parser, tree and generator) |
 
@@ -147,6 +148,18 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   with ACMP. Without the
   feature the C++ behaviour is kept (the ACMP port agrees with C++
   `acmp_process_quick` on 200k random cases).
+- **`ipmatch-prefix-trie` feature** (off by default): `@ipMatch` and its
+  file variants keep their networks in prefix tries instead of the crit-bit
+  tree of `msc_tree`. The tree's quirks (netmask arrays reset on insert, only
+  the first netmask of a node applied) make it miss addresses of a listed
+  network when overlapping networks are listed with it, in C++ as in the
+  port; with the feature an address matches whenever any listed network
+  contains it. Entry parsing (`TreeAddIP`: `atoi` CIDRs, rejected `/0` and
+  explicit IPv6 `/128`, platform `inet_pton`) is shared, so the same lists
+  load or fail. Compared with C++ v3.0.15 through the C API on 300 random
+  lists (15,600 lookups): without the feature the results are identical;
+  with it the only differences are 142 extra matches, each inside a listed
+  network. All regression and unit cases pass either way.
 - **Time formatting** (audit/error log timestamps, the JSON `time_stamp`,
   parallel audit log and upload directory names) always uses the C locale's
   formats and English names. C++'s `strftime` follows the process `LC_TIME`
