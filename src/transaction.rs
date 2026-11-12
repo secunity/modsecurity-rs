@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::actions::disruptive::allow::AllowType;
+use crate::actions::transformations::transformation::Transformation;
 use crate::anchored_set_variable::AnchoredSetVariable;
 use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::anchored_variable::AnchoredVariable;
@@ -252,6 +253,8 @@ pub struct EvalScratch<'a> {
     pub e: Vec<VariableValue>,
     /// The transformation results of one value.
     pub values: TransformationResults,
+    /// The transformations the rule applies to each value.
+    pub chain: Vec<&'a Transformation>,
 }
 
 pub struct Transaction<'a> {
@@ -1398,7 +1401,7 @@ impl<'a> Transaction<'a> {
                 g.add("message", &a.message);
                 g.string(b"details");
                 g.map_open();
-                g.add("match", &a.match_);
+                g.add("match", &a.match_message());
                 g.add("reference", &a.reference);
                 g.add("ruleId", a.rule.rule_id.to_string().as_bytes());
                 g.add("file", a.rule.file_name.as_bytes());

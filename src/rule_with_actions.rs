@@ -25,6 +25,7 @@ use crate::modsecurity::Phases;
 use crate::rule_message::RuleMessage;
 use crate::rule_script::RuleScript;
 use crate::rule_with_operator::RuleWithOperator;
+use crate::rules_set::RulesSet;
 use crate::rules_set_properties::RuleEngine;
 use crate::transaction::Transaction;
 use crate::utils::string::limit_to;
@@ -510,7 +511,7 @@ impl RuleWithActions {
     /// the `SecDefaultAction` ones (unless the rule has `t:none`), the
     /// rule's own (from its last `t:none` on) and the `SecRuleUpdateActionById`
     /// ones (likewise).
-    fn for_each_transformation(&self, t: &Transaction<'_>, mut f: impl FnMut(&Transformation)) {
+    fn for_each_transformation<'a>(&'a self, rules: &'a RulesSet, mut f: impl FnMut(&'a Transformation)) {
         let mut none = 0;
 
         for a in &self.transformations {
@@ -521,7 +522,6 @@ impl RuleWithActions {
 
         // Check for transformations on the SecDefaultAction. Notice that
         // first we make sure that won't be a t:none on the target rule.
-        let rules = t.rules;
         if none == 0
             && let Some(defaults) = self.phase.map(|p| &rules.properties.default_actions[p.index()])
         {
@@ -562,13 +562,27 @@ impl RuleWithActions {
         }
     }
 
-    /// `executeTransformations` (with `executeTransformation` inlined).
+    /// The transformations this rule applies with the rules of `t`, in
+    /// order (see `for_each_transformation`), appended to `chain`. They are
+    /// the same for every value the rule inspects.
+    pub fn transformations_in<'a>(&'a self, rules: &'a RulesSet, chain: &mut Vec<&'a Transformation>) {
+        self.for_each_transformation(rules, |a| chain.push(a));
+    }
+
+    /// `executeTransformations` (with `executeTransformation` inlined):
+    /// applies `chain` (see [`Self::transformations_in`]) to `input`.
     ///
     /// `ret` is cleared first; the buffer of its last value is reused. The
     /// path of the final value (without `multiMatch`) is
     /// [`TransformationPath::Full`], spelled out by [`Self::transformation_path`]
     /// only when it is needed (on a match).
-    pub fn execute_transformations(&self, t: &Transaction<'_>, input: &[u8], ret: &mut TransformationResults) {
+    pub fn execute_transformations(
+        &self,
+        t: &Transaction<'_>,
+        chain: &[&Transformation],
+        input: &[u8],
+        ret: &mut TransformationResults,
+    ) {
         let multi_match = self.contains_multi_match_action;
         let mut value = match ret.pop() {
             Some((mut v, _)) => {
@@ -586,13 +600,13 @@ impl RuleWithActions {
             ret.push((value.clone(), TransformationPath::Step(String::new())));
         }
 
-        self.for_each_transformation(t, |a| {
+        for a in chain {
             if a.transform(&mut value, Some(t)) && multi_match {
                 ret.push((value.clone(), TransformationPath::Step(a.name().to_string())));
                 nth += 1;
             }
             crate::ms_dbg_a!(t, 9, " T ({}) {}: \"{}\"", nth, a.name(), String::from_utf8_lossy(&limit_to(80, &value)));
-        });
+        }
 
         if multi_match {
             crate::ms_dbg_a!(t, 9, "multiMatch is enabled. {} values to be tested.", ret.len());
@@ -605,7 +619,7 @@ impl RuleWithActions {
     /// joined with `,` (the C++ code builds this path for every value).
     pub fn transformation_path(&self, t: &Transaction<'_>) -> String {
         let mut path = String::new();
-        self.for_each_transformation(t, |a| {
+        self.for_each_transformation(t.rules, |a| {
             if !path.is_empty() {
                 path.push(',');
             }

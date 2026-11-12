@@ -6,6 +6,7 @@
 # debug log level 9) and compares:
 #   - interventions, matched rule ids and error log lines (must be identical)
 #   - the debug logs (identical once non-UTF-8 bytes are decoded the same way)
+# and then the first again with the debug log off.
 #
 # Usage: CPP_TREE=/path/to/built/ModSecurity CRS_DIR=/path/to/coreruleset \
 #        test/differential/run.sh
@@ -53,3 +54,13 @@ assert not bad, f"debug log differs at lines {bad}"
 print(f"identical: {n} debug log lines")
 PY
 echo "requests: $(grep -c '^REQ ' "$work/cpp/out.txt"), outputs identical"
+
+# Second pass without the debug log: some paths (e.g. the transformation
+# cache) are only taken when the debug level is below 9.
+grep -v '^SecDebugLog' "$work/rules.conf" > "$work/rules-nodebug.conf"
+for v in cpp rs; do
+    mkdir "$work/$v-nodebug"
+    (cd "$work/$v-nodebug" && "../harness_$v" ../rules-nodebug.conf ../requests.txt > out.txt)
+done
+diff "$work/cpp-nodebug/out.txt" "$work/rs-nodebug/out.txt"
+echo "without debug log: outputs identical"

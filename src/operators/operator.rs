@@ -83,16 +83,25 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
         self.evaluate(t, rule, input, rm) != negated
     }
 
-    /// The text logged for a match (`resolveMatchMessage`).
-    fn resolve_match_message(&self, t: &Transaction<'_>, key: &[u8], value: &[u8]) -> Vec<u8> {
-        let empty = Param::default();
-        let param = self.param().unwrap_or(&empty);
-        let p = if param.expanded_in_message { param.value(t) } else { Cow::Borrowed(&param.literal[..]) };
+    /// The parameter as the match message shows it: expanded for `t` or
+    /// the literal, depending on the operator.
+    fn message_param(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
+        match self.param() {
+            Some(param) if param.expanded_in_message => param.value(t),
+            Some(param) => Cow::Borrowed(&param.literal),
+            None => Cow::Borrowed(b""),
+        }
+    }
+
+    /// The text logged for a match of `value` in the variable `key`
+    /// (`resolveMatchMessage`); `param` is [`Operator::message_param`] at
+    /// the time of the match.
+    fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
         let mut ret = Vec::new();
         ret.extend_from_slice(b"Matched \"Operator `");
         ret.extend_from_slice(self.name().as_bytes());
         ret.extend_from_slice(b"' with parameter `");
-        ret.extend_from_slice(&limit_to(200, &p));
+        ret.extend_from_slice(&limit_to(200, param));
         ret.extend_from_slice(b"' against variable `");
         ret.extend_from_slice(to_hex_if_needed(key, false).as_bytes());
         ret.extend_from_slice(b"' (Value: `");

@@ -2,7 +2,7 @@
 //! `src/rule_with_operator.cc`.
 
 use crate::operators::operator::RuleOperator;
-use crate::rule_message::RuleMessage;
+use crate::rule_message::{Matched, RuleMessage};
 use crate::rule_with_actions::{LogPoint, RuleWithActions, TransformationPath};
 use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
@@ -185,7 +185,9 @@ impl RuleWithOperator {
 
         // The transaction's buffers, reused by every rule (a chained rule
         // evaluated below gets fresh ones); given back after the loop.
-        let EvalScratch { mut vars, mut e, mut values } = std::mem::take(&mut t.eval_scratch);
+        let EvalScratch { mut vars, mut e, mut values, mut chain } = std::mem::take(&mut t.eval_scratch);
+        chain.clear();
+        rule.transformations_in(t.rules, &mut chain);
         vars.clear();
         let mut exclusion = Variables::new();
         self.final_vars(rule, t, &mut vars, &mut exclusion);
@@ -212,12 +214,13 @@ impl RuleWithOperator {
                     continue;
                 }
 
-                rule.execute_transformations(t, value, &mut values);
+                rule.execute_transformations(t, &chain, value, &mut values);
 
                 for (value_after_trans, path) in &values {
                     let ret = self.execute_operator_at(rule, t, key, value_after_trans, rm);
                     if ret {
-                        rm.match_ = self.operator.op.resolve_match_message(t, key, value);
+                        let operator = self.operator.op.as_ref();
+                        rm.matched = Some(Matched { operator, param: operator.message_param(t), value: v.clone() });
                         for i in v.origin() {
                             rm.reference.extend_from_slice(i.to_text().as_bytes());
                         }
@@ -236,7 +239,8 @@ impl RuleWithOperator {
             }
         }
         vars.clear();
-        t.eval_scratch = EvalScratch { vars, e, values };
+        chain.clear();
+        t.eval_scratch = EvalScratch { vars, e, values, chain };
 
         if !global_ret {
             crate::ms_dbg_a!(t, 4, "Rule returned 0.");

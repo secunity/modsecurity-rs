@@ -6,20 +6,37 @@
 //! message borrows only the rule (which outlives the transaction) and the
 //! transaction is passed to the formatting functions instead.
 
+use std::borrow::Cow;
+
+use crate::operators::operator::Operator;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
+use crate::variable_value::VariableValue;
 
 /// `RuleMessage::LogMessageInfo`
 pub const ERROR_LOG_TAIL_LOG_MESSAGE_INFO: i32 = 2;
 pub const CLIENT_LOG_MESSAGE_INFO: i32 = 4;
+
+/// A match of a rule's operator: what the match message is made of. Most
+/// matches are never logged, so the text is only built on demand.
+#[derive(Debug, Clone)]
+pub struct Matched<'r> {
+    pub operator: &'r dyn Operator,
+    /// The operator's parameter as shown in the message, at match time.
+    pub param: Cow<'r, [u8]>,
+    /// The variable that matched (before transformations).
+    pub value: VariableValue,
+}
 
 #[derive(Debug, Clone)]
 pub struct RuleMessage<'r> {
     pub rule: &'r RuleWithActions,
     pub data: Vec<u8>,
     pub is_disruptive: bool,
-    pub match_: Vec<u8>,
+    /// The last match of the rule's operator, if any (see
+    /// [`RuleMessage::match_message`]).
+    pub matched: Option<Matched<'r>>,
     pub message: Vec<u8>,
     pub no_audit_log: bool,
     pub reference: Vec<u8>,
@@ -34,7 +51,7 @@ impl<'r> RuleMessage<'r> {
             rule,
             data: Vec::new(),
             is_disruptive: false,
-            match_: Vec::new(),
+            matched: None,
             message: Vec::new(),
             no_audit_log: false,
             reference: Vec::new(),
@@ -49,7 +66,7 @@ impl<'r> RuleMessage<'r> {
     pub fn reset(&mut self, reset_save_message: bool) {
         self.data.clear();
         self.is_disruptive = false;
-        self.match_.clear();
+        self.matched = None;
         self.message.clear();
         self.no_audit_log = false;
         self.reference.clear();
@@ -58,6 +75,14 @@ impl<'r> RuleMessage<'r> {
         }
         self.severity = 0;
         self.tags.clear();
+    }
+
+    /// The match message (C++ `m_match`): `Matched "Operator ..." against
+    /// variable ...`; empty when the operator did not match.
+    pub fn match_message(&self) -> Vec<u8> {
+        self.matched.as_ref().map_or_else(Vec::new, |m| {
+            m.operator.resolve_match_message(&m.param, m.value.key_with_collection(), m.value.value())
+        })
     }
 
     /// `log()` / `log(props)` / `log(props, responseCode)`; `code` -1 keeps
@@ -78,7 +103,7 @@ impl<'r> RuleMessage<'r> {
         } else {
             msg.extend_from_slice(b"ModSecurity: Warning. ");
         }
-        msg.extend_from_slice(&self.match_);
+        msg.extend_from_slice(&self.match_message());
         msg.extend_from_slice(&Self::details(self, t));
         if props & ERROR_LOG_TAIL_LOG_MESSAGE_INFO != 0 {
             msg.push(b' ');

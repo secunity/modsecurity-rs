@@ -30,7 +30,7 @@ impl Operator for DetectSQLi {
         "DetectSQLi"
     }
 
-    fn resolve_match_message(&self, _t: &Transaction<'_>, _key: &[u8], _value: &[u8]) -> Vec<u8> {
+    fn resolve_match_message(&self, _param: &[u8], _key: &[u8], _value: &[u8]) -> Vec<u8> {
         b"detected SQLi using libinjection.".to_vec()
     }
     fn evaluate(
