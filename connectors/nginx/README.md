@@ -2,8 +2,8 @@
 
 A Rust port of [ModSecurity-nginx](https://github.com/owasp-modsecurity/ModSecurity-nginx)
 v1.0.4, the nginx connector for libmodsecurity. It is built as a dynamic
-nginx module on top of the Rust port of libmodsecurity
-(`../modsecurity-rust`), which it links in directly, so the module is a
+nginx module on top of the Rust port of libmodsecurity (this
+repository's root crate), which it links in directly, so the module is a
 single `.so` with no dependency on `libmodsecurity.so.3`.
 
 The directives, their semantics and the request processing (access phase,
@@ -15,12 +15,14 @@ and the differences.
 
 The module is built with [ngx-rust](https://github.com/nginx/ngx-rust)
 against a configured nginx source tree (bindgen needs libclang). Configure
-nginx with `--with-compat` (and the modules you use), then:
+nginx with `--with-compat` (and the modules you use), then, from the
+repository root (the module is a workspace member that plain `cargo build`
+skips, since it needs the nginx tree):
 
 ```sh
 export NGINX_SOURCE_DIR=/path/to/nginx-1.28.0
 export NGINX_BUILD_DIR=/path/to/nginx-1.28.0/objs   # the configured build dir
-cargo build --release
+cargo build --release -p modsecurity-nginx
 cp target/release/libngx_http_modsecurity_module.so /path/to/nginx/modules/ngx_http_modsecurity_module.so
 ```
 
@@ -182,7 +184,7 @@ Turns on or off ModSecurity error log functionality.
 # Testing
 
 * OWASP CRS regression suite through a real nginx:
-  `../modsecurity-rust/test/crs/run.sh` with `MODULE_SO` set to the built
+  `test/crs/run.sh` (at the repository root) with `MODULE_SO` set to the built
   module (see the script header).
 * The C module's own nginx-tests (`tests/*.t` of ModSecurity-nginx) run with
   `TEST_NGINX_GLOBALS="load_module /path/to/ngx_http_modsecurity_module.so;"`

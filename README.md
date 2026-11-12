@@ -89,6 +89,20 @@ module such as the Rust connector port).
 
 `tools/rules-check` is the port of `modsec-rules-check`.
 
+## nginx connector
+
+`connectors/nginx` is a Rust port of the
+[ModSecurity-nginx](https://github.com/owasp-modsecurity/ModSecurity-nginx)
+connector: a dynamic nginx module with this library linked in. It needs a
+configured nginx source tree, so plain `cargo build`/`cargo test` skip it:
+
+```sh
+NGINX_SOURCE_DIR=/path/to/nginx NGINX_BUILD_DIR=/path/to/nginx/objs \
+    cargo build --release -p modsecurity-nginx
+```
+
+See [connectors/nginx/README.md](connectors/nginx/README.md).
+
 ## License
 
 Apache License 2.0, like the original project (see `LICENSE`).

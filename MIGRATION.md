@@ -23,6 +23,7 @@ file with the same name (hyphens become underscores).
 | `others/mbedtls` | `md-5` / `sha1` crates; base64 hand-ported in `src/utils/base64.rs` |
 | `test/regression`, `test/unit`, `test/common` | `test/regression`, `test/unit`, `test/common` (+ `test/suites.rs` for `cargo test`) |
 | `tools/rules-check` | `tools/rules-check` |
+| ModSecurity-nginx v1.0.4 (separate repository) | `connectors/nginx` (workspace member; see its MIGRATION.md) |
 
 Not ported: `src/debug_log_writer_agent.h` (declared, never defined or used),
 `headers/modsecurity/rules_properties.h` (compatibility include),
@@ -184,7 +185,7 @@ Faithfully *kept* C++ quirks are documented at their site (e.g.
     are identical except for one `@detectXSS` verdict (an argument name
     `pay=div style="` flagged by C libinjection, not by the Rust detector;
     the CRS test passes either way). The same suite also passes through the
-    Rust port of the connector (`../modsecurity-nginx-rust`).
+    Rust port of the connector (`connectors/nginx`).
   - During the port: all 36 transformations on ~836k random inputs (output and
     "changed" flag), ~20k generated operator cases, the parser on all
     regression rule sets, CRS and ~19k mutated configurations (acceptance,
