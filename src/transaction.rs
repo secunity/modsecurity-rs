@@ -11,6 +11,9 @@
 //! `m_variableArgs` is `t.vars.args`) and the marker state is the `marker`
 //! field.
 
+mod arguments;
+
+use arguments::ArgumentWriter;
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -35,10 +38,10 @@ use crate::rules_set_properties::{
     BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code, rule_engine_state_string,
 };
 use crate::unique_id::UniqueId;
-use crate::utils::decode::{uri_decode, urldecode_nonstrict_inplace};
+use crate::utils::decode::uri_decode;
 use crate::utils::json::JsonGen;
 use crate::utils::string::{
-    asc_time, dash_if_empty, double_to_string, is_space, split, ssplit, ssplit_pair, to_hex_if_needed, tolower,
+    asc_time, dash_if_empty, double_to_string, is_space, split, ssplit, to_hex_if_needed, tolower,
 };
 use crate::variable_value::VariableValue;
 use crate::variables::variable::Variable;
@@ -319,7 +322,7 @@ pub struct Transaction<'a> {
     pub matched: Vec<Vec<u8>>,
     #[cfg(feature = "libxml2")]
     pub xml: Option<Box<Xml>>,
-    pub json: Option<Box<Json>>,
+    pub json: Json,
     pub sec_rule_engine: Option<RuleEngine>,
     pub sec_xml_parse_xml_into_args: Option<ParseXmlIntoArgs>,
     /// Environment variables set by `setenv`.
@@ -411,7 +414,7 @@ impl<'a> Transaction<'a> {
             ),
             #[cfg(feature = "libxml2")]
             xml: Some(Box::new(Xml::new())),
-            json: Some(Box::new(Json::new())),
+            json: Json::new(),
             sec_rule_engine: None,
             sec_xml_parse_xml_into_args: rules.properties.sec_xml_parse_xml_into_args,
             variable_envs: BTreeMap::new(),
@@ -495,55 +498,25 @@ impl<'a> Transaction<'a> {
         self.evaluate_phase(Phases::Connection);
     }
 
-    /// `extractArguments`
-    pub fn extract_arguments(&mut self, orig: &str, buf: &[u8], mut offset: usize) -> bool {
-        let sep1 = match &self.rules.properties.sec_argument_separator {
-            Some(sep) => sep.as_bytes().first().copied().unwrap_or(b'&'),
-            None => b'&',
-        };
-        for t in ssplit(buf, sep1) {
-            let (mut key, mut value) = ssplit_pair(&t, b'=');
-            let mut invalid_count = 0;
-            urldecode_nonstrict_inplace(&mut key, &mut invalid_count);
-            urldecode_nonstrict_inplace(&mut value, &mut invalid_count);
-            if invalid_count > 0 {
-                let off = self.vars.offset;
-                self.vars.url_encoded_error.set(b"1", off);
-            }
-            self.add_argument(orig, &key, &value, offset);
-            offset = offset + t.len() + 1;
+    fn argument_writer(&mut self) -> ArgumentWriter<'_> {
+        ArgumentWriter {
+            vars: &mut self.vars,
+            combined_size: &mut self.args_combined_size_double,
+            rules: self.rules,
+            id: &self.id,
+            uri: &self.uri,
         }
+    }
+
+    /// `extractArguments`
+    pub fn extract_arguments(&mut self, origin: &str, buf: &[u8], offset: usize) -> bool {
+        self.argument_writer().extract(origin, buf, offset);
         true
     }
 
     /// `addArgument`
-    pub fn add_argument(&mut self, orig: &str, key: &[u8], value: &[u8], mut offset: usize) -> bool {
-        crate::ms_dbg_a!(
-            self,
-            4,
-            "Adding request argument ({}): name \"{}\", value \"{}\"",
-            orig,
-            String::from_utf8_lossy(key),
-            String::from_utf8_lossy(value)
-        );
-        if let Some(limit) = self.rules.properties.arguments_limit
-            && self.vars.args.len() >= limit as usize
-        {
-            crate::ms_dbg_a!(self, 4, "Skipping request argument, over limit ({})", limit);
-            return false;
-        }
-        offset = offset + key.len() + 1;
-        self.vars.args.set(key, value, offset);
-        if orig == "GET" {
-            self.vars.args_get.set(key, value, offset);
-        } else if orig == "POST" {
-            self.vars.args_post.set(key, value, offset);
-        }
-        self.args_combined_size_double += (key.len() + value.len()) as f64;
-        let s = double_to_string(self.args_combined_size_double);
-        self.vars.args_combined_size.set_with_len(s.as_bytes(), offset - key.len() - 1, key.len());
-        self.vars.args_combined_size.set_with_len(s.as_bytes(), offset, value.len());
-        true
+    pub fn add_argument(&mut self, origin: &str, key: &[u8], value: &[u8], offset: usize) -> bool {
+        self.argument_writer().add(origin, key, value, offset)
     }
 
     /// `processURI`
@@ -742,7 +715,6 @@ impl<'a> Transaction<'a> {
             request_body_no_files_limit_exceeded = true;
         }
 
-        let body = self.request_body.clone();
         let set_error = |t: &mut Self, prefix: &str, error: &str, both_msgs: bool| {
             let off = t.vars.offset;
             let msg = format!("{}{}", prefix, error);
@@ -767,6 +739,7 @@ impl<'a> Transaction<'a> {
             // large size might cause issues in the parsing itself; omit if
             // exceeded
             if !request_body_no_files_limit_exceeded {
+                let body = self.request_body.clone();
                 let mut xml = self.xml.take().unwrap_or_else(|| Box::new(Xml::new()));
                 let mut error = None;
                 if xml.init(self) {
@@ -786,15 +759,19 @@ impl<'a> Transaction<'a> {
             // done
         } else if self.request_body_processor == RequestBodyType::JSONRequestBody {
             if !request_body_no_files_limit_exceeded {
-                let mut json = self.json.take().unwrap_or_else(|| Box::new(Json::new()));
                 if let Some(depth) = self.rules.properties.request_body_json_depth_limit {
-                    json.set_max_depth(depth);
+                    self.json.set_max_depth(depth);
                 }
-                json.process_chunk(&body);
-                let result = json.complete(self);
-                self.json = Some(json);
+                let mut arguments = ArgumentWriter {
+                    vars: &mut self.vars,
+                    combined_size: &mut self.args_combined_size_double,
+                    rules: self.rules,
+                    id: &self.id,
+                    uri: &self.uri,
+                };
+                let result = self.json.parse(&self.request_body, |key, value| arguments.add("JSON", key, value, 0));
                 if let Err(error) = result
-                    && !body.is_empty()
+                    && !self.request_body.is_empty()
                 {
                     set_error(self, "JSON parsing error: ", &error, true);
                 } else {
@@ -802,6 +779,7 @@ impl<'a> Transaction<'a> {
                 }
             }
         } else if self.request_body_type == RequestBodyType::MultiPartRequestBody {
+            let body = self.request_body.clone();
             let mut error = None;
             let mut reqbody_no_files_length: u64 = 0;
             if let Some(a) = &a {
@@ -839,7 +817,14 @@ impl<'a> Transaction<'a> {
             self.vars.offset += 1;
             if !request_body_no_files_limit_exceeded {
                 let off = self.vars.offset;
-                self.extract_arguments("POST", &body, off);
+                ArgumentWriter {
+                    vars: &mut self.vars,
+                    combined_size: &mut self.args_combined_size_double,
+                    rules: self.rules,
+                    id: &self.id,
+                    uri: &self.uri,
+                }
+                .extract("POST", &self.request_body, off);
             }
         } else if self.request_body_type != RequestBodyType::UnknownFormat {
             let error = a.as_ref().map(|a| String::from_utf8_lossy(a).into_owned()).unwrap_or_default();
@@ -886,9 +871,12 @@ impl<'a> Transaction<'a> {
         self.vars.full_request_length.set(full_request.len().to_string().as_bytes(), off);
 
         if !self.request_body.is_empty() {
-            let rb = self.request_body.clone();
-            self.vars.request_body.set(&rb, off);
-            self.vars.request_body_length.set_with_len(rb.len().to_string().as_bytes(), off, rb.len());
+            self.vars.request_body.set(&self.request_body, off);
+            self.vars.request_body_length.set_with_len(
+                self.request_body.len().to_string().as_bytes(),
+                off,
+                self.request_body.len(),
+            );
         }
 
         self.evaluate_phase(Phases::RequestBody);
@@ -1033,9 +1021,8 @@ impl<'a> Transaction<'a> {
         }
 
         let off = self.vars.offset;
-        let rb = self.response_body.clone();
-        self.vars.response_body.set(&rb, off);
-        self.vars.response_content_length.set(rb.len().to_string().as_bytes(), off);
+        self.vars.response_body.set(&self.response_body, off);
+        self.vars.response_content_length.set(self.response_body.len().to_string().as_bytes(), off);
         self.evaluate_phase(Phases::ResponseBody);
     }
 

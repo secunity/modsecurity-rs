@@ -170,3 +170,64 @@ persistent backends retain synchronization, and existing external-library
 unsafe boundaries remain. The new TX store and binding code use no unsafe
 code or interior mutability; the scoped Lua borrow cell is the deliberate
 exception at the callback boundary.
+
+The third pass starts from `7f9a09b` and narrows ownership in request argument
+and JSON parsing. Its default baseline had 193 passing library tests and two
+ignored diagnostic helpers; full tests and strict Clippy passed before edits.
+
+| Inspected issue | Change and practical benefit |
+|---|---|
+| JSON retained a yajl-style `process_chunk`/`complete` interface, copying the already buffered request into another buffer | `Json::parse` borrows the body and calls an argument sink directly. There is no second input buffer or intermediate list of parsed arguments. Cancellation still stops at the same scalar and preserves earlier arguments. |
+| JSON callbacks borrowed the entire transaction; the transaction temporarily removed an `Option<Box<Json>>` to call them | `ArgumentWriter` borrows variable state plus logging/configuration context. The transaction can independently borrow its body and plain owned `Json` state. There is no temporary missing parser or allocation for the parser object. |
+| JSON stored both a container stack and a signed depth counter, comparing depth against a floating-point limit | The stack length is the depth, and the configured limit remains an integer. The existing sticky depth-error flag and partial path state are retained across repeated processing. |
+| Form parsing first copied every input segment into an owned vector, then copied keys and values for decoding | A borrowed `split_inclusive` traversal retains `std::getline` empty/trailing-separator semantics. Only the key and value being decoded need owned buffers. |
+| Request/response variable population cloned whole bodies before copying them into anchored variables | Independent field borrows remove those temporary copies. The body snapshots required by rule variables are still owned. XML and multipart retain their existing parser paths and their temporary input copy. |
+
+`Transaction::add_argument` and `extract_arguments` retain their existing
+signatures and return behavior. The low-level `Transaction::json` field is now
+a `Json` value, and its parser uses the borrowed-input API. Normal embedding
+entry points and the C ABI are unchanged. No dependencies or unsafe code were
+added.
+
+Four regression tests cover repeated JSON processing after errors, empty-body
+error handling, sticky depth errors, binary argument values, decoded-key
+offsets, custom separators, empty arguments, origin case sensitivity and
+continued form decoding after an argument limit. The repeated-processing
+tests were also run against the original implementation before refactoring.
+Error text, `ARGS_COMBINED_SIZE` floating-point formatting, insertion order
+and debug logging are deliberately preserved.
+
+Default, minimal-feature and opt-in matcher suites pass, with 197, 181 and
+198 library tests respectively (two diagnostic helpers remain ignored in each).
+Strict Clippy passes for all three configurations. The known 11 upstream
+unit-suite failures remain unchanged. The release C API comparison matches
+all 60 CRS requests with logging enabled and disabled and all 582,671 debug
+lines byte-for-byte.
+
+A separate C API comparison exercises 27 JSON/form requests under seven
+configurations: normal parsing, an argument limit, depth limits of zero and
+two, a body-size limit, disabled body access and a custom separator. All 189
+request outputs and 12,718 debug lines match the saved baseline byte-for-byte,
+including malformed input, duplicate/empty keys, raw numeric spelling and
+invalid UTF-8.
+
+Five alternating, CPU-3-pinned release benchmark runs compare this pass with
+`7f9a09b`. The three CRS workloads use the same harness and iteration counts
+as the previous pass. Two additional workloads process 500 requests per run,
+each with a single 512 KiB value in a JSON object or URL-encoded form. Those
+use body access enabled, 1 MiB body limits and one JSON-selection rule, without
+CRS or debug logging, to exercise parsing and copying directly.
+
+| Workload | Before (transactions/s) | After (transactions/s) | Change |
+|---|---:|---:|---:|
+| Upstream request, PL1 | 4,135.9 | 4,246.6 | +2.68% |
+| 60-request corpus, PL1 | 3,672.0 | 3,681.3 | +0.25% |
+| 60-request corpus, PL4 | 2,270.1 | 2,286.2 | +0.71% |
+| 512 KiB JSON value | 619.2 | 632.9 | +2.21% |
+| 512 KiB form value | 1,044.2 | 1,116.4 | +6.91% |
+
+These local median throughput measurements show no material regression in
+the exercised paths. Formatting, whitespace checks and the release build
+also pass. The broader phase orchestrator, XML/multipart parser ownership,
+action construction and shared-file/logging lifecycles remain unchanged;
+this pass introduces no new unsafe code or suppression attributes.
