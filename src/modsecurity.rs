@@ -221,6 +221,17 @@ impl ModSecurity {
         use crate::utils::json::JsonGen;
         use crate::utils::regex::Regex;
 
+        // The regex captures contain decimal digits, so general C++ prefix
+        // parsing (whitespace, signs, trailing text) is unnecessary here.
+        // Keep its signed 32-bit range and externally reported error text.
+        fn parse_offset(bytes: &[u8]) -> Result<usize, &'static str> {
+            std::str::from_utf8(bytes)
+                .map_err(|_| "stoi")?
+                .parse::<i32>()
+                .map(|offset| offset as usize)
+                .map_err(|_| "stoi")
+        }
+
         let variables = Regex::new("v([0-9]+),([0-9]+)");
         let operators = Regex::new("o([0-9]+),([0-9]+)");
         let transformations = Regex::new("t:(?:(?!t:).)+");
@@ -264,16 +275,17 @@ impl ModSecurity {
             g.string(size);
             g.map_close();
 
-            let start = Self::stoi(starting_at)?;
-            if start as usize >= len {
+            let start = parse_offset(starting_at)?;
+            if start >= len {
                 return Err("Offset is out of the content limits.".to_string());
             }
 
-            let value = Self::substr(content, start as usize, Self::stoi(size)? as usize)?;
+            let end = start.saturating_add(parse_offset(size)?).min(len);
+            let value = &content[start..end];
             if !var_value.is_empty() {
                 var_value.push(b' ');
             }
-            var_value.extend_from_slice(&value);
+            var_value.extend_from_slice(value);
             pending -= 3;
         }
         g.array_close();
@@ -323,15 +335,14 @@ impl ModSecurity {
             g.string(size);
             g.map_close();
 
-            let start = Self::stoi(starting_at)?;
-            if start as usize >= var_value.len() {
+            let start = parse_offset(starting_at)?;
+            if start >= var_value.len() {
                 return Err("Offset is out of the variable limits.".to_string());
             }
             g.string(b"value");
 
-            let value = Self::substr(&var_value, start as usize, Self::stoi(size)? as usize)?;
-
-            g.string(&value);
+            let end = start.saturating_add(parse_offset(size)?).min(var_value.len());
+            g.string(&var_value[start..end]);
             pending -= 3;
         }
 
@@ -349,46 +360,6 @@ impl ModSecurity {
         let mut json = g.into_buf();
         json.push(b'\n');
         Ok(json)
-    }
-
-    /// `std::stoi`: leading white space, optional sign, decimal digits;
-    /// fails (`std::invalid_argument` / `std::out_of_range`, both "stoi")
-    /// without digits or outside the `int` range.
-    fn stoi(s: &[u8]) -> Result<i32, String> {
-        let mut i = 0;
-        while i < s.len() && matches!(s[i], b' ' | b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r') {
-            i += 1;
-        }
-        let negative = i < s.len() && s[i] == b'-';
-        if i < s.len() && (s[i] == b'-' || s[i] == b'+') {
-            i += 1;
-        }
-        let digits = s[i..].iter().take_while(|c| c.is_ascii_digit()).count();
-        if digits == 0 {
-            return Err("stoi".to_string());
-        }
-        let mut v: i64 = 0;
-        for &c in &s[i..i + digits] {
-            v = v * 10 + i64::from(c - b'0');
-            if v > i64::from(i32::MAX) + 1 {
-                return Err("stoi".to_string());
-            }
-        }
-        let v = if negative { -v } else { v };
-        i32::try_from(v).map_err(|_| "stoi".to_string())
-    }
-
-    /// `std::string(str, pos, n)`: at most `n` bytes from `pos`; throws
-    /// `std::out_of_range` when `pos` is past the end.
-    fn substr(s: &[u8], pos: usize, n: usize) -> Result<Vec<u8>, String> {
-        if pos > s.len() {
-            return Err(format!(
-                "basic_string::basic_string: __pos (which is {}) > this->size() (which is {})",
-                pos,
-                s.len()
-            ));
-        }
-        Ok(s[pos..pos + n.min(s.len() - pos)].to_vec())
     }
 }
 
@@ -522,5 +493,28 @@ mod process_content_offset_tests {
         // The C++ code throws std::invalid_argument / std::out_of_range.
         assert_eq!(pco("Hello World Foo", "v0,5v6,5v12,3o9,3o2,2").unwrap_err(), "stoi");
         assert_eq!(pco("Hello", "v99999999999,1v1,1").unwrap_err(), "stoi");
+    }
+
+    #[test]
+    fn numeric_boundaries_and_error_precedence() {
+        for (offsets, error) in [
+            ("v2147483647,1v0,1", "Offset is out of the content limits."),
+            ("v2147483648,1v0,1", "stoi"),
+            ("v0,2147483648v0,1", "stoi"),
+            // The starting offset is checked before parsing the size.
+            ("v5,2147483648v0,1", "Offset is out of the content limits."),
+        ] {
+            assert_eq!(pco("Hello", offsets).unwrap_err(), error, "{offsets}");
+        }
+        assert!(pco("Hello", "v0001,2147483647v0,1").unwrap().contains("\"value\":\"ello\""));
+        assert!(pco("Hello", "v1,0v0,1").unwrap().contains("\"value\":\"\""));
+    }
+
+    #[test]
+    fn ranges_are_bytes_and_content_stops_at_nul() {
+        let output = ModSecurity::process_content_offset(b"a\xffz\0ignored", "v1,99v0,1").unwrap();
+        assert!(output.windows(2).any(|bytes| bytes == b"\xffz"));
+        assert!(!output.windows(7).any(|bytes| bytes == b"ignored"));
+        assert_eq!(pco("abc\0ignored", "v3,0v0,1").unwrap_err(), "Offset is out of the content limits.");
     }
 }

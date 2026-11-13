@@ -231,3 +231,14 @@ the exercised paths. Formatting, whitespace checks and the release build
 also pass. The broader phase orchestrator, XML/multipart parser ownership,
 action construction and shared-file/logging lifecycles remain unchanged;
 this pass introduces no new unsafe code or suppression attributes.
+
+The content-offset renderer also no longer carries private emulations of
+`std::stoi` and `std::string::substr`. Its offset tokens come from decimal
+regex captures, so standard `parse::<i32>()` supplies the required range
+checking without a general prefix parser. Checked offsets and borrowed byte
+slices replace substring allocation. The public renderer retains its error
+text and error precedence, end-of-content truncation, NUL termination and
+existing output quirks. Two regression tests covering integer boundaries,
+leading zeros, empty ranges and binary content passed before and after the
+change. Full default tests (199 library tests), strict Clippy and formatting
+pass; the known upstream failures and ignored diagnostics are unchanged.
