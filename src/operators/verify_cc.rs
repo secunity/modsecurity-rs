@@ -7,7 +7,6 @@ use std::ptr;
 
 use pcre2_sys::*;
 
-use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -177,7 +176,7 @@ impl Operator for VerifyCC {
                 let m = &i[start..end];
                 if Self::luhn_verify(m) {
                     if rule.has_capture_action() {
-                        t.collections.tx_collection.store_or_update_first(b"0", m);
+                        t.collections.tx.set(b"0", m.to_vec());
                         crate::ms_dbg_a!(t, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
                     }
                     crate::ms_dbg_a!(

@@ -1,12 +1,15 @@
 //! Port of `headers/modsecurity/collection/collection.h`.
 //!
-//! A named key/value store backing `TX`, `IP`, `SESSION`, ... Persistent
+//! Shared persistent key/value stores (`IP`, `SESSION`, ...). Persistent
 //! collections are shared by every transaction (and thread) of a
 //! `ModSecurity` instance, so the methods take `&self` and implementations
 //! synchronise internally, as the C++ backends do.
+//! Transaction-owned `TX` variables use [`transaction::TransactionVariables`]
+//! instead: they need neither a storage backend nor shared mutation.
 
 pub mod backend;
 pub mod collections;
+pub mod transaction;
 
 use crate::utils::regex::Regex;
 use crate::variable_value::VariableValue;
@@ -53,53 +56,41 @@ pub trait Collection: Send + Sync {
     fn resolve_regular_expression(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         self.resolve_regex(&Regex::with_options(var, true, true), l, ke)
     }
+}
 
-    // The C++ compartment overloads, expressed with an optional second
-    // compartment.
+/// One of the persistent collections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Persistent {
+    Global,
+    Ip,
+    Resource,
+    Session,
+    User,
+}
 
-    fn store_or_update_first_c(&self, key: &[u8], c1: &[u8], c2: Option<&[u8]>, value: &[u8]) -> bool {
-        self.store_or_update_first(&compartment_key(key, c1, c2), value)
+impl Persistent {
+    /// The collection name (`IP`, ...).
+    pub fn name(self) -> &'static str {
+        match self {
+            Persistent::Global => "GLOBAL",
+            Persistent::Ip => "IP",
+            Persistent::Resource => "RESOURCE",
+            Persistent::Session => "SESSION",
+            Persistent::User => "USER",
+        }
     }
 
-    fn update_first_c(&self, key: &[u8], c1: &[u8], c2: Option<&[u8]>, value: &[u8]) -> bool {
-        self.update_first(&compartment_key(key, c1, c2), value)
-    }
-
-    fn del_c(&self, key: &[u8], c1: &[u8], c2: Option<&[u8]>) {
-        self.del(&compartment_key(key, c1, c2))
-    }
-
-    fn set_expiry_c(&self, key: &[u8], c1: &[u8], c2: Option<&[u8]>, expiry_seconds: i32) {
-        self.set_expiry(&compartment_key(key, c1, c2), expiry_seconds)
-    }
-
-    fn resolve_first_c(&self, var: &[u8], c1: &[u8], c2: Option<&[u8]>) -> Option<Vec<u8>> {
-        self.resolve_first(&compartment_key(var, c1, c2))
-    }
-
-    fn resolve_single_match_c(&self, var: &[u8], c1: &[u8], c2: Option<&[u8]>, l: &mut Vec<VariableValue>) {
-        self.resolve_single_match(&compartment_key(var, c1, c2), l)
-    }
-
-    fn resolve_multi_matches_c(
-        &self,
-        var: &[u8],
-        c1: &[u8],
-        c2: Option<&[u8]>,
-        l: &mut Vec<VariableValue>,
-        ke: &KeyExclusions,
-    ) {
-        self.resolve_multi_matches(&compartment_key(var, c1, c2), l, ke)
-    }
-
-    fn resolve_regular_expression_c(
-        &self,
-        var: &[u8],
-        c1: &[u8],
-        c2: Option<&[u8]>,
-        l: &mut Vec<VariableValue>,
-        ke: &KeyExclusions,
-    ) {
-        self.resolve_regular_expression(&compartment_key(var, c1, c2), l, ke)
+    /// Parses the canonical uppercase names. Callers retain their own
+    /// case rules (Lua normalizes; initcol/expirevar accept lowercase only).
+    #[cfg(feature = "lua")]
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "GLOBAL" => Some(Self::Global),
+            "IP" => Some(Self::Ip),
+            "RESOURCE" => Some(Self::Resource),
+            "SESSION" => Some(Self::Session),
+            "USER" => Some(Self::User),
+            _ => None,
+        }
     }
 }

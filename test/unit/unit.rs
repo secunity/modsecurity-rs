@@ -11,7 +11,6 @@ mod common;
 use common::*;
 use modsecurity::actions::capture::Capture;
 use modsecurity::actions::transformations::transformation;
-use modsecurity::collection::Collection;
 use modsecurity::modsecurity::ModSecurity;
 use modsecurity::operators::libinjection_adapter::{self, InjectionResult};
 use modsecurity::operators::operator;
@@ -89,9 +88,9 @@ fn eval_operator(t: &UnitTest, transaction: &mut Transaction<'_>) -> (i64, Vec<u
     let matched = op.evaluate(transaction, &rule, &t.input, &mut rm);
     let mut output = Vec::new();
     if t.capture != 0
-        && let Some(tx0) = transaction.collections.tx_collection.resolve_first(b"0")
+        && let Some(tx0) = transaction.collections.tx.get(b"0")
     {
-        output = tx0;
+        output = tx0.to_vec();
     }
     libinjection_adapter::clear_libinjection_overrides_for_testing();
     (matched as i64, output)

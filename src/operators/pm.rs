@@ -1,6 +1,5 @@
 //! Port of `src/operators/pm.cc`, `src/operators/pm.h`.
 
-use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -188,7 +187,7 @@ impl Pm {
             t.matched.push(m.to_vec());
 
             if rule.has_capture_action() {
-                t.collections.tx_collection.store_or_update_first(b"0", m);
+                t.collections.tx.set(b"0", m.to_vec());
                 crate::ms_dbg_a!(t, 7, "Added pm match TX.0: {}", String::from_utf8_lossy(m));
             }
         }

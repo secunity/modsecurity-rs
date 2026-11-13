@@ -471,7 +471,7 @@ mod tests {
         for &n in COLLECTIONS {
             let v = var(n, sel_none());
             assert_eq!(v.full_name(), n);
-            assert!(v.dynamic_name().is_none());
+            assert!(v.write_target().is_none());
             let v = var(n, sel_key("foo"));
             assert_eq!(v.full_name(), format!("{}:foo", n));
             let v = var(n, sel_re("^f"));
@@ -480,7 +480,7 @@ mod tests {
             assert_eq!(v.full_name(), expected);
             let v = var(n, sel_dyn("x"));
             assert_eq!(v.full_name(), format!("{}:dynamic", n));
-            assert!(v.dynamic_name().is_some());
+            assert!(v.write_target().is_some());
         }
     }
 
@@ -565,10 +565,10 @@ mod tests {
     fn tx_collection() {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
-        let t = Transaction::new(&ms, &rules, None);
+        let mut t = Transaction::new(&ms, &rules, None);
         let dynamic = var("TX", sel_dyn("score"));
-        dynamic.dynamic_store_or_update_first(&t, b"score", b"5");
-        dynamic.dynamic_store_or_update_first(&t, b"other", b"7");
+        dynamic.write_target().unwrap().store(&mut t, b"score", b"5".to_vec());
+        dynamic.write_target().unwrap().store(&mut t, b"other", b"7".to_vec());
 
         assert_eq!(eval(&var("TX", sel_key("score")), &t, None), vec![("TX:score".into(), "5".into())]);
         // The backend names the value with the requested key.
@@ -579,7 +579,7 @@ mod tests {
         all.sort();
         assert_eq!(all, vec![("TX:other".into(), "7".into()), ("TX:score".into(), "5".into())]);
 
-        dynamic.dynamic_del(&t, b"score");
+        dynamic.write_target().unwrap().remove(&mut t, b"score");
         assert!(eval(&var("TX", sel_key("score")), &t, None).is_empty());
     }
 
@@ -597,32 +597,29 @@ mod tests {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         );
         let ip_key = format!("ip-{}", nonce);
-        t.collections.ip_collection_key = ip_key.as_bytes().to_vec();
-        t.collections.global_collection_key = format!("global-{}", nonce).into_bytes();
-        t.collections.session_collection_key = format!("sess-{}", nonce).into_bytes();
-        t.collections.user_collection_key = format!("user-{}", nonce).into_bytes();
-        t.collections.resource_collection_key = format!("res-{}", nonce).into_bytes();
+        t.collections.ip.key = ip_key.as_bytes().to_vec();
+        t.collections.global.key = format!("global-{}", nonce).into_bytes();
+        t.collections.session.key = format!("sess-{}", nonce).into_bytes();
+        t.collections.user.key = format!("user-{}", nonce).into_bytes();
+        t.collections.resource.key = format!("res-{}", nonce).into_bytes();
 
         for c in ["IP", "GLOBAL", "SESSION", "USER", "RESOURCE"] {
             let d = var(c, sel_dyn("zz"));
-            d.dynamic_store_or_update_first(&t, b"key1", b"v1");
+            d.write_target().unwrap().store(&mut t, b"key1", b"v1".to_vec());
             let got = eval(&var(c, sel_key("key1")), &t, None);
             assert_eq!(got.len(), 1, "{}", c);
             assert_eq!(got[0].1, "v1", "{}", c);
             assert_eq!(eval(&d, &t, None).len(), 0, "{} (dynamic name `zz`)", c);
         }
         // The stored key carries the collection key and the web app id.
-        assert_eq!(
-            t.collections.ip_collection.resolve_first(format!("{}::app::key1", ip_key).as_bytes()),
-            Some(b"v1".to_vec())
-        );
+        assert_eq!(ms.ip_collection.resolve_first(format!("{}::app::key1", ip_key).as_bytes()), Some(b"v1".to_vec()));
 
         // IP del uses the same compartments.
-        persistent::Persistent::Ip.del(&t, b"key1");
+        var("IP", sel_dyn("key1")).write_target().unwrap().remove(&mut t, b"key1");
         assert!(eval(&var("IP", sel_key("key1")), &t, None).is_empty());
         // Sic: SESSION del uses the IP collection key as second compartment,
         // so it does not remove the value.
-        persistent::Persistent::Session.del(&t, b"key1");
+        var("SESSION", sel_dyn("key1")).write_target().unwrap().remove(&mut t, b"key1");
         assert_eq!(eval(&var("SESSION", sel_key("key1")), &t, None).len(), 1);
     }
 

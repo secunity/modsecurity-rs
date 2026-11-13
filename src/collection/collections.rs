@@ -1,24 +1,66 @@
-//! Port of `headers/modsecurity/collection/collections.h` and
-//! `src/collection/collections.cc`.
+//! Collection ownership and the persistent records selected for a transaction.
 //!
-//! The per transaction view of the collections: the persistent collections
-//! are borrowed from the `ModSecurity` instance, `TX` is owned.
+//! Persistent backends belong to the engine. Each transaction binds a backend
+//! to its own selected record key, while owning its TX variables outright.
 
-use crate::collection::Collection;
-use crate::collection::backend::in_memory_per_process::InMemoryPerProcess;
+use crate::collection::transaction::TransactionVariables;
+use crate::collection::{Collection, Persistent, compartment_key};
+use crate::variable_value::VariableValue;
+use crate::variables::variable::KeyExclusions;
+
+/// A shared backend and the record selected by initcol/setsid/setuid/setrsc.
+/// Keeping them together prevents callers from accidentally mixing collections
+/// and keys. The web application compartment is supplied by the rule set.
+pub struct CollectionBinding<'a> {
+    backend: &'a dyn Collection,
+    pub key: Vec<u8>,
+}
+
+impl<'a> CollectionBinding<'a> {
+    fn new(backend: &'a dyn Collection) -> Self {
+        Self { backend, key: Vec::new() }
+    }
+
+    pub fn get(&self, name: &[u8], app: &[u8]) -> Option<Vec<u8>> {
+        self.backend.resolve_first(&compartment_key(name, &self.key, Some(app)))
+    }
+
+    pub fn set(&self, name: &[u8], app: &[u8], value: &[u8]) {
+        self.backend.store_or_update_first(&compartment_key(name, &self.key, Some(app)), value);
+    }
+
+    pub fn remove(&self, name: &[u8], second_compartment: &[u8]) {
+        self.backend.del(&compartment_key(name, &self.key, Some(second_compartment)));
+    }
+
+    pub fn set_expiry(&self, name: &[u8], app: &[u8], seconds: i32) {
+        self.backend.set_expiry(&compartment_key(name, &self.key, Some(app)), seconds);
+    }
+
+    pub(crate) fn resolve(&self, name: &[u8], app: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
+        self.backend.resolve_multi_matches(&compartment_key(name, &self.key, Some(app)), out, exclusions);
+    }
+
+    pub(crate) fn resolve_regex(
+        &self,
+        pattern: &[u8],
+        app: &[u8],
+        out: &mut Vec<VariableValue>,
+        exclusions: &KeyExclusions,
+    ) {
+        // Compile the compartment-prefixed expression on every evaluation,
+        // preserving the backend's case-insensitive, multiline semantics.
+        self.backend.resolve_regular_expression(&compartment_key(pattern, &self.key, Some(app)), out, exclusions);
+    }
+}
 
 pub struct Collections<'a> {
-    pub global_collection_key: Vec<u8>,
-    pub ip_collection_key: Vec<u8>,
-    pub session_collection_key: Vec<u8>,
-    pub user_collection_key: Vec<u8>,
-    pub resource_collection_key: Vec<u8>,
-    pub global_collection: &'a dyn Collection,
-    pub ip_collection: &'a dyn Collection,
-    pub session_collection: &'a dyn Collection,
-    pub user_collection: &'a dyn Collection,
-    pub resource_collection: &'a dyn Collection,
-    pub tx_collection: InMemoryPerProcess,
+    pub global: CollectionBinding<'a>,
+    pub ip: CollectionBinding<'a>,
+    pub session: CollectionBinding<'a>,
+    pub user: CollectionBinding<'a>,
+    pub resource: CollectionBinding<'a>,
+    pub tx: TransactionVariables,
 }
 
 impl<'a> Collections<'a> {
@@ -29,18 +71,33 @@ impl<'a> Collections<'a> {
         user: &'a dyn Collection,
         resource: &'a dyn Collection,
     ) -> Self {
-        Collections {
-            global_collection_key: Vec::new(),
-            ip_collection_key: Vec::new(),
-            session_collection_key: Vec::new(),
-            user_collection_key: Vec::new(),
-            resource_collection_key: Vec::new(),
-            global_collection: global,
-            ip_collection: ip,
-            session_collection: session,
-            user_collection: user,
-            resource_collection: resource,
-            tx_collection: InMemoryPerProcess::new("TX"),
+        Self {
+            global: CollectionBinding::new(global),
+            ip: CollectionBinding::new(ip),
+            session: CollectionBinding::new(session),
+            user: CollectionBinding::new(user),
+            resource: CollectionBinding::new(resource),
+            tx: TransactionVariables::default(),
+        }
+    }
+
+    pub fn persistent(&self, collection: Persistent) -> &CollectionBinding<'a> {
+        match collection {
+            Persistent::Global => &self.global,
+            Persistent::Ip => &self.ip,
+            Persistent::Session => &self.session,
+            Persistent::User => &self.user,
+            Persistent::Resource => &self.resource,
+        }
+    }
+
+    pub fn persistent_mut(&mut self, collection: Persistent) -> &mut CollectionBinding<'a> {
+        match collection {
+            Persistent::Global => &mut self.global,
+            Persistent::Ip => &mut self.ip,
+            Persistent::Session => &mut self.session,
+            Persistent::User => &mut self.user,
+            Persistent::Resource => &mut self.resource,
         }
     }
 }

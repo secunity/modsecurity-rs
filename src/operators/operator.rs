@@ -145,24 +145,20 @@ pub fn report_regex_compile_error(t: &mut Transaction<'_>, re: &Regex) {
     crate::ms_dbg_a!(t, 1, "Error with regular expression: \"{}\"", re.pattern);
     let off = t.vars.offset;
     t.vars.msc_pcre_error.set(b"1", off);
-    {
-        use crate::collection::Collection;
-        t.collections.tx_collection.store_or_update_first(b"MSC_PCRE_ERROR", b"1");
-    }
+    t.collections.tx.set(b"MSC_PCRE_ERROR", b"1".to_vec());
     crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
 }
 
 /// `Operator::reportRegexSearchError`
 pub fn report_regex_search_error(t: &mut Transaction<'_>, re: &Regex, result: RegexResult, op_name: &str) {
-    use crate::collection::Collection;
     let off = t.vars.offset;
     t.vars.msc_pcre_error.set(b"1", off);
-    t.collections.tx_collection.store_or_update_first(b"MSC_PCRE_ERROR", b"1");
+    t.collections.tx.set(b"MSC_PCRE_ERROR", b"1".to_vec());
     crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
     let match_limit = result == RegexResult::ErrorMatchLimit;
     if match_limit {
         t.vars.msc_pcre_limits_exceeded.set(b"1", off);
-        t.collections.tx_collection.store_or_update_first(b"MSC_PCRE_LIMITS_EXCEEDED", b"1");
+        t.collections.tx.set(b"MSC_PCRE_LIMITS_EXCEEDED", b"1".to_vec());
         crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_LIMITS_EXCEEDED to 1");
     }
     crate::ms_dbg_a!(

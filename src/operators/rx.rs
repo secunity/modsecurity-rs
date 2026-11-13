@@ -1,6 +1,5 @@
 //! Port of `src/operators/rx.cc`, `src/operators/rx.h`.
 
-use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param, log_offset, report_regex_compile_error, report_regex_search_error};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -77,7 +76,7 @@ impl Rx {
             for capture in &captures {
                 let capture_substring = &input[capture.offset..capture.offset + capture.length];
                 let key = capture.group.to_string();
-                t.collections.tx_collection.store_or_update_first(key.as_bytes(), capture_substring);
+                t.collections.tx.set(key.as_bytes(), capture_substring.to_vec());
                 crate::ms_dbg_a!(
                     t,
                     7,

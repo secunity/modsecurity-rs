@@ -4,7 +4,7 @@
 //! of a persistent collection.
 
 use crate::actions::action::Action;
-use crate::collection::Collection;
+use crate::collection::Persistent;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
@@ -54,22 +54,21 @@ impl Action for ExpireVar {
         let collection = &fully_qualified_var[..pos_dot];
         let variable_name = &fully_qualified_var[pos_dot + 1..];
 
-        // C++ builds the matching `*_DynamicElement` variable and calls its
-        // (static) `setExpiry`, which forwards to the collection with the
-        // collection key and the web application id as compartments.
-        let cols = &t.collections;
-        let target: Option<(&dyn Collection, &[u8])> = match collection {
-            b"ip" => Some((cols.ip_collection, &cols.ip_collection_key)),
-            b"global" => Some((cols.global_collection, &cols.global_collection_key)),
-            b"resource" => Some((cols.resource_collection, &cols.resource_collection_key)),
-            b"session" => Some((cols.session_collection, &cols.session_collection_key)),
-            b"user" => Some((cols.user_collection, &cols.user_collection_key)),
+        let target = match collection {
+            b"ip" => Some(Persistent::Ip),
+            b"global" => Some(Persistent::Global),
+            b"resource" => Some(Persistent::Resource),
+            b"session" => Some(Persistent::Session),
+            b"user" => Some(Persistent::User),
             _ => None,
         };
         match target {
-            Some((c, key)) => {
-                let web_app_id = t.rules.properties.web_app_id();
-                c.set_expiry_c(variable_name, key, Some(web_app_id), expiry_seconds);
+            Some(collection) => {
+                t.collections.persistent(collection).set_expiry(
+                    variable_name,
+                    t.rules.properties.web_app_id(),
+                    expiry_seconds,
+                );
             }
             None => {
                 crate::ms_dbg_a!(
@@ -98,15 +97,14 @@ mod tests {
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
-        t.collections.ip_collection_key = b"1.2.3.4".to_vec();
+        t.collections.ip.key = b"1.2.3.4".to_vec();
         let app = t.rules.properties.sec_web_app_id.clone().unwrap_or_default();
-        let c = t.collections.ip_collection;
-        c.store_or_update_first_c(b"foo", b"1.2.3.4", Some(app.as_bytes()), b"v");
-        assert!(c.resolve_first_c(b"foo", b"1.2.3.4", Some(app.as_bytes())).is_some());
+        t.collections.ip.set(b"foo", app.as_bytes(), b"v");
+        assert!(t.collections.ip.get(b"foo", app.as_bytes()).is_some());
 
         ExpireVar::with_rts(rts("ip.foo=0")).evaluate(&r, &mut t, &mut rm);
         assert!(has_log(&t, "Setting variable `foo' to expire in 0 seconds."));
-        assert!(c.resolve_first_c(b"foo", b"1.2.3.4", Some(app.as_bytes())).is_none());
+        assert!(t.collections.ip.get(b"foo", app.as_bytes()).is_none());
 
         ExpireVar::with_rts(rts("ip.foo=1x")).evaluate(&r, &mut t, &mut rm);
         assert!(has_log(&t, "Non-numeric expiry seconds found in expirevar expression."));

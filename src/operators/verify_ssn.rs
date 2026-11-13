@@ -1,7 +1,6 @@
 //! Port of `src/operators/verify_ssn.cc`, `src/operators/verify_ssn.h`
 //! (US social security numbers).
 
-use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -112,7 +111,7 @@ impl Operator for VerifySSN {
                 if self.verify(m.str()) {
                     log_offset(rm, m.offset(), m.str().len());
                     if rule.has_capture_action() {
-                        t.collections.tx_collection.store_or_update_first(b"0", m.str());
+                        t.collections.tx.set(b"0", m.str().to_vec());
                         crate::ms_dbg_a!(t, 7, "Added VerifySSN match TX.0: {}", String::from_utf8_lossy(m.str()));
                     }
                     return true;

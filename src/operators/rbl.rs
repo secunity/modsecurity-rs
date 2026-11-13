@@ -5,7 +5,6 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 
-use crate::collection::Collection;
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -267,7 +266,7 @@ impl Operator for Rbl {
         }
 
         if rule.has_capture_action() {
-            t.collections.tx_collection.store_or_update_first(b"0", ip_str);
+            t.collections.tx.set(b"0", ip_str.to_vec());
             crate::ms_dbg_a!(t, 7, "Added RXL match TX.0: {}", ip_s);
         }
 

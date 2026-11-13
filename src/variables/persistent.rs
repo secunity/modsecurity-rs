@@ -9,38 +9,16 @@
 //!
 //! The C++ code has one set of four classes per collection; here the
 //! collection is a value and the variables are built by
-//! [`Persistent::variable`]. Two quirks of the C++ classes are kept (see
-//! [`Persistent::regex_name`] and [`Persistent::del`]).
+//! [`Persistent::variable`]. The RESOURCE regex naming quirk is retained; the SESSION deletion
+//! quirk is handled by the writable target in `variable.rs`.
 
-use crate::collection::Collection;
-use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
-use crate::variable_value::VariableValue;
 use crate::variables::VariableSelector;
-use crate::variables::variable::{CollectionKey, KeyExclusions, Source, Variable, regex_name};
+use crate::variables::variable::{CollectionKey, Source, Variable, regex_name};
 
-/// One of the persistent collections.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Persistent {
-    Global,
-    Ip,
-    Resource,
-    Session,
-    User,
-}
+pub use crate::collection::Persistent;
 
 impl Persistent {
-    /// The collection name (`IP`, ...).
-    pub fn name(self) -> &'static str {
-        match self {
-            Persistent::Global => "GLOBAL",
-            Persistent::Ip => "IP",
-            Persistent::Resource => "RESOURCE",
-            Persistent::Session => "SESSION",
-            Persistent::User => "USER",
-        }
-    }
-
     /// The name given to `COL:/regex/` variables. Sic: the C++ code names
     /// the `RESOURCE` one `RESOURCE:` (so it shows as `RESOURCE::regex(..)`).
     fn regex_name(self) -> &'static str {
@@ -48,67 +26,6 @@ impl Persistent {
             Persistent::Resource => "RESOURCE:",
             _ => self.name(),
         }
-    }
-
-    /// The collection and its key (the first compartment) in `t`.
-    fn of<'t>(self, t: &'t Transaction<'_>) -> (&'t dyn Collection, &'t [u8]) {
-        let c = &t.collections;
-        match self {
-            Persistent::Global => (c.global_collection, &c.global_collection_key),
-            Persistent::Ip => (c.ip_collection, &c.ip_collection_key),
-            Persistent::Resource => (c.resource_collection, &c.resource_collection_key),
-            Persistent::Session => (c.session_collection, &c.session_collection_key),
-            Persistent::User => (c.user_collection, &c.user_collection_key),
-        }
-    }
-
-    /// `*_DynamicElement::del` (static in C++). Sic: `SESSION` uses the IP
-    /// collection key (not the web app id) as second compartment, so it
-    /// does not remove what was stored.
-    pub fn del(self, t: &Transaction<'_>, k: &[u8]) {
-        let (col, key) = self.of(t);
-        let second = match self {
-            Persistent::Session => &t.collections.ip_collection_key[..],
-            _ => t.rules.properties.web_app_id(),
-        };
-        col.del_c(k, key, Some(second));
-    }
-
-    /// `*_DynamicElement::setExpiry` (static in C++; used by `expirevar`).
-    pub fn set_expiry(self, t: &Transaction<'_>, k: &[u8], expiry_seconds: i32) {
-        let (col, key) = self.of(t);
-        col.set_expiry_c(k, key, Some(t.rules.properties.web_app_id()), expiry_seconds);
-    }
-
-    /// `*_DynamicElement::storeOrUpdateFirst` (static in C++).
-    pub fn store_or_update_first(self, t: &Transaction<'_>, var: &[u8], value: &[u8]) {
-        let (col, key) = self.of(t);
-        col.store_or_update_first_c(var, key, Some(t.rules.properties.web_app_id()), value);
-    }
-
-    /// `resolveMultiMatches(var, collectionKey, webAppId)`
-    pub(crate) fn resolve_multi_matches(
-        self,
-        t: &Transaction<'_>,
-        var: &[u8],
-        l: &mut Vec<VariableValue>,
-        ke: &KeyExclusions,
-    ) {
-        let (col, key) = self.of(t);
-        col.resolve_multi_matches_c(var, key, Some(t.rules.properties.web_app_id()), l, ke);
-    }
-
-    /// `COL:/regex/`: the pattern is compiled per evaluation, prefixed
-    /// with the compartments, as in C++.
-    pub(crate) fn resolve_regular_expression(
-        self,
-        t: &Transaction<'_>,
-        pattern: &[u8],
-        l: &mut Vec<VariableValue>,
-        ke: &KeyExclusions,
-    ) {
-        let (col, key) = self.of(t);
-        col.resolve_regular_expression_c(pattern, key, Some(t.rules.properties.web_app_id()), l, ke);
     }
 
     /// The variable of this collection with `selector`: `COL`, `COL:key`,

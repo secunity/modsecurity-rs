@@ -28,8 +28,8 @@ impl Action for SetUID {
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let col_name_expanded = self.string.evaluate(Some(t));
         crate::ms_dbg_a!(t, 8, "User collection initiated with value: '{}'.", lossy(&col_name_expanded));
-        t.collections.user_collection_key.clone_from(&col_name_expanded);
         let offset = t.vars.offset;
         t.vars.user_id.set(&col_name_expanded, offset);
+        t.collections.user.key = col_name_expanded;
     }
 }

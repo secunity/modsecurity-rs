@@ -53,13 +53,9 @@ impl Action for SetVar {
             SetVarOperation::SetToOne | SetVarOperation::Unset => Vec::new(),
         };
 
-        // C++ `dynamic_cast`s the variable to the six `*_DynamicElement`
-        // classes (TX, SESSION, IP, RESOURCE, GLOBAL, USER); the
-        // `dynamic_*` hooks of `Variable` stand for that. Any other variable
-        // only provides its name and cannot be stored to.
-        let dynamic = self.variable.dynamic_name();
-        let variable_name_expanded: Vec<u8> = match dynamic {
-            Some(name) => name.evaluate_rule(Some(t), Some(rule)),
+        let target = self.variable.write_target();
+        let variable_name_expanded = match &target {
+            Some(target) => target.name().evaluate_rule(Some(t), Some(rule)),
             None => self.variable.name().as_bytes().to_vec(),
         };
 
@@ -67,8 +63,8 @@ impl Action for SetVar {
             SetVarOperation::Set(_) => resolved_pre,
             SetVarOperation::SetToOne => b"1".to_vec(),
             SetVarOperation::Unset => {
-                if dynamic.is_some() {
-                    self.variable.dynamic_del(t, &variable_name_expanded);
+                if let Some(target) = target {
+                    target.remove(t, &variable_name_expanded);
                 }
                 return;
             }
@@ -100,8 +96,8 @@ impl Action for SetVar {
             lossy(&target_value)
         );
 
-        if dynamic.is_some() {
-            self.variable.dynamic_store_or_update_first(t, &variable_name_expanded, &target_value);
+        if let Some(target) = target {
+            target.store(t, &variable_name_expanded, target_value);
         }
     }
 }
@@ -110,7 +106,6 @@ impl Action for SetVar {
 mod tests {
     use super::*;
     use crate::actions::block::test_support::*;
-    use crate::collection::Collection;
     use crate::modsecurity::ModSecurity;
 
     use SetVarOperation::{Add, Set, SetToOne, Subtract, Unset};
@@ -126,7 +121,7 @@ mod tests {
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
-        let tx = |t: &Transaction<'_>, k: &str| t.collections.tx_collection.resolve_first(k.as_bytes());
+        let tx = |t: &Transaction<'_>, k: &str| t.collections.tx.get(k.as_bytes()).map(<[u8]>::to_vec);
 
         setvar("foo", Set(rts("abc"))).evaluate(&r, &mut t, &mut rm);
         assert_eq!(tx(&t, "foo"), Some(b"abc".to_vec()));
@@ -173,10 +168,10 @@ mod tests {
             ("7", "-2147483649", false, "7"),
             ("7", "", false, "7"),
         ] {
-            t.collections.tx_collection.store_or_update_first(b"score", previous.as_bytes());
+            t.collections.tx.set(b"score", previous.as_bytes().to_vec());
             let operation = if subtract { Subtract(rts(operand)) } else { Add(rts(operand)) };
             setvar("score", operation).evaluate(&r, &mut t, &mut rm);
-            assert_eq!(t.collections.tx_collection.resolve_first(b"score").unwrap(), expected.as_bytes());
+            assert_eq!(t.collections.tx.get(b"score").unwrap(), expected.as_bytes());
         }
     }
 
@@ -200,7 +195,7 @@ mod tests {
         for (key, expected) in
             [(&b"score"[..], Some(&b"5"[..])), (b"one", Some(&b"1"[..])), (b"empty", Some(&b""[..])), (b"key", None)]
         {
-            assert_eq!(t.collections.tx_collection.resolve_first(key).as_deref(), expected);
+            assert_eq!(t.collections.tx.get(key), expected);
         }
     }
 }

@@ -1,6 +1,5 @@
 //! Port of `src/operators/detect_xss.cc`, `src/operators/detect_xss.h`.
 
-use crate::collection::Collection;
 use crate::operators::libinjection_adapter::run_libinjection_xss;
 use crate::operators::libinjection_utils::{
     InjectionResult, is_malicious_libinjection_result, libinjection_result_to_string, loggable_input,
@@ -46,7 +45,7 @@ impl Operator for DetectXSS {
             InjectionResult::True => {
                 crate::ms_dbg_a!(t, 5, "detected XSS using libinjection.");
                 if rule.has_capture_action() {
-                    t.collections.tx_collection.store_or_update_first(b"0", input);
+                    t.collections.tx.set(b"0", input.to_vec());
                     crate::ms_dbg_a!(t, 7, "Added DetectXSS match TX.0: {}", String::from_utf8_lossy(input));
                 }
             }
@@ -59,7 +58,7 @@ impl Operator for DetectXSS {
                     loggable_input(input)
                 );
                 if rule.has_capture_action() {
-                    t.collections.tx_collection.store_or_update_first(b"0", input);
+                    t.collections.tx.set(b"0", input.to_vec());
                     crate::ms_dbg_a!(t, 7, "Added DetectXSS error input TX.0: {}", String::from_utf8_lossy(input));
                 }
             }

@@ -3,7 +3,7 @@ The compatibility target is the existing engine's inputs, configuration,
 diagnostics, persistence format and C API. It does not reinterpret legacy
 quirks as bugs to fix during a refactor.
 
-Inspection identified these concrete changes, in implementation order:
+The first pass identified these concrete changes, in implementation order:
 
 | Component | Previous representation | Rust representation and benefit |
 |---|---|---|
@@ -109,3 +109,64 @@ The nginx workspace member requires a separately configured nginx source/build
 tree and is excluded from the default Cargo checks. This phase does not change
 connector code. The CRS comparison and performance checks exercise the library
 through its C API, rather than through a running nginx deployment.
+
+The second pass starts from `7d3d2c4` and changes collection ownership across
+actions, operators, variable resolution and Lua callbacks. Its baseline had
+190 passing library tests and the same two ignored diagnostic helpers; the
+full default suites, strict Clippy and release build passed before changes.
+
+| Inspected issue | Change and practical benefit |
+|---|---|
+| TX reused a shared persistent backend, including an `RwLock`, expiry records and write-through-`&self` methods | `TransactionVariables` is owned by its transaction. Reads return borrowed byte slices; writes require `&mut` and accept owned buffers. `setvar` and Lua transfer their computed values without another copy. SecLang already rejects TX expiry, so the native TX type does not carry expiry machinery. |
+| Five backend pointers and five independent selected keys were paired manually in several callers | `CollectionBinding` pairs a private backend reference with its transaction's selected key. The `Persistent` enum belongs to the collection domain and selects a binding. The binding owns compartment construction; the backend trait no longer duplicates every operation with a `_c` compartment overload. |
+| Dynamic variable name, store and delete hooks independently repeated inheritance-style type checks | `Variable::write_target` returns one explicit target carrying its name expression and destination. Ordinary targets cannot perform writes. Persistent deletion retains the SESSION/IP-compartment exception in one place. |
+| Lua downgraded the mutable transaction to a shared reference and relied on the backend's interior mutability for writes | Scoped callbacks use a temporary `RefCell<&mut Transaction>`. Native reads/writes borrow only for their duration; Lua allocations, conversions and calls run without a transaction borrow. This keeps foreign callback coordination at the boundary, while native engine code uses ordinary ownership. |
+| Collection-selection actions copied an expanded key and kept string tags to rediscover the collection later | `initcol` stores its validated enum. Selection actions move the expanded key into the binding after updating the anchored variables that also need it. |
+
+The normal embedding entry points and C ABI remain unchanged. The low-level
+Rust collection API deliberately changes: `t.collections.tx` provides
+`get`, `set` and `remove`; persistent selections use fields such as
+`t.collections.ip.key` and binding methods. The old TX backend/expiry methods,
+dynamic write hooks and `_c` trait overloads are removed rather than retained
+as a second mutation interface. All repository callers are updated.
+
+The compatibility container remains in TX because its ordering is observable.
+A regression test compares the new TX implementation against the previous
+in-memory backend through more than 1,400 keys, rehashing, case aliases,
+binary keys, updates, deletions, exclusions and regex selection. Another
+checks empty values, empty keys and original key spelling. Existing tests
+continue to cover collection compartments, case rules, expiry rejection,
+SESSION deletion and arithmetic/macro behavior. A Lua regression test forces
+garbage-collection finalizers to re-enter `m.getvar` and `m.setvar` while
+another callback produces Lua values, then verifies subsequent access after
+a caught Lua argument error.
+
+The default library suite now has 193 passing tests. Default, minimal-feature
+and opt-in matcher test suites and strict Clippy checks pass, along with
+formatting and the release build. The known 11 upstream unit-suite failures
+remain exactly as before. Comparing the saved `7d3d2c4` release library with
+this pass through the C API gives identical output for all 60 CRS requests
+with debug logging enabled and disabled; all 582,671 debug-log lines match
+byte-for-byte.
+
+Release benchmarks compare this pass with the saved `7d3d2c4` library using
+the same C API harness and rule files. Five runs per workload alternate the
+before/after order and pin execution to CPU 3. Median throughput was:
+
+| Workload | Before (transactions/s) | After (transactions/s) | Change |
+|---|---:|---:|---:|
+| Upstream request, PL1 | 4,137.1 | 4,239.9 | +2.48% |
+| 60-request corpus, PL1 | 3,573.8 | 3,660.3 | +2.42% |
+| 60-request corpus, PL4 | 2,226.4 | 2,272.1 | +2.05% |
+
+Each run processes 10,000 upstream requests, 3,000 PL1 corpus requests or
+1,800 PL4 corpus requests. These local measurements show no material
+throughput regression in the exercised paths; they are not a guarantee for
+other deployments or workloads.
+
+This pass does not redesign the main transaction pipeline, the complete
+action-construction hierarchy or shared-file/audit-writer lifecycles. Shared
+persistent backends retain synchronization, and existing external-library
+unsafe boundaries remain. The new TX store and binding code use no unsafe
+code or interior mutability; the scoped Lua borrow cell is the deliberate
+exception at the callback boundary.

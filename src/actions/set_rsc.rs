@@ -29,8 +29,8 @@ impl Action for SetRSC {
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         let col_name_expanded = self.string.evaluate(Some(t));
         crate::ms_dbg_a!(t, 8, "RESOURCE initiated with value: '{}'.", lossy(&col_name_expanded));
-        t.collections.resource_collection_key.clone_from(&col_name_expanded);
         let offset = t.vars.offset;
         t.vars.resource.set(&col_name_expanded, offset);
+        t.collections.resource.key = col_name_expanded;
     }
 }

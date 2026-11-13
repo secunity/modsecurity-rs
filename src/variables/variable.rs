@@ -9,7 +9,6 @@
 use crate::anchored_set_variable::AnchoredSetVariable;
 use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::anchored_variable::AnchoredVariable;
-use crate::collection::Collection;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{Transaction, TransactionAnchoredVariables};
@@ -130,6 +129,46 @@ pub(crate) enum Source {
     Count(Box<Variable>),
 }
 
+/// The writable portion of a variable, selected once rather than checked
+/// again through separate dynamic-name/store/delete hooks.
+pub(crate) enum WriteTarget<'v> {
+    Transaction(&'v RunTimeString),
+    Persistent { collection: Persistent, name: &'v RunTimeString },
+}
+
+impl WriteTarget<'_> {
+    pub(crate) fn name(&self) -> &RunTimeString {
+        match self {
+            Self::Transaction(name) | Self::Persistent { name, .. } => name,
+        }
+    }
+
+    pub(crate) fn store(&self, t: &mut Transaction<'_>, key: &[u8], value: Vec<u8>) {
+        match self {
+            Self::Transaction(_) => t.collections.tx.set(key, value),
+            Self::Persistent { collection, .. } => {
+                t.collections.persistent(*collection).set(key, t.rules.properties.web_app_id(), &value);
+            }
+        }
+    }
+
+    pub(crate) fn remove(&self, t: &mut Transaction<'_>, key: &[u8]) {
+        match self {
+            Self::Transaction(_) => t.collections.tx.remove(key),
+            Self::Persistent { collection, .. } => {
+                // Compatibility: SESSION deletion uses the IP key as its
+                // second compartment, unlike storage and other collections.
+                let second = if *collection == Persistent::Session {
+                    &t.collections.ip.key
+                } else {
+                    t.rules.properties.web_app_id()
+                };
+                t.collections.persistent(*collection).remove(key, second);
+            }
+        }
+    }
+}
+
 /// A SecRule target: its name, the keys excluded from it and where its
 /// values come from.
 #[derive(Debug)]
@@ -229,7 +268,7 @@ impl Variable {
                 }
             }
             Source::Tx(key) => {
-                let tx = &t.collections.tx_collection;
+                let tx = &t.collections.tx;
                 match key {
                     // The key is the name, which is empty for `TX`.
                     CollectionKey::All | CollectionKey::Key => tx.resolve_multi_matches(self.name.as_bytes(), l, ke),
@@ -237,13 +276,15 @@ impl Variable {
                     CollectionKey::Dynamic(string) => tx.resolve_multi_matches(&string.evaluate(Some(t)), l, ke),
                 }
             }
-            Source::Persistent(collection, key) => match key {
-                CollectionKey::All | CollectionKey::Key => {
-                    collection.resolve_multi_matches(t, self.name.as_bytes(), l, ke)
+            Source::Persistent(collection, key) => {
+                let binding = t.collections.persistent(*collection);
+                let app = t.rules.properties.web_app_id();
+                match key {
+                    CollectionKey::All | CollectionKey::Key => binding.resolve(self.name.as_bytes(), app, l, ke),
+                    CollectionKey::Regex(_, pattern) => binding.resolve_regex(pattern.as_bytes(), app, l, ke),
+                    CollectionKey::Dynamic(string) => binding.resolve(&string.evaluate(Some(t)), app, l, ke),
                 }
-                CollectionKey::Regex(_, pattern) => collection.resolve_regular_expression(t, pattern.as_bytes(), l, ke),
-                CollectionKey::Dynamic(string) => collection.resolve_multi_matches(t, &string.evaluate(Some(t)), l, ke),
-            },
+            }
             Source::Rule(selector) => rule::evaluate(selector, t, rule, l),
             Source::Env => env::evaluate(self, t, l),
             // The key is the variable's (empty) name.
@@ -278,37 +319,15 @@ impl Variable {
         }
     }
 
-    /// For the `TX:%{...}`-style variables of the TX and persistent
-    /// collections (the C++ `*_DynamicElement` classes): the macro that
-    /// names the key, which is what `setvar` writes to.
-    pub fn dynamic_name(&self) -> Option<&RunTimeString> {
+    /// A writable collection target exists only for dynamic-key selectors.
+    /// Ordinary rule targets (including literal TX selectors) remain read-only.
+    pub(crate) fn write_target(&self) -> Option<WriteTarget<'_>> {
         match &self.source {
-            Source::Tx(CollectionKey::Dynamic(string)) | Source::Persistent(_, CollectionKey::Dynamic(string)) => {
-                Some(string)
+            Source::Tx(CollectionKey::Dynamic(name)) => Some(WriteTarget::Transaction(name)),
+            Source::Persistent(collection, CollectionKey::Dynamic(name)) => {
+                Some(WriteTarget::Persistent { collection: *collection, name })
             }
             _ => None,
-        }
-    }
-
-    /// Removes `key` from the collection of a dynamic variable.
-    pub fn dynamic_del(&self, t: &Transaction<'_>, key: &[u8]) {
-        match &self.source {
-            Source::Tx(CollectionKey::Dynamic(_)) => t.collections.tx_collection.del(key),
-            Source::Persistent(collection, CollectionKey::Dynamic(_)) => collection.del(t, key),
-            _ => {}
-        }
-    }
-
-    /// Sets `key` in the collection of a dynamic variable.
-    pub fn dynamic_store_or_update_first(&self, t: &Transaction<'_>, key: &[u8], value: &[u8]) {
-        match &self.source {
-            Source::Tx(CollectionKey::Dynamic(_)) => {
-                t.collections.tx_collection.store_or_update_first(key, value);
-            }
-            Source::Persistent(collection, CollectionKey::Dynamic(_)) => {
-                collection.store_or_update_first(t, key, value)
-            }
-            _ => {}
         }
     }
 
@@ -581,7 +600,6 @@ fn single_anchored<'t>(
 /// by name to its first value (empty if none).
 pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u8>, VariableNotFound> {
     let collection = variable.find('.').or_else(|| variable.find(':'));
-    use crate::collection::Collection;
     let web_app_id = t.rules.properties.web_app_id();
     let cols = &t.collections;
     let vv: Option<Vec<u8>> = match collection {
@@ -591,15 +609,15 @@ pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u
                 // the C++ if/else chain.
                 a.resolve_first()
             } else if comp(variable, "TX") {
-                cols.tx_collection.resolve_first(b"")
+                cols.tx.get(b"").map(<[u8]>::to_vec)
             } else if comp(variable, "USER") {
-                cols.user_collection.resolve_first_c(b"", &cols.user_collection_key, Some(web_app_id))
+                cols.user.get(b"", web_app_id)
             } else if comp(variable, "SESSION") {
-                cols.session_collection.resolve_first_c(b"", &cols.session_collection_key, Some(web_app_id))
+                cols.session.get(b"", web_app_id)
             } else if comp(variable, "IP") {
-                cols.ip_collection.resolve_first_c(b"", &cols.ip_collection_key, Some(web_app_id))
+                cols.ip.get(b"", web_app_id)
             } else if comp(variable, "GLOBAL") {
-                cols.global_collection.resolve_first_c(b"", &cols.global_collection_key, Some(web_app_id))
+                cols.global.get(b"", web_app_id)
             } else {
                 return Err(VariableNotFound);
             }
@@ -659,17 +677,17 @@ pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u
             } else if comp(col, "FILES_TMPNAMES") {
                 v.files_tmp_names.resolve_first(var)
             } else if comp(col, "TX") {
-                cols.tx_collection.resolve_first(var)
+                cols.tx.get(var).map(<[u8]>::to_vec)
             } else if comp(col, "RESOURCE") {
-                cols.resource_collection.resolve_first_c(var, &cols.resource_collection_key, Some(web_app_id))
+                cols.resource.get(var, web_app_id)
             } else if comp(col, "USER") {
-                cols.user_collection.resolve_first_c(var, &cols.user_collection_key, Some(web_app_id))
+                cols.user.get(var, web_app_id)
             } else if comp(col, "SESSION") {
-                cols.session_collection.resolve_first_c(var, &cols.session_collection_key, Some(web_app_id))
+                cols.session.get(var, web_app_id)
             } else if comp(col, "IP") {
-                cols.ip_collection.resolve_first_c(var, &cols.ip_collection_key, Some(web_app_id))
+                cols.ip.get(var, web_app_id)
             } else if comp(col, "GLOBAL") {
-                cols.global_collection.resolve_first_c(var, &cols.global_collection_key, Some(web_app_id))
+                cols.global.get(var, web_app_id)
             } else {
                 return Err(VariableNotFound);
             }

@@ -70,12 +70,17 @@ mod without_lua {
 mod with_lua {
     use mlua::chunk::ChunkMode;
     use mlua::{Function, IntoLuaMulti, LightUserData, MultiValue, Table, Value};
+    use std::cell::RefCell;
 
     use super::Transaction;
     use crate::actions::transformations::transformation;
-    use crate::collection::Collection;
     use crate::utils::string::{to_hex_if_needed, toupper_str};
     use crate::variables::variable::{string_match_resolve, string_match_resolve_multi};
+
+    // Lua callbacks share a temporary borrow of the transaction. Borrow only
+    // for native reads/writes, never across a Lua API call: allocations can run
+    // finalizers which call m.* again. Native engine code still uses &mut.
+    type ScriptTransaction<'scope, 'rules> = RefCell<&'scope mut Transaction<'rules>>;
 
     /// Wraps the Rust implementation of an `m.*` function (which returns
     /// `true, results...` or `false, message`) so that its errors are raised
@@ -301,7 +306,6 @@ end
         /// when empty). Returns whether `main` returned a non empty string
         /// (or number); `false` on errors.
         pub fn run(&self, t: &mut Transaction<'_>, s: &[u8]) -> bool {
-            let t: &Transaction<'_> = t;
             let lua = Self::new_state();
             match self.run_in(&lua, t, s) {
                 Ok(ret) => ret,
@@ -319,7 +323,9 @@ end
             }
         }
 
-        fn run_in(&self, lua: &mlua::Lua, t: &Transaction<'_>, s: &[u8]) -> mlua::Result<bool> {
+        fn run_in(&self, lua: &mlua::Lua, t: &mut Transaction<'_>, s: &[u8]) -> mlua::Result<bool> {
+            let transaction_ptr = t as *mut Transaction<'_> as *mut std::ffi::c_void;
+            let t = RefCell::new(t);
             lua.scope(|scope| {
                 let globals = lua.globals();
 
@@ -330,7 +336,7 @@ end
                 lua.set_named_registry_value("luaL_msc", &msc)?;
 
                 let m = lua.create_table()?;
-                globals.set("__transaction", LightUserData(t as *const Transaction<'_> as *mut std::ffi::c_void))?;
+                globals.set("__transaction", LightUserData(transaction_ptr))?;
                 // The C functions of the C++ code raise their errors (bad
                 // arguments) as strings with luaL_error. Errors returned by
                 // mlua callbacks are userdata, so each function is wrapped
@@ -340,7 +346,7 @@ end
                 macro_rules! register {
                     ($name:literal, $f:ident) => {{
                         let imp = scope.create_function(|lua, args: MultiValue| {
-                            match $f(lua, t, args).and_then(|r| r.into_lua_multi(lua)) {
+                            match $f(lua, &t, args).and_then(|r| r.into_lua_multi(lua)) {
                                 Ok(mut v) => {
                                     v.push_front(Value::Boolean(true));
                                     Ok(v)
@@ -377,7 +383,7 @@ end
                             _ => format!("Failed to execute lua script: {}. ", self.script_name),
                         };
                         msg.push_str(&mlua_error_text(&e));
-                        crate::ms_dbg_a!(t, 2, "{}", msg);
+                        crate::ms_dbg_a!(&**t.borrow(), 2, "{}", msg);
                         return Ok(false);
                     }
                 };
@@ -389,7 +395,7 @@ end
                         e.push_str(" - ");
                         e.push_str(&lossy(&luaerr));
                     }
-                    crate::ms_dbg_a!(t, 2, "{}", e);
+                    crate::ms_dbg_a!(&**t.borrow(), 2, "{}", e);
                     return Ok(false);
                 }
 
@@ -399,7 +405,7 @@ end
 
                 let main: Value = globals.get("main")?;
 
-                crate::ms_dbg_a!(t, 9, "{}", lossy(s));
+                crate::ms_dbg_a!(&**t.borrow(), 9, "{}", lossy(s));
 
                 // Put the parameter on the stack.
                 let mut args = MultiValue::new();
@@ -414,14 +420,14 @@ end
                         e.push_str(" - ");
                         e.push_str(&lossy(&luaerr));
                     }
-                    crate::ms_dbg_a!(t, 2, "{}", e);
+                    crate::ms_dbg_a!(&**t.borrow(), 2, "{}", e);
                     return Ok(false);
                 }
 
                 // One result, as lua_pcall(L, nargs, 1, 0) asks for.
                 let lua_ret = lua_tostring(lua, res.next().unwrap_or(Value::Nil)).unwrap_or_default();
 
-                crate::ms_dbg_a!(t, 9, "Returning from lua script: {}", lossy(&lua_ret));
+                crate::ms_dbg_a!(&**t.borrow(), 9, "Returning from lua script: {}", lossy(&lua_ret));
 
                 Ok(!lua_ret.is_empty())
             })
@@ -476,24 +482,29 @@ end
     }
 
     /// `m.log(level, text)`
-    fn log(lua: &mlua::Lua, t: &Transaction<'_>, args: MultiValue) -> mlua::Result<()> {
+    fn log(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
         // Retrieve parameters.
         let level = check_number(lua, args.front(), 1)? as i32;
         let text = check_string(lua, args.get(1), 2)?;
         // Log message.
-        crate::ms_dbg_a!(t, level, "{}", lossy(&text));
+        crate::ms_dbg_a!(&**t.borrow(), level, "{}", lossy(&text));
         Ok(())
     }
 
     /// `m.getvar(name [, transformations])`
-    fn getvar(lua: &mlua::Lua, t: &Transaction<'_>, args: MultiValue) -> mlua::Result<MultiValue> {
+    fn getvar(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<MultiValue> {
         // Retrieve parameters.
         let varname = check_string(lua, args.front(), 1)?;
 
-        let mut var = match string_match_resolve(t, &lossy(&varname)) {
+        let mut var = match string_match_resolve(&t.borrow(), &lossy(&varname)) {
             Ok(v) => v,
             Err(_) => {
-                crate::ms_dbg_a!(t, 2, "Lua: m.getvar(): unknown variable: {}.", to_hex_if_needed(&varname, false));
+                crate::ms_dbg_a!(
+                    &**t.borrow(),
+                    2,
+                    "Lua: m.getvar(): unknown variable: {}.",
+                    to_hex_if_needed(&varname, false)
+                );
                 return Ok(MultiValue::from_iter([Value::Nil]));
             }
         };
@@ -508,13 +519,18 @@ end
     }
 
     /// `m.getvars(name)`: a list of `{ name = ..., value = ... }`.
-    fn getvars(lua: &mlua::Lua, t: &Transaction<'_>, args: MultiValue) -> mlua::Result<Table> {
+    fn getvars(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<Table> {
         // Retrieve parameters.
         let varname = check_string(lua, args.front(), 1)?;
 
         let mut l = Vec::new();
-        if string_match_resolve_multi(t, &lossy(&varname), &mut l).is_err() {
-            crate::ms_dbg_a!(t, 2, "Lua: m.getvars(): unknown variable: {}.", to_hex_if_needed(&varname, false));
+        if string_match_resolve_multi(&t.borrow(), &lossy(&varname), &mut l).is_err() {
+            crate::ms_dbg_a!(
+                &**t.borrow(),
+                2,
+                "Lua: m.getvars(): unknown variable: {}.",
+                to_hex_if_needed(&varname, false)
+            );
             return lua.create_table();
         }
 
@@ -529,9 +545,9 @@ end
     }
 
     /// `m.setvar("collection.name", value)`
-    fn setvar(lua: &mlua::Lua, t: &Transaction<'_>, args: MultiValue) -> mlua::Result<()> {
+    fn setvar(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
         if args.len() != 2 {
-            crate::ms_dbg_a!(t, 8, "m.setvar: Failed m.setvar funtion must has 2 arguments");
+            crate::ms_dbg_a!(&**t.borrow(), 8, "m.setvar: Failed m.setvar funtion must has 2 arguments");
             // The C++ function returns -1 here; to the caller that is no
             // value.
             return Ok(());
@@ -541,7 +557,7 @@ end
 
         let Some(pos) = var_name.iter().position(|&c| c == b'.') else {
             crate::ms_dbg_a!(
-                t,
+                &**t.borrow(),
                 8,
                 "m.setvar: Must specify a collection using dot character - ie m.setvar(tx.myvar,mydata)"
             );
@@ -550,48 +566,11 @@ end
         let collection = toupper_str(&lossy(&var_name[..pos]));
         let variable_name = &var_name[pos + 1..];
 
-        let c = &t.collections;
-        let web_app_id = Some(t.rules.properties.web_app_id());
-        match collection.as_str() {
-            "TX" => {
-                c.tx_collection.store_or_update_first(variable_name, &var_value);
-            }
-            "IP" => {
-                c.ip_collection.store_or_update_first_c(variable_name, &c.ip_collection_key, web_app_id, &var_value);
-            }
-            "GLOBAL" => {
-                c.global_collection.store_or_update_first_c(
-                    variable_name,
-                    &c.global_collection_key,
-                    web_app_id,
-                    &var_value,
-                );
-            }
-            "RESOURCE" => {
-                c.resource_collection.store_or_update_first_c(
-                    variable_name,
-                    &c.resource_collection_key,
-                    web_app_id,
-                    &var_value,
-                );
-            }
-            "SESSION" => {
-                c.session_collection.store_or_update_first_c(
-                    variable_name,
-                    &c.session_collection_key,
-                    web_app_id,
-                    &var_value,
-                );
-            }
-            "USER" => {
-                c.user_collection.store_or_update_first_c(
-                    variable_name,
-                    &c.user_collection_key,
-                    web_app_id,
-                    &var_value,
-                );
-            }
-            _ => {}
+        let mut t = t.borrow_mut();
+        if collection == "TX" {
+            t.collections.tx.set(variable_name, var_value);
+        } else if let Some(collection) = crate::collection::Persistent::from_name(&collection) {
+            t.collections.persistent(collection).set(variable_name, t.rules.properties.web_app_id(), &var_value);
         }
         Ok(())
     }
@@ -600,7 +579,7 @@ end
     /// transformation name or a list of them.
     fn apply_transformations(
         lua: &mlua::Lua,
-        t: &Transaction<'_>,
+        t: &ScriptTransaction<'_, '_>,
         idx: Option<&Value>,
         var: &mut Vec<u8>,
     ) -> mlua::Result<()> {
@@ -622,21 +601,21 @@ end
                     // so the "Invalid transformation function" branch of the
                     // C++ code is never taken.
                     let tfn = transformation::Transformation::from_name(&format!("t:{}", lossy(&name)));
-                    tfn.transform(var, Some(t));
+                    tfn.transform(var, Some(&t.borrow()));
                 }
                 Ok(())
             }
             Some(v @ (Value::String(_) | Value::Integer(_) | Value::Number(_))) => {
                 let name = check_string(lua, Some(v), 2)?;
                 let tfn = transformation::Transformation::from_name(&format!("t:{}", lossy(&name)));
-                tfn.transform(var, Some(t));
+                tfn.transform(var, Some(&t.borrow()));
                 Ok(())
             }
             other => {
                 // Sic: the C++ code passes the stack index (2) to
                 // lua_typename, which names type 2: "userdata".
                 crate::ms_dbg_a!(
-                    t,
+                    &**t.borrow(),
                     8,
                     "SecRuleScript: Transformation parameter must be a transformation name or array of \
                      transformation names, but found userdata (type {})",
@@ -651,7 +630,6 @@ end
 #[cfg(all(test, feature = "lua"))]
 mod tests {
     use super::Lua;
-    use crate::collection::Collection;
     use crate::modsecurity::ModSecurity;
     use crate::transaction::Transaction;
     use crate::variables::test_support::rules_with_log;
@@ -672,6 +650,57 @@ mod tests {
         let p = dir.join(name);
         std::fs::write(&p, code).unwrap();
         p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn finalizers_can_reenter_transaction_callbacks() {
+        let ms = ModSecurity::new();
+        let (rules, log) = rules_with_log();
+        let mut t = Transaction::new(&ms, &rules, None);
+        for i in 0..200 {
+            t.collections.tx.set(format!("entry-{i}").as_bytes(), b"value".to_vec());
+            t.vars.args.set(format!("arg-{i}").as_bytes(), b"value", 0);
+        }
+        let path = temp_script(
+            "reentrant-finalizers.lua",
+            r#"
+            function main()
+                collectgarbage('collect')
+                collectgarbage('stop')
+                local active, reentered, finalized = false, false, 0
+                local function finalize()
+                    assert(m.getvar('TX.entry-0') == 'value')
+                    finalized = finalized + 1
+                    m.setvar('Tx.finalized', finalized)
+                    if active then reentered = true end
+                end
+                for i = 1, 1000 do
+                    local garbage = setmetatable({}, {__gc = finalize})
+                end
+                collectgarbage('incremental', 0, 200, 1)
+                collectgarbage('restart')
+                for i = 1, 30 do
+                    active = true
+                    local values = m.getvars('ARGS')
+                    active = false
+                    assert(#values >= 200)
+                end
+                collectgarbage('collect')
+                assert(finalized == 1000, 'finalizers failed')
+                assert(reentered, 'no finalizer ran inside a callback')
+                assert(m.getvar('TX.finalized') == '1000')
+                local ok = pcall(m.getvar, {})
+                assert(not ok)
+                m.setvar('tx.after_error', 'still usable')
+                return 'ok'
+            end
+        "#,
+        );
+        let script = Lua::from_script(&path).unwrap();
+        assert!(script.run(&mut t, b""), "{}", log.lock().unwrap());
+        assert_eq!(t.collections.tx.get(b"finalized"), Some(&b"1000"[..]));
+        assert_eq!(t.collections.tx.get(b"after_error"), Some(&b"still usable"[..]));
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -760,25 +789,25 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         // The persistent collections may live on disk (LMDB).
         let ip_key = format!("lua-test-{}", std::process::id());
-        t.collections.ip_collection_key = ip_key.as_bytes().to_vec();
+        t.collections.ip.key = ip_key.as_bytes().to_vec();
 
         assert!(!loaded("setvar.lua").run(&mut t, b""));
-        assert_eq!(t.collections.tx_collection.resolve_first(b"lua_set_var"), Some(b"2".to_vec()));
+        assert_eq!(t.collections.tx.get(b"lua_set_var"), Some(&b"2"[..]));
         assert_eq!(
-            t.collections.ip_collection.resolve_first(format!("{}::app::lua_set_var", ip_key).as_bytes()),
+            ms.ip_collection.resolve_first(format!("{}::app::lua_set_var", ip_key).as_bytes()),
             Some(b"2".to_vec())
         );
 
         assert!(loaded("match-set.lua").run(&mut t, b""));
-        assert_eq!(t.collections.tx_collection.resolve_first(b"test"), Some(b"whee".to_vec()));
+        assert_eq!(t.collections.tx.get(b"test"), Some(&b"whee"[..]));
 
-        t.collections.tx_collection.store_or_update_first(b"test", b"FELIPE");
+        t.collections.tx.set(b"test", b"FELIPE".to_vec());
         assert!(loaded("match-getvar-transformation.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Just fine."));
         assert!(loaded("match-getvar-multi-transformations.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Whee. Working like a charm. That is what we have: FELIPE"));
 
-        t.collections.tx_collection.store_or_update_first(b"test", b"2");
+        t.collections.tx.set(b"test", b"2".to_vec());
         assert!(loaded("match-getvar.lua").run(&mut t, b""));
         assert!(log.lock().unwrap().contains("Number is bigger than one."));
 
