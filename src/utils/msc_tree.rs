@@ -806,7 +806,9 @@ pub fn is_netmask_v6(ip_strv6: &[u8]) -> u8 {
     cidr as u8
 }
 
+// The tests compare with the C library (`inet_pton`).
 #[cfg(test)]
+#[allow(unsafe_code)]
 mod tests {
     use super::*;
 

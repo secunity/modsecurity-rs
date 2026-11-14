@@ -310,3 +310,43 @@ Compatibility:
   stdout; that output is gone) or misreads, e.g. `SecRule% ARGS`, `"@lt 3""`, `"@lt' 3"`,
   `!"@rx a"`. 4 build differently: `setvar:tx.a=\%{x}`, where flex makes
   `=\%{x}` part of the key.
+
+## Unsafe code only at the boundaries
+
+`unsafe` is confined to the modules where Rust meets C, and the compiler
+enforces it: the crate has `#![deny(unsafe_code)]`, and only these modules
+allow it (where they are declared):
+
+| Module | Boundary |
+|---|---|
+| `capi` | the C API (`msc_*`, `ModSecurityIntervention`) |
+| `utils::regex` | PCRE2 |
+| `utils::libxml2` | libxml2 |
+| `utils::system` | libc (`wordexp`, `mkstemp`, `setenv`, time, `strerror`) |
+| `utils::geo_lookup` | MaxMind DB |
+| `utils::https_client` | curl |
+| `collection::backend::lmdb` | LMDB |
+| `engine::lua` | Lua |
+| `operators::fuzzy_hash` | ssdeep |
+
+(plus three tests that compare with C functions).
+
+Steps:
+- The C API moved from `c_api` submodules of `transaction.rs`,
+  `rules_set.rs` and `modsecurity.rs`, and the C half of `intervention.rs`,
+  to `src/capi/`. The exported symbols are unchanged (39 `msc_*`, compared
+  with `nm`).
+- `@verifyCC` used a private PCRE2 binding: it uses `utils::regex`
+  (`Regex::find_at`). `id:` validation used `snprintf("%.40g")`: `format_g`
+  does it in safe Rust (compared with `snprintf` on 60,000 doubles).
+  `setenv` and `mkstemp` moved to `utils::system`.
+- libxml2: the FFI moved from the request body processor to
+  `utils::libxml2`, with a safe API (`PushParser`, `SaxParser` +
+  `SaxHandler`, `Document::{xpath, validate_dtd, validate_schema}`, `Dtd`)
+  that the body processor, the `XML` variable and the validation operators
+  use.
+
+No behavior change (regression and unit suites, differential test, CRS);
+`Transaction` stays `Send`, `ModSecurity` and `RulesSet` `Send + Sync`
+(tested).
+

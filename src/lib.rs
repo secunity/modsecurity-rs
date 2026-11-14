@@ -24,6 +24,11 @@
 //! }
 //! ```
 
+// `unsafe` is only allowed where Rust meets C: the C API (`capi`) and the
+// modules wrapping native libraries (marked `#[allow(unsafe_code)]` where
+// they are declared).
+#![deny(unsafe_code)]
+
 /// Debug-log helper equivalent to the C++ `ms_dbg_a(t, level, msg)` macro:
 /// the message is only formatted when the configured debug level is high
 /// enough.
@@ -53,11 +58,12 @@ macro_rules! ms_dbg_opt {
 extern crate alloc;
 
 pub mod actions;
-// The C API (`msc_*`).
 pub(crate) mod anchored_set_variable;
 pub(crate) mod anchored_set_variable_translation_proxy;
 pub(crate) mod anchored_variable;
 pub(crate) mod audit_log;
+// The C API (`msc_*`).
+#[allow(unsafe_code)]
 pub mod capi;
 pub mod collection;
 pub mod debug_log;

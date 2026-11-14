@@ -4,7 +4,7 @@ This repository is a complete Rust implementation of libmodsecurity v3 (the ModS
 
 - Design for Rust, not for the C++ layout. Module boundaries, type hierarchies, file organization, internal APIs and data representations may be redesigned when that makes the code clearer, safer, faster or easier to maintain. There is no need to keep a file per C++ header, C++ class names, or "Port of ..." structure.
 - Prefer well-maintained crates over hand-written code when they do the job. Before replacing an implementation, confirm the crate has the same semantics on the inputs that matter (compare both on generated inputs), and record the reason for each new dependency in `Cargo.toml`.
-- Prefer safe Rust. Keep `unsafe` at the boundaries (C API, native libraries) with a `SAFETY` comment on every block.
+- Prefer safe Rust. Keep `unsafe` at the boundaries (C API, native libraries) with a `SAFETY` comment on every block. The crate denies `unsafe_code`; only `capi` and the native-library wrapper modules allow it (`#[allow(unsafe_code)]` where they are declared). Code that needs a C call uses those wrappers; a new wrapper module is for a new native library only.
 - Larger redesigns are welcome (for example a grammar-based SecLang front end, a compiled rule plan, a safer embedding API, splitting the workspace), but do them as separate, reviewable steps with the verification below, and say up front what they change.
 
 ## Compatibility contract

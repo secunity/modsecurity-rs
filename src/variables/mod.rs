@@ -672,6 +672,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)] // std::env::set_var
     fn env_variable() {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
