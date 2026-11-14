@@ -1,0 +1,131 @@
+[
+  {
+    "enabled": 1,
+    "version_min": 300000,
+    "title": "Operator :: @contains with an escaped double quote: match",
+    "url": "https://github.com/owasp-modsecurity/ModSecurity/issues/3750",
+    "client": {
+      "ip": "200.249.12.31",
+      "port": 2313
+    },
+    "server": {
+      "ip": "200.249.12.31",
+      "port": 80
+    },
+    "request": {
+      "headers": {
+        "Host": "localhost",
+        "User-Agent": "curl/7.38.0",
+        "Accept": "*/*",
+        "Content-Length": "0"
+      },
+      "uri": "/?a=test()%22quote%22",
+      "method": "GET",
+      "http_version": 1.1,
+      "body": [
+        ""
+      ]
+    },
+    "response": {
+      "headers": {
+        "Content-Length": "0"
+      },
+      "body": [
+        ""
+      ]
+    },
+    "expected": {
+      "http_code": 500
+    },
+    "rules": [
+      "SecRuleEngine On",
+      "SecRule ARGS \"@contains test()\\\"quote\\\"\" \"phase:2,id:999,deny,status:500\""
+    ]
+  },
+  {
+    "enabled": 1,
+    "version_min": 300000,
+    "title": "Operator :: @contains with an escaped double quote: no match on the backslash",
+    "url": "https://github.com/owasp-modsecurity/ModSecurity/issues/3750",
+    "client": {
+      "ip": "200.249.12.31",
+      "port": 2313
+    },
+    "server": {
+      "ip": "200.249.12.31",
+      "port": 80
+    },
+    "request": {
+      "headers": {
+        "Host": "localhost",
+        "User-Agent": "curl/7.38.0",
+        "Accept": "*/*",
+        "Content-Length": "0"
+      },
+      "uri": "/?a=test()%5C%22quote%5C%22",
+      "method": "GET",
+      "http_version": 1.1,
+      "body": [
+        ""
+      ]
+    },
+    "response": {
+      "headers": {
+        "Content-Length": "0"
+      },
+      "body": [
+        ""
+      ]
+    },
+    "expected": {
+      "http_code": 200
+    },
+    "rules": [
+      "SecRuleEngine On",
+      "SecRule ARGS \"@contains test()\\\"quote\\\"\" \"phase:2,id:999,deny,status:500\""
+    ]
+  },
+  {
+    "enabled": 1,
+    "version_min": 300000,
+    "title": "Operator :: @streq with an escaped double quote after an escaped backslash",
+    "url": "https://github.com/owasp-modsecurity/ModSecurity/issues/3750",
+    "client": {
+      "ip": "200.249.12.31",
+      "port": 2313
+    },
+    "server": {
+      "ip": "200.249.12.31",
+      "port": 80
+    },
+    "request": {
+      "headers": {
+        "Host": "localhost",
+        "User-Agent": "curl/7.38.0",
+        "Accept": "*/*",
+        "Content-Length": "0"
+      },
+      "uri": "/?a=a%5C%5C%22b",
+      "method": "GET",
+      "http_version": 1.1,
+      "body": [
+        ""
+      ]
+    },
+    "response": {
+      "headers": {
+        "Content-Length": "0"
+      },
+      "body": [
+        ""
+      ]
+    },
+    "expected": {
+      "http_code": 500
+    },
+    "rules": [
+      "SecRuleEngine On",
+      "SecRule ARGS:a \"@streq a\\\\\\\"b\" \"phase:2,id:998,deny,status:500\""
+    ]
+  }
+]

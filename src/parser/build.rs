@@ -278,6 +278,26 @@ impl Builder<'_, '_> {
         }
     }
 
+    /// The parameter of an operator other than a regular expression.
+    /// Between double quotes, `\"` is a quote (the C++ scanner kept the
+    /// backslash, upstream issue 3750).
+    fn param(&mut self, o: &syntax::Operator<'_>, pieces: &[Piece<'_>]) -> Res<RunTimeString> {
+        if !o.quoted {
+            return self.run_time_string(pieces);
+        }
+        let mut r = RunTimeString::new();
+        for p in pieces {
+            match p {
+                Piece::Text(t) => r.append_bytes(&unescape_quotes(&syntax::bytes(t))),
+                Piece::Macro(v) => {
+                    let var = self.var(v)?;
+                    r.append_var(var);
+                }
+            }
+        }
+        Ok(r)
+    }
+
     fn run_time_string(&mut self, pieces: &[Piece<'_>]) -> Res<RunTimeString> {
         let mut r = RunTimeString::new();
         for p in pieces {
@@ -339,7 +359,14 @@ impl Builder<'_, '_> {
                 if op.param && o.param.is_empty() {
                     return self.fail(&format!("The operator {} needs a parameter.", op.name));
                 }
-                (op.name, self.run_time_string(&o.param)?)
+                let param = if op.name.starts_with("rx") {
+                    // PCRE already reads `\"` as `"`; the parameter is
+                    // kept as written (it is shown in the logs).
+                    self.run_time_string(&o.param)?
+                } else {
+                    self.param(o, &o.param)?
+                };
+                (op.name, param)
             }
         };
         let Some(o2) = instantiate_with_param(name, param) else {
@@ -1203,6 +1230,30 @@ fn transformation(name: &str) -> Option<TK> {
         "replacecomments" => TK::ReplaceComments,
         _ => return None,
     })
+}
+
+/// `\"` -> `"`, reading the backslashes as the grammar does: `\\` is two
+/// characters of text (so `\\"` ends a quoted text, and `\\\"` is `\\"`).
+fn unescape_quotes(text: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len());
+    let mut i = 0;
+    while i < text.len() {
+        match (text[i], text.get(i + 1)) {
+            (b'\\', Some(b'\\')) => {
+                out.extend_from_slice(b"\\\\");
+                i += 2;
+            }
+            (b'\\', Some(b'"')) => {
+                out.push(b'"');
+                i += 2;
+            }
+            (c, _) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
 }
 
 /// Whether the parameter of an operator is empty: nothing, or (between

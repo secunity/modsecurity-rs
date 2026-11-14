@@ -377,3 +377,21 @@ fn percent_is_text() {
     // `%{VAR}%` stays the variable.
     assert!(!dump.contains(&bytes("%")), "{dump}");
 }
+
+/// In a double-quoted operator parameter, `\"` is a quote (C++ kept the
+/// backslash: upstream issue 3750 / PR 3753). `\\` stays two backslashes.
+#[test]
+fn escaped_quote_in_operator() {
+    let mut d = Driver::new();
+    let rules = r#"SecRule ARGS "@contains test()\"quote\"" "id:1,phase:2,pass"
+SecRule ARGS "@streq a\\\"b" "id:2,phase:2,pass"
+SecRule ARGS "@streq c\\d" "id:3,phase:2,pass"
+SecRule ARGS @streq e\"f "id:4,phase:2,pass"
+"#;
+    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
+    let dump = format!("{:?}", d.rules_set_phases);
+    let bytes = |s: &str| format!("{:?}", s.as_bytes().to_vec());
+    for param in [r#"test()"quote""#, r#"a\\"b"#, r#"c\\d"#, r#"e\"f"#] {
+        assert!(dump.contains(&bytes(param)), "{param} in {dump}");
+    }
+}

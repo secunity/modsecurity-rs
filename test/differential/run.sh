@@ -39,19 +39,22 @@ for v in cpp rs; do
     (cd "$work/$v" && "../harness_$v" ../rules.conf ../requests.txt > out.txt)
 done
 
-# The C++ parser gets some rule line numbers wrong (it does not count all
-# line feeds; see MIGRATION.md): `[line "N"]` is compared without N.
-lines() { sed -E 's/\[line "[0-9]+"\]/[line ""]/g' "$1"; }
+# Documented differences (MIGRATION.md): the C++ parser gets some rule line
+# numbers wrong (`[line "N"]` is compared without N) and keeps the backslash
+# of `\"` in operator parameters (operator parameters are compared with `\"`
+# read as `"`).
+lines() { sed -E 's/\[line "[0-9]+"\]/[line ""]/g; /with param/s/\\"/"/g' "$1"; }
 lines "$work/cpp/out.txt" > "$work/cpp/out.norm"
 lines "$work/rs/out.txt" > "$work/rs/out.norm"
 diff "$work/cpp/out.norm" "$work/rs/out.norm"
 python3 -I - "$work/cpp/debug.log" "$work/rs/debug.log" <<'PY'
 import itertools, re, sys
-# Rule locations (`'<file>:<line>'`) are compared without the line (see
-# above).
+# Rule locations (`'<file>:<line>'`) are compared without the line, and
+# operator parameters with `\"` read as `"` (see above).
 loc = re.compile(r"('[^']*):[0-9]+'")
 def norm(line):
-    return loc.sub(r"\1:'", line.decode('utf-8', 'replace'))
+    line = loc.sub(r"\1:'", line.decode('utf-8', 'replace'))
+    return line.replace('\\"', '"') if 'with param' in line else line
 # Stream both logs (each is hundreds of MB).
 n, bad = 0, []
 with open(sys.argv[1], 'rb') as fa, open(sys.argv[2], 'rb') as fb:

@@ -280,7 +280,7 @@ Compatibility:
   the line of the rule's keyword);
   a `%` right after a macro is dropped (kept on purpose: `%{VAR}%` is a
   form the regression tests use; a lone `%` elsewhere was fixed since); the escaped quote of PR 3753 keeps
-  its backslash; an action list may miss its closing quote at the end of a
+  its backslash (fixed since for operators); an action list may miss its closing quote at the end of a
   line; a directive on the line right after a rule without actions is an
   error (fixed since); a whole collection followed by a plain regular expression
   (`SecRule TX "foo"`) is an error (fixed since); an unknown `@operator` is a regular

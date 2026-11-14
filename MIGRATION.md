@@ -224,6 +224,17 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   `tag:a%,pass` swallowed the comma. `%{VAR}%` is still the variable (a `%`
   right after a macro belongs to it, as in C++; the regression tests use
   that form).
+- **`\"` in a double-quoted operator parameter** is a quote (upstream issue
+  3750, PR 3753): `"@contains test()\"quote\""` matches `test()"quote"`. The
+  C++ scanner kept the backslash, so the operator looked for `\"`. The
+  parameters of `@rx`/`@rxGlobal` (and bare regular expressions) are kept
+  as written, as they appear in the logs: PCRE already reads `\"` as `"`
+  (except inside `\Q..\E`, which still sees the backslash). `\\` stays two
+  backslashes. In CRS 4.8 this makes rule 955350 (`@contains <h1
+  style=\"margin-bottom: 0\">webadmin.php</h1>`, a web shell's page) able to
+  match. Action values are unchanged (the regression
+  test `misc-escaped-quote-after-macro-expansion.json` pins the backslash
+  there).
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, LMDB
