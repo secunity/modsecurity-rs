@@ -83,9 +83,9 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
   transaction, and copies are stored in that transaction. The Rust
   `RuleMessage<'a>` borrows only the rule; the transaction is passed to its
   formatting methods.
-- **Shared mutable state.** Persistent collections, the debug log, the
-  shared-files registry and the GeoIP database are shared across
-  transactions/threads, so they synchronise internally (`Mutex`/`RwLock`),
+- **Shared mutable state.** Persistent collections and the log files are
+  shared across transactions/threads, so they synchronise internally
+  (`Mutex`/`RwLock`),
   as the C++ code does with mutexes. The only other interior mutability is
   a per-thread cache of PCRE2 match data/contexts (`utils::regex`; C++
   allocates them for every match).
@@ -159,6 +159,17 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   destructor read the paths after the merge): the new log was closed, so
   nothing was audited, and the old file stayed open. Each writer now
   releases the files it opened.
+- **Each rule set has its own GeoIP database**: C++ keeps one database
+  per process, set by the last `SecGeoLookupDb` loaded anywhere, so
+  `@geoLookup` in one rule set used the database of another (and which one
+  depended on load order), and `SecGeoLookupDb` with a file that cannot be
+  opened was accepted once any configuration had opened one. The database is
+  now a setting of the rule set, merged like the others (a rule set keeps its
+  own and inherits a merged one's, e.g. an nginx location its parent's). A
+  rule set without one, merged or its own, does not look up anything
+  (`Database is not open. Use: SecGeoLookupDb directive.`), and a file that
+  cannot be opened is an error unless the same configuration opened a
+  database before it.
 - **libxml2 documents left in a parser context are freed**: C++ leaked the
   document libxml2 builds for the entities of an internal DTD while parsing
   XML into ARGS (`SecParseXmlIntoArgs`), and the document of a request whose

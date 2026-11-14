@@ -97,8 +97,8 @@ Some C++-derived patterns are retained deliberately:
   `HashMap` iteration is not a substitute. The default ACMP/IP-tree algorithms
   keep their documented quirks; their opt-in alternatives remain opt-in.
 - The shared-file registry and audit-writer lifecycle retain their by-name
-  reopen/failure semantics. Replacing these with owned handles would require
-  a separate decision about reconfiguration behavior.
+  reopen/failure semantics. (Since replaced by owned handles, see "Owned
+  state instead of process globals".)
 - Remaining unsafe code is concentrated in the C ABI, external libraries and
   platform compatibility functions. The touched LMDB operations document
   handle validity, ownership and lifetime requirements. PCRE2 flags/errors,
@@ -350,3 +350,25 @@ No behavior change (regression and unit suites, differential test, CRS);
 `Transaction` stays `Send`, `ModSecurity` and `RulesSet` `Send + Sync`
 (tested).
 
+## Owned state instead of process globals
+
+C++ keeps some configuration state in process-wide singletons. The Rust
+code gives it to the object it belongs to.
+
+- **Log files.** The debug log and the audit log writers opened files
+  through a registry by name, and closed them by name: a writer released
+  whatever its configuration named at the time it was dropped, which after
+  a merge was the new configuration's files (fixed first, see MIGRATION.md).
+  `SharedFile::open` now returns an `Arc<SharedFile>` that the log keeps
+  (`DefaultDebugLog::file`, the audit `Writer` enum); the file is closed with
+  its last handle. The registry remains, with weak entries, so that the logs
+  of one process that name the same path still share one descriptor and one
+  mutex (the `fcntl` lock does not exclude threads). No behavior change.
+- **GeoIP database.** `GeoLookup::instance()` was replaced by `GeoDb`, owned
+  by the rule set (`RulesSetProperties::geo_db`, an `Arc` shared by the rule
+  sets it is merged into). The C API creates rule sets without a
+  `ModSecurity`, so the rule set, not the engine, is the owner. This changes
+  which database a rule set without `SecGeoLookupDb` uses (MIGRATION.md). The
+  database is read into memory, as before; one per `SecGeoLookupDb` loaded,
+  where C++ replaced (and leaked) a memory map. Memory-mapping it would need
+  `maxminddb`'s `mmap` feature.

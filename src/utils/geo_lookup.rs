@@ -1,126 +1,60 @@
-//! Port of `src/utils/geo_lookup.cc`, `src/utils/geo_lookup.h`.
+//! The geolocation database of `SecGeoLookupDb`, used by `@geoLookup`.
 //!
-//! Process wide geolocation database used by `@geoLookup` (configured with
-//! `SecGeoLookupDb`). MaxMind databases are read with the `maxminddb` crate
-//! when the `maxmind` feature is enabled (C++ `WITH_MAXMIND`). The legacy
-//! GeoIP library is not available, so this behaves like a C++ build without
-//! `WITH_GEOIP`.
-
-use std::sync::RwLock;
+//! Each rule set owns the database its configuration names (C++ keeps one
+//! database per process). MaxMind databases are read with the `maxminddb`
+//! crate when the `maxmind` feature is enabled (C++ `WITH_MAXMIND`). The
+//! legacy GeoIP library is not available, so this behaves like a C++ build
+//! without `WITH_GEOIP`.
 
 use crate::transaction::Transaction;
 
-/// `GeoLookupVersion`
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GeoLookupVersion {
-    NotLoaded,
-    VersionMaxmind,
-    VersionGeoip,
-}
-
+/// An open geolocation database.
 #[derive(Debug)]
-struct GeoLookupState {
-    version: GeoLookupVersion,
+pub struct GeoDb {
     #[cfg(feature = "maxmind")]
-    mmdb: Option<maxminddb::Reader<Vec<u8>>>,
+    reader: maxminddb::Reader<Vec<u8>>,
 }
 
-/// `GeoLookup` (singleton, see [`GeoLookup::instance`]).
-#[derive(Debug)]
-pub struct GeoLookup {
-    state: RwLock<GeoLookupState>,
-}
-
-impl GeoLookup {
-    /// `getInstance`
-    pub fn instance() -> &'static GeoLookup {
-        static INSTANCE: GeoLookup = GeoLookup {
-            state: RwLock::new(GeoLookupState {
-                version: GeoLookupVersion::NotLoaded,
-                #[cfg(feature = "maxmind")]
-                mmdb: None,
-            }),
+impl GeoDb {
+    /// Opens the database at `file_path`.
+    pub fn open(file_path: &str) -> Result<GeoDb, String> {
+        #[cfg(feature = "maxmind")]
+        let int_max = match maxminddb::Reader::open_readfile(file_path) {
+            Ok(reader) => return Ok(GeoDb { reader }),
+            Err(e) => format!("libMaxMind: Can't open: {}.", mmdb_open_strerror(&e)),
         };
-        &INSTANCE
-    }
 
-    /// The kind of database currently loaded.
-    pub fn version(&self) -> GeoLookupVersion {
-        self.state.read().unwrap_or_else(|e| e.into_inner()).version
-    }
-
-    /// `cleanUp`
-    pub fn clean_up(&self) {
-        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
+        let mut err = format!("Can't open:  {}. ", file_path);
+        err.push_str("Support enabled for:");
         #[cfg(feature = "maxmind")]
         {
-            st.mmdb = None;
+            err.push_str(" libMaxMind.");
+            err.push(' ');
+            err.push_str(&int_max);
         }
-        st.version = GeoLookupVersion::NotLoaded;
-    }
-
-    /// `setDataBase`: opens the database at `file_path`. Fails only when no
-    /// database is loaded afterwards (a database loaded before stays in use
-    /// if this one cannot be opened, as in C++).
-    pub fn set_data_base(&self, file_path: &str) -> Result<(), String> {
-        #[cfg(feature = "maxmind")]
-        let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         #[cfg(not(feature = "maxmind"))]
-        let st = self.state.read().unwrap_or_else(|e| e.into_inner());
-
-        #[cfg(feature = "maxmind")]
-        let mut int_max = String::new();
-
-        #[cfg(feature = "maxmind")]
-        match maxminddb::Reader::open_readfile(file_path) {
-            Ok(reader) => {
-                st.mmdb = Some(reader);
-                st.version = GeoLookupVersion::VersionMaxmind;
-            }
-            Err(e) => {
-                int_max = format!("libMaxMind: Can't open: {}.", mmdb_open_strerror(&e));
-            }
-        }
-
-        if st.version == GeoLookupVersion::NotLoaded {
-            let mut err = format!("Can't open:  {}. ", file_path);
-            err.push_str("Support enabled for:");
-            #[cfg(feature = "maxmind")]
-            err.push_str(" libMaxMind");
-            err.push('.');
-            #[cfg(feature = "maxmind")]
-            if !int_max.is_empty() {
-                err.push(' ');
-                err.push_str(&int_max);
-            }
-            return Err(err);
-        }
-
-        Ok(())
+        err.push('.');
+        Err(err)
     }
 
-    /// `lookup`: looks `target` up and fills the `GEO` collection of the
-    /// transaction. Debug messages are only emitted with a transaction (the
-    /// C++ code passes no debug callback without one).
+    /// Looks `target` up and fills the `GEO` collection of the transaction.
+    /// Debug messages are only emitted with a transaction (the C++ code
+    /// passes no debug callback without one).
     pub fn lookup(&self, target: &[u8], trans: Option<&mut Transaction<'_>>) -> bool {
-        let st = self.state.read().unwrap_or_else(|e| e.into_inner());
-
-        if st.version == GeoLookupVersion::NotLoaded {
-            crate::ms_dbg_opt!(trans.as_deref(), 4, "Database is not open. Use: SecGeoLookupDb directive.");
-            return false;
-        }
-
         #[cfg(feature = "maxmind")]
-        if st.version == GeoLookupVersion::VersionMaxmind {
-            let Some(reader) = st.mmdb.as_ref() else {
-                return false;
-            };
-            return maxmind_lookup(reader, target, trans);
-        }
-
+        return maxmind_lookup(&self.reader, target, trans);
         #[cfg(not(feature = "maxmind"))]
-        let _ = target;
-        true
+        {
+            // No database can be opened without a library.
+            let _ = (target, trans);
+            false
+        }
+    }
+
+    /// `lookup` without a database (no `SecGeoLookupDb`).
+    pub fn not_loaded(trans: &Transaction<'_>) -> bool {
+        crate::ms_dbg_a!(trans, 4, "Database is not open. Use: SecGeoLookupDb directive.");
+        false
     }
 }
 
@@ -243,17 +177,14 @@ fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], trans: Opt
 mod tests {
     use super::*;
 
-    /// One test only: the database is process wide.
     #[test]
-    fn set_data_base_and_lookup() {
-        let g = GeoLookup::instance();
-        let err = g.set_data_base("/nonexistent/db.mmdb").unwrap_err();
+    fn open_and_lookup() {
+        let err = GeoDb::open("/nonexistent/db.mmdb").unwrap_err();
         assert!(err.starts_with("Can't open:  /nonexistent/db.mmdb. Support enabled for:"));
         #[cfg(feature = "maxmind")]
         assert!(err.ends_with(" libMaxMind. libMaxMind: Can't open: Error opening the specified MaxMind DB file."));
         #[cfg(not(feature = "maxmind"))]
         assert!(err.ends_with("Support enabled for:."));
-        assert!(!g.lookup(b"200.249.12.31", None));
 
         #[cfg(feature = "maxmind")]
         {
@@ -261,8 +192,7 @@ mod tests {
             use crate::rules_set::RulesSet;
 
             let db = format!("{}/test/test-cases/data/GeoIP2-City-Test.mmdb", env!("CARGO_MANIFEST_DIR"));
-            assert_eq!(g.set_data_base(&db), Ok(()));
-            assert_eq!(g.version(), GeoLookupVersion::VersionMaxmind);
+            let g = GeoDb::open(&db).unwrap();
 
             let ms = ModSecurity::new();
             let rules = RulesSet::new();
@@ -275,9 +205,6 @@ mod tests {
             assert_eq!(get(b"COUNTRY_CODE"), Some(b"BR".to_vec()));
             assert!(!g.lookup(b"www.modsecurity.org", None));
             assert!(!g.lookup(b"127.0.0.1", None));
-
-            g.clean_up();
-            assert_eq!(g.version(), GeoLookupVersion::NotLoaded);
         }
     }
 

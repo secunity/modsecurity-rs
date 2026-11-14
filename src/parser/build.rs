@@ -910,8 +910,11 @@ impl Builder<'_, '_> {
                     return self
                         .fail(&format!("Failed to load locate the GeoDB file from: {} {}", s, lookup.looked_at));
                 };
-                if let Err(err) = crate::utils::geo_lookup::GeoLookup::instance().set_data_base(&file) {
-                    return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err));
+                match crate::utils::geo_lookup::GeoDb::open(&file) {
+                    Ok(db) => self.driver.properties.geo_db = Some(std::sync::Arc::new(db)),
+                    // A database opened before stays in use, as in C++.
+                    Err(_) if self.driver.properties.geo_db.is_some() => {}
+                    Err(err) => return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err)),
                 }
             }
             Effect::ArgumentsLimit => p.arguments_limit = Some(atoi(&v) as i32 as u32),

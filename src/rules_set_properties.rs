@@ -12,6 +12,7 @@ use crate::audit_log::AuditLog;
 use crate::debug_log::{DebugLog, DefaultDebugLog};
 use crate::modsecurity::NUMBER_OF_PHASES;
 use crate::rules_exceptions::RulesExceptions;
+use crate::utils::geo_lookup::GeoDb;
 
 /// Numeric configuration values (`ConfigInt`, `ConfigUnsignedInt`,
 /// `ConfigUnsignedLong` in C++), with the range of the C++ specialisation.
@@ -351,6 +352,8 @@ pub struct RulesSetProperties {
     pub sec_web_app_id: Option<String>,
     pub default_actions: DefaultActions,
     pub unicode_map_table: ConfigUnicodeMap,
+    /// `SecGeoLookupDb`: shared with the rule sets this one is merged into.
+    pub geo_db: Option<Arc<GeoDb>>,
 }
 
 impl Default for RulesSetProperties {
@@ -398,6 +401,7 @@ impl RulesSetProperties {
             sec_web_app_id: None,
             default_actions: Default::default(),
             unicode_map_table: ConfigUnicodeMap::default(),
+            geo_db: None,
         }
     }
 
@@ -432,6 +436,7 @@ impl RulesSetProperties {
         merge_value(&mut to.sec_web_app_id, &from.sec_web_app_id);
         to.unicode_map_table.merge(&from.unicode_map_table);
         merge_value(&mut to.httpbl_key, &from.httpbl_key);
+        merge_value(&mut to.geo_db, &from.geo_db);
         to.exceptions.merge(&from.exceptions);
         to.components.extend(from.components.iter().cloned());
 
