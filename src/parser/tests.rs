@@ -395,3 +395,12 @@ SecRule ARGS @streq e\"f "id:4,phase:2,pass"
         assert!(dump.contains(&bytes(param)), "{param} in {dump}");
     }
 }
+
+/// An action list must end with its quote (C++ accepted a list ending at
+/// the end of the line).
+#[test]
+fn action_list_needs_its_closing_quote() {
+    assert_eq!(load("SecRule ARGS \"@rx a\" \"id:1,phase:2,pass\n", "t").0, -1);
+    assert_eq!(load("SecAction \"id:1,phase:2,pass\n", "t").0, -1);
+    assert_eq!(load("SecRule ARGS \"@rx a\" \"id:1,phase:2,pass\"\n", "t").0, 1);
+}

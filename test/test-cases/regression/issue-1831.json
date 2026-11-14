@@ -50,7 +50,7 @@
     },
     "rules": [
       "SecRuleEngine On",
-      "SecRule ARGS:foo \"^$\" \"id:1,expirevar:'ip.dos_burst_counter=%{tx.dos_burst_time_slice}'"
+      "SecRule ARGS:foo \"^$\" \"id:1,expirevar:'ip.dos_burst_counter=%{tx.dos_burst_time_slice}'\""
     ]
   },
   {
@@ -103,10 +103,10 @@
     },
     "rules": [
       "SecRuleEngine On",
-      "SecRule ARGS:foo \".\" \"id:1,setvar:'ip.dos_counter=1',log",
-      "SecRule ip.dos_counter \".\" \"id:4,log",
-      "SecRule ARGS:foo \".\" \"id:2,setvar:'!ip.dos_counter',log",
-      "SecRule ip.dos_counter \".\" \"id:3,log,status:123,block,deny"
+      "SecRule ARGS:foo \".\" \"id:1,setvar:'ip.dos_counter=1',log\"",
+      "SecRule ip.dos_counter \".\" \"id:4,log\"",
+      "SecRule ARGS:foo \".\" \"id:2,setvar:'!ip.dos_counter',log\"",
+      "SecRule ip.dos_counter \".\" \"id:3,log,status:123,block,deny\""
     ]
   },
   {

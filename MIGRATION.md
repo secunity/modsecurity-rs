@@ -224,6 +224,10 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   `tag:a%,pass` swallowed the comma. `%{VAR}%` is still the variable (a `%`
   right after a macro belongs to it, as in C++; the regression tests use
   that form).
+- **An action list without its closing quote** is a syntax error. The C++
+  scanner ended the list at the end of the line, so `"id:1,phase:2,pass`
+  loaded. (Seven upstream regression tests had the typo in their rules;
+  their quotes are added.)
 - **`\"` in a double-quoted operator parameter** is a quote (upstream issue
   3750, PR 3753): `"@contains test()\"quote\""` matches `test()"quote"`. The
   C++ scanner kept the backslash, so the operator looked for `\"`. The

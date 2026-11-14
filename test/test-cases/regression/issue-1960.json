@@ -39,7 +39,7 @@
     "rules": [
       "SecRuleEngine DetectionOnly",
       "SecDefaultAction \"phase:1,deny,status:403\"",
-      "SecRule ARGS \"@rx a\" \"id:1,phase:1,block"
+      "SecRule ARGS \"@rx a\" \"id:1,phase:1,block\""
     ]
   }
 ]

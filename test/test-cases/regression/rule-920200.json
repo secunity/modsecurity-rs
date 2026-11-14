@@ -44,7 +44,7 @@
     "rules": [
       "SecRuleEngine On",
       "SecDefaultAction \"phase:2,deny,block,status:400,log\"",
-      "SecRule REQUEST_HEADERS:Range|REQUEST_HEADERS:Request-Range \"@rx ^bytes=(?:(?:\\d+)?\\-(?:\\d+)?\\s*,?\\s*){6}\" \"id:920200,phase:2,block,t:none,msg:'Range: Too many fields (6 or more)',logdata:'%{MATCHED_VAR}',tag:'application-multi',tag:'language-multi',tag:'platform-multi',tag:'attack-protocol',tag:'OWASP_CRS/PROTOCOL_VIOLATION/INVALID_HREQ',tag:'paranoia-level/2',ver:'OWASP_CRS/3.1.0',severity:'WARNING',chain",
+      "SecRule REQUEST_HEADERS:Range|REQUEST_HEADERS:Request-Range \"@rx ^bytes=(?:(?:\\d+)?\\-(?:\\d+)?\\s*,?\\s*){6}\" \"id:920200,phase:2,block,t:none,msg:'Range: Too many fields (6 or more)',logdata:'%{MATCHED_VAR}',tag:'application-multi',tag:'language-multi',tag:'platform-multi',tag:'attack-protocol',tag:'OWASP_CRS/PROTOCOL_VIOLATION/INVALID_HREQ',tag:'paranoia-level/2',ver:'OWASP_CRS/3.1.0',severity:'WARNING',chain\"",
       "SecRule REQUEST_BASENAME \"!@endsWith .pdf\" \"setvar:'tx.msg=%{rule.msg}',setvar:'tx.anomaly_score_pl2=+%{tx.warning_anomaly_score}',setvar:'tx.%{rule.id}-OWASP_CRS/PROTOCOL_VIOLATION/INVALID_HREQ-%{MATCHED_VAR_NAME}=%{MATCHED_VAR}'\""
     ]
   }

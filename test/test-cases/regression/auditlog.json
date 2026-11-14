@@ -646,7 +646,7 @@
     },
     "rules": [
       "SecRuleEngine On",
-      "SecRule REQUEST_FILENAME|ARGS|ARGS_NAMES \"@validateUtf8Encoding\" \"id:920250,phase:2,deny,t:none,msg:'UTF8 Encoding Abuse Attack Attempt',logdata:'%{MATCHED_VAR}'",
+      "SecRule REQUEST_FILENAME|ARGS|ARGS_NAMES \"@validateUtf8Encoding\" \"id:920250,phase:2,deny,t:none,msg:'UTF8 Encoding Abuse Attack Attempt',logdata:'%{MATCHED_VAR}'\"",
       "SecAuditEngine RelevantOnly",
       "SecAuditLogParts ABHJZ",
       "SecAuditLogFormat JSON",
@@ -708,7 +708,7 @@
     },
     "rules": [
       "SecRuleEngine On",
-      "SecRule ARGS_NAMES \"@rx attack\" \"id:1,phase:2,deny,t:none",
+      "SecRule ARGS_NAMES \"@rx attack\" \"id:1,phase:2,deny,t:none\"",
       "SecAuditEngine RelevantOnly",
       "SecAuditLogParts ABCHJZ",
       "SecAuditLogFormat JSON",
@@ -771,7 +771,7 @@
     },
     "rules": [
       "SecRuleEngine On",
-      "SecRule ARGS|ARGS_NAMES \"@rx attack\" \"id:1,phase:2,deny,t:none",
+      "SecRule ARGS|ARGS_NAMES \"@rx attack\" \"id:1,phase:2,deny,t:none\"",
       "SecAuditEngine RelevantOnly",
       "SecAuditLogParts ABHJZ",
       "SecAuditLogFormat JSON",

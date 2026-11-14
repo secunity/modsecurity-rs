@@ -170,9 +170,8 @@ macro_key = @{ (!("}" | "\"" | "|" | "," | ws | nl) ~ ("\\\"" | ANY))+ }
 // Actions: "id:1,phase:2,t:lowercase,msg:'%{MATCHED_VAR}',setvar:tx.a=+1"
 // ---------------------------------------------------------------------------
 
-// No space before the closing quote; the closing quote may be missing at the
-// end of the line.
-actions     = { "\"" ~ (ws | cont)* ~ action_list? ~ cont* ~ ("\"" | ws* ~ &("\r"? ~ "\n" | EOI)) | action }
+// No space before the closing quote.
+actions     = { "\"" ~ (ws | cont)* ~ action_list? ~ cont* ~ "\"" | action }
 action_list = _{ action ~ ((ws | cont)* ~ "," ~ (ws | cont)* ~ action)* }
 
 action = _{ setvar | initcol | macro_action | plain_action }
