@@ -78,7 +78,11 @@ pub mod capi;
 pub(crate) mod collection;
 pub(crate) mod debug_log;
 pub(crate) mod engine;
+#[cfg(feature = "http")]
+mod http_support;
 pub(crate) mod intervention;
+#[cfg(feature = "tower")]
+pub mod middleware;
 pub(crate) mod modsecurity;
 pub(crate) mod operators;
 pub(crate) mod parser;

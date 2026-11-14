@@ -1,0 +1,13 @@
+[package]
+name = "modsecurity-axum-example"
+version = "0.0.0"
+edition = "2024"
+description = "An axum server protected by the ModSecurity tower middleware"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+modsecurity = { path = "../..", features = ["tower"] }
+# The web framework the example protects, and its runtime.
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }

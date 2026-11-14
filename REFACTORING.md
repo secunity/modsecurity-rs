@@ -425,3 +425,27 @@ of the anchored variables, unused constants (`ACMP_FLAG_*`, `OVECCOUNT`,
 used are `#[cfg(test)]`; code only an optional feature uses (Lua, LMDB,
 libxml2, curl) or that an opt-in feature replaces (ACMP, the crit-bit IP
 tree) says so where it is declared.
+
+## Embedding in Rust HTTP servers
+
+Two opt-in features build on the API above, without changing the default
+build:
+
+- `http`: `Transaction::process_request_head` and `process_response_head`
+  take `http::Request`/`http::Response` (the request target, method,
+  version and headers, then the phase), and `Intervention::to_response`
+  builds the response the nginx connector would send (a redirect to the
+  URL, or an empty response with the status). For HTTP/2 and 3 the target
+  is the path and query, with a `Host` header from the authority, as
+  nginx passes them. `Transaction::process_connection_addrs` (always
+  available) takes `SocketAddr`s.
+- `tower`: `middleware::ModSecurityLayer`, a tower `Layer` that runs the
+  phases in the nginx connector's order around an inner service. The
+  request body is read completely and handed on in the caller's body type
+  (any body that converts from `Bytes`); the response body is buffered
+  only when the rules inspect it. Errors are the inner service's (body
+  read failures become 400/502 responses), so it fits axum, which needs
+  infallible services.
+
+`examples/axum` (a workspace member outside `default-members`) serves an
+application behind the layer and tests it over real sockets.

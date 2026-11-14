@@ -81,6 +81,25 @@ The API is the types at the crate root: `ModSecurity`, `RulesSet`,
 `Send + Sync` (share them between worker threads); a `Transaction` borrows
 both.
 
+### In a Rust HTTP server
+
+With the `tower` feature, `modsecurity::middleware::ModSecurityLayer` runs
+the transaction phases around any tower HTTP service (axum, hyper, tonic,
+...) and answers interventions itself:
+
+```rust,ignore
+use modsecurity::middleware::ModSecurityLayer;
+
+let layer = ModSecurityLayer::new(Arc::new(ModSecurity::new()), Arc::new(rules));
+let app = axum::Router::new().route("/", get(handler)).layer(layer);
+```
+
+The client and server addresses come from a `middleware::Connection`
+request extension. `examples/axum` is a complete server (`cargo run -p
+modsecurity-axum-example`). The `http` feature alone adds
+`Transaction::process_request_head`/`process_response_head` for `http`
+crate requests and responses, and `Intervention::to_response`.
+
 ## Tests
 
 ```sh

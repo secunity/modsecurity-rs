@@ -476,6 +476,13 @@ impl<'a> Transaction<'a> {
         rules.evaluate(phase, self);
     }
 
+    /// [`Self::process_connection`] with socket addresses. IPv6 addresses
+    /// are written without brackets (`::1`), as servers report them.
+    pub fn process_connection_addrs(&mut self, client: std::net::SocketAddr, server: std::net::SocketAddr) {
+        let (c, s) = (client.ip().to_string(), server.ip().to_string());
+        self.process_connection(&c, client.port().into(), &s, server.port().into());
+    }
+
     /// Records the client and server addresses and ports and runs the
     /// rules of the connection phase.
     pub fn process_connection(&mut self, client: &str, c_port: i32, server: &str, s_port: i32) {
