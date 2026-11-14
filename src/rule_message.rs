@@ -16,7 +16,7 @@ use crate::utils::string::{limit_to, to_hex_if_needed};
 use crate::variable_value::VariableValue;
 
 /// A flag of [`RuleMessage::log`]: ends the line with the error log tail
-/// ([`RuleMessage::error_log_tail`]).
+/// (the server name, the URI and the unique id).
 pub const ERROR_LOG_TAIL_LOG_MESSAGE_INFO: i32 = 2;
 /// A flag of [`RuleMessage::log`]: starts the line with
 /// `[client <address>]`.
@@ -26,31 +26,31 @@ pub const CLIENT_LOG_MESSAGE_INFO: i32 = 4;
 /// matches are never logged, so the text is only built on demand.
 #[derive(Debug, Clone)]
 pub struct Matched<'r> {
-    pub operator: &'r dyn Operator,
+    pub(crate) operator: &'r dyn Operator,
     /// The operator's parameter as shown in the message, at match time.
-    pub param: Cow<'r, [u8]>,
+    pub(crate) param: Cow<'r, [u8]>,
     /// The variable that matched (before transformations).
-    pub value: VariableValue,
+    pub(crate) value: VariableValue,
 }
 
 #[derive(Debug, Clone)]
 pub struct RuleMessage<'r> {
-    pub rule: &'r RuleWithActions,
-    pub data: Vec<u8>,
-    pub is_disruptive: bool,
+    pub(crate) rule: &'r RuleWithActions,
+    pub(crate) data: Vec<u8>,
+    pub(crate) is_disruptive: bool,
     /// The last match of the rule's operator, if any (see
     /// [`RuleMessage::match_message`]).
-    pub matched: Option<Matched<'r>>,
-    pub message: Vec<u8>,
-    pub no_audit_log: bool,
-    pub reference: Vec<u8>,
-    pub save_message: bool,
-    pub severity: i32,
-    pub tags: Vec<Vec<u8>>,
+    pub(crate) matched: Option<Matched<'r>>,
+    pub(crate) message: Vec<u8>,
+    pub(crate) no_audit_log: bool,
+    pub(crate) reference: Vec<u8>,
+    pub(crate) save_message: bool,
+    pub(crate) severity: i32,
+    pub(crate) tags: Vec<Vec<u8>>,
 }
 
 impl<'r> RuleMessage<'r> {
-    pub fn new(rule: &'r RuleWithActions) -> Self {
+    pub(crate) fn new(rule: &'r RuleWithActions) -> Self {
         let mut rm = RuleMessage {
             rule,
             data: Vec::new(),
@@ -67,7 +67,7 @@ impl<'r> RuleMessage<'r> {
         rm
     }
 
-    pub fn reset(&mut self, reset_save_message: bool) {
+    pub(crate) fn reset(&mut self, reset_save_message: bool) {
         self.data.clear();
         self.is_disruptive = false;
         self.matched = None;
@@ -124,7 +124,7 @@ impl<'r> RuleMessage<'r> {
     }
 
     /// The details of the log line: ` [file "..."] [line "..."] ...`.
-    pub fn details(rm: &RuleMessage<'_>, t: &Transaction<'_>) -> Vec<u8> {
+    pub(crate) fn details(rm: &RuleMessage<'_>, t: &Transaction<'_>) -> Vec<u8> {
         let r = rm.rule;
         let mut msg: Vec<u8> = Vec::new();
         let mut push = |s: &[u8]| msg.extend_from_slice(s);
@@ -158,7 +158,7 @@ impl<'r> RuleMessage<'r> {
 
     /// The tail of an error log line: the server address (as `hostname`),
     /// the uri and the unique id.
-    pub fn error_log_tail(t: &Transaction<'_>) -> Vec<u8> {
+    pub(crate) fn error_log_tail(t: &Transaction<'_>) -> Vec<u8> {
         let mut msg: Vec<u8> = Vec::new();
         msg.extend_from_slice(format!("[hostname \"{}\"]", t.server_ip_address).as_bytes());
         msg.extend_from_slice(b" [uri \"");

@@ -414,28 +414,33 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// VariableMonkeyResolution
+// Resolution of a variable given by name (`m.getvar` of the Lua engine)
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "lua")]
 /// Error raised by the by-name resolution helpers (`std::invalid_argument`
 /// "Variable not found." in C++).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariableNotFound;
 
+#[cfg(feature = "lua")]
 impl std::fmt::Display for VariableNotFound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Variable not found.")
     }
 }
 
+#[cfg(feature = "lua")]
 impl std::error::Error for VariableNotFound {}
 
+#[cfg(feature = "lua")]
 /// Whether `a` upper-cased equals `b`.
 #[inline]
 pub fn comp(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).all(|(x, y)| x.to_ascii_uppercase() == y)
 }
 
+#[cfg(feature = "lua")]
 /// Resolves a variable given by name, appending its values to `l` (used
 /// by the Lua engine).
 pub fn string_match_resolve_multi(
@@ -533,6 +538,7 @@ pub fn string_match_resolve_multi(
     }
 }
 
+#[cfg(feature = "lua")]
 /// The single valued anchored variables addressable by name, in the order
 /// the C++ resolution tests them.
 fn single_anchored<'t>(
@@ -599,6 +605,7 @@ fn single_anchored<'t>(
     table.iter().find(|(n, _)| comp(variable, n)).map(|(_, a)| *a)
 }
 
+#[cfg(feature = "lua")]
 /// Resolves a variable given by name to its first value (empty if none).
 pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u8>, VariableNotFound> {
     let collection = variable.find('.').or_else(|| variable.find(':'));

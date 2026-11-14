@@ -33,10 +33,6 @@ pub struct Driver {
     pub properties: RulesSetProperties,
     pub rules_set_phases: RulesSetPhases,
 
-    /// Name given to the location of the parser's initial state
-    /// (never set by the C++ code, hence empty).
-    pub file: String,
-
     /// The file names referenced by the locations.
     filenames: Vec<String>,
 
@@ -55,7 +51,6 @@ impl Driver {
         Driver {
             properties: RulesSetProperties::new(),
             rules_set_phases: RulesSetPhases::default(),
-            file: String::new(),
             filenames: Vec::new(),
             last_rule: None,
         }

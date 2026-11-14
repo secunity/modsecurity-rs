@@ -7,7 +7,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use modsecurity::rules_set::RulesSet;
+use modsecurity::RulesSet;
 
 /// Words (lower case) of the directives, operators and actions that touch
 /// files or the network when a configuration is loaded.

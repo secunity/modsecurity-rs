@@ -4,9 +4,7 @@
 
 use std::sync::OnceLock;
 
-use sha1::{Digest, Sha1};
-
-use crate::utils::string::string_to_hex;
+use crate::utils::sha1::Sha1;
 
 pub const MAX_MACHINE_NAME_SIZE: usize = 256;
 
@@ -27,8 +25,7 @@ impl UniqueId {
 
         let data = mac_address + &name;
 
-        // `Utils::Sha1::hexdigest` (cannot fail here).
-        string_to_hex(&Sha1::digest(data.as_bytes()))
+        Sha1::hexdigest(data.as_bytes())
     }
 
     /// The machine name: the `uname` node name.
@@ -85,8 +82,7 @@ mod tests {
         assert_eq!(a.len(), 40);
         assert!(a.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)));
         assert_eq!(a, UniqueId::unique_id());
-        let expected =
-            string_to_hex(&Sha1::digest((UniqueId::ethernet_mac_address() + &UniqueId::machine_name()).as_bytes()));
+        let expected = Sha1::hexdigest((UniqueId::ethernet_mac_address() + &UniqueId::machine_name()).as_bytes());
         assert_eq!(a, expected);
     }
 

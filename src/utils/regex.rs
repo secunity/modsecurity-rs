@@ -10,10 +10,6 @@ use pcre2_sys::*;
 use std::cell::RefCell;
 use std::ptr;
 
-/// The ovector size of the legacy PCRE build (unused with PCRE2, kept for
-/// parity).
-pub const OVECCOUNT: usize = 900;
-
 /// Outcome of a search that may hit PCRE2 limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegexResult {
@@ -480,11 +476,6 @@ impl Regex {
             RegexResult::ErrorOther
         }
     }
-}
-
-/// [`Regex::search_match`] as a free function.
-pub fn regex_search_match(s: &[u8], m: &mut SMatch, regex: &Regex) -> i32 {
-    regex.search_match(s, m)
 }
 
 /// [`Regex::search`] as a free function.

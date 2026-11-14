@@ -59,22 +59,10 @@ impl JsonGen {
         self.buf.extend_from_slice(v.to_string().as_bytes());
     }
 
-    /// Writes a number given as its raw text.
-    pub fn number(&mut self, raw: &[u8]) {
-        self.before_value();
-        self.buf.extend_from_slice(raw);
-    }
-
     /// Writes `true` or `false`.
     pub fn bool(&mut self, v: bool) {
         self.before_value();
         self.buf.extend_from_slice(if v { b"true" } else { b"false" });
-    }
-
-    /// Writes `null`.
-    pub fn null(&mut self) {
-        self.before_value();
-        self.buf.extend_from_slice(b"null");
     }
 
     /// Opens an object.
@@ -116,6 +104,7 @@ impl JsonGen {
     }
 
     /// The JSON written so far.
+    #[cfg(test)]
     pub fn as_bytes(&self) -> &[u8] {
         &self.buf
     }

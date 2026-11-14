@@ -9,17 +9,12 @@
 mod common;
 
 use common::*;
-use modsecurity::actions::capture::Capture;
-use modsecurity::actions::transformations::transformation;
-use modsecurity::modsecurity::ModSecurity;
-use modsecurity::operators::libinjection_adapter::{self, InjectionResult};
-use modsecurity::operators::operator;
-use modsecurity::rule_message::RuleMessage;
-use modsecurity::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
-use modsecurity::rules_set::RulesSet;
-use modsecurity::transaction::Transaction;
-use modsecurity::utils::json::JsonValue;
-use modsecurity::utils::string::to_hex_if_needed;
+use modsecurity::internal::{
+    Capture, InjectionResult, JsonValue, RuleAction, RuleWithActions, RuleWithActionsKind, Transformation,
+    clear_libinjection_overrides_for_testing, instantiate_operator, new_rule_message,
+    set_libinjection_sqli_override_for_testing, set_libinjection_xss_override_for_testing, to_hex_if_needed, tx_value,
+};
+use modsecurity::{ModSecurity, RulesSet, Transaction};
 
 const DEFAULT_TEST_PATH: &str = "test-cases/secrules-language-tests/operators";
 
@@ -66,38 +61,38 @@ fn xss_force_error(_: &[u8]) -> InjectionResult {
 }
 
 fn configure_libinjection_override(t: &UnitTest) {
-    libinjection_adapter::clear_libinjection_overrides_for_testing();
+    clear_libinjection_overrides_for_testing();
     if t.libinjection_override != "error" {
         return;
     }
     match t.name.to_ascii_lowercase().as_str() {
-        "detectsqli" => libinjection_adapter::set_libinjection_sqli_override_for_testing(sqli_force_error),
-        "detectxss" => libinjection_adapter::set_libinjection_xss_override_for_testing(xss_force_error),
+        "detectsqli" => set_libinjection_sqli_override_for_testing(sqli_force_error),
+        "detectxss" => set_libinjection_xss_override_for_testing(xss_force_error),
         _ => {}
     }
 }
 
 /// Returns (ret, output).
 fn eval_operator(t: &UnitTest, transaction: &mut Transaction<'_>) -> (i64, Vec<u8>) {
-    let mut op = operator::instantiate(&t.name, &t.param).expect("operator exists");
+    let mut op = instantiate_operator(&t.name, &t.param).expect("operator exists");
     let _ = op.init(&t.filename);
     configure_libinjection_override(t);
     let actions = if t.capture != 0 { Some(vec![RuleAction::Capture(Capture::new("capture"))]) } else { None };
     let rule = RuleWithActions::new(actions, None, "dummy.conf", -1, RuleWithActionsKind::Unconditional);
-    let mut rm = RuleMessage::new(&rule);
+    let mut rm = new_rule_message(&rule);
     let matched = op.evaluate(transaction, &rule, &t.input, &mut rm);
     let mut output = Vec::new();
     if t.capture != 0
-        && let Some(tx0) = transaction.collections.tx.get(b"0")
+        && let Some(tx0) = tx_value(transaction, b"0")
     {
         output = tx0.to_vec();
     }
-    libinjection_adapter::clear_libinjection_overrides_for_testing();
+    clear_libinjection_overrides_for_testing();
     (matched as i64, output)
 }
 
 fn eval_transformation(t: &UnitTest, transaction: &Transaction<'_>) -> (i64, Vec<u8>) {
-    let tfn = transformation::Transformation::from_name(&format!("t:{}", t.name));
+    let tfn = Transformation::from_name(&format!("t:{}", t.name));
     let mut ret = t.input.clone();
     tfn.transform(&mut ret, Some(transaction));
     (1, ret)

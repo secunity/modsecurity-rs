@@ -29,6 +29,7 @@ impl InMemoryPerProcess {
         self.map.read().unwrap_or_else(|e| e.into_inner())
     }
 
+    #[cfg(test)]
     /// Adds a value under `key` (keeping any existing ones).
     pub fn store(&self, key: &[u8], value: &[u8]) {
         self.write().insert(key.to_vec(), CollectionData::with_value(value));
@@ -51,10 +52,6 @@ impl InMemoryPerProcess {
 }
 
 impl Collection for InMemoryPerProcess {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
     fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> bool {
         let mut m = self.write();
         if let Some(d) = m.find_mut(key) {
@@ -63,15 +60,6 @@ impl Collection for InMemoryPerProcess {
             m.insert(key.to_vec(), CollectionData::with_value(value));
         }
         true
-    }
-
-    fn update_first(&self, key: &[u8], value: &[u8]) -> bool {
-        let mut m = self.write();
-        if let Some(d) = m.find_mut(key) {
-            d.set_value(value);
-            return true;
-        }
-        false
     }
 
     fn del(&self, key: &[u8]) {
@@ -105,21 +93,6 @@ impl Collection for InMemoryPerProcess {
         }
         self.purge(expired);
         ret
-    }
-
-    fn resolve_single_match(&self, var: &[u8], l: &mut Vec<VariableValue>) {
-        let mut expired = Vec::new();
-        {
-            let m = self.read();
-            for (k, d) in m.equal_range(var) {
-                if d.is_expired() {
-                    expired.push(k.to_vec());
-                } else if let Some(value) = &d.value {
-                    l.push(VariableValue::with_collection(self.name.as_bytes(), k, value));
-                }
-            }
-        }
-        self.purge(expired);
     }
 
     fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
@@ -192,7 +165,6 @@ mod tests {
         assert_eq!(collection.resolve_first(b"key"), Some(Vec::new()));
         collection.set_expiry(b"key", 0);
         assert_eq!(collection.resolve_first(b"key"), None);
-        assert!(!collection.update_first(b"key", b"gone"));
     }
 
     #[test]
@@ -202,10 +174,7 @@ mod tests {
         collection.store(b"key", b"newer");
         // resolve_first walks all equivalents, returning the last live one.
         assert_eq!(collection.resolve_first(b"key"), Some(b"older".to_vec()));
-        let mut values = Vec::new();
-        collection.resolve_single_match(b"key", &mut values);
-        assert_eq!(values.iter().map(VariableValue::value).collect::<Vec<_>>(), [b"newer", b"older"]);
-        values = vec![VariableValue::new(b"existing", b"value")];
+        let mut values = vec![VariableValue::new(b"existing", b"value")];
         collection.resolve_multi_matches(b"key", &mut values, &KeyExclusions::default());
         assert_eq!(values.iter().map(VariableValue::value).collect::<Vec<_>>(), [b"older", b"newer", b"value"]);
 

@@ -122,14 +122,6 @@ impl Drop for Txn {
     }
 }
 
-/// Only forward traversal is used here. Unlike seek operations, both
-/// operations return keys owned by LMDB, never the caller's input buffer.
-#[derive(Clone, Copy)]
-enum CursorStep {
-    Next,
-    NextDuplicate,
-}
-
 /// A cursor borrows its transaction and closes before that transaction can
 /// end, including when a collection visitor unwinds.
 struct Cursor<'txn> {
@@ -151,11 +143,10 @@ impl<'txn> Cursor<'txn> {
 
     /// Returned bytes cannot outlive the cursor or its transaction, or be
     /// retained across the next cursor operation.
-    fn next(&mut self, step: CursorStep) -> Result<(&[u8], &[u8]), c_int> {
-        let op = match step {
-            CursorStep::Next => ffi::MDB_NEXT,
-            CursorStep::NextDuplicate => ffi::MDB_NEXT_DUP,
-        };
+    /// The next pair (`MDB_NEXT`). Unlike seek operations, this returns
+    /// keys owned by LMDB, never the caller's input buffer.
+    fn next(&mut self) -> Result<(&[u8], &[u8]), c_int> {
+        let op = ffi::MDB_NEXT;
         let mut key = empty_val();
         let mut data = empty_val();
         // SAFETY: the cursor and transaction are live; both output values
@@ -305,16 +296,9 @@ impl Lmdb {
     }
 
     /// Writes `key` with the value computed from its previous data (if any)
-    /// in one write transaction: the shared body of `store_or_update_first`,
-    /// `update_first` and `set_expiry`. `must_exist` makes a missing key an
-    /// error (`update_first`). Returns the last LMDB code (0 on success).
-    fn replace(
-        &self,
-        key: &[u8],
-        scope: &str,
-        must_exist: bool,
-        build: impl FnOnce(CollectionData) -> CollectionData,
-    ) -> c_int {
+    /// in one write transaction: the shared body of `store_or_update_first`
+    /// and `set_expiry`. Returns the last LMDB code (0 on success).
+    fn replace(&self, key: &[u8], scope: &str, build: impl FnOnce(CollectionData) -> CollectionData) -> c_int {
         let (txn, dbi) = match self.txn_begin(0) {
             Ok(t) => t,
             Err(rc) => {
@@ -340,8 +324,6 @@ impl Lmdb {
             if rc != 0 {
                 return rc;
             }
-        } else if must_exist {
-            return rc;
         }
 
         let new_data = build(previous_data);
@@ -401,7 +383,7 @@ impl Lmdb {
     ///
     /// Both traversal modes start at the first database entry. In particular,
     /// duplicate traversal deliberately does not seek to a requested key.
-    fn walk(&self, scope: &str, step: CursorStep, mut f: impl FnMut(&[u8], &[u8])) {
+    fn walk(&self, scope: &str, mut f: impl FnMut(&[u8], &[u8])) {
         let mut expired_vars: Vec<Vec<u8>> = Vec::new();
 
         match self.txn_begin(ffi::MDB_RDONLY) {
@@ -410,7 +392,7 @@ impl Lmdb {
                 match Cursor::open(&txn, dbi) {
                     Err(rc) => lmdb_debug(rc, "cursor_open", scope),
                     Ok(mut cursor) => {
-                        while let Ok((key, data)) = cursor.next(step) {
+                        while let Ok((key, data)) = cursor.next() {
                             let record = CollectionData::from_bytes(data);
                             if record.is_expired() {
                                 expired_vars.push(key.to_vec());
@@ -431,24 +413,12 @@ impl Lmdb {
 }
 
 impl Collection for Lmdb {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
     fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> bool {
-        self.replace(key, "storeOrUpdateFirst", false, |mut record| {
+        self.replace(key, "storeOrUpdateFirst", |mut record| {
             record.set_value(value);
             record
         });
         true
-    }
-
-    fn update_first(&self, key: &[u8], value: &[u8]) -> bool {
-        let rc = self.replace(key, "updateFirst", true, |mut record| {
-            record.set_value(value);
-            record
-        });
-        rc == 0
     }
 
     fn del(&self, key: &[u8]) {
@@ -482,7 +452,7 @@ impl Collection for Lmdb {
     }
 
     fn set_expiry(&self, key: &[u8], expiry_seconds: i32) {
-        self.replace(key, "setExpiry", false, |mut record| {
+        self.replace(key, "setExpiry", |mut record| {
             record.set_expiry(expiry_seconds);
             record
         });
@@ -519,26 +489,17 @@ impl Collection for Lmdb {
         ret
     }
 
-    /// Quirk (C++): the cursor is never positioned on `var` (the first
-    /// `MDB_NEXT_DUP` on a fresh cursor returns the first entry of the
-    /// database), and the result is named after `var`.
-    fn resolve_single_match(&self, var: &[u8], l: &mut Vec<VariableValue>) {
-        self.walk("resolveSingleMatch", CursorStep::NextDuplicate, |_k, d| {
-            l.push(VariableValue::new(var, d));
-        });
-    }
-
     /// Quirk (C++): the key exclusions are not applied, and a non empty
     /// `var` selects every key it prefixes.
     fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, _ke: &KeyExclusions) {
         let name = self.name.as_bytes();
         let start = l.len();
         if var.is_empty() {
-            self.walk("resolveMultiMatches", CursorStep::Next, |k, d| {
+            self.walk("resolveMultiMatches", |k, d| {
                 l.push(VariableValue::with_collection(name, k, d));
             });
         } else {
-            self.walk("resolveMultiMatches", CursorStep::Next, |k, d| {
+            self.walk("resolveMultiMatches", |k, d| {
                 if key_matches_prefix(var, k) {
                     l.push(VariableValue::with_collection(name, k, d));
                 }
@@ -549,7 +510,7 @@ impl Collection for Lmdb {
 
     fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let start = l.len();
-        self.walk("resolveRegularExpression", CursorStep::Next, |k, d| {
+        self.walk("resolveRegularExpression", |k, d| {
             if r.search(k) <= 0 {
                 return;
             }
@@ -599,9 +560,8 @@ mod tests {
         // store / update / resolve
         assert!(c.store_or_update_first(&k("a"), b"1"));
         assert_eq!(c.resolve_first(&k("a")), Some(b"1".to_vec()));
-        assert!(c.update_first(&k("a"), b"2"));
+        assert!(c.store_or_update_first(&k("a"), b"2"));
         assert_eq!(c.resolve_first(&k("a")), Some(b"2".to_vec()));
-        assert!(!c.update_first(&k("missing"), b"x"));
         assert_eq!(c.resolve_first(&k("missing")), None);
 
         // expiry kept when the value is updated
@@ -617,7 +577,6 @@ mod tests {
         assert!(c.store_or_update_first(&k("b"), b"old"));
         c.set_expiry(&k("b"), 0);
         assert_eq!(c.resolve_first(&k("b")), None);
-        assert!(!c.update_first(&k("b"), b"x"), "expired key was deleted");
 
         // multi matches: prefix selection, collection name, reverse order
         assert!(c.store_or_update_first(&k("ab"), b"4"));

@@ -3,9 +3,9 @@
 
 use core::ffi::c_void;
 
-use modsecurity::modsecurity::ModSecurity;
-use modsecurity::rules_set::RulesSet;
-use modsecurity::transaction::Transaction;
+use modsecurity::ModSecurity;
+use modsecurity::RulesSet;
+use modsecurity::Transaction;
 use nginx_sys::{
     ngx_flag_t, ngx_http_complex_value_t, ngx_http_request_t, ngx_log_error_core, ngx_log_t, ngx_pool_t, ngx_uint_t,
 };

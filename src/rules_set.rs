@@ -12,8 +12,8 @@ use crate::utils::https_client::HttpsClient;
 /// A loaded configuration: the rules of every phase plus the configuration
 /// properties (`RulesSet : RulesSetProperties` in C++).
 pub struct RulesSet {
-    pub properties: RulesSetProperties,
-    pub rules_set_phases: RulesSetPhases,
+    pub(crate) properties: RulesSetProperties,
+    pub(crate) rules_set_phases: RulesSetPhases,
 }
 
 impl Default for RulesSet {
@@ -89,7 +89,7 @@ impl RulesSet {
 
     /// Clears `MATCHED_VAR`, `MATCHED_VARS` and their `*_NAME(S)`
     /// counterparts after a rule.
-    pub fn clean_matched_vars(t: &mut Transaction<'_>) {
+    pub(crate) fn clean_matched_vars(t: &mut Transaction<'_>) {
         crate::ms_dbg_a!(t, 9, "Matched vars cleaned.");
         // Every match adds to MATCHED_VARS, so when that is empty no rule
         // matched since the last cleaning and there is nothing to unset
@@ -105,7 +105,7 @@ impl RulesSet {
 
     /// Runs the rules of `phase`, honouring `allow`, `skip`, `skipAfter`,
     /// the rule removals and a disruptive intervention.
-    pub fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
+    pub(crate) fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
         let rules = self.rules_set_phases.for_phase(phase);
         crate::ms_dbg_a!(t, 9, "This phase consists of {} rule(s).", rules.len());
 
@@ -211,7 +211,7 @@ impl RulesSet {
 
     /// Appends the rules parsed by `from` and merges its properties.
     /// Returns the number of rules appended.
-    pub fn merge_driver(&mut self, from: &mut Driver) -> Result<usize, String> {
+    pub(crate) fn merge_driver(&mut self, from: &mut Driver) -> Result<usize, String> {
         self.merge_parts(&from.rules_set_phases, &mut from.properties)
     }
 
@@ -238,11 +238,11 @@ impl RulesSet {
 
     /// Writes `msg` to the debug log for the transaction `id` handling
     /// `uri`.
-    pub fn debug(&self, level: i32, id: &str, uri: &str, msg: &str) {
+    pub(crate) fn debug(&self, level: i32, id: &str, uri: &str, msg: &str) {
         self.properties.debug_log.write_ctx(level, id, uri, msg);
     }
 
-    pub fn dump(&self) {
+    pub(crate) fn dump(&self) {
         self.rules_set_phases.dump();
     }
 }

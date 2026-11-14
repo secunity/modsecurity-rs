@@ -29,20 +29,14 @@ pub fn compartment_key(key: &[u8], compartment: &[u8], compartment2: Option<&[u8
 }
 
 pub trait Collection: Send + Sync {
-    /// The collection name (`IP`, `SESSION`, ...).
-    fn name(&self) -> &str;
-
     fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> bool;
-
-    fn update_first(&self, key: &[u8], value: &[u8]) -> bool;
 
     fn del(&self, key: &[u8]);
 
     fn set_expiry(&self, key: &[u8], expiry_seconds: i32);
 
+    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
     fn resolve_first(&self, var: &[u8]) -> Option<Vec<u8>>;
-
-    fn resolve_single_match(&self, var: &[u8], l: &mut Vec<VariableValue>);
 
     fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions);
 

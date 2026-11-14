@@ -21,6 +21,7 @@ impl<'a> CollectionBinding<'a> {
         Self { backend, key: Vec::new() }
     }
 
+    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
     pub fn get(&self, name: &[u8], app: &[u8]) -> Option<Vec<u8>> {
         self.backend.resolve_first(&compartment_key(name, &self.key, Some(app)))
     }

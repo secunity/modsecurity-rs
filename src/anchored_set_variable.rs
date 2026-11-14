@@ -72,11 +72,6 @@ impl AnchoredSetVariable {
         self.map.is_empty()
     }
 
-    /// Raw access in container order: `(key, value)`.
-    pub fn iter(&self) -> impl Iterator<Item = (&[u8], &VariableValue)> {
-        self.map.iter().map(|(k, e)| (k, &e.value))
-    }
-
     pub fn unset(&mut self) {
         self.map.clear();
     }
@@ -93,17 +88,18 @@ impl AnchoredSetVariable {
         self.insert(key, var);
     }
 
+    /// Raw access in container order: `(key, value)`.
+    #[cfg(test)]
+    pub fn iter(&self) -> impl Iterator<Item = (&[u8], &VariableValue)> {
+        self.map.iter().map(|(k, e)| (k, &e.value))
+    }
+
     /// Adds a value under `key`; its origin is the whole value at
     /// `offset`.
     pub fn set(&mut self, key: &[u8], value: &[u8], offset: usize) {
         let mut var = VariableValue::with_collection(self.name.as_bytes(), key, value);
         var.add_origin(VariableOrigin::new(value.len(), offset));
         self.insert(key, var);
-    }
-
-    /// The same as [`Self::set`] (the C++ copying variant).
-    pub fn set_copy(&mut self, key: &[u8], value: &[u8], offset: usize) {
-        self.set(key, value, offset);
     }
 
     /// Adds every value to `l`. As in C++, the values are inserted at the
@@ -157,23 +153,7 @@ impl AnchoredSetVariable {
         self.map.find(key).map(|(_, e)| e.value.value().to_vec())
     }
 
-    /// [`Self::resolve`] restricted to the keys that match `r`.
-    pub fn resolve_regular_expression(&self, r: &Regex, l: &mut Vec<VariableValue>) {
-        self.resolve_regular_expression_pick(Pick::Value, r, l)
-    }
-
-    fn resolve_regular_expression_pick(&self, pick: Pick, r: &Regex, l: &mut Vec<VariableValue>) {
-        let start = l.len();
-        for (k, e) in self.map.iter() {
-            if r.search(k) <= 0 {
-                continue;
-            }
-            l.push(e.get(pick).clone());
-        }
-        move_to_front_reversed(l, start);
-    }
-
-    /// [`Self::resolve_regular_expression`], skipping the keys excluded
+    /// [`Self::resolve`] restricted to the keys that match `r`, skipping the keys excluded
     /// by `ke`.
     pub fn resolve_regular_expression_with_exclusions(
         &self,
@@ -207,6 +187,7 @@ impl AnchoredSetVariable {
         move_to_front_reversed(l, start);
     }
 
+    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
     /// The translation proxy's resolutions: the same as the ones above
     /// with the entries' name values (only for [`Self::has_names`]).
     pub(crate) fn resolve_names(&self, l: &mut Vec<VariableValue>) {
@@ -224,10 +205,6 @@ impl AnchoredSetVariable {
 
     pub(crate) fn resolve_names_key(&self, key: &[u8], l: &mut Vec<VariableValue>) {
         self.resolve_key_pick(Pick::Name, key, l)
-    }
-
-    pub(crate) fn resolve_names_regular_expression(&self, r: &Regex, l: &mut Vec<VariableValue>) {
-        self.resolve_regular_expression_pick(Pick::Name, r, l)
     }
 
     pub(crate) fn resolve_names_regular_expression_with_exclusions(

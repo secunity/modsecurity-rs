@@ -6,7 +6,7 @@ use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt;
 
-use md5::{Digest, Md5};
+use crate::utils::md5::Md5;
 
 use std::sync::Arc;
 
@@ -14,7 +14,6 @@ use crate::audit_log::writer::{Writer, generate_boundary};
 use crate::audit_log::{AuditLog, AuditLogFormat};
 use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFile;
-use crate::utils::string::string_to_hex;
 use crate::utils::system::{create_dir, strerror, strftime_local};
 
 /// Audit log file is saved into a directory structure. This directory
@@ -55,8 +54,7 @@ pub fn log_file_path(t: i64, part: i32) -> String {
 
 /// Writes the index line of an entry into `index`.
 fn write_index(transaction: &Transaction<'_>, index: &SharedFile, file_name: &str, log: &[u8]) -> Result<(), String> {
-    // `Utils::Md5::hexdigest` (cannot fail here).
-    let log_md5 = string_to_hex(&Md5::digest(log));
+    let log_md5 = Md5::hexdigest(log);
 
     let msg = transaction.to_old_audit_log_format_index(file_name, log.len() as f64, &log_md5);
     index.write(&msg)

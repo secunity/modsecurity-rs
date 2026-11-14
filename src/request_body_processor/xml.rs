@@ -154,6 +154,12 @@ mod with_libxml2 {
             Self::default()
         }
 
+        /// Whether the parsed document is available.
+        #[cfg(test)]
+        pub fn has_doc(&self) -> bool {
+            self.doc.is_some()
+        }
+
         /// The parsed document.
         pub(crate) fn document(&self) -> Option<&Document> {
             self.doc.as_ref()
@@ -163,11 +169,6 @@ mod with_libxml2 {
         /// before parsing completed).
         pub fn well_formed(&self) -> u32 {
             self.well_formed
-        }
-
-        /// Whether the parsed document is available.
-        pub fn has_doc(&self) -> bool {
-            self.doc.is_some()
         }
 
         fn parse_into_args(t: &Transaction<'_>) -> bool {

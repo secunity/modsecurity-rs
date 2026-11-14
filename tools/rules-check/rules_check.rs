@@ -4,7 +4,8 @@
 //! command line) into one rules set and reports how many rules each one
 //! added, or the parser error.
 
-use modsecurity::rules_set::RulesSet;
+use modsecurity::RulesSet;
+use modsecurity::internal::take_parser_error;
 
 fn print_help(name: &str) {
     println!("Use: {} [<filename>|SecLangCommand]", name);
@@ -37,7 +38,7 @@ fn main() {
             Ok(n) => n as i64,
             Err(_) => {
                 // The errors are reported (and forgotten) per argument.
-                err = std::mem::take(&mut rules.properties.parser_error);
+                err = take_parser_error(&mut rules);
                 ret = -1;
                 -1
             }

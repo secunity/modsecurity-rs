@@ -485,10 +485,6 @@ impl<V> UnorderedMultimap<V> {
         self.element_count == 0
     }
 
-    pub fn bucket_count(&self) -> usize {
-        self.buckets.len()
-    }
-
     /// Makes room for `n` elements without exceeding the load factor, as
     /// libstdc++'s `reserve(n)`.
     pub fn reserve(&mut self, n: usize) {
@@ -684,6 +680,11 @@ impl<V> UnorderedMultimap<V> {
             cur = n.next;
             Some((n.key.as_slice(), &n.value))
         })
+    }
+
+    #[cfg(test)]
+    pub fn bucket_count(&self) -> usize {
+        self.buckets.len()
     }
 
     /// Iteration in container order.

@@ -6,9 +6,9 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use modsecurity::modsecurity::ModSecurity;
-use modsecurity::rules_set::RulesSet;
-use modsecurity::transaction::Transaction;
+use modsecurity::ModSecurity;
+use modsecurity::RulesSet;
+use modsecurity::Transaction;
 
 const RULES: &str = "SecRuleEngine On
 SecRequestBodyAccess On

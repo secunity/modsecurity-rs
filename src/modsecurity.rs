@@ -46,7 +46,7 @@ impl Phases {
     ];
 
     /// The position of the phase in per-phase tables.
-    pub fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         self as usize
     }
 }
@@ -57,16 +57,10 @@ pub const NUMBER_OF_PHASES: usize = 7;
 pub const MODSECURITY_MAJOR: &str = "3";
 pub const MODSECURITY_MINOR: &str = "0";
 pub const MODSECURITY_PATCHLEVEL: &str = "17";
-pub const MODSECURITY_TAG: &str = "";
 pub const MODSECURITY_TAG_NUM: &str = "100";
 pub const MODSECURITY_VERSION: &str = "3.0.17";
+#[cfg_attr(not(feature = "curl"), allow(dead_code))] // Sent by the HTTPS client.
 pub const MODSECURITY_VERSION_NUM: u64 = 30170100;
-
-/// Whether the library version number is at most `a` (the
-/// `MODSECURITY_CHECK_VERSION` macro of the C header).
-pub const fn modsecurity_check_version(a: u64) -> bool {
-    MODSECURITY_VERSION_NUM <= a
-}
 
 /// Original ModSecurity text log entry.
 pub const TEXT_LOG_PROPERTY: i32 = 1;
@@ -91,11 +85,11 @@ pub type ModSecLogCb = Box<dyn Fn(Option<&(dyn Any + Send)>, ServerLogEntry<'_, 
 /// The engine instance: persistent collections, connector information and
 /// the server log callback. Shared (read-only) by all transactions.
 pub struct ModSecurity {
-    pub global_collection: Box<dyn Collection>,
-    pub resource_collection: Box<dyn Collection>,
-    pub ip_collection: Box<dyn Collection>,
-    pub session_collection: Box<dyn Collection>,
-    pub user_collection: Box<dyn Collection>,
+    pub(crate) global_collection: Box<dyn Collection>,
+    pub(crate) resource_collection: Box<dyn Collection>,
+    pub(crate) ip_collection: Box<dyn Collection>,
+    pub(crate) session_collection: Box<dyn Collection>,
+    pub(crate) user_collection: Box<dyn Collection>,
     connector: String,
     /// NUL terminated for `msc_who_am_i`.
     whoami: OnceLock<CString>,
@@ -199,7 +193,7 @@ impl ModSecurity {
     /// Sends a rule message to the server log callback, as text or as the
     /// message itself depending on the log properties (to stderr when no
     /// callback is set).
-    pub fn server_log(&self, data: Option<&(dyn Any + Send)>, rm: &RuleMessage<'_>, t: &Transaction<'_>) {
+    pub(crate) fn server_log(&self, data: Option<&(dyn Any + Send)>, rm: &RuleMessage<'_>, t: &Transaction<'_>) {
         let Some(cb) = &self.log_cb else {
             eprintln!("Server log callback is not set -- {}", rm.error_log(t));
             return;

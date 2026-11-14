@@ -57,7 +57,7 @@ pub enum TransformationKind {
 }
 
 /// A transformation (`t:xxx`): an action of kind
-/// [`Kind::RunTimeBeforeMatchAttempt`] that rewrites the target value.
+/// `Kind::RunTimeBeforeMatchAttempt` that rewrites the target value.
 #[derive(Debug, Clone)]
 pub struct Transformation {
     /// The name as written in the rule (e.g. `t:lowerCase`), which the

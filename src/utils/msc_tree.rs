@@ -34,9 +34,6 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 pub const IPV4_TREE: i32 = 0x1;
 pub const IPV6_TREE: i32 = 0x2;
 
-pub const IPV4_LEN: u32 = 0x20;
-pub const IPV6_LEN: u32 = 0x80;
-
 const NETMASK_256: u32 = 0x100;
 const NETMASK_128: u32 = 0x80;
 const NETMASK_32: u32 = 0x20;
@@ -90,11 +87,6 @@ impl TreePrefix {
     fn append_to_data_list(&mut self, netmask: u8) {
         let pos = self.prefix_data.iter().position(|&nm| netmask > nm).unwrap_or(self.prefix_data.len());
         self.prefix_data.insert(pos, netmask);
-    }
-
-    /// Whether `netmask` is one of the netmasks of the prefix.
-    pub fn contains_netmask(&self, netmask: u8) -> bool {
-        self.prefix_data.contains(&netmask)
     }
 
     /// Whether the prefix has `netmask`; with `flag` only the first netmask
@@ -204,16 +196,6 @@ fn fresh_netmasks_with(count: i32, netmask: u8) -> Vec<u8> {
 }
 
 impl CptTree {
-    /// An empty tree.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Access to a node by handle.
-    pub fn node(&self, n: usize) -> &TreeNode {
-        &self.nodes[n]
-    }
-
     /// Adds an empty node to the arena and returns its handle.
     fn create_node(&mut self) -> usize {
         self.nodes.push(TreeNode::default());
@@ -654,6 +636,17 @@ impl TreeRoot {
         0
     }
 
+    /// A new tree holding the entries of `param`; `None` when one is
+    /// invalid.
+    #[cfg(test)]
+    pub fn from_param(param: &[u8]) -> Option<TreeRoot> {
+        let mut t = TreeRoot::new();
+        if t.add_ip_from_param(param) != 0 {
+            return None;
+        }
+        Some(t)
+    }
+
     /// Adds the comma separated addresses/networks of `param`; 0 on success,
     /// -1 when an entry cannot be added.
     pub fn add_ip_from_param(&mut self, param: &[u8]) -> i32 {
@@ -666,16 +659,6 @@ impl TreeRoot {
             }
         }
         0
-    }
-
-    /// A new tree holding the entries of `param`; `None` when one is
-    /// invalid.
-    pub fn from_param(param: &[u8]) -> Option<TreeRoot> {
-        let mut t = TreeRoot::new();
-        if t.add_ip_from_param(param) != 0 {
-            return None;
-        }
-        Some(t)
     }
 
     /// Adds an IPv4 entry; `false` when it is invalid.

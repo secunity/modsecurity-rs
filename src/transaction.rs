@@ -263,78 +263,78 @@ pub struct EvalScratch<'a> {
 
 pub struct Transaction<'a> {
     /// CPU time at creation, base of the `DURATION` variable.
-    pub creation_time_stamp: f64,
-    pub client_ip_address: String,
+    pub(crate) creation_time_stamp: f64,
+    pub(crate) client_ip_address: String,
     /// The HTTP version: 1.1, 2.0, ...
-    pub http_version: String,
-    pub server_ip_address: String,
-    pub request_host_name: String,
+    pub(crate) http_version: String,
+    pub(crate) server_ip_address: String,
+    pub(crate) request_host_name: String,
     /// The raw URI that was requested.
-    pub uri: Vec<u8>,
+    pub(crate) uri: Vec<u8>,
     /// The decoded URI without the query string.
-    pub uri_no_query_string_decoded: Vec<u8>,
+    pub(crate) uri_no_query_string_decoded: Vec<u8>,
     /// Combined size of all arguments (`ARGS_COMBINED_SIZE`).
-    pub args_combined_size_double: f64,
-    pub client_port: i32,
+    pub(crate) args_combined_size_double: f64,
+    pub(crate) client_port: i32,
     /// Set by the `severity` action (`HIGHEST_SEVERITY`).
-    pub highest_severity_action: i32,
+    pub(crate) highest_severity_action: i32,
     /// The HTTP status code, when known.
-    pub http_code_returned: i32,
-    pub server_port: i32,
-    pub ms: &'a ModSecurity,
-    pub request_body_type: RequestBodyType,
-    pub request_body_processor: RequestBodyType,
-    pub rules: &'a RulesSet,
-    pub rule_remove_by_id: Vec<i32>,
-    pub rule_remove_by_id_range: Vec<(i32, i32)>,
-    pub rule_remove_by_tag: Vec<String>,
-    pub rule_remove_target_by_tag: Vec<(String, String)>,
-    pub rule_remove_target_by_id: Vec<(i32, String)>,
-    pub request_body_access: Option<bool>,
+    pub(crate) http_code_returned: i32,
+    pub(crate) server_port: i32,
+    pub(crate) ms: &'a ModSecurity,
+    pub(crate) request_body_type: RequestBodyType,
+    pub(crate) request_body_processor: RequestBodyType,
+    pub(crate) rules: &'a RulesSet,
+    pub(crate) rule_remove_by_id: Vec<i32>,
+    pub(crate) rule_remove_by_id_range: Vec<(i32, i32)>,
+    pub(crate) rule_remove_by_tag: Vec<String>,
+    pub(crate) rule_remove_target_by_tag: Vec<(String, String)>,
+    pub(crate) rule_remove_target_by_id: Vec<(i32, String)>,
+    pub(crate) request_body_access: Option<bool>,
     /// `ctl:auditLogParts` changes for this transaction, in rule order.
-    pub audit_log_modifier: Vec<(PartsChange, String)>,
+    pub(crate) audit_log_modifier: Vec<(PartsChange, String)>,
     /// `ctl:auditEngine`, when a rule set it for this transaction.
-    pub ctl_audit_engine: Option<AuditLogStatus>,
+    pub(crate) ctl_audit_engine: Option<AuditLogStatus>,
     /// Messages saved by `log`/`msg`/... for the audit log.
-    pub rules_messages: Vec<RuleMessage<'a>>,
-    pub request_body: Vec<u8>,
-    pub response_body: Vec<u8>,
+    pub(crate) rules_messages: Vec<RuleMessage<'a>>,
+    pub(crate) request_body: Vec<u8>,
+    pub(crate) response_body: Vec<u8>,
     /// The unique ID of the transaction (`UNIQUE_ID`).
-    pub id: String,
+    pub(crate) id: String,
     /// Rules still to be skipped because of a `skip` action.
-    pub skip_next: i32,
+    pub(crate) skip_next: i32,
     /// Set by a matching `allow` action, until the rules it covers are
     /// skipped.
-    pub allow_type: Option<AllowType>,
+    pub(crate) allow_type: Option<AllowType>,
     /// The decoded URI (raw is `uri`).
-    pub uri_decoded: Vec<u8>,
+    pub(crate) uri_decoded: Vec<u8>,
     /// The pending disruptive action, handed out by
     /// [`Transaction::intervention`].
     pub(crate) intervention: Intervention,
     /// Sticky flag set the first time a disruptive intervention is consumed
     /// through [`Transaction::intervention`].
-    pub is_interrupted: bool,
+    pub(crate) is_interrupted: bool,
     /// Creation time, in seconds since the epoch.
-    pub time_stamp: i64,
-    pub collections: Collections<'a>,
+    pub(crate) time_stamp: i64,
+    pub(crate) collections: Collections<'a>,
     /// Matched strings, used by the `capture` action.
-    pub matched: Vec<Vec<u8>>,
+    pub(crate) matched: Vec<Vec<u8>>,
     #[cfg(feature = "libxml2")]
-    pub xml: Option<Box<Xml>>,
-    pub json: Json,
-    pub sec_rule_engine: Option<RuleEngine>,
-    pub sec_xml_parse_xml_into_args: Option<ParseXmlIntoArgs>,
+    pub(crate) xml: Option<Box<Xml>>,
+    pub(crate) json: Json,
+    pub(crate) sec_rule_engine: Option<RuleEngine>,
+    pub(crate) sec_xml_parse_xml_into_args: Option<ParseXmlIntoArgs>,
     /// Environment variables set by `setenv`.
-    pub variable_envs: BTreeMap<Vec<u8>, Vec<u8>>,
-    pub multipart_part_tmp_files: Vec<Arc<MultipartPartTmpFile>>,
-    pub vars: TransactionAnchoredVariables,
+    pub(crate) variable_envs: BTreeMap<Vec<u8>, Vec<u8>>,
+    pub(crate) multipart_part_tmp_files: Vec<Arc<MultipartPartTmpFile>>,
+    pub(crate) vars: TransactionAnchoredVariables,
     /// The `SecMarker` being skipped to (by `skipAfter`).
-    pub marker: Option<String>,
+    pub(crate) marker: Option<String>,
     /// Chain ancestors of the rule being evaluated (replaces the C++
     /// `RuleWithActions::m_chainedRuleParent` back pointers).
-    pub chained_rule_parents: Vec<&'a RuleWithActions>,
+    pub(crate) chained_rule_parents: Vec<&'a RuleWithActions>,
     /// Buffers reused by rule evaluation.
-    pub eval_scratch: EvalScratch<'a>,
+    pub(crate) eval_scratch: EvalScratch<'a>,
     log_cb_data: Option<Box<dyn Any + Send>>,
 }
 
@@ -438,12 +438,12 @@ impl<'a> Transaction<'a> {
 
     /// Whether a debug message of `level` would be written (the test done by
     /// the `ms_dbg` macros).
-    pub fn debug_enabled(&self, level: i32) -> bool {
+    pub(crate) fn debug_enabled(&self, level: i32) -> bool {
         self.rules.properties.debug_log.enabled(level)
     }
 
     /// Writes `message` to the debug log with the transaction id and URI.
-    pub fn debug(&self, level: i32, message: &str) {
+    pub(crate) fn debug(&self, level: i32, message: &str) {
         self.rules.debug(level, &self.id, &String::from_utf8_lossy(&self.uri), message);
     }
 
@@ -451,19 +451,19 @@ impl<'a> Transaction<'a> {
     // SecMarker management
     // ------------------------------------------------------------------
 
-    pub fn is_inside_a_marker(&self) -> bool {
+    pub(crate) fn is_inside_a_marker(&self) -> bool {
         self.marker.is_some()
     }
 
-    pub fn current_marker(&self) -> Option<&str> {
+    pub(crate) fn current_marker(&self) -> Option<&str> {
         self.marker.as_deref()
     }
 
-    pub fn remove_marker(&mut self) {
+    pub(crate) fn remove_marker(&mut self) {
         self.marker = None;
     }
 
-    pub fn add_marker(&mut self, name: &str) {
+    pub(crate) fn add_marker(&mut self, name: &str) {
         self.marker = Some(name.to_string());
     }
 
@@ -511,15 +511,16 @@ impl<'a> Transaction<'a> {
 
     /// Adds the arguments of a query string or URL-encoded form body
     /// (`origin` is `GET` or `POST`). Always returns `true`.
-    pub fn extract_arguments(&mut self, origin: &str, buf: &[u8], offset: usize) -> bool {
+    pub(crate) fn extract_arguments(&mut self, origin: &str, buf: &[u8], offset: usize) -> bool {
         self.argument_writer().extract(origin, buf, offset);
         true
     }
 
+    #[cfg_attr(not(feature = "libxml2"), allow(dead_code))] // Used by the XML body processor.
     /// Adds one argument to `ARGS` and to `ARGS_GET` or `ARGS_POST`
     /// according to `origin`. Returns `false` when `SecArgumentsLimit` was
     /// reached.
-    pub fn add_argument(&mut self, origin: &str, key: &[u8], value: &[u8], offset: usize) -> bool {
+    pub(crate) fn add_argument(&mut self, origin: &str, key: &[u8], value: &[u8], offset: usize) -> bool {
         self.argument_writer().add(origin, key, value, offset)
     }
 
@@ -1159,7 +1160,7 @@ impl<'a> Transaction<'a> {
 
     /// The index line of the native audit log format for an entry stored
     /// in its own file (`SecAuditLogType Concurrent`).
-    pub fn to_old_audit_log_format_index(&self, filename: &str, size: f64, md5: &str) -> Vec<u8> {
+    pub(crate) fn to_old_audit_log_format_index(&self, filename: &str, size: f64, md5: &str) -> Vec<u8> {
         let tstr = crate::utils::system::strftime_local(self.time_stamp, "[%d/%b/%Y:%H:%M:%S %z]");
         let mut ss: Vec<u8> = Vec::new();
         let rh = &self.vars.request_headers;
@@ -1202,7 +1203,7 @@ impl<'a> Transaction<'a> {
     }
 
     /// The audit log entry in the native format, with the given parts.
-    pub fn to_old_audit_log_format(&self, parts: i32, trailer: &str, prefix: &str) -> Vec<u8> {
+    pub(crate) fn to_old_audit_log_format(&self, parts: i32, trailer: &str, prefix: &str) -> Vec<u8> {
         use audit_log::AuditLog as AL;
         let tstr = crate::utils::system::strftime_local(self.time_stamp, "[%d/%b/%Y:%H:%M:%S %z]");
         let p = prefix.as_bytes();
@@ -1310,7 +1311,7 @@ impl<'a> Transaction<'a> {
     }
 
     /// The audit log entry in the JSON format, with the given parts.
-    pub fn to_json(&self, parts: i32) -> Vec<u8> {
+    pub(crate) fn to_json(&self, parts: i32) -> Vec<u8> {
         use audit_log::AuditLog as AL;
         let ts = asc_time(self.time_stamp);
         let unique_id = UniqueId::unique_id();
@@ -1429,13 +1430,13 @@ impl<'a> Transaction<'a> {
     }
 
     /// Sends a rule message to the server log callback.
-    pub fn server_log(&self, rm: &RuleMessage<'_>) {
+    pub(crate) fn server_log(&self, rm: &RuleMessage<'_>) {
         self.ms.server_log(self.log_cb_data.as_deref(), rm, self);
     }
 
     /// The rule engine state: this transaction's `ctl:ruleEngine`, else
     /// `SecRuleEngine`.
-    pub fn rule_engine_state(&self) -> Option<RuleEngine> {
+    pub(crate) fn rule_engine_state(&self) -> Option<RuleEngine> {
         self.sec_rule_engine.or(self.rules.properties.sec_rule_engine)
     }
 
@@ -1451,11 +1452,6 @@ impl<'a> Transaction<'a> {
         if !hostname.is_empty() {
             self.request_host_name = hostname.to_string();
         }
-    }
-
-    /// The callback data given at construction.
-    pub fn log_cb_data(&self) -> Option<&(dyn Any + Send)> {
-        self.log_cb_data.as_deref()
     }
 }
 

@@ -395,3 +395,31 @@ and variables, `msc_*`, and library functions (`luaL_checkstring`,
 (quirks kept, "as in C++"), since C++ remains the behavioral reference.
 Comments only: checked by comparing the code with comments stripped, and
 `cargo doc` gives the same warnings as before (all new links resolve).
+
+## A small public Rust API
+
+The crate exposed nearly every module (`actions`, `operators`, `variables`,
+`utils`, ...) and the internals of its main types (133 public fields on
+`Transaction`). The API is now the types re-exported at the crate root:
+
+- `ModSecurity`, `RulesSet`, `Transaction`, `Intervention`;
+- the server log callback: `ModSecLogCb`, `ServerLogEntry`, `RuleMessage`
+  (with the `*_LOG_PROPERTY` and `*_LOG_MESSAGE_INFO` flags);
+- the `DebugLog` trait, for `RulesSet::with_debug_log`;
+- the version constants, and `ModSecurity::process_content_offset`.
+
+Everything else is `pub(crate)`: the modules, the fields of the API types
+and their engine-internal methods (rule evaluation, merging a parser
+driver, audit log rendering, ...). The C API (`capi`) is unchanged: same
+39 exported `msc_*` symbols. The test utilities of the repository reach the
+internals they drive (operators, transformations, the JSON tree parser) via
+`modsecurity::internal`, which is `#[doc(hidden)]` and not an API.
+
+Making the modules private surfaced code nothing used, removed:
+`Collection::{name, update_first, resolve_single_match}` (and the LMDB
+`MDB_NEXT_DUP` walk the last one needed), the regex resolution helpers
+of the anchored variables, unused constants (`ACMP_FLAG_*`, `OVECCOUNT`,
+`IPV4_LEN`, ...), and a few unused wrappers. Helpers only the unit tests
+used are `#[cfg(test)]`; code only an optional feature uses (Lua, LMDB,
+libxml2, curl) or that an opt-in feature replaces (ACMP, the crit-bit IP
+tree) says so where it is declared.

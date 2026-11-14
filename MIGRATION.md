@@ -272,8 +272,8 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   there).
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
-`SecRuleRemoveById` compares range bounds as strings, LMDB
-`resolveSingleMatch` uses an unpositioned cursor, setvar/`stoi` semantics).
+`SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
+semantics).
 
 ## Verification
 

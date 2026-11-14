@@ -1,23 +1,24 @@
-//! libmodsecurity v3, ported from C++ to Rust.
+//! libmodsecurity v3, the ModSecurity web application firewall engine, in
+//! Rust.
 //!
-//! Modules separate configuration parsing, rule evaluation, transactions,
-//! collections, body processors and logging. The initial port followed the
-//! C++ source layout; internal Rust representations can evolve independently
-//! while preserving SecLang behaviour and the `msc_*` C API.
-//!
-//! Example usage (compare with the `@mainpage` example of `modsecurity.h`):
+//! The API is the handful of types re-exported here: a [`ModSecurity`]
+//! engine instance, the [`RulesSet`] loaded from SecLang configuration,
+//! and a [`Transaction`] per HTTP exchange, which the connector feeds phase
+//! by phase and asks for an [`Intervention`]. The same engine is offered to
+//! C as libmodsecurity's `msc_*` API ([`capi`]).
 //!
 //! ```no_run
-//! use modsecurity::modsecurity::ModSecurity;
-//! use modsecurity::rules_set::RulesSet;
-//! use modsecurity::transaction::Transaction;
+//! use modsecurity::{ModSecurity, RulesSet, Transaction};
 //!
 //! let modsec = ModSecurity::new();
 //! let mut rules = RulesSet::new();
-//! rules.load_from_uri("rules.conf");
+//! rules.load_from_uri("rules.conf").expect("valid rules");
 //!
 //! let mut transaction = Transaction::new(&modsec, &rules, None);
 //! transaction.process_connection("127.0.0.1", 12345, "127.0.0.1", 80);
+//! transaction.process_uri(b"/?q=1", b"GET", b"1.1");
+//! transaction.add_request_header(b"Host", b"example.com");
+//! transaction.process_request_headers();
 //!
 //! if let Some(it) = transaction.intervention() {
 //!     println!("There is an intervention: status {}", it.status);
@@ -29,10 +30,8 @@
 // they are declared).
 #![deny(unsafe_code)]
 
-/// Debug-log helper equivalent to the C++ `ms_dbg_a(t, level, msg)` macro:
-/// the message is only formatted when the configured debug level is high
-/// enough.
-#[macro_export]
+/// Writes to the debug log of a transaction: the message is only formatted
+/// when the configured debug level is high enough.
 macro_rules! ms_dbg_a {
     ($t:expr, $lvl:expr, $($arg:tt)*) => {{
         let __t: &$crate::transaction::Transaction<'_> = &*$t;
@@ -44,7 +43,6 @@ macro_rules! ms_dbg_a {
 
 /// Same as [`ms_dbg_a`] for call sites where the transaction is optional
 /// (the C++ macro tolerates a null transaction pointer).
-#[macro_export]
 macro_rules! ms_dbg_opt {
     ($t:expr, $lvl:expr, $($arg:tt)*) => {{
         if let Some(__t) = $t {
@@ -53,11 +51,23 @@ macro_rules! ms_dbg_opt {
     }};
 }
 
+pub(crate) use {ms_dbg_a, ms_dbg_opt};
+
 // The code `pest_derive` generates without pest's `std` feature (see
 // `Cargo.toml`) names `::alloc`.
 extern crate alloc;
 
-pub mod actions;
+pub use crate::debug_log::DebugLog;
+pub use crate::intervention::Intervention;
+pub use crate::modsecurity::{
+    INCLUDE_FULL_HIGHLIGHT_LOG_PROPERTY, MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL,
+    MODSECURITY_VERSION, ModSecLogCb, ModSecurity, RULE_MESSAGE_LOG_PROPERTY, ServerLogEntry, TEXT_LOG_PROPERTY,
+};
+pub use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, ERROR_LOG_TAIL_LOG_MESSAGE_INFO, RuleMessage};
+pub use crate::rules_set::RulesSet;
+pub use crate::transaction::Transaction;
+
+pub(crate) mod actions;
 pub(crate) mod anchored_set_variable;
 pub(crate) mod anchored_set_variable_translation_proxy;
 pub(crate) mod anchored_variable;
@@ -65,32 +75,77 @@ pub(crate) mod audit_log;
 // The C API (`msc_*`).
 #[allow(unsafe_code)]
 pub mod capi;
-pub mod collection;
-pub mod debug_log;
+pub(crate) mod collection;
+pub(crate) mod debug_log;
 pub(crate) mod engine;
-pub mod intervention;
-pub mod modsecurity;
-pub mod operators;
+pub(crate) mod intervention;
+pub(crate) mod modsecurity;
+pub(crate) mod operators;
 pub(crate) mod parser;
 pub(crate) mod request_body_processor;
 pub(crate) mod rule;
 pub(crate) mod rule_marker;
-pub mod rule_message;
+pub(crate) mod rule_message;
 pub(crate) mod rule_script;
 pub(crate) mod rule_unconditional;
-pub mod rule_with_actions;
+pub(crate) mod rule_with_actions;
 pub(crate) mod rule_with_operator;
 pub(crate) mod rules_exceptions;
-pub mod rules_set;
+pub(crate) mod rules_set;
 pub(crate) mod rules_set_phases;
 pub(crate) mod rules_set_properties;
 pub(crate) mod run_time_string;
-pub mod transaction;
+pub(crate) mod transaction;
 pub(crate) mod unique_id;
-pub mod utils;
+pub(crate) mod utils;
 pub(crate) mod variable_origin;
 pub(crate) mod variable_value;
-pub mod variables;
+pub(crate) mod variables;
+
+/// Internals the test utilities of this repository (`test/`, `tools/`,
+/// `fuzz/`) drive directly. Not part of the API: they change without
+/// notice.
+#[doc(hidden)]
+pub mod internal {
+    pub use crate::actions::capture::Capture;
+    pub use crate::actions::transformations::transformation::Transformation;
+    pub use crate::operators::libinjection_adapter::{
+        InjectionResult, clear_libinjection_overrides_for_testing, set_libinjection_sqli_override_for_testing,
+        set_libinjection_xss_override_for_testing,
+    };
+    pub use crate::operators::operator::{Operator, instantiate as instantiate_operator};
+    pub use crate::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
+    pub use crate::utils::json::{JsonValue, parse_tree};
+    pub use crate::utils::regex::Regex;
+    pub use crate::utils::string::to_hex_if_needed;
+
+    use crate::{DebugLog, RuleMessage, RulesSet, Transaction};
+
+    /// A rule message for `rule`, to evaluate an operator alone.
+    pub fn new_rule_message(rule: &RuleWithActions) -> RuleMessage<'_> {
+        RuleMessage::new(rule)
+    }
+
+    /// The value of `TX:key`.
+    pub fn tx_value<'t>(t: &'t Transaction<'_>, key: &[u8]) -> Option<&'t [u8]> {
+        t.collections.tx.get(key)
+    }
+
+    /// The debug log the rules were created with.
+    pub fn debug_log(rules: &RulesSet) -> &dyn DebugLog {
+        rules.properties.debug_log.as_ref()
+    }
+
+    /// The path of `SecAuditLog`.
+    pub fn audit_log_path(rules: &RulesSet) -> &str {
+        &rules.properties.audit_log.path1
+    }
+
+    /// Takes the parser errors collected so far.
+    pub fn take_parser_error(rules: &mut RulesSet) -> String {
+        std::mem::take(&mut rules.properties.parser_error)
+    }
+}
 
 /// Connectors share one `ModSecurity` and one `RulesSet` between worker
 /// threads and may move transactions between threads (as with the C++

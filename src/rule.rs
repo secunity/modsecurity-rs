@@ -28,20 +28,6 @@ impl Rule {
         }
     }
 
-    pub fn file_name(&self) -> &str {
-        match self {
-            Rule::Marker(m) => &m.file_name,
-            Rule::WithActions(r) => &r.file_name,
-        }
-    }
-
-    pub fn line_number(&self) -> i32 {
-        match self {
-            Rule::Marker(m) => m.line_number,
-            Rule::WithActions(r) => r.line_number,
-        }
-    }
-
     /// The phase the rule runs in; `None` for a rule with an unknown
     /// `phase:<name>` (see `actions::phase`), which runs in none.
     pub fn phase(&self) -> Option<Phases> {

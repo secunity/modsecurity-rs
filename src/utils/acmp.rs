@@ -23,10 +23,7 @@
 
 use std::ffi::c_char;
 
-pub const ACMP_FLAG_BYTE: i32 = 0;
 pub const ACMP_FLAG_CASE_SENSITIVE: i32 = 1;
-pub const ACMP_FLAG_CASE_INSENSITIVE: i32 = 0;
-pub const ACMP_FLAG_UTF8: i32 = 0x100;
 
 /// Index of the root node in the arena.
 const ROOT: usize = 0;
@@ -107,6 +104,7 @@ impl Acmp {
     }
 
     /// Number of distinct patterns added.
+    #[cfg(test)]
     pub fn dict_count(&self) -> usize {
         self.dict_count
     }

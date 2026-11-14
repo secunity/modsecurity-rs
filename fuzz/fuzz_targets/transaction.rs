@@ -7,9 +7,9 @@
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use modsecurity::modsecurity::ModSecurity;
-use modsecurity::rules_set::RulesSet;
-use modsecurity::transaction::Transaction;
+use modsecurity::ModSecurity;
+use modsecurity::RulesSet;
+use modsecurity::Transaction;
 
 const TRANSFORMATIONS: &[&str] = &[
     "base64Decode", "base64DecodeExt", "base64Encode", "cmdLine", "compressWhitespace", "cssDecode",

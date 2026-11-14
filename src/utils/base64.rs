@@ -207,15 +207,6 @@ impl Base64 {
         mbedtls_encode(data)
     }
 
-    /// Decodes `data` strictly ([`Self::decode`]), or leniently
-    /// ([`Self::decode_forgiven`]) when `forgiven` is set.
-    pub fn decode_with(data: &[u8], forgiven: bool) -> Option<Vec<u8>> {
-        if forgiven {
-            return Self::decode_forgiven(data);
-        }
-        Self::decode(data)
-    }
-
     /// Strict (mbedtls) decoding; `None` when the input is not valid
     /// base64. Spaces at line ends and `\n` / `\r\n` line breaks are
     /// accepted.
@@ -378,7 +369,5 @@ mod tests {
         // a lone digit followed by padding is invalid -> empty
         assert_eq!(Base64::decode_forgiven(b"Zm9vY=").unwrap(), b"");
         assert_eq!(Base64::decode_forgiven(b"").unwrap(), b"");
-        assert_eq!(Base64::decode_with(b"Zm9v", true).unwrap(), b"foo");
-        assert!(Base64::decode_with(b"Zm9", false).is_none());
     }
 }

@@ -45,10 +45,6 @@ impl<V: Clone> IdMultimap<V> {
         self.by_id.entry(id_key(id)).or_default().insert(0, value);
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.by_id.is_empty()
-    }
-
     /// The entries for the rule with id `rule_id`, in container order. An
     /// entry applies when its id (a `double`, as parsed by `std::stod`)
     /// equals the rule id converted to `double`, as in C++.

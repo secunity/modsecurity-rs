@@ -64,6 +64,7 @@ impl AnchoredVariable {
         &self.value
     }
 
+    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
     /// The current value, or `None` when it is empty.
     pub fn resolve_first(&self) -> Option<Vec<u8>> {
         if self.value.is_empty() {

@@ -50,6 +50,7 @@ impl AnchoredSetVariableTranslationProxy {
         l.is_empty() && fount.has_names(&self.name)
     }
 
+    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
     pub fn resolve(&self, fount: &AnchoredSetVariable, l: &mut Vec<VariableValue>) {
         if self.use_stored_names(fount, l) {
             return fount.resolve_names(l);
@@ -80,14 +81,6 @@ impl AnchoredSetVariableTranslationProxy {
         self.translate(l);
     }
 
-    pub fn resolve_regular_expression(&self, fount: &AnchoredSetVariable, r: &Regex, l: &mut Vec<VariableValue>) {
-        if self.use_stored_names(fount, l) {
-            return fount.resolve_names_regular_expression(r, l);
-        }
-        fount.resolve_regular_expression(r, l);
-        self.translate(l);
-    }
-
     pub fn resolve_regular_expression_with_exclusions(
         &self,
         fount: &AnchoredSetVariable,
@@ -103,6 +96,7 @@ impl AnchoredSetVariableTranslationProxy {
         self.translate(l);
     }
 
+    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
     /// The first name of `fount`. As in C++, `key` is ignored.
     pub fn resolve_first(&self, fount: &AnchoredSetVariable, _key: &[u8]) -> Option<Vec<u8>> {
         let mut l = Vec::new();
@@ -130,11 +124,10 @@ mod tests {
         let r = Regex::new("^a");
         let ke = KeyExclusions::default();
         type Run<'r> = &'r dyn Fn(&AnchoredSetVariable, &mut Vec<VariableValue>);
-        let runs: [Run; 5] = [
+        let runs: [Run; 4] = [
             &|f, l| proxy.resolve(f, l),
             &|f, l| proxy.resolve_with_exclusions(f, l, &ke, None),
             &|f, l| proxy.resolve_key(f, b"a", l),
-            &|f, l| proxy.resolve_regular_expression(f, &r, l),
             &|f, l| proxy.resolve_regular_expression_with_exclusions(f, &r, l, &ke, None),
         ];
         for run in runs {

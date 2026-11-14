@@ -56,9 +56,7 @@ builds the core without the optional components.
 ## Using it from Rust
 
 ```rust
-use modsecurity::modsecurity::ModSecurity;
-use modsecurity::rules_set::RulesSet;
-use modsecurity::transaction::Transaction;
+use modsecurity::{ModSecurity, RulesSet, Transaction};
 
 let ms = ModSecurity::new();
 let mut rules = RulesSet::new();
@@ -77,8 +75,11 @@ if let Some(intervention) = t.intervention() {
 }
 ```
 
-`ModSecurity` and `RulesSet` are `Send + Sync` (share them between worker
-threads); a `Transaction` borrows both.
+The API is the types at the crate root: `ModSecurity`, `RulesSet`,
+`Transaction`, `Intervention`, the server log callback (`ServerLogEntry`,
+`RuleMessage`) and the `DebugLog` trait. `ModSecurity` and `RulesSet` are
+`Send + Sync` (share them between worker threads); a `Transaction` borrows
+both.
 
 ## Tests
 

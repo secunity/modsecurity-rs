@@ -5,11 +5,9 @@ use core::ffi::{c_char, c_void};
 use core::mem::offset_of;
 use core::ptr;
 
-use modsecurity::modsecurity::{
-    MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, ModSecurity, ServerLogEntry,
+use modsecurity::{
+    MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, ModSecurity, RulesSet, ServerLogEntry, Transaction,
 };
-use modsecurity::rules_set::RulesSet;
-use modsecurity::transaction::Transaction;
 use nginx_sys::{
     NGX_CONF_1MORE, NGX_CONF_FLAG, NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_CONF_UNSET, NGX_HTTP_INTERNAL_SERVER_ERROR,
     NGX_HTTP_LOC_CONF, NGX_HTTP_LOC_CONF_OFFSET, NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE, NGX_HTTP_SRV_CONF, NGX_LOG_ERR,

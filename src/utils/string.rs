@@ -120,19 +120,6 @@ pub fn chomp(s: &mut Vec<u8>) {
     }
 }
 
-/// Replaces every occurrence of `from` in `s` with `to`, scanning left to
-/// right without rescanning the replacement text.
-pub fn replace_all(s: &mut Vec<u8>, from: &[u8], to: &[u8]) {
-    if from.is_empty() {
-        return;
-    }
-    let mut start = 0;
-    while let Some(p) = find_from(s, from, start) {
-        s.splice(p..p + from.len(), to.iter().copied());
-        start = p + to.len();
-    }
-}
-
 /// The position of the first `needle` in `haystack` at or after `pos`
 /// (as `std::string::find`).
 pub fn find_from(haystack: &[u8], needle: &[u8], pos: usize) -> Option<usize> {
@@ -217,12 +204,7 @@ pub fn tolower(s: &[u8]) -> Vec<u8> {
     s.to_ascii_lowercase()
 }
 
-/// Uppercases every byte (C locale `::toupper`).
-pub fn toupper(s: &[u8]) -> Vec<u8> {
-    s.to_ascii_uppercase()
-}
-
-/// [`toupper`] for configuration strings.
+/// Upper-cases the ASCII letters of a configuration string.
 pub fn toupper_str(s: &str) -> String {
     s.to_ascii_uppercase()
 }
@@ -419,12 +401,5 @@ mod tests {
         assert_eq!(limit_to(3, b"abcdef"), b"abc (3 characters omitted)".to_vec());
         assert_eq!(to_hex_if_needed(b"a\x01\"", true), "a\\x01\\x22");
         assert_eq!(to_hex_if_needed(b"a\x01\"", false), "a\\x01\"");
-    }
-
-    #[test]
-    fn replace() {
-        let mut s = b"%d and %d".to_vec();
-        replace_all(&mut s, b"%d", b"403");
-        assert_eq!(s, b"403 and 403".to_vec());
     }
 }

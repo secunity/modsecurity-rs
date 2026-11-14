@@ -12,11 +12,8 @@ mod common;
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use modsecurity::modsecurity::{MODSECURITY_VERSION, ModSecurity, ServerLogEntry};
-use modsecurity::rules_set::RulesSet;
-use modsecurity::transaction::Transaction;
-use modsecurity::utils::json::JsonValue;
-use modsecurity::utils::regex::Regex;
+use modsecurity::internal::{JsonValue, Regex, audit_log_path, debug_log};
+use modsecurity::{MODSECURITY_VERSION, ModSecurity, RulesSet, ServerLogEntry, Transaction};
 
 const DEFAULT_TEST_PATH: &str = "test-cases/regression";
 
@@ -276,7 +273,7 @@ fn run_one(t: &RegressionTest, resources: &[&str]) -> Outcome {
     }
 
     let mut r = Status { status: 200, location: String::new() };
-    let audit_path = rules.properties.audit_log.path1.clone();
+    let audit_path = audit_log_path(&rules).to_string();
     {
         let mut tr = Transaction::new(&ms, &rules, None);
         if !t.hostname.is_empty() {
@@ -313,7 +310,7 @@ fn run_one(t: &RegressionTest, resources: &[&str]) -> Outcome {
         tr.process_logging();
     }
 
-    let d: &dyn std::any::Any = rules.properties.debug_log.as_ref();
+    let d: &dyn std::any::Any = debug_log(&rules);
     let d = d.downcast_ref::<CustomDebugLog>().expect("custom debug log");
     let server_log_s = server_log.lock().unwrap().clone();
     if !d.contains(&t.debug_log) {

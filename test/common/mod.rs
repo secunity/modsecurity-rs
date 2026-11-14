@@ -5,8 +5,8 @@
 
 use std::sync::Mutex;
 
-use modsecurity::debug_log::DebugLog;
-use modsecurity::utils::json::{JsonValue, parse_tree};
+use modsecurity::DebugLog;
+use modsecurity::internal::{JsonValue, parse_tree};
 
 pub const RESET: &str = "\x1B[0m";
 pub const KRED: &str = "\x1B[31m";
@@ -152,7 +152,7 @@ impl CustomDebugLog {
 
     /// `contains(pattern)`: regex search over the whole log.
     pub fn contains(&self, pattern: &str) -> bool {
-        let re = modsecurity::utils::regex::Regex::new(pattern);
+        let re = modsecurity::internal::Regex::new(pattern);
         let s = self.log.lock().unwrap();
         re.search(s.as_bytes()) > 0
     }

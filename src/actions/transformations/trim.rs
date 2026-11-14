@@ -27,11 +27,6 @@ pub fn trim(s: &mut Vec<u8>) -> bool {
     changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    trim(value)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

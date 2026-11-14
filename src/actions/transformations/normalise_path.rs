@@ -179,11 +179,6 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
     changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    normalize_path_inplace(value, false)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
