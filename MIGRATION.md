@@ -153,6 +153,10 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   parser context and file descriptor. The scanner's process-global state that
   leaks between separate parses after a failed `SecRuleUpdateTarget*` is not
   reproduced.
+- **libxml2 documents left in a parser context are freed**: C++ leaked the
+  document libxml2 builds for the entities of an internal DTD while parsing
+  XML into ARGS (`SecParseXmlIntoArgs`), and the document of a request whose
+  body never completed (found by the `body` fuzz target).
 - **libxml2 validation callbacks** use libxml2's structured error handler
   (C variadic callbacks cannot be written in stable Rust); messages and counts
   were checked to be the same.

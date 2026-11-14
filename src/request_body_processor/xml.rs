@@ -326,6 +326,19 @@ mod with_libxml2 {
             unsafe { ffi::xmlParseChunk(self.as_ptr(), chunk, size, c_int::from(terminate)) }
         }
 
+        /// Takes the document the context built (`myDoc`), if any; the
+        /// context no longer refers to it.
+        fn take_doc(&self) -> Option<XmlDoc> {
+            // SAFETY: the context is live; `myDoc` is null or a document the
+            // context built, which nothing else frees: it becomes owned by
+            // the returned `XmlDoc` once the context forgets it.
+            unsafe {
+                let doc = NonNull::new((*self.as_ptr()).myDoc).map(XmlDoc);
+                (*self.as_ptr()).myDoc = ptr::null_mut();
+                doc
+            }
+        }
+
         /// Disables parser errors being printed to stderr.
         fn quiet(&self) {
             // SAFETY: the context is live.
@@ -338,8 +351,12 @@ mod with_libxml2 {
 
     impl Drop for ParserCtxt {
         fn drop(&mut self) {
-            // SAFETY: the context is owned by `self` and freed only here. The
-            // document it built (if any) is not freed with it.
+            // A document left in the context (not taken by `take_doc`): one
+            // the parse was abandoned in, or the one libxml2 builds for the
+            // entities of a DTD while parsing into ARGS.
+            drop(self.take_doc());
+            // SAFETY: the context is owned by `self` and freed only here.
+            // `xmlFreeParserCtxt` does not free `myDoc`.
             unsafe { ffi::xmlFreeParserCtxt(self.as_ptr()) }
         }
     }
@@ -750,9 +767,7 @@ mod with_libxml2 {
                 // Preserve the results for our reference; the document is
                 // owned by `self` from now on.
                 self.well_formed = ctxt.well_formed() as u32;
-                // SAFETY: the context is live; `myDoc` is null or the
-                // document it built, which freeing the context leaves alone.
-                self.doc = NonNull::new(unsafe { (*ctxt.as_ptr()).myDoc }).map(XmlDoc);
+                self.doc = ctxt.take_doc();
 
                 // Clean up everything else.
                 drop(ctxt);
@@ -893,6 +908,37 @@ mod tests {
         let t = xml(&ms, &rules, b"<a><b>1</b><b>2</b><b>3</b><b>4</b></a>");
         assert_eq!(t.vars.args.len(), 2);
         assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document for ARGS.");
+    }
+
+    /// The documents libxml2 builds and leaves in a parser context are
+    /// freed: the one holding a DTD's entities while parsing into ARGS (C++
+    /// leaked it), and the one of a parse abandoned before the end of the
+    /// body. (A leak is seen under the sanitizer: replay
+    /// `fuzz/regressions/body/` with the `body` fuzz target.)
+    #[test]
+    fn documents_left_in_contexts() {
+        let body = br#"<?xml version="1.0"?><!DOCTYPE a [<!ENTITY js "Jo">]><a><b>&js;</b></a>"#;
+        for mode in [Some(ParseXmlIntoArgs::On), Some(ParseXmlIntoArgs::OnlyArgs)] {
+            let ms = ModSecurity::new();
+            let mut rules = new_rules();
+            rules.properties.sec_xml_parse_xml_into_args = mode;
+            // (The SAX handler that parses into ARGS has no entity
+            // callbacks, so the document fails there, as in C++.)
+            let t = xml(&ms, &rules, body);
+            assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document for ARGS.");
+        }
+        // Abandoned: the transaction ends before the body is complete.
+        let ms = ModSecurity::new();
+        let mut rules = new_rules();
+        rules.properties.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::On);
+        let mut t = Transaction::new(&ms, &rules, None);
+        t.process_connection("200.249.12.31", 123, "200.249.12.31", 80);
+        t.process_uri(b"/", b"POST", b"1.1");
+        t.add_request_header(b"Content-Type", b"text/xml");
+        t.process_request_headers();
+        t.request_body_type = RequestBodyType::XMLRequestBody;
+        t.append_request_body(&body[..60]);
+        drop(t);
     }
 
     fn validate(op: &dyn Operator, t: &mut Transaction<'_>) -> bool {
