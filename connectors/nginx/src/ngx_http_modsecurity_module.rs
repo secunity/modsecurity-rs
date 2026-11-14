@@ -6,7 +6,8 @@ use core::mem::offset_of;
 use core::ptr;
 
 use modsecurity::{
-    MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, ModSecurity, RulesSet, ServerLogEntry, Transaction,
+    LoadError, MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, ModSecurity, RulesSet, ServerLogEntry,
+    Transaction,
 };
 use nginx_sys::{
     NGX_CONF_1MORE, NGX_CONF_FLAG, NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_CONF_UNSET, NGX_HTTP_INTERNAL_SERVER_ERROR,
@@ -334,14 +335,14 @@ unsafe fn arg(cf: *mut ngx_conf_t, n: usize) -> ngx_str_t {
 /// `cf` must be the current configuration.
 unsafe fn rules_result(
     cf: *mut ngx_conf_t,
-    res: Result<usize, String>,
+    res: Result<usize, LoadError>,
     counter: fn(&mut MainConf) -> &mut ngx_uint_t,
 ) -> *mut c_char {
     // SAFETY: cf is valid during directive handling.
     unsafe {
         let n = match res {
             Ok(n) => n,
-            Err(error) => return pool_cstr((*cf).pool, &error),
+            Err(error) => return pool_cstr((*cf).pool, error.message()),
         };
         let mmcf = conf_main_conf(cf, ptr::addr_of!(ngx_http_modsecurity_module)) as *mut MainConf;
         *counter(&mut *mmcf) += n as ngx_uint_t;
@@ -649,7 +650,7 @@ unsafe extern "C" fn ngx_http_modsecurity_merge_conf(
         }
 
         if let Err(error) = c.rules_set.merge(&mut p.rules_set) {
-            return pool_cstr((*cf).pool, &error);
+            return pool_cstr((*cf).pool, error.message());
         }
 
         #[cfg(feature = "ddebug")]

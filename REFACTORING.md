@@ -406,7 +406,9 @@ The crate exposed nearly every module (`actions`, `operators`, `variables`,
 - the server log callback: `ModSecLogCb`, `ServerLogEntry`, `RuleMessage`
   (with the `*_LOG_PROPERTY` and `*_LOG_MESSAGE_INFO` flags);
 - the `DebugLog` trait, for `RulesSet::with_debug_log`;
-- the version constants, and `ModSecurity::process_content_offset`.
+- the version constants, and `ModSecurity::process_content_offset`;
+- `LoadError`, the error of `RulesSet::load*` and `RulesSet::merge`
+  (a `std::error::Error` holding the parser errors the C API reports).
 
 Everything else is `pub(crate)`: the modules, the fields of the API types
 and their engine-internal methods (rule evaluation, merging a parser

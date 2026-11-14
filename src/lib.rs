@@ -64,7 +64,7 @@ pub use crate::modsecurity::{
     MODSECURITY_VERSION, ModSecLogCb, ModSecurity, RULE_MESSAGE_LOG_PROPERTY, ServerLogEntry, TEXT_LOG_PROPERTY,
 };
 pub use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, ERROR_LOG_TAIL_LOG_MESSAGE_INFO, RuleMessage};
-pub use crate::rules_set::RulesSet;
+pub use crate::rules_set::{LoadError, RulesSet};
 pub use crate::transaction::Transaction;
 
 pub(crate) mod actions;

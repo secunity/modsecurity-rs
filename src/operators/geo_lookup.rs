@@ -105,6 +105,6 @@ mod tests {
         // Alone, it is an error.
         let mut rules = RulesSet::new();
         let err = rules.load(&format!("SecGeoLookupDb {}\n", bad)).unwrap_err();
-        assert!(err.contains(&format!("Failed to load the GeoDB from: {}. Can't open: ", bad)), "{err}");
+        assert!(err.message().contains(&format!("Failed to load the GeoDB from: {}. Can't open: ", bad)), "{err}");
     }
 }

@@ -1,6 +1,6 @@
 //! The libmodsecurity C API for rule sets (`msc_create_rules_set`, ...).
 
-use crate::rules_set::RulesSet;
+use crate::rules_set::{LoadError, RulesSet};
 use std::ffi::{CStr, CString, c_char, c_int};
 
 fn set_error(error: *mut *const c_char, msg: String) {
@@ -14,11 +14,11 @@ fn set_error(error: *mut *const c_char, msg: String) {
 
 /// The C API result of a load or merge: the number of rules, or -1 with
 /// the parser errors handed to the caller through `error`.
-fn c_result(result: Result<usize, String>, error: *mut *const c_char) -> c_int {
+fn c_result(result: Result<usize, LoadError>, error: *mut *const c_char) -> c_int {
     match result {
         Ok(n) => c_int::try_from(n).unwrap_or(c_int::MAX),
         Err(e) => {
-            set_error(error, e);
+            set_error(error, e.message().to_string());
             -1
         }
     }

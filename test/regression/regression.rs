@@ -252,13 +252,14 @@ fn run_one(t: &RegressionTest, resources: &[&str]) -> Outcome {
     rules.load("SecDebugLogLevel 9").expect("valid directive");
     let filename =
         std::path::Path::new(&t.filename).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-    if let Err(s) = rules.load_with_ref(&t.rules, &filename) {
+    if let Err(e) = rules.load_with_ref(&t.rules, &filename) {
+        let s = e.message();
         // Parser error
         if t.parser_error.is_empty() {
             out.reason = format!("{}parse failed.{}\n{}\n", KRED, RESET, s);
             return out;
         }
-        if parser_error_matches(&s, &t.parser_error) {
+        if parser_error_matches(s, &t.parser_error) {
             out.passed = true;
         } else {
             out.reason = format!(

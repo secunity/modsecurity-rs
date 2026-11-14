@@ -9,6 +9,31 @@ use crate::rules_set_properties::RulesSetProperties;
 use crate::transaction::Transaction;
 use crate::utils::https_client::HttpsClient;
 
+/// Rules that could not be loaded or merged.
+///
+/// The message holds every parser error the rule set has collected so far,
+/// as the C API reports them (`msc_rules_add*`): loading more rules after
+/// an error reports the earlier errors again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadError {
+    message: String,
+}
+
+impl LoadError {
+    /// The parser errors.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.message.trim_end())
+    }
+}
+
+impl std::error::Error for LoadError {}
+
 /// A loaded configuration: the rules of every phase plus the configuration
 /// properties (`RulesSet : RulesSetProperties` in C++).
 pub struct RulesSet {
@@ -37,12 +62,12 @@ impl RulesSet {
 
     /// The error of a failed load or merge: all the parser errors collected
     /// so far (as the C API reports them, see [`RulesSet::parser_error`]).
-    fn failed<T>(&self) -> Result<T, String> {
-        Err(self.properties.parser_error.clone())
+    fn failed<T>(&self) -> Result<T, LoadError> {
+        Err(LoadError { message: self.properties.parser_error.clone() })
     }
 
     /// Loads the rules of a file. Returns the number of rules loaded.
-    pub fn load_from_uri(&mut self, uri: &str) -> Result<usize, String> {
+    pub fn load_from_uri(&mut self, uri: &str) -> Result<usize, LoadError> {
         let mut driver = Driver::new();
         if !driver.parse_file(uri) {
             self.properties.parser_error.push_str(&driver.properties.parser_error);
@@ -53,7 +78,7 @@ impl RulesSet {
 
     /// Loads rules from text; `reference` names their origin in messages
     /// (a file name or URL). Returns the number of rules loaded.
-    pub fn load_with_ref(&mut self, rules: &str, reference: &str) -> Result<usize, String> {
+    pub fn load_with_ref(&mut self, rules: &str, reference: &str) -> Result<usize, LoadError> {
         let mut driver = Driver::new();
         if !driver.parse(rules, reference) {
             self.properties.parser_error.push_str(&driver.properties.parser_error);
@@ -68,7 +93,7 @@ impl RulesSet {
 
     /// Downloads rules from `uri`, sending `key` as `SecRemoteRules` does,
     /// and loads them. Returns the number of rules loaded.
-    pub fn load_remote(&mut self, key: &str, uri: &str) -> Result<usize, String> {
+    pub fn load_remote(&mut self, key: &str, uri: &str) -> Result<usize, LoadError> {
         let mut client = HttpsClient::new();
         client.set_key(key);
         if client.download(uri) {
@@ -79,10 +104,11 @@ impl RulesSet {
     }
 
     /// Loads rules from text. Returns the number of rules loaded.
-    pub fn load(&mut self, plain_rules: &str) -> Result<usize, String> {
+    pub fn load(&mut self, plain_rules: &str) -> Result<usize, LoadError> {
         self.load_with_ref(plain_rules, "")
     }
 
+    /// The parser errors collected so far (empty without errors).
     pub fn parser_error(&self) -> String {
         self.properties.parser_error.clone()
     }
@@ -211,13 +237,13 @@ impl RulesSet {
 
     /// Appends the rules parsed by `from` and merges its properties.
     /// Returns the number of rules appended.
-    pub(crate) fn merge_driver(&mut self, from: &mut Driver) -> Result<usize, String> {
+    pub(crate) fn merge_driver(&mut self, from: &mut Driver) -> Result<usize, LoadError> {
         self.merge_parts(&from.rules_set_phases, &mut from.properties)
     }
 
     /// Appends the rules of `from` and merges its properties. Returns the
     /// number of rules appended.
-    pub fn merge(&mut self, from: &mut RulesSet) -> Result<usize, String> {
+    pub fn merge(&mut self, from: &mut RulesSet) -> Result<usize, LoadError> {
         self.merge_parts(&from.rules_set_phases, &mut from.properties)
     }
 
@@ -225,7 +251,11 @@ impl RulesSet {
     /// properties are merged even when the rules could not be (duplicated
     /// id), and a failure to merge them is only recorded in the parser
     /// errors; both as in C++.
-    fn merge_parts(&mut self, phases: &RulesSetPhases, properties: &mut RulesSetProperties) -> Result<usize, String> {
+    fn merge_parts(
+        &mut self,
+        phases: &RulesSetPhases,
+        properties: &mut RulesSetProperties,
+    ) -> Result<usize, LoadError> {
         let appended = self.rules_set_phases.append(phases);
         if let Err(e) = &appended {
             self.properties.parser_error.push_str(e);
@@ -242,7 +272,32 @@ impl RulesSet {
         self.properties.debug_log.write_ctx(level, id, uri, msg);
     }
 
-    pub(crate) fn dump(&self) {
+    pub fn dump(&self) {
         self.rules_set_phases.dump();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_errors() {
+        let mut rules = RulesSet::new();
+        assert_eq!(rules.load("SecRuleEngine On\n"), Ok(0));
+
+        let first = rules.load("SecRuleEngine Maybe\n").unwrap_err();
+        assert!(first.message().starts_with("Rules error. "), "{first}");
+        // Display leaves out the trailing whitespace.
+        assert_eq!(first.to_string(), first.message().trim_end());
+        assert_eq!(rules.parser_error(), first.message());
+
+        // The errors accumulate, as with msc_rules_add.
+        let second = rules.load("SecNoSuchDirective\n").unwrap_err();
+        assert!(second.message().starts_with(first.message()));
+        assert!(second.message().len() > first.message().len());
+
+        let boxed: Box<dyn std::error::Error> = Box::new(second);
+        assert!(!boxed.to_string().is_empty());
     }
 }
