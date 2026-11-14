@@ -1115,6 +1115,11 @@ impl<'a> Transaction<'a> {
         self.request_body.len()
     }
 
+    /// The messages of the rules that matched so far, in order.
+    pub fn rule_messages(&self) -> &[RuleMessage<'a>] {
+        &self.rules_messages
+    }
+
     /// Phase 5: runs the logging rules, then writes the audit log entry
     /// if the transaction is relevant.
     pub fn process_logging(&mut self) {

@@ -1,6 +1,6 @@
 //! The libmodsecurity C API for rule sets (`msc_create_rules_set`, ...).
 
-use crate::rules_set::{LoadError, RulesSet};
+use engine::{LoadError, RulesSet};
 use std::ffi::{CStr, CString, c_char, c_int};
 
 fn set_error(error: *mut *const c_char, msg: String) {
@@ -126,8 +126,7 @@ pub unsafe extern "C" fn msc_rules_cleanup(rules: *mut RulesSet) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules_set::RulesSet;
-    use crate::rules_set_properties::RuleEngine;
+    use engine::RulesSet;
     use std::ffi::{CStr, CString, c_char};
 
     /// `msc_rules_add`: the number of rules, or -1 with the error text.
@@ -169,8 +168,17 @@ mod tests {
         let e = unsafe { CStr::from_ptr(error) }.to_string_lossy().into_owned();
         unsafe { msc_rules_error_cleanup(error) };
         assert!(e.ends_with("Rule id: 1 is duplicated\n"), "{e}");
+        // `b`'s SecRuleEngine On reached `a`: its rules intervene (with the
+        // engine unset they would only detect).
+        assert_eq!(add(a, "SecAction \"id:3,phase:1,deny,status:403\""), (1, None));
+        let ms = engine::ModSecurity::new();
         // SAFETY: `a` is live.
-        assert_eq!(unsafe { &*a }.properties.sec_rule_engine, Some(RuleEngine::Enabled));
+        let mut t = engine::Transaction::new(&ms, unsafe { &*a }, None);
+        t.process_connection("127.0.0.1", 1, "127.0.0.1", 80);
+        t.process_uri(b"/", b"GET", b"1.1");
+        t.process_request_headers();
+        assert_eq!(t.intervention().map(|it| it.status), Some(403));
+        drop(t);
 
         // SAFETY: created above.
         unsafe {

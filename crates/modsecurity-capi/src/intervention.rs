@@ -6,7 +6,7 @@
 use std::ffi::{c_char, c_int};
 use std::ptr;
 
-use crate::intervention::Intervention;
+use engine::Intervention;
 
 /// `ModSecurityIntervention` of the C API.
 #[repr(C)]
@@ -77,7 +77,7 @@ pub(crate) fn strdup(s: &[u8]) -> *mut c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intervention::Intervention;
+    use engine::Intervention;
     use std::ffi::CStr;
 
     #[test]

@@ -768,6 +768,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "modsecurity-capi"
+version = "3.0.17"
+dependencies = [
+ "libc",
+ "modsecurity",
+]
+
+[[package]]
 name = "modsecurity-nginx"
 version = "1.0.4"
 dependencies = [

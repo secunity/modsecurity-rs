@@ -1,0 +1,34 @@
+[package]
+name = "modsecurity-capi"
+version = "3.0.17"
+edition = "2024"
+description = "The libmodsecurity C API (msc_*) over the Rust engine: libmodsecurity.so.3 and libmodsecurity.a"
+license = "Apache-2.0"
+build = "build.rs"
+publish = false
+
+[lib]
+# libmodsecurity.so / libmodsecurity.a, as the C++ build names them.
+name = "modsecurity"
+path = "src/lib.rs"
+crate-type = ["cdylib", "staticlib"]
+
+[features]
+# The engine's features, forwarded (see the engine's Cargo.toml).
+default = ["libxml2", "lua", "maxmind", "lmdb", "ssdeep", "curl"]
+libxml2 = ["engine/libxml2"]
+lua = ["engine/lua"]
+maxmind = ["engine/maxmind"]
+lmdb = ["engine/lmdb"]
+ssdeep = ["engine/ssdeep"]
+curl = ["engine/curl"]
+regex-dollar-endonly = ["engine/regex-dollar-endonly"]
+pm-aho-corasick = ["engine/pm-aho-corasick"]
+ipmatch-prefix-trie = ["engine/ipmatch-prefix-trie"]
+
+[dependencies]
+# The engine, under another name: this crate's library is also called
+# `modsecurity` (for the output file names).
+engine = { package = "modsecurity", path = "../..", default-features = false }
+# malloc/free: the C API hands out strings the caller releases with free().
+libc = "0.2"

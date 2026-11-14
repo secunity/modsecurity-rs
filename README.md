@@ -17,8 +17,9 @@ while retaining the engine's domain boundaries.
 cargo build --release
 ```
 
-This produces `target/release/libmodsecurity.{so,a}` (C API) and the Rust
-library. The shared library's SONAME is `libmodsecurity.so.3`, as for the C++
+This produces `target/release/libmodsecurity.{so,a}` (the C API, built by
+the `modsecurity-capi` crate in `crates/`) and the Rust library (the
+`modsecurity` crate at the root). The shared library's SONAME is `libmodsecurity.so.3`, as for the C++
 library: install it under that name (e.g. `libmodsecurity.so.3` → the built
 file) to replace the C++ library under an existing connector. Optional components are cargo features mirroring the C++ `configure`
 options; all are on by default:

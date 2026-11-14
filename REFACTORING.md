@@ -319,7 +319,7 @@ allow it (where they are declared):
 
 | Module | Boundary |
 |---|---|
-| `capi` | the C API (`msc_*`, `ModSecurityIntervention`) |
+| `capi` | the C API (`msc_*`, `ModSecurityIntervention`); since moved to the `modsecurity-capi` crate |
 | `utils::regex` | PCRE2 |
 | `utils::libxml2` | libxml2 |
 | `utils::system` | libc (`wordexp`, `mkstemp`, `setenv`, time, `strerror`) |
@@ -449,3 +449,24 @@ build:
 
 `examples/axum` (a workspace member outside `default-members`) serves an
 application behind the layer and tests it over real sockets.
+
+## Workspace: engine, native wrappers, C API
+
+The single crate is split along its two boundaries with C (approved by
+the owner):
+
+| Crate | Path | Contents |
+|---|---|---|
+| `modsecurity` | `.` | the engine and its Rust API (rlib) |
+| `modsecurity-capi` | `crates/modsecurity-capi` | the `msc_*` C API: `libmodsecurity.so.3` and `libmodsecurity.a` |
+
+The engine stays at the root, so the test suites, the test data and the
+scripts keep their paths. The C library is built with `cargo build -p
+modsecurity-capi` (part of the default members); its library target is
+still named `modsecurity`, so the files keep their names, and its
+features forward to the engine's. The exported symbols, the SONAME and
+the linked libraries are identical to the single crate's (compared with
+`nm -D` and `readelf -d`). The C API uses only the engine's public API;
+it needed two accessors, `Transaction::rule_messages` and
+`RuleMessage::rule_id` (for `msc_get_rules_messages_*`), and
+`ModSecurity::who_am_i_c` became public.

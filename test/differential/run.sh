@@ -24,7 +24,7 @@ mkdir -p "$root/target"
 work=$(mktemp -d "$root/target/differential.XXXXXX")
 trap '[ -n "${KEEP_WORK:-}" ] || rm -rf "$work"' EXIT
 
-(cd "$root" && cargo build --release --lib ${FEATURES:+--features "$FEATURES"})
+(cd "$root" && cargo build --release -p modsecurity-capi ${FEATURES:+--features "$FEATURES"})
 # The cdylib's SONAME is libmodsecurity.so.3 (as with the C++ build).
 ln -sf libmodsecurity.so "$root/target/release/libmodsecurity.so.3"
 gcc -O1 -I"$CPP_TREE/headers" -o "$work/harness_cpp" "$here/harness.c" \

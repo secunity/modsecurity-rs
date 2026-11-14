@@ -142,8 +142,9 @@ impl ModSecurity {
         self.who_am_i_c().to_str().unwrap_or_default()
     }
 
-    /// [`who_am_i`](Self::who_am_i) as a C string.
-    pub(crate) fn who_am_i_c(&self) -> &CStr {
+    /// [`who_am_i`](Self::who_am_i) as a C string (`msc_who_am_i`), which
+    /// lives as long as the instance.
+    pub fn who_am_i_c(&self) -> &CStr {
         self.whoami.get_or_init(|| {
             let platform = if cfg!(target_os = "aix") {
                 "AIX"

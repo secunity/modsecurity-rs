@@ -1,10 +1,10 @@
 //! The libmodsecurity C API for transactions (`msc_new_transaction`, ...).
 
-use crate::capi::intervention::{self, ModSecurityIntervention};
-use crate::capi::modsecurity::CLogData;
-use crate::modsecurity::ModSecurity;
-use crate::rules_set::RulesSet;
-use crate::transaction::Transaction;
+use crate::intervention::{self, ModSecurityIntervention};
+use crate::modsecurity::CLogData;
+use engine::ModSecurity;
+use engine::RulesSet;
+use engine::Transaction;
 use std::ffi::{CStr, c_char, c_int, c_uchar, c_void};
 
 /// The C API hands out transactions without a lifetime; the connector
@@ -306,7 +306,7 @@ pub unsafe extern "C" fn msc_set_request_hostname(t: *mut CTransaction, hostname
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_get_rules_messages_size(t: *const CTransaction) -> usize {
     // SAFETY: live transaction per contract.
-    unsafe { t.as_ref() }.map(|t| t.rules_messages.len()).unwrap_or(0)
+    unsafe { t.as_ref() }.map(|t| t.rule_messages().len()).unwrap_or(0)
 }
 
 /// # Safety
@@ -325,12 +325,12 @@ pub unsafe extern "C" fn msc_get_rules_messages_rule_ids(
         return 0;
     }
     let mut written = 0;
-    for m in &t.rules_messages {
+    for m in t.rule_messages() {
         if written >= ids_len {
             break;
         }
         // SAFETY: written < ids_len, within the caller's buffer.
-        unsafe { *ids.add(written) = m.rule.rule_id };
+        unsafe { *ids.add(written) = m.rule_id() };
         written += 1;
     }
     written

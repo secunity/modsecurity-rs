@@ -1,12 +1,12 @@
 [workspace]
 resolver = "3"
-members = [".", "others/libinjection", "connectors/nginx", "examples/axum"]
+members = [".", "others/libinjection", "crates/modsecurity-capi", "connectors/nginx", "examples/axum"]
 # connectors/nginx needs an nginx source/build tree (NGINX_SOURCE_DIR,
 # NGINX_BUILD_DIR) to build, so plain `cargo build`/`cargo test` skip it;
 # build it with `cargo build --release -p modsecurity-nginx`. The axum
 # example is skipped too (it pulls in axum and tokio): `cargo test -p
 # modsecurity-axum-example`.
-default-members = [".", "others/libinjection"]
+default-members = [".", "others/libinjection", "crates/modsecurity-capi"]
 
 [workspace.package]
 version = "0.2.0"
@@ -23,9 +23,8 @@ build = "build.rs"
 [lib]
 name = "modsecurity"
 path = "src/lib.rs"
-# rlib for Rust embedders, cdylib/staticlib to keep the libmodsecurity C API
-# (msc_* functions) available to existing connectors.
-crate-type = ["rlib", "cdylib", "staticlib"]
+# The C library (libmodsecurity.so.3, the msc_* API) is built by
+# crates/modsecurity-capi.
 
 [[bin]]
 name = "regression_tests"

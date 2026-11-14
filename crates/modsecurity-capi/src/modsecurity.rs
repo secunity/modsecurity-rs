@@ -1,6 +1,6 @@
 //! The libmodsecurity C API for the engine instance.
 
-use crate::modsecurity::{ModSecurity, ServerLogEntry};
+use engine::{ModSecurity, ServerLogEntry};
 use std::ffi::{CStr, CString, c_char, c_void};
 
 /// `ModSecLogCb` of the C API.

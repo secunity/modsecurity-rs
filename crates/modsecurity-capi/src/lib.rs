@@ -3,7 +3,8 @@
 //! `transaction.h`.
 //!
 //! This is where Rust meets C callers: raw pointers are checked and turned
-//! into references here, and the rest of the crate is safe Rust.
+//! into references here, and the engine (the `modsecurity` crate) is used
+//! through its Rust API.
 
 pub mod intervention;
 pub mod modsecurity;

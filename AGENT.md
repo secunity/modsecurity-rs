@@ -42,7 +42,7 @@ Benchmark every change that can affect performance: the request-processing path 
 2. **Compare against the parent commit, interleaved.** Wall-clock numbers drift by about ±5% between runs on the same build, so build both libraries and alternate them in the same session (at least five rounds), then compare best and median per scenario. A single before/after pair is not evidence. The library scenarios are `upstream`, `corpus_pl1` and `corpus_pl4` (`test/benchmark/run_library.sh` builds the release library and runs them; `summarize.py library` prints the results).
 3. **nginx benchmark** for connector changes and before merging performance work: `test/benchmark/run_nginx.sh` with the modules to compare, then `summarize.py nginx`.
 4. **Judge the result.** Compare throughput, p50/p99 latency, rule load time and RSS. Differences under about 3% are noise. A regression beyond that in any scenario must be fixed, or justified in the commit message.
-5. **Profiling:** `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only cargo build --release --lib`, then `perf record` on `target/benchmark/bench_rs`; `valgrind --tool=dhat` for allocations. Keep artifacts under `target/`.
+5. **Profiling:** `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only cargo build --release -p modsecurity-capi`, then `perf record` on `target/benchmark/bench_rs`; `valgrind --tool=dhat` for allocations. Keep artifacts under `target/`.
 6. **Record the numbers** (before → after, per scenario) in the commit message. Rebuild the default release afterwards if the benchmark used non-default features.
 
 ## Workflow

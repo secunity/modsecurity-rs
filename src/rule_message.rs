@@ -168,6 +168,11 @@ impl<'r> RuleMessage<'r> {
         msg
     }
 
+    /// The `id` of the rule (0 for rules without one).
+    pub fn rule_id(&self) -> i64 {
+        self.rule.rule_id
+    }
+
     /// The SecLang phase number (1..5) of the rule.
     pub fn phase_number(&self) -> i32 {
         // C++ `m_phase - 1`, with -1 as the phase of an unknown name.

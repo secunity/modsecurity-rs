@@ -21,7 +21,7 @@ CPU=${CPU:-3}
 work="$root/target/benchmark"
 mkdir -p "$work"
 
-(cd "$root" && cargo build --release --lib ${FEATURES:+--features "$FEATURES"})
+(cd "$root" && cargo build --release -p modsecurity-capi ${FEATURES:+--features "$FEATURES"})
 ln -sf libmodsecurity.so "$root/target/release/libmodsecurity.so.3"
 gcc -O2 -I"$CPP_TREE/headers" -o "$work/bench_cpp" "$here/bench_capi.c" \
     -L"$CPP_TREE/src/.libs" -lmodsecurity -Wl,-rpath,"$CPP_TREE/src/.libs"

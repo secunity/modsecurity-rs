@@ -5,7 +5,7 @@
 //! engine instance, the [`RulesSet`] loaded from SecLang configuration,
 //! and a [`Transaction`] per HTTP exchange, which the connector feeds phase
 //! by phase and asks for an [`Intervention`]. The same engine is offered to
-//! C as libmodsecurity's `msc_*` API ([`capi`]).
+//! C as libmodsecurity's `msc_*` API by the `modsecurity-capi` crate.
 //!
 //! ```no_run
 //! use modsecurity::{ModSecurity, RulesSet, Transaction};
@@ -25,9 +25,8 @@
 //! }
 //! ```
 
-// `unsafe` is only allowed where Rust meets C: the C API (`capi`) and the
-// modules wrapping native libraries (marked `#[allow(unsafe_code)]` where
-// they are declared).
+// `unsafe` is only allowed in the modules wrapping native libraries (marked
+// `#[allow(unsafe_code)]` where they are declared).
 #![deny(unsafe_code)]
 
 /// Writes to the debug log of a transaction: the message is only formatted
@@ -72,9 +71,6 @@ pub(crate) mod anchored_set_variable;
 pub(crate) mod anchored_set_variable_translation_proxy;
 pub(crate) mod anchored_variable;
 pub(crate) mod audit_log;
-// The C API (`msc_*`).
-#[allow(unsafe_code)]
-pub mod capi;
 pub(crate) mod collection;
 pub(crate) mod debug_log;
 pub(crate) mod engine;
