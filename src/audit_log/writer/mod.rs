@@ -49,12 +49,12 @@ impl Writer {
         }
     }
 
-    /// The C++ destructor: releases the shared files, looked up through the
-    /// owner's current configuration.
-    pub fn close(self, audit: &AuditLog) {
+    /// The C++ destructor: releases the shared files `init` opened (the
+    /// owner's `path1` and `path2` at that time).
+    pub fn close(self, path1: &str, path2: &str) {
         match self {
-            Writer::Serial => serial::close(audit),
-            Writer::Parallel => parallel::close(audit),
+            Writer::Serial => serial::close(path1),
+            Writer::Parallel => parallel::close(path1, path2),
             Writer::Https => {}
         }
     }

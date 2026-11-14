@@ -136,7 +136,7 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
     Ok(())
 }
 
-pub(super) fn close(audit: &AuditLog) {
-    SharedFiles::instance().close(&audit.path1);
-    SharedFiles::instance().close(&audit.path2);
+pub(super) fn close(path1: &str, path2: &str) {
+    SharedFiles::instance().close(path1);
+    SharedFiles::instance().close(path2);
 }

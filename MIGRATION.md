@@ -153,6 +153,12 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   parser context and file descriptor. The scanner's process-global state that
   leaks between separate parses after a failed `SecRuleUpdateTarget*` is not
   reproduced.
+- **An audit log keeps its file after a merge that changes it**: when a
+  later configuration merged into a rule set changed `SecAuditLog` (or
+  `SecAuditLog2`), C++ released the new file with the previous writer (its
+  destructor read the paths after the merge): the new log was closed, so
+  nothing was audited, and the old file stayed open. Each writer now
+  releases the files it opened.
 - **libxml2 documents left in a parser context are freed**: C++ leaked the
   document libxml2 builds for the entities of an internal DTD while parsing
   XML into ARGS (`SecParseXmlIntoArgs`), and the document of a request whose

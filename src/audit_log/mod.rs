@@ -74,8 +74,9 @@ pub struct AuditLog {
     relevant: Option<RelevantStatus>,
 
     /// The C++ writer keeps a back pointer (`m_audit`) to its `AuditLog`;
-    /// here the owner passes itself to every writer call instead.
-    writer: Option<Writer>,
+    /// here the owner passes itself to every writer call instead. With the
+    /// writer, the `path1` and `path2` it opened.
+    writer: Option<(Writer, String, String)>,
     /// Rules have at least one `ctl:auditEngine` action On or RelevantOnly.
     ctl_audit_engine_active: bool,
 }
@@ -240,12 +241,10 @@ impl AuditLog {
         self.audit_type = Some(audit_type);
     }
 
-    /// The C++ `delete m_writer`: the writer releases its files through the
-    /// *current* configuration, as the C++ destructors read
-    /// `m_audit->m_path1/2` at that moment.
+    /// `delete m_writer`: the writer releases the files it opened.
     fn discard_writer(&mut self) {
-        if let Some(w) = self.writer.take() {
-            w.close(self);
+        if let Some((w, path1, path2)) = self.writer.take() {
+            w.close(&path1, &path2);
         }
     }
 
@@ -261,15 +260,14 @@ impl AuditLog {
 
         if let Err(e) = tmp_writer.init(self) {
             // `delete tmp_writer`: its destructor releases what it opened.
-            tmp_writer.close(self);
+            tmp_writer.close(&self.path1, &self.path2);
             return Err(e);
         }
 
-        // Quirk (C++): the previous writer is deleted after the
-        // configuration was merged, so its destructor closes the paths of
-        // the new configuration.
+        // The new writer opens its files before the previous one releases
+        // its own, so a file both use stays open.
         self.discard_writer();
-        self.writer = Some(tmp_writer);
+        self.writer = Some((tmp_writer, self.path1.clone(), self.path2.clone()));
         Ok(())
     }
 
@@ -312,7 +310,7 @@ impl AuditLog {
             None => {
                 crate::ms_dbg_a!(t, 1, "Internal error, audit log writer is null");
             }
-            Some(w) => {
+            Some((w, _, _)) => {
                 if let Err(error) = w.write(self, t, parts) {
                     crate::ms_dbg_a!(t, 1, "Cannot save the audit log: {}", error);
                     return false;
@@ -724,6 +722,27 @@ mod tests {
         a.set_storage_dir("/nonexistent-dir/x");
         let e = a.init().unwrap_err();
         assert!(e.starts_with("Not able to create directory: /nonexistent-dir/x: "), "{}", e);
+    }
+
+    /// Re-initialising with another `SecAuditLog` (a later configuration
+    /// merged into the rule set) keeps the new file open and releases the
+    /// old one. (C++ released the new configuration's files with the old
+    /// writer: the new log was closed and the old one stayed open.)
+    #[test]
+    fn reinit_with_another_file() {
+        let d = temp_dir("reinit");
+        let (first, second) = (p(&d, "first.log"), p(&d, "second.log"));
+        let mut a = AuditLog::new();
+        a.set_status(AuditLogStatus::On);
+        a.set_file_path1(&first);
+        a.init().unwrap();
+        a.set_file_path1(&second);
+        a.init().unwrap();
+        let files = crate::utils::shared_files::SharedFiles::instance();
+        assert!(files.write(&second, b"x").is_ok());
+        assert!(files.write(&first, b"x").is_err());
+        drop(a);
+        assert!(files.write(&second, b"x").is_err());
     }
 
     #[test]

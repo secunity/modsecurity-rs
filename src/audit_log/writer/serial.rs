@@ -24,6 +24,6 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
     SharedFiles::instance().write(&audit.path1, &msg)
 }
 
-pub(super) fn close(audit: &AuditLog) {
-    SharedFiles::instance().close(&audit.path1);
+pub(super) fn close(path1: &str) {
+    SharedFiles::instance().close(path1);
 }
