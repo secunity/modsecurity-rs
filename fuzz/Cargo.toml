@@ -1,0 +1,41 @@
+[package]
+name = "modsecurity-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace: built with `cargo +nightly fuzz` only.
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# Structured inputs for the transaction target.
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.modsecurity]
+path = ".."
+
+[[bin]]
+name = "seclang"
+path = "fuzz_targets/seclang.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "transaction"
+path = "fuzz_targets/transaction.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "body"
+path = "fuzz_targets/body.rs"
+test = false
+doc = false
+bench = false
