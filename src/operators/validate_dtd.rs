@@ -27,20 +27,6 @@ impl ValidateDTD {
     }
 }
 
-/// `XmlDtdPtrManager`: frees the DTD when going out of scope.
-#[cfg(feature = "libxml2")]
-struct XmlDtdPtrManager(*mut crate::request_body_processor::xml::ffi::xmlDtd);
-
-#[cfg(feature = "libxml2")]
-impl Drop for XmlDtdPtrManager {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            // SAFETY: the DTD was returned by xmlParseDTD and is freed once.
-            unsafe { crate::request_body_processor::xml::ffi::xmlFreeDtd(self.0) };
-        }
-    }
-}
-
 impl Operator for ValidateDTD {
     fn name(&self) -> &'static str {
         "ValidateDTD"
@@ -82,29 +68,22 @@ impl Operator for ValidateDTD {
         _input: &[u8],
         _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        use crate::operators::validate_schema::callbacks;
-        use crate::request_body_processor::xml::ffi;
-        use std::ffi::c_void;
+        use crate::operators::validate_schema::message;
+        use crate::utils::libxml2::Dtd;
 
-        let resource = ffi::c_string(self.resource.as_bytes());
-        // SAFETY: the system id is NUL terminated; the result is owned by
-        // the manager.
-        let dtd = XmlDtdPtrManager(unsafe { ffi::xmlParseDTD(std::ptr::null(), resource.as_ptr().cast::<u8>()) });
+        let dtd = Dtd::load(&self.resource);
 
         // (The C++ code needed a transaction: it dereferenced it.)
         let t: &Transaction<'_> = t;
 
-        if dtd.0.is_null() {
+        let Some(dtd) = dtd else {
             crate::ms_dbg_a!(t, 4, "XML: Failed to load DTD: {}", self.resource);
             return true;
-        }
+        };
 
-        let (doc, well_formed) = match t.xml.as_ref() {
-            Some(x) if x.has_doc() => (x.doc(), x.well_formed()),
-            _ => {
-                crate::ms_dbg_a!(t, 4, "XML document tree could not be found for DTD validation.");
-                return true;
-            }
+        let Some((doc, well_formed)) = t.xml.as_ref().and_then(|x| Some((x.document()?, x.well_formed()))) else {
+            crate::ms_dbg_a!(t, 4, "XML document tree could not be found for DTD validation.");
+            return true;
         };
 
         if well_formed != 1 {
@@ -112,33 +91,17 @@ impl Operator for ValidateDTD {
             return true;
         }
 
-        // SAFETY: plain constructor; the context starts zeroed (no error
-        // callbacks).
-        let cvp = unsafe { ffi::xmlNewValidCtxt() };
-        if cvp.is_null() {
+        // Validator errors/warnings go to the debug log.
+        let Some(valid) = doc.validate_dtd(&dtd, &mut |m| {
+            if let Some(msg) = message(m) {
+                crate::ms_dbg_a!(t, 4, "{}", msg);
+            }
+        }) else {
             crate::ms_dbg_a!(t, 4, "XML: Failed to create a validation context.");
             return true;
-        }
-
-        // Send validator errors/warnings to msr_log. The C++ code installed
-        // (variadic) callbacks in the validation context; with none there,
-        // libxml2 reports the same messages to the thread's structured error
-        // handler, which is pointed at the transaction for the duration of
-        // the validation and then restored.
-        // SAFETY: cvp is live and freed once; doc and the DTD are live; the
-        // handler context is the transaction, alive for the whole
-        // validation; the previous handler is restored before returning.
-        let valid = unsafe {
-            let prev_handler = *ffi::__xmlStructuredError();
-            let prev_ctx = *ffi::__xmlStructuredErrorContext();
-            ffi::xmlSetStructuredErrorFunc(t as *const Transaction<'_> as *mut c_void, Some(callbacks::log_msg));
-            let valid = ffi::xmlValidateDtd(cvp, doc, dtd.0);
-            ffi::xmlSetStructuredErrorFunc(prev_ctx, prev_handler);
-            ffi::xmlFreeValidCtxt(cvp);
-            valid
         };
 
-        if valid == 0 {
+        if !valid {
             crate::ms_dbg_a!(t, 4, "XML: DTD validation failed.");
             return true;
         }

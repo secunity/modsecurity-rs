@@ -1,376 +1,26 @@
-//! Port of `src/request_body_processor/xml.cc`, `src/request_body_processor/xml.h`.
-//!
-//! The XML request body processor, built on libxml2 (feature `libxml2`, the
-//! C++ `WITH_LIBXML2`). The body is parsed with libxml2's push parser into a
-//! document tree, which the `XML` variable (XPath) and the `@validateDTD` /
+//! The XML request body processor (feature `libxml2`, the C++
+//! `WITH_LIBXML2`). The body is parsed with libxml2's push parser into a
+//! document, which the `XML` variable (XPath) and the `@validateDTD` /
 //! `@validateSchema` operators work on. With `SecParseXmlIntoArgs` set to
 //! `On` or `OnlyArgs` a second, SAX based, parser turns the leaf elements of
 //! the document into `ARGS` named after their path (`xml.root.child`).
 //!
-//! libxml2 is bound through the minimal hand written FFI in [`ffi`]; all the
-//! `unsafe` code of the XML support (here, in `variables::xml` and in the
-//! validation operators) goes through it.
+//! libxml2 itself is behind the safe API of `utils::libxml2`.
 
 /// `xmlInitParser()`, done once by the `ModSecurity` constructor.
 pub fn init_parser() {
     #[cfg(feature = "libxml2")]
-    // SAFETY: xmlInitParser takes no arguments and may be called any number
-    // of times (and from any thread).
-    unsafe {
-        ffi::xmlInitParser();
-    }
+    crate::utils::libxml2::init_parser();
 }
 
 #[cfg(feature = "libxml2")]
 pub use with_libxml2::Xml;
 
-/// The subset of the libxml2 C API used by ModSecurity.
-///
-/// Only the leading members of the libxml2 structures whose fields are read
-/// directly are declared; those members have kept their position since
-/// libxml2 2.0 (the structures are only ever accessed through pointers
-/// handed out by libxml2).
-#[cfg(feature = "libxml2")]
-#[allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
-pub(crate) mod ffi {
-    use std::ffi::{c_char, c_int, c_uint, c_void};
-
-    /// `xmlDoc` (opaque).
-    #[repr(C)]
-    pub struct xmlDoc {
-        _private: [u8; 0],
-    }
-
-    /// `xmlValidCtxt` (opaque).
-    #[repr(C)]
-    pub struct xmlValidCtxt {
-        _private: [u8; 0],
-    }
-
-    /// `xmlDtd` (opaque).
-    #[repr(C)]
-    pub struct xmlDtd {
-        _private: [u8; 0],
-    }
-
-    /// `xmlNode` (opaque).
-    #[repr(C)]
-    pub struct xmlNode {
-        _private: [u8; 0],
-    }
-
-    /// `xmlParserInputBuffer` (opaque).
-    #[repr(C)]
-    pub struct xmlParserInputBuffer {
-        _private: [u8; 0],
-    }
-
-    /// `xmlXPathContext` (opaque).
-    #[repr(C)]
-    pub struct xmlXPathContext {
-        _private: [u8; 0],
-    }
-
-    /// `xmlSchemaParserCtxt` (opaque).
-    #[repr(C)]
-    pub struct xmlSchemaParserCtxt {
-        _private: [u8; 0],
-    }
-
-    /// `xmlSchema` (opaque).
-    #[repr(C)]
-    pub struct xmlSchema {
-        _private: [u8; 0],
-    }
-
-    /// `xmlSchemaValidCtxt` (opaque).
-    #[repr(C)]
-    pub struct xmlSchemaValidCtxt {
-        _private: [u8; 0],
-    }
-
-    /// The leading members of `struct _xmlParserCtxt`.
-    #[repr(C)]
-    pub struct xmlParserCtxt {
-        pub sax: *mut xmlSAXHandler,
-        pub userData: *mut c_void,
-        /// the document being built
-        pub myDoc: *mut xmlDoc,
-        /// is the document well formed?
-        pub wellFormed: c_int,
-    }
-
-    /// The leading members of `struct _xmlNodeSet`.
-    #[repr(C)]
-    pub struct xmlNodeSet {
-        pub nodeNr: c_int,
-        pub nodeMax: c_int,
-        pub nodeTab: *mut *mut xmlNode,
-    }
-
-    /// The leading members of `struct _xmlXPathObject`.
-    #[repr(C)]
-    pub struct xmlXPathObject {
-        pub type_: c_int,
-        pub nodesetval: *mut xmlNodeSet,
-    }
-
-    /// The leading members of `struct _xmlError`.
-    #[repr(C)]
-    pub struct xmlError {
-        pub domain: c_int,
-        pub code: c_int,
-        pub message: *mut c_char,
-        pub level: c_int,
-    }
-
-    /// `XML_ERR_WARNING` (`xmlErrorLevel`)
-    pub const XML_ERR_WARNING: c_int = 1;
-
-    /// `XML_FROM_SCHEMASP` / `XML_FROM_SCHEMASV` (`xmlErrorDomain`)
-    pub const XML_FROM_SCHEMASP: c_int = 16;
-    pub const XML_FROM_SCHEMASV: c_int = 17;
-
-    pub const XML_PARSE_NOERROR: c_int = 1 << 5;
-    pub const XML_PARSE_NOWARNING: c_int = 1 << 6;
-
-    pub const XML_SAX2_MAGIC: c_uint = 0xDEED_BEAF;
-
-    pub type charactersSAXFunc = unsafe extern "C" fn(ctx: *mut c_void, ch: *const u8, len: c_int);
-    pub type startElementNsSAX2Func = unsafe extern "C" fn(
-        ctx: *mut c_void,
-        localname: *const u8,
-        prefix: *const u8,
-        URI: *const u8,
-        nb_namespaces: c_int,
-        namespaces: *mut *const u8,
-        nb_attributes: c_int,
-        nb_defaulted: c_int,
-        attributes: *mut *const u8,
-    );
-    pub type endElementNsSAX2Func =
-        unsafe extern "C" fn(ctx: *mut c_void, localname: *const u8, prefix: *const u8, URI: *const u8);
-    pub type xmlStructuredErrorFunc = unsafe extern "C" fn(userData: *mut c_void, error: *const xmlError);
-    pub type xmlParserInputBufferCreateFilenameFunc =
-        unsafe extern "C" fn(URI: *const c_char, enc: c_int) -> *mut xmlParserInputBuffer;
-    pub type xmlFreeFunc = unsafe extern "C" fn(mem: *mut c_void);
-
-    /// `struct _xmlSAXHandler` (complete: libxml2 reads all of it).
-    #[repr(C)]
-    #[derive(Debug)]
-    pub struct xmlSAXHandler {
-        /// `internalSubset` .. `reference`, unused.
-        pub sax1_head: [*const c_void; 17],
-        pub characters: Option<charactersSAXFunc>,
-        /// `ignorableWhitespace` .. `externalSubset`, unused.
-        pub sax1_tail: [*const c_void; 9],
-        pub initialized: c_uint,
-        pub _private: *mut c_void,
-        pub startElementNs: Option<startElementNsSAX2Func>,
-        pub endElementNs: Option<endElementNsSAX2Func>,
-        pub serror: Option<xmlStructuredErrorFunc>,
-    }
-
-    impl xmlSAXHandler {
-        /// A handler with every callback unset (the C++ `memset(.., 0, ..)`).
-        pub fn zeroed() -> Self {
-            xmlSAXHandler {
-                sax1_head: [std::ptr::null(); 17],
-                characters: None,
-                sax1_tail: [std::ptr::null(); 9],
-                initialized: 0,
-                _private: std::ptr::null_mut(),
-                startElementNs: None,
-                endElementNs: None,
-                serror: None,
-            }
-        }
-    }
-
-    #[link(name = "xml2")]
-    unsafe extern "C" {
-        pub static xmlFree: Option<xmlFreeFunc>;
-
-        pub fn xmlInitParser();
-
-        // Push parser
-        pub fn xmlCreatePushParserCtxt(
-            sax: *mut xmlSAXHandler,
-            user_data: *mut c_void,
-            chunk: *const c_char,
-            size: c_int,
-            filename: *const c_char,
-        ) -> *mut xmlParserCtxt;
-        pub fn xmlParseChunk(ctxt: *mut xmlParserCtxt, chunk: *const c_char, size: c_int, terminate: c_int) -> c_int;
-        pub fn xmlStopParser(ctxt: *mut xmlParserCtxt);
-        pub fn xmlFreeParserCtxt(ctxt: *mut xmlParserCtxt);
-        pub fn xmlCtxtGetOptions(ctxt: *mut xmlParserCtxt) -> c_int;
-        pub fn xmlCtxtSetOptions(ctxt: *mut xmlParserCtxt, options: c_int) -> c_int;
-        pub fn xmlFreeDoc(doc: *mut xmlDoc);
-
-        // External entities
-        pub fn xmlParserInputBufferCreateFilenameDefault(
-            func: Option<xmlParserInputBufferCreateFilenameFunc>,
-        ) -> Option<xmlParserInputBufferCreateFilenameFunc>;
-        pub fn __xmlParserInputBufferCreateFilename(URI: *const c_char, enc: c_int) -> *mut xmlParserInputBuffer;
-
-        // Tree / XPath
-        pub fn xmlNodeGetContent(node: *const xmlNode) -> *mut u8;
-        pub fn xmlXPathNewContext(doc: *mut xmlDoc) -> *mut xmlXPathContext;
-        pub fn xmlXPathFreeContext(ctxt: *mut xmlXPathContext);
-        pub fn xmlXPathRegisterNs(ctxt: *mut xmlXPathContext, prefix: *const u8, ns_uri: *const u8) -> c_int;
-        pub fn xmlXPathEvalExpression(str: *const u8, ctxt: *mut xmlXPathContext) -> *mut xmlXPathObject;
-        pub fn xmlXPathFreeObject(obj: *mut xmlXPathObject);
-
-        // DTD validation
-        pub fn xmlParseDTD(ExternalID: *const u8, SystemID: *const u8) -> *mut xmlDtd;
-        pub fn xmlFreeDtd(dtd: *mut xmlDtd);
-        pub fn xmlNewValidCtxt() -> *mut xmlValidCtxt;
-        pub fn xmlFreeValidCtxt(ctxt: *mut xmlValidCtxt);
-        pub fn xmlValidateDtd(ctxt: *mut xmlValidCtxt, doc: *mut xmlDoc, dtd: *mut xmlDtd) -> c_int;
-
-        // Error reporting (the structured handler is thread local)
-        pub fn xmlSetStructuredErrorFunc(ctx: *mut c_void, handler: Option<xmlStructuredErrorFunc>);
-        pub fn __xmlStructuredError() -> *mut Option<xmlStructuredErrorFunc>;
-        pub fn __xmlStructuredErrorContext() -> *mut *mut c_void;
-
-        // Schema validation
-        pub fn xmlSchemaNewParserCtxt(URL: *const c_char) -> *mut xmlSchemaParserCtxt;
-        pub fn xmlSchemaSetParserStructuredErrors(
-            ctxt: *mut xmlSchemaParserCtxt,
-            serror: Option<xmlStructuredErrorFunc>,
-            ctx: *mut c_void,
-        );
-        pub fn xmlSchemaParse(ctxt: *mut xmlSchemaParserCtxt) -> *mut xmlSchema;
-        pub fn xmlSchemaFreeParserCtxt(ctxt: *mut xmlSchemaParserCtxt);
-        pub fn xmlSchemaFree(schema: *mut xmlSchema);
-        pub fn xmlSchemaNewValidCtxt(schema: *mut xmlSchema) -> *mut xmlSchemaValidCtxt;
-        pub fn xmlSchemaFreeValidCtxt(ctxt: *mut xmlSchemaValidCtxt);
-        pub fn xmlSchemaSetValidStructuredErrors(
-            ctxt: *mut xmlSchemaValidCtxt,
-            serror: Option<xmlStructuredErrorFunc>,
-            ctx: *mut c_void,
-        );
-        pub fn xmlSchemaValidateDoc(ctxt: *mut xmlSchemaValidCtxt, doc: *mut xmlDoc) -> c_int;
-    }
-
-    /// Frees memory handed out by libxml2 (`xmlFree`).
-    ///
-    /// # Safety
-    /// `p` must be null or memory allocated by libxml2 and not freed yet.
-    pub unsafe fn xml_free(p: *mut c_void) {
-        // SAFETY: xmlFree is initialised by libxml2 before any allocation it
-        // hands out; the caller guarantees `p` is such an allocation.
-        unsafe {
-            if let Some(f) = xmlFree {
-                f(p);
-            }
-        }
-    }
-
-    /// The bytes of a NUL terminated libxml2 string.
-    ///
-    /// # Safety
-    /// `p` must be null or point to a NUL terminated string that outlives
-    /// the returned slice.
-    pub unsafe fn c_bytes<'s>(p: *const u8) -> &'s [u8] {
-        if p.is_null() {
-            return &[];
-        }
-        // SAFETY: guaranteed by the caller.
-        unsafe { std::ffi::CStr::from_ptr(p as *const c_char).to_bytes() }
-    }
-
-    /// `s.c_str()`: a NUL terminated copy of `s`, cut at its first NUL byte
-    /// (as the C string view of a `std::string` would be).
-    pub fn c_string(s: &[u8]) -> std::ffi::CString {
-        let end = s.iter().position(|&c| c == 0).unwrap_or(s.len());
-        std::ffi::CString::new(&s[..end]).expect("no NUL byte")
-    }
-}
-
 #[cfg(feature = "libxml2")]
 mod with_libxml2 {
-    use std::ffi::{c_char, c_int, c_void};
-    use std::ptr::{self, NonNull};
-
-    use super::ffi;
     use crate::rules_set_properties::{ParseXmlIntoArgs, config_xml_parse_xml_into_args_string};
     use crate::transaction::Transaction;
-
-    /// An owned libxml2 parser context, freed on drop.
-    #[derive(Debug)]
-    struct ParserCtxt(NonNull<ffi::xmlParserCtxt>);
-
-    impl ParserCtxt {
-        /// Takes ownership of a context returned by
-        /// `xmlCreatePushParserCtxt` (`None` if it failed).
-        fn from_raw(p: *mut ffi::xmlParserCtxt) -> Option<Self> {
-            NonNull::new(p).map(ParserCtxt)
-        }
-
-        fn as_ptr(&self) -> *mut ffi::xmlParserCtxt {
-            self.0.as_ptr()
-        }
-
-        fn well_formed(&self) -> c_int {
-            // SAFETY: the context is live while `self` exists.
-            unsafe { (*self.as_ptr()).wellFormed }
-        }
-
-        /// `xmlParseChunk` (`terminate` signals the end of the input).
-        fn parse_chunk(&self, buf: &[u8], terminate: bool) -> c_int {
-            let (chunk, size) = if terminate { (ptr::null(), 0) } else { (buf.as_ptr().cast(), c_len(buf)) };
-            // SAFETY: the context is live; chunk/size describe `buf` (or are
-            // null/0 for the final call).
-            unsafe { ffi::xmlParseChunk(self.as_ptr(), chunk, size, c_int::from(terminate)) }
-        }
-
-        /// Takes the document the context built (`myDoc`), if any; the
-        /// context no longer refers to it.
-        fn take_doc(&self) -> Option<XmlDoc> {
-            // SAFETY: the context is live; `myDoc` is null or a document the
-            // context built, which nothing else frees: it becomes owned by
-            // the returned `XmlDoc` once the context forgets it.
-            unsafe {
-                let doc = NonNull::new((*self.as_ptr()).myDoc).map(XmlDoc);
-                (*self.as_ptr()).myDoc = ptr::null_mut();
-                doc
-            }
-        }
-
-        /// Disables parser errors being printed to stderr.
-        fn quiet(&self) {
-            // SAFETY: the context is live.
-            unsafe {
-                let options = ffi::xmlCtxtGetOptions(self.as_ptr());
-                ffi::xmlCtxtSetOptions(self.as_ptr(), options | ffi::XML_PARSE_NOWARNING | ffi::XML_PARSE_NOERROR);
-            }
-        }
-    }
-
-    impl Drop for ParserCtxt {
-        fn drop(&mut self) {
-            // A document left in the context (not taken by `take_doc`): one
-            // the parse was abandoned in, or the one libxml2 builds for the
-            // entities of a DTD while parsing into ARGS.
-            drop(self.take_doc());
-            // SAFETY: the context is owned by `self` and freed only here.
-            // `xmlFreeParserCtxt` does not free `myDoc`.
-            unsafe { ffi::xmlFreeParserCtxt(self.as_ptr()) }
-        }
-    }
-
-    /// An owned libxml2 document, freed on drop.
-    #[derive(Debug)]
-    struct XmlDoc(NonNull<ffi::xmlDoc>);
-
-    impl Drop for XmlDoc {
-        fn drop(&mut self) {
-            // SAFETY: the document is owned by `self` and freed only here.
-            unsafe { ffi::xmlFreeDoc(self.0.as_ptr()) }
-        }
-    }
+    use crate::utils::libxml2::{self, Document, PushParser, SaxHandler, SaxParser};
 
     /// `NodeData` for parsing XML into args.
     #[derive(Debug, Default)]
@@ -459,147 +109,52 @@ mod with_libxml2 {
         }
     }
 
-    /// What the SAX callbacks receive as libxml2's `userData`: the parser
-    /// state and the transaction the arguments go to, borrowed for the
-    /// duration of a single libxml2 call ([`SaxCall::run`]).
-    struct SaxCall<'a, 't> {
+    /// The SAX handler of the parser into ARGS: the parser state and the
+    /// transaction the arguments go to.
+    struct ArgsHandler<'a, 't> {
         nodes: &'a mut XmlNodes,
         t: &'a mut Transaction<'t>,
-        /// The context running the callbacks (to stop it).
-        ctxt: *mut ffi::xmlParserCtxt,
     }
 
-    impl SaxCall<'_, '_> {
-        /// Runs `f` (a libxml2 call on `ctxt`) with `self` installed as the
-        /// context's `userData`, and uninstalls it afterwards, so the
-        /// callbacks never see a dangling pointer.
-        fn run<R>(&mut self, ctxt: *mut ffi::xmlParserCtxt, f: impl FnOnce() -> R) -> R {
-            self.ctxt = ctxt;
-            // SAFETY: `ctxt` is a live parser context; `self` outlives the
-            // call to `f`, after which `userData` is cleared again.
-            unsafe { (*ctxt).userData = (self as *mut Self).cast() };
-            let r = f();
-            // SAFETY: as above.
-            unsafe { (*ctxt).userData = ptr::null_mut() };
-            r
+    impl SaxHandler for ArgsHandler<'_, '_> {
+        /// `MSC_startElement`
+        fn start_element(&mut self, name: &[u8]) {
+            self.nodes.on_start_element(name);
         }
 
-        /// The `SaxCall` installed by [`SaxCall::run`], if any.
-        ///
-        /// # Safety
-        /// `user_data` must be the `userData` libxml2 passes to a SAX
-        /// callback of a context only used through [`SaxCall::run`].
-        unsafe fn from_user_data<'c>(user_data: *mut c_void) -> Option<&'c mut Self> {
-            // SAFETY: per the contract, `user_data` is null or points to the
-            // `SaxCall` borrowed by the running `SaxCall::run`.
-            unsafe { user_data.cast::<Self>().as_mut() }
+        /// `MSC_endElement`
+        fn end_element(&mut self, name: &[u8]) -> bool {
+            self.nodes.on_end_element(self.t, name)
+        }
+
+        /// `MSC_xmlcharacters`
+        fn characters(&mut self, text: &[u8]) {
+            self.nodes.on_characters(text);
         }
     }
 
-    /// `MSC_startElement`
-    unsafe extern "C" fn msc_start_element(
-        user_data: *mut c_void,
-        name: *const u8,
-        _prefix: *const u8,
-        _uri: *const u8,
-        _nb_namespaces: c_int,
-        _namespaces: *mut *const u8,
-        _nb_attributes: c_int,
-        _nb_defaulted: c_int,
-        _attributes: *mut *const u8,
-    ) {
-        // SAFETY: called by libxml2 on the ARGS context (see
-        // `SaxCall::from_user_data`); name is a NUL terminated string owned
-        // by libxml2.
-        unsafe {
-            if let Some(call) = SaxCall::from_user_data(user_data) {
-                call.nodes.on_start_element(ffi::c_bytes(name));
-            }
-        }
-    }
-
-    /// `MSC_endElement`
-    unsafe extern "C" fn msc_end_element(user_data: *mut c_void, name: *const u8, _prefix: *const u8, _uri: *const u8) {
-        // SAFETY: as in `msc_start_element`.
-        unsafe {
-            if let Some(call) = SaxCall::from_user_data(user_data)
-                && !call.nodes.on_end_element(call.t, ffi::c_bytes(name))
-            {
-                ffi::xmlStopParser(call.ctxt);
-            }
-        }
-    }
-
-    /// `MSC_xmlcharacters`
-    unsafe extern "C" fn msc_xmlcharacters(user_data: *mut c_void, ch: *const u8, len: c_int) {
-        // SAFETY: as in `msc_start_element`; libxml2 passes `len` valid
-        // bytes at `ch`.
-        unsafe {
-            if let Some(call) = SaxCall::from_user_data(user_data) {
-                let content =
-                    if ch.is_null() || len <= 0 { &[][..] } else { std::slice::from_raw_parts(ch, len as usize) };
-                call.nodes.on_characters(content);
-            }
-        }
-    }
-
-    /// `XML::unloadExternalEntity`: the external entity loader used when
-    /// `SecXMLExternalEntity` is off; loads nothing.
-    unsafe extern "C" fn unload_external_entity(_uri: *const c_char, _enc: c_int) -> *mut ffi::xmlParserInputBuffer {
-        ptr::null_mut()
-    }
-
-    /// The parser contexts of the libxml2 calls are given the body with a
-    /// C `int` size.
-    fn c_len(buf: &[u8]) -> c_int {
-        c_int::try_from(buf.len()).unwrap_or(c_int::MAX)
-    }
-
-    /// `XML` (with its `xml_data` member): owns the libxml2 parsing contexts
-    /// and the resulting document.
-    ///
-    /// Fields drop in declaration order: the parser contexts go before the
-    /// SAX handler they reference.
-    #[derive(Debug)]
+    /// `XML` (with its `xml_data` member): the parsers and the resulting
+    /// document.
+    #[derive(Debug, Default)]
     pub struct Xml {
-        parsing_ctx: Option<ParserCtxt>,
-        /// additional parser context for arguments
-        parsing_ctx_arg: Option<ParserCtxt>,
-        doc: Option<XmlDoc>,
-        sax_handler: Option<Box<ffi::xmlSAXHandler>>,
+        parsing_ctx: Option<PushParser>,
+        /// additional parser for arguments
+        parsing_ctx_arg: Option<SaxParser>,
+        doc: Option<Document>,
         /// parser state for SAX parser
         xml_parser_state: Option<XmlNodes>,
 
         well_formed: u32,
     }
 
-    // SAFETY: the libxml2 objects referenced by an `Xml` are owned by it
-    // alone and are only used through `&mut self` (or, for the document,
-    // through `&self` by the code evaluating the transaction that owns the
-    // `Xml`); libxml2 objects are not tied to the thread that created them.
-    unsafe impl Send for Xml {}
-
-    impl Default for Xml {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
     impl Xml {
         pub fn new() -> Self {
-            Xml {
-                parsing_ctx: None,
-                parsing_ctx_arg: None,
-                doc: None,
-                sax_handler: None,
-                xml_parser_state: None,
-                well_formed: 0,
-            }
+            Self::default()
         }
 
-        /// The parsed document (`m_data.doc`), null when there is none.
-        pub(crate) fn doc(&self) -> *mut ffi::xmlDoc {
-            self.doc.as_ref().map_or(ptr::null_mut(), |d| d.0.as_ptr())
+        /// The parsed document (`m_data.doc`).
+        pub(crate) fn document(&self) -> Option<&Document> {
+            self.doc.as_ref()
         }
 
         /// `m_data.well_formed`
@@ -622,17 +177,7 @@ mod with_libxml2 {
 
         /// `init`
         pub fn init(&mut self, t: &mut Transaction<'_>) -> bool {
-            let loader: ffi::xmlParserInputBufferCreateFilenameFunc =
-                if t.rules.properties.sec_xml_external_entity == Some(true) {
-                    ffi::__xmlParserInputBufferCreateFilename
-                } else {
-                    unload_external_entity
-                };
-            // SAFETY: sets libxml2's (thread local) external entity loader
-            // to a function with the expected signature.
-            unsafe {
-                ffi::xmlParserInputBufferCreateFilenameDefault(Some(loader));
-            }
+            libxml2::allow_external_entities(t.rules.properties.sec_xml_external_entity == Some(true));
 
             if Self::parse_into_args(t) {
                 crate::ms_dbg_a!(
@@ -641,13 +186,6 @@ mod with_libxml2 {
                     "XML: SecParseXmlIntoArgs is set to {}",
                     config_xml_parse_xml_into_args_string(t.sec_xml_parse_xml_into_args)
                 );
-                let mut sax = Box::new(ffi::xmlSAXHandler::zeroed());
-                sax.initialized = ffi::XML_SAX2_MAGIC;
-                sax.startElementNs = Some(msc_start_element);
-                sax.endElementNs = Some(msc_end_element);
-                sax.characters = Some(msc_xmlcharacters);
-                self.sax_handler = Some(sax);
-
                 // set the parser state struct
                 self.xml_parser_state = Some(XmlNodes::new());
             }
@@ -655,17 +193,25 @@ mod with_libxml2 {
             true
         }
 
-        /// Runs `f` with the SAX callbacks given access to the parser state
-        /// and `t` (a no-op context when there is no parser state).
-        fn with_sax<R>(
+        /// Runs `f` with the SAX handler for the parser state and `t`.
+        fn with_handler<R>(
             nodes: &mut Option<XmlNodes>,
             t: &mut Transaction<'_>,
-            ctxt: *mut ffi::xmlParserCtxt,
-            f: impl FnOnce() -> R,
+            f: impl FnOnce(&mut dyn SaxHandler) -> R,
         ) -> R {
+            /// The handler without a parser state (not reached: the parser
+            /// into ARGS only exists with one).
+            struct Ignore;
+            impl SaxHandler for Ignore {
+                fn start_element(&mut self, _: &[u8]) {}
+                fn end_element(&mut self, _: &[u8]) -> bool {
+                    true
+                }
+                fn characters(&mut self, _: &[u8]) {}
+            }
             match nodes {
-                Some(nodes) => SaxCall { nodes, t, ctxt }.run(ctxt, f),
-                None => f(),
+                Some(nodes) => f(&mut ArgsHandler { nodes, t }),
+                None => f(&mut Ignore),
             }
         }
 
@@ -683,66 +229,39 @@ mod with_libxml2 {
                 // document object, but we need it.
 
                 if !Self::only_args(t) {
-                    // SAFETY: chunk/size describe `buf`; the filename is a
-                    // NUL terminated literal.
-                    let ctxt = unsafe {
-                        ffi::xmlCreatePushParserCtxt(
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                            buf.as_ptr().cast(),
-                            c_len(buf),
-                            c"body.xml".as_ptr(),
-                        )
-                    };
-                    let Some(ctxt) = ParserCtxt::from_raw(ctxt) else {
+                    let Some(parser) = PushParser::new(buf) else {
                         crate::ms_dbg_a!(t, 4, "XML: Failed to create parsing context.");
                         return Err("XML: Failed to create parsing context.".to_string());
                     };
-                    // disable parser errors being printed to stderr
-                    ctxt.quiet();
-                    self.parsing_ctx = Some(ctxt);
+                    self.parsing_ctx = Some(parser);
                 }
 
                 if Self::parse_into_args(t) {
-                    let sax: *mut ffi::xmlSAXHandler =
-                        self.sax_handler.as_deref_mut().map_or(ptr::null_mut(), |s| s as *mut _);
-                    // SAFETY: the SAX handler is boxed and owned by `self`,
-                    // which drops the context before it; chunk/size describe
-                    // `buf`. `userData` is installed by `with_sax` around the
-                    // libxml2 calls that run the callbacks.
-                    let ctxt = unsafe {
-                        ffi::xmlCreatePushParserCtxt(sax, ptr::null_mut(), buf.as_ptr().cast(), c_len(buf), ptr::null())
-                    };
-                    let Some(ctxt) = ParserCtxt::from_raw(ctxt) else {
+                    let Some(parser) = SaxParser::new(buf) else {
                         return Err("XML: Failed to create parsing context for ARGS.".to_string());
                     };
-                    // SAFETY: the context is live; no callback runs outside
-                    // `with_sax`, which installs its own `userData`.
-                    unsafe { (*ctxt.as_ptr()).userData = ptr::null_mut() };
-                    // disable parser errors being printed to stderr
-                    ctxt.quiet();
-                    self.parsing_ctx_arg = Some(ctxt);
+                    self.parsing_ctx_arg = Some(parser);
                 }
 
                 return Ok(());
             }
 
             // Not a first invocation.
-            if let Some(ctxt) = &self.parsing_ctx
+            if let Some(parser) = &self.parsing_ctx
                 && !Self::only_args(t)
             {
-                ctxt.parse_chunk(buf, false);
-                if ctxt.well_formed() != 1 {
+                parser.parse_chunk(buf);
+                if parser.well_formed() != 1 {
                     crate::ms_dbg_a!(t, 4, "XML: Failed to parse document.");
                     return Err("XML: Failed to parse document.".to_string());
                 }
             }
 
-            if let Some(ctxt) = &self.parsing_ctx_arg
+            if let Some(parser) = &self.parsing_ctx_arg
                 && Self::parse_into_args(t)
             {
-                Self::with_sax(&mut self.xml_parser_state, t, ctxt.as_ptr(), || ctxt.parse_chunk(buf, false));
-                if ctxt.well_formed() != 1 {
+                Self::with_handler(&mut self.xml_parser_state, t, |h| parser.parse_chunk(buf, h));
+                if parser.well_formed() != 1 {
                     crate::ms_dbg_a!(t, 4, "XML: Failed to parse document for ARGS.");
                     return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
@@ -759,18 +278,13 @@ mod with_libxml2 {
             }
             if self.parsing_ctx.is_some()
                 && !Self::only_args(t)
-                && let Some(ctxt) = self.parsing_ctx.take()
+                && let Some(parser) = self.parsing_ctx.take()
             {
-                // This is how we signal the end of parsing to libxml.
-                ctxt.parse_chunk(&[], true);
-
-                // Preserve the results for our reference; the document is
-                // owned by `self` from now on.
-                self.well_formed = ctxt.well_formed() as u32;
-                self.doc = ctxt.take_doc();
-
-                // Clean up everything else.
-                drop(ctxt);
+                // This is how we signal the end of parsing to libxml; the
+                // document is owned by `self` from now on.
+                let (well_formed, doc) = parser.finish();
+                self.well_formed = well_formed as u32;
+                self.doc = doc;
                 crate::ms_dbg_a!(t, 4, "XML: Parsing complete (well_formed {}).", self.well_formed);
 
                 if self.well_formed != 1 {
@@ -780,11 +294,10 @@ mod with_libxml2 {
             }
             if self.parsing_ctx_arg.is_some()
                 && Self::parse_into_args(t)
-                && let Some(ctxt) = self.parsing_ctx_arg.take()
+                && let Some(parser) = self.parsing_ctx_arg.take()
             {
                 // This is how we signal the end of parsing to libxml.
-                let rc = Self::with_sax(&mut self.xml_parser_state, t, ctxt.as_ptr(), || ctxt.parse_chunk(&[], true));
-                drop(ctxt);
+                let rc = Self::with_handler(&mut self.xml_parser_state, t, |h| parser.finish(h));
                 if rc != 0 {
                     return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
@@ -1025,4 +538,16 @@ mod tests {
         assert!(validate(&dtd, &mut t));
         assert!(log(&rules).iter().any(|m| m.starts_with("XML: Failed to load DTD: ")));
     }
+}
+
+/// A transaction (and so its XML parsers and document) can move to another
+/// thread, as before libxml2 was put behind `utils::libxml2`.
+#[cfg(test)]
+#[test]
+fn transaction_is_send() {
+    fn send<T: Send>() {}
+    send::<crate::transaction::Transaction<'static>>();
+    fn shared<T: Send + Sync>() {}
+    shared::<crate::modsecurity::ModSecurity>();
+    shared::<crate::rules_set::RulesSet>();
 }

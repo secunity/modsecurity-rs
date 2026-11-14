@@ -7,6 +7,8 @@ pub mod geo_lookup;
 pub mod https_client;
 pub mod ip_tree;
 pub mod json;
+#[cfg(feature = "libxml2")]
+pub mod libxml2;
 pub mod md5;
 pub mod msc_tree;
 pub mod random;
