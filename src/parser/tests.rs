@@ -331,3 +331,16 @@ fn line_numbers() {
     .join("\n");
     assert_eq!(rule_lines(&rules), vec![(1, 1), (2, 4), (3, 6), (4, 14), (5, 20), (6, 11)]);
 }
+
+/// A rule without actions may be followed by a directive or a comment on
+/// the next line (C++: "Expecting an action"); actions on the next line
+/// are still its actions.
+#[test]
+fn directive_after_rule_without_actions() {
+    let chain = "SecRule ARGS \"@rx a\" \"id:1,phase:2,pass,chain\"\n    SecRule ARGS \"@rx b\"\n";
+    assert_eq!(rule_lines(&format!("{chain}SecAction \"id:2,phase:2,pass\"\n")), vec![(1, 1), (2, 3)]);
+    assert_eq!(rule_lines(&format!("{chain}# a comment\nSecAction \"id:2,phase:2,pass\"\n")), vec![(1, 1), (2, 4)]);
+    assert_eq!(rule_lines(&format!("{chain}Include /dev/null\n")), vec![(1, 1)]);
+    assert_eq!(rule_lines("SecRule ARGS \"@rx a\"\n    \"id:1,phase:2,pass\"\n"), vec![(1, 1)]);
+    assert_eq!(rule_lines("SecRule ARGS \"@rx a\"\nid:1\n"), vec![(1, 1)]);
+}

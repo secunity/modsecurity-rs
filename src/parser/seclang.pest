@@ -65,13 +65,13 @@ directive = _{
 // ---------------------------------------------------------------------------
 
 sec_rule           = { ^"SecRule" ~ &(gap) ~ gap ~ variables ~ gap ~ operator ~ rule_end }
-// After a rule without actions on its line, the next line holds its
-// actions, or is blank (the C++ scanner reads the next line as actions).
+// After a rule without actions on its line, the next line may hold its
+// actions (as in C++), unless it is a directive or a comment.
 rule_end           = _{
     gap ~ actions
   | &"\"" ~ actions
-  | ws* ~ "\r"? ~ "\n" ~ ws* ~ actions
-  | &(ws* ~ (EOI | "\r"? ~ "\n" ~ ws* ~ ("\r"? ~ "\n" | EOI)))
+  | ws* ~ "\r"? ~ "\n" ~ ws* ~ !("#" | ^"Sec" | ^"Include") ~ actions
+  | &(ws* ~ ("\r"? ~ "\n" | EOI))
 }
 sec_rule_script    = { ^"SecRuleScript" ~ gap ~ value ~ (gap ~ actions)? }
 sec_action         = { ^"SecAction" ~ gap ~ actions }

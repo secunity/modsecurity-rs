@@ -281,7 +281,7 @@ Compatibility:
   a `%` right after a macro is dropped; the escaped quote of PR 3753 keeps
   its backslash; an action list may miss its closing quote at the end of a
   line; a directive on the line right after a rule without actions is an
-  error; a whole collection followed by a plain regular expression
+  error (fixed since); a whole collection followed by a plain regular expression
   (`SecRule TX "foo"`) is an error; an unknown `@operator` is a regular
   expression; `phase:'request'` builds an `allow` action.
 - Syntax error messages and their line/column differ (approved: not part of

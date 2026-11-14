@@ -207,6 +207,11 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   blank lines after a commented out `SecRule ... \`, so the rules after
   those were reported too early (CRS: from 1 to 13 lines). The differential
   test compares line numbers out.
+- **A directive or a comment right after a rule without actions** starts a
+  new statement. The C++ scanner read the line after such a rule as its
+  actions, so `SecRule ...` / `#...` there was a syntax error ("Expecting an
+  action"); a blank line was needed. Actions on that line are still the
+  rule's actions, as in C++.
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, LMDB
