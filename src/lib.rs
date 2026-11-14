@@ -53,10 +53,12 @@ macro_rules! ms_dbg_opt {
 extern crate alloc;
 
 pub mod actions;
+// The C API (`msc_*`).
 pub(crate) mod anchored_set_variable;
 pub(crate) mod anchored_set_variable_translation_proxy;
 pub(crate) mod anchored_variable;
 pub(crate) mod audit_log;
+pub mod capi;
 pub mod collection;
 pub mod debug_log;
 pub(crate) mod engine;
