@@ -273,11 +273,7 @@ end
         /// A Lua state with all the standard libraries (`luaL_newstate` +
         /// `luaL_openlibs`).
         fn new_state() -> mlua::Lua {
-            // SAFETY: `unsafe_new` loads every standard library, including
-            // `debug` (as `luaL_openlibs` does), and allows loading binary
-            // chunks. The scripts are part of the trusted configuration and
-            // the only binary chunk loaded is the one `load` produced.
-            unsafe { mlua::Lua::unsafe_new() }
+            modsecurity_native::lua::new_state()
         }
 
         /// Compiles `script` (`luaL_loadfile`) and keeps its bytecode

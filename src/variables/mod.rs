@@ -672,15 +672,12 @@ mod tests {
     }
 
     #[test]
-    #[allow(unsafe_code)] // std::env::set_var
     fn env_variable() {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
         let mut t = Transaction::new(&ms, &rules, None);
         t.variable_envs.insert(b"modfoo".to_vec(), b"bar".to_vec());
-        // SAFETY: the tests of this module do not read this variable
-        // concurrently.
-        unsafe { std::env::set_var("MSRS_TEST_ENV", "regression tests") };
+        crate::utils::system::set_env(b"MSRS_TEST_ENV", b"regression tests");
 
         assert_eq!(eval(&var("ENV", sel_key("modfoo")), &t, None), vec![("ENV:modfoo".into(), "bar".into())]);
         assert!(eval(&var("ENV", sel_key("MODFOO")), &t, None).is_empty());

@@ -454,12 +454,11 @@ dependencies = [
  "jiff",
  "libc",
  "libinjection",
- "lmdb-master-sys",
  "maxminddb",
  "md-5",
  "mlua",
+ "modsecurity-native",
  "nix",
- "pcre2-sys",
  "pest",
  "pest_derive",
  "rand 0.9.5",
@@ -474,6 +473,16 @@ dependencies = [
  "arbitrary",
  "libfuzzer-sys",
  "modsecurity",
+]
+
+[[package]]
+name = "modsecurity-native"
+version = "3.0.17"
+dependencies = [
+ "libc",
+ "lmdb-master-sys",
+ "mlua",
+ "pcre2-sys",
 ]
 
 [[package]]

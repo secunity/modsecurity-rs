@@ -330,6 +330,8 @@ allow it (where they are declared):
 | `operators::fuzzy_hash` | ssdeep |
 
 (plus three tests that compare with C functions).
+These modules have since become the `modsecurity-capi` and
+`modsecurity-native` crates (see "Workspace" below).
 
 Steps:
 - The C API moved from `c_api` submodules of `transaction.rs`,
@@ -457,7 +459,8 @@ the owner):
 
 | Crate | Path | Contents |
 |---|---|---|
-| `modsecurity` | `.` | the engine and its Rust API (rlib) |
+| `modsecurity` | `.` | the engine and its Rust API (rlib); `#![forbid(unsafe_code)]` |
+| `modsecurity-native` | `crates/modsecurity-native` | the C libraries behind safe APIs: PCRE2, libxml2, LMDB, ssdeep, Lua, libc calls |
 | `modsecurity-capi` | `crates/modsecurity-capi` | the `msc_*` C API: `libmodsecurity.so.3` and `libmodsecurity.a` |
 
 The engine stays at the root, so the test suites, the test data and the
@@ -470,3 +473,29 @@ the linked libraries are identical to the single crate's (compared with
 it needed two accessors, `Transaction::rule_messages` and
 `RuleMessage::rule_id` (for `msc_get_rules_messages_*`), and
 `ModSecurity::who_am_i_c` became public.
+
+`modsecurity-native` holds all the engine's `unsafe` code, so the engine
+crate forbids it (`forbid`, which no module can lift):
+
+- moved as they were: the PCRE2 wrapper (`regex`) and the libxml2 one
+  (`libxml2`); the engine re-exports them as `utils::regex` and
+  `utils::libxml2`;
+- `posix`: `setenv`, `mkstemp`, `wordexp` and `gai_strerror`, taken out
+  of `utils::system` and the GeoIP lookup;
+- `lmdb`: the shared environment, transactions (`get`/`put`/`del`/
+  `commit`, aborted on drop) and cursors, with borrows that tie returned
+  values to their transaction; the collection backend uses them;
+- `ssdeep` (`hash`, `compare`) and `lua::new_state` (the one `unsafe`
+  `mlua` constructor);
+- `testing` (a feature, enabled by the engine's dev-dependency): the C
+  functions tests compare with (`inet_pton`, `snprintf`, `strftime`,
+  `strerror`).
+
+The native crate links libxml2 and libfuzzy (its build script); the
+engine's features enable its features. The C library's symbols, SONAME
+and NEEDED entries are again identical. The library benchmark,
+interleaved against the parent commit (5 rounds, and 10 for `upstream`),
+shows no difference beyond noise (best throughput `upstream` 4182 → 4175
+tx/s, `corpus_pl1` 3613 → 3569, `corpus_pl4` 2252 → 2249; medians
++3.3%, +2.7%, +1.1%), so the PCRE2 calls crossing a crate boundary cost
+nothing measurable.

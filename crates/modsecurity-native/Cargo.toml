@@ -1,0 +1,25 @@
+[package]
+name = "modsecurity-native"
+version = "3.0.17"
+edition = "2024"
+description = "Safe wrappers of the C libraries the ModSecurity engine uses (PCRE2, libxml2, LMDB, ssdeep, Lua, libc)"
+license = "Apache-2.0"
+build = "build.rs"
+publish = false
+
+[features]
+# Enabled by the engine's features of the same names.
+libxml2 = []
+lua = ["dep:mlua"]
+lmdb = ["dep:lmdb-master-sys"]
+ssdeep = []
+# The C functions the engine's tests compare with (`testing` module).
+testing = []
+
+[dependencies]
+# PCRE2 is used through its C API (as the C++ code does) so that match
+# limits, JIT fallback and error codes behave identically.
+pcre2-sys = "0.2.10"
+libc = "0.2"
+mlua = { version = "0.12", features = ["lua54", "vendored"], optional = true }
+lmdb-master-sys = { version = "0.2", optional = true }

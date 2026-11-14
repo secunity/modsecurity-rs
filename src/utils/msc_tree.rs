@@ -805,24 +805,9 @@ pub fn is_netmask_v6(ip_strv6: &[u8]) -> u8 {
 
 // The tests compare with the C library (`inet_pton`).
 #[cfg(test)]
-#[allow(unsafe_code)]
 mod tests {
     use super::*;
-
-    // `inet_pton` is part of the C library but not exposed by `libc`.
-    unsafe extern "C" {
-        fn inet_pton(af: libc::c_int, src: *const libc::c_char, dst: *mut libc::c_void) -> libc::c_int;
-    }
-
-    /// The C library's verdict and address, the reference for `parse_v4` /
-    /// `parse_v6` (the C++ code calls `inet_pton`).
-    fn c_inet_pton(af: i32, src: &[u8]) -> Option<Vec<u8>> {
-        let c = std::ffi::CString::new(src).ok()?;
-        let mut dst = [0u8; 16];
-        // SAFETY: `c` is NUL terminated and `dst` has room for either family.
-        let ok = unsafe { inet_pton(af, c.as_ptr(), dst.as_mut_ptr().cast()) > 0 };
-        ok.then(|| dst[..if af == libc::AF_INET { 4 } else { 16 }].to_vec())
-    }
+    use modsecurity_native::testing::c_inet_pton;
 
     /// The std parsers accept exactly what `inet_pton` accepts, on valid
     /// addresses and on mutations of them.

@@ -85,19 +85,13 @@ fn parse_numeric_host(target: &[u8]) -> Result<std::net::IpAddr, String> {
         socktype: SockType::Stream.into(),
         protocol: 0,
     };
-    let mut entries = getaddrinfo(Some(host), None, Some(hints)).map_err(|e| gai_message(e.error_num()))?;
+    let mut entries = getaddrinfo(Some(host), None, Some(hints))
+        .map_err(|e| modsecurity_native::posix::gai_strerror(e.error_num()))?;
     match entries.next() {
         Some(Ok(info)) => Ok(info.sockaddr.ip()),
         // libmaxminddb rejects other families as an invalid lookup.
         _ => Err("ai_family not supported".to_string()),
     }
-}
-
-/// The text of a `getaddrinfo` error code (`gai_strerror(code)`).
-#[cfg(feature = "maxmind")]
-fn gai_message(code: i32) -> String {
-    // SAFETY: gai_strerror returns a static NUL terminated string.
-    unsafe { std::ffi::CStr::from_ptr(libc::gai_strerror(code)) }.to_string_lossy().into_owned()
 }
 
 #[cfg(feature = "maxmind")]

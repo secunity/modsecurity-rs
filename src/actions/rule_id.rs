@@ -102,7 +102,6 @@ mod tests {
 
     /// `format_g` is `snprintf("%.Ng")` (compared on random doubles).
     #[test]
-    #[allow(unsafe_code)]
     fn format_matches_snprintf() {
         use rand::{Rng, SeedableRng};
         let mut rng = rand::rngs::StdRng::seed_from_u64(1);
@@ -133,13 +132,7 @@ mod tests {
         }
         for d in values.into_iter().filter(|d| !d.is_nan()) {
             for p in [1usize, 2, 6, 17, 40] {
-                let mut buf = [0 as std::ffi::c_char; 512];
-                let fmt = std::ffi::CString::new(format!("%.{p}g")).unwrap();
-                // SAFETY: the buffer bounds the output; the format takes one double.
-                let c = unsafe {
-                    libc::snprintf(buf.as_mut_ptr(), buf.len(), fmt.as_ptr(), d);
-                    std::ffi::CStr::from_ptr(buf.as_ptr()).to_string_lossy().into_owned()
-                };
+                let c = modsecurity_native::testing::snprintf_g(d, p);
                 assert_eq!(format_g(d, p), c, "{d:e} at precision {p}");
             }
         }

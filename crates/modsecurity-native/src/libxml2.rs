@@ -1,10 +1,10 @@
 //! libxml2: the C library under the XML support (feature `libxml2`).
 //!
-//! The FFI declarations ([`ffi`], private) and a safe API over them: the
-//! parsers of the XML request body processor ([`PushParser`], building a
-//! [`Document`], and [`SaxParser`], reporting elements to a [`SaxHandler`]),
-//! and what the rules do with a document (XPath, DTD and schema
-//! validation). All the `unsafe` code of the XML support is here.
+//! The FFI declarations (the private `ffi` module) and a safe API over
+//! them: the parsers of the XML request body processor ([`PushParser`],
+//! building a [`Document`], and [`SaxParser`], reporting elements to a
+//! [`SaxHandler`]), and what the rules do with a document (XPath, DTD and
+//! schema validation). All the `unsafe` code of the XML support is here.
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::ptr::{self, NonNull};

@@ -25,9 +25,8 @@
 //! }
 //! ```
 
-// `unsafe` is only allowed in the modules wrapping native libraries (marked
-// `#[allow(unsafe_code)]` where they are declared).
-#![deny(unsafe_code)]
+// The calls into C libraries are in the `modsecurity-native` crate.
+#![forbid(unsafe_code)]
 
 /// Writes to the debug log of a transaction: the message is only formatted
 /// when the configured debug level is high enough.

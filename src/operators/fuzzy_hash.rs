@@ -12,22 +12,6 @@ use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 
-#[cfg(feature = "ssdeep")]
-mod ffi {
-    use std::ffi::c_char;
-
-    /// The length of an ssdeep signature (`SPAMSUM_LENGTH` in fuzzy.h).
-    pub const SPAMSUM_LENGTH: usize = 64;
-    /// The size of a `fuzzy_hash_buf` result buffer (`FUZZY_MAX_RESULT`).
-    pub const FUZZY_MAX_RESULT: usize = 2 * SPAMSUM_LENGTH + 20;
-
-    // libfuzzy (fuzzy.h)
-    unsafe extern "C" {
-        pub fn fuzzy_hash_buf(buf: *const u8, buf_len: u32, result: *mut c_char) -> i32;
-        pub fn fuzzy_compare(sig1: *const c_char, sig2: *const c_char) -> i32;
-    }
-}
-
 #[derive(Debug)]
 pub struct FuzzyHash {
     param: Param,
@@ -110,21 +94,13 @@ impl Operator for FuzzyHash {
         input: &[u8],
         _rm: &mut RuleMessage<'_>,
     ) -> bool {
-        let mut result = [0 as std::ffi::c_char; ffi::FUZZY_MAX_RESULT];
-
-        // SAFETY: `input` is readable for its length (libfuzzy takes a
-        // 32 bit length, as the C++ call does) and `result` has room for
-        // FUZZY_MAX_RESULT bytes as fuzzy_hash_buf requires.
-        let rc = unsafe { ffi::fuzzy_hash_buf(input.as_ptr(), input.len() as u32, result.as_mut_ptr()) };
-        if rc != 0 {
+        let Some(result) = modsecurity_native::ssdeep::hash(input) else {
             crate::ms_dbg_a!(t, 4, "Problems generating fuzzy hash");
             return false;
-        }
+        };
 
         for chunk in &self.chunks {
-            // SAFETY: both arguments are NUL terminated strings
-            // (fuzzy_hash_buf NUL terminates its result).
-            let i = unsafe { ffi::fuzzy_compare(chunk.as_ptr(), result.as_ptr()) };
+            let i = modsecurity_native::ssdeep::compare(chunk, &result);
             if i >= self.threshold {
                 crate::ms_dbg_a!(t, 4, "Fuzzy hash: matched with score: {}.", i);
                 return true;

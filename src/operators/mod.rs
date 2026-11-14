@@ -7,8 +7,6 @@ pub mod detect_sqli;
 pub mod detect_xss;
 pub mod ends_with;
 pub mod eq;
-// ssdeep.
-#[allow(unsafe_code)]
 pub mod fuzzy_hash;
 pub mod ge;
 pub mod geo_lookup;

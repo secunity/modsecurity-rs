@@ -5,19 +5,14 @@
 //! `./modsec-shared-collections` (relative to the working directory).
 //! Values are stored as `CollectionData::serialize` (value + expiry).
 //!
-//! All the `unsafe` code of the backend (the LMDB C API) lives in this
-//! file. Transactions and cursors release their handles on drop;
-//! the environment and database handle live for the
-//! whole process (`MdbEnvProvider`).
+//! The LMDB calls go through `modsecurity_native::lmdb`; the environment
+//! and its database live for the whole process.
 #![cfg(feature = "lmdb")]
 
 use std::ffi::CStr;
-use std::os::raw::{c_int, c_uint};
-use std::ptr;
-use std::sync::OnceLock;
+use std::os::raw::c_int;
 
-use lmdb_master_sys as ffi;
-use lmdb_master_sys::{MDB_dbi, MDB_env, MDB_txn, MDB_val};
+use modsecurity_native::lmdb::{self, Code, Environment, Txn};
 
 use crate::collection::Collection;
 use crate::collection::backend::collection_data::CollectionData;
@@ -32,166 +27,8 @@ const LMDB_STDOUT_COUT: bool = false;
 /// The location of the shared collections file.
 const SHARED_COLLECTIONS_PATH: &CStr = c"./modsec-shared-collections";
 
-/// The LMDB environment and its single (unnamed) database, opened on first
-/// use and shared by every collection of the process. It stays a process
-/// singleton (as in C++) because LMDB requires it: an environment must
-/// not be opened twice in one process, and the path is fixed.
-struct MdbEnvProvider {
-    env: *mut MDB_env,
-    dbi: MDB_dbi,
-    valid: bool,
-}
-
-// SAFETY: an LMDB environment handle may be used concurrently by several
-// threads (each with its own transactions), and the dbi is a plain integer
-// handle valid for the life of the environment; neither is modified after
-// construction.
-unsafe impl Send for MdbEnvProvider {}
-// SAFETY: see above.
-unsafe impl Sync for MdbEnvProvider {}
-
-static ENV_PROVIDER: OnceLock<MdbEnvProvider> = OnceLock::new();
-
-impl MdbEnvProvider {
-    /// The process-wide provider, opened on first use.
-    fn instance() -> &'static MdbEnvProvider {
-        ENV_PROVIDER.get_or_init(|| MdbEnvProvider::open(SHARED_COLLECTIONS_PATH))
-    }
-
-    /// Opens the environment at `path` and its database; the provider is
-    /// invalid when the environment cannot be opened.
-    fn open(path: &CStr) -> MdbEnvProvider {
-        let mut env: *mut MDB_env = ptr::null_mut();
-        let mut dbi: MDB_dbi = 0;
-        let mut valid = false;
-
-        // SAFETY: `env` is a valid out pointer.
-        if unsafe { ffi::mdb_env_create(&mut env) } != 0 {
-            return MdbEnvProvider { env: ptr::null_mut(), dbi, valid };
-        }
-        // SAFETY: `env` was just created and `path` is NUL terminated.
-        let rc = unsafe { ffi::mdb_env_open(env, path.as_ptr(), ffi::MDB_NOSUBDIR, 0o664) };
-
-        if rc == 0 {
-            valid = true;
-            let mut txn: *mut MDB_txn = ptr::null_mut();
-            // SAFETY: `env` is open; `txn` and `dbi` are valid out pointers.
-            // The txn is committed (which frees it) right away.
-            unsafe {
-                if ffi::mdb_txn_begin(env, ptr::null_mut(), 0, &mut txn) == 0 {
-                    ffi::mdb_dbi_open(txn, ptr::null(), ffi::MDB_CREATE | ffi::MDB_DUPSORT, &mut dbi);
-                    ffi::mdb_txn_commit(txn);
-                }
-            }
-        } else {
-            // A failed open must be discarded with mdb_env_close.
-            // SAFETY: `env` was created above and is not used afterwards.
-            unsafe { ffi::mdb_env_close(env) };
-            env = ptr::null_mut();
-        }
-
-        // The C++ destructor (mdb_dbi_close + mdb_env_close at exit) has no
-        // equivalent: the singleton lives until the process ends.
-        MdbEnvProvider { env, dbi, valid }
-    }
-
-    fn is_valid(&self) -> bool {
-        self.valid
-    }
-}
-
-/// An LMDB transaction, aborted on drop unless committed.
-struct Txn {
-    ptr: *mut MDB_txn,
-}
-
-impl Txn {
-    /// `mdb_txn_commit`; LMDB frees the transaction whatever the result.
-    fn commit(self) -> c_int {
-        let p = self.ptr;
-        std::mem::forget(self);
-        // SAFETY: `p` is a live transaction, not used after this call.
-        unsafe { ffi::mdb_txn_commit(p) }
-    }
-}
-
-impl Drop for Txn {
-    fn drop(&mut self) {
-        // SAFETY: `ptr` is a live transaction (commit forgets `self`).
-        unsafe { ffi::mdb_txn_abort(self.ptr) };
-    }
-}
-
-/// A cursor borrows its transaction and closes before that transaction can
-/// end, including when a collection visitor unwinds.
-struct Cursor<'txn> {
-    ptr: *mut ffi::MDB_cursor,
-    txn: &'txn Txn,
-}
-
-impl<'txn> Cursor<'txn> {
-    fn open(txn: &'txn Txn, dbi: MDB_dbi) -> Result<Self, c_int> {
-        let mut ptr = ptr::null_mut();
-        // SAFETY: `txn` is live, `dbi` belongs to its environment, and the
-        // output pointer is valid. Only successful opens construct a guard.
-        let rc = unsafe { ffi::mdb_cursor_open(txn.ptr, dbi, &mut ptr) };
-        if rc != 0 {
-            return Err(rc);
-        }
-        Ok(Self { ptr, txn })
-    }
-
-    /// Returned bytes cannot outlive the cursor or its transaction, or be
-    /// retained across the next cursor operation.
-    /// The next pair (`MDB_NEXT`). Unlike seek operations, this returns
-    /// keys owned by LMDB, never the caller's input buffer.
-    fn next(&mut self) -> Result<(&[u8], &[u8]), c_int> {
-        let op = ffi::MDB_NEXT;
-        let mut key = empty_val();
-        let mut data = empty_val();
-        // SAFETY: the cursor and transaction are live; both output values
-        // remain valid throughout the call. Neither operation reads a key.
-        let rc = unsafe { ffi::mdb_cursor_get(self.ptr, &mut key, &mut data, op) };
-        if rc != 0 {
-            return Err(rc);
-        }
-        // SAFETY: LMDB returned these values in the borrowed transaction.
-        // The mutable cursor borrow prevents advancing while they are used.
-        unsafe { Ok((val_bytes(&key, self.txn), val_bytes(&data, self.txn))) }
-    }
-}
-
-impl Drop for Cursor<'_> {
-    fn drop(&mut self) {
-        // SAFETY: successfully opened, uniquely owned, and the borrowed
-        // transaction is still alive. This is the only cursor close.
-        unsafe { ffi::mdb_cursor_close(self.ptr) };
-    }
-}
-
-/// An `MDB_val` pointing at `s` (LMDB only reads it).
-fn string2val(s: &[u8]) -> MDB_val {
-    MDB_val { mv_size: s.len(), mv_data: s.as_ptr() as *mut _ }
-}
-
-fn empty_val() -> MDB_val {
-    MDB_val { mv_size: 0, mv_data: ptr::null_mut() }
-}
-
-/// The bytes of a value returned by LMDB.
-///
-/// # Safety
-/// `v` must come from LMDB within a transaction that is still open, and the
-/// slice must not be used after that transaction ends or the database is
-/// written.
-unsafe fn val_bytes<'txn>(v: &MDB_val, _txn: &'txn Txn) -> &'txn [u8] {
-    if v.mv_size == 0 || v.mv_data.is_null() {
-        return &[];
-    }
-    // SAFETY: guaranteed by the caller: LMDB values point at `mv_size`
-    // readable bytes while their transaction lives.
-    unsafe { std::slice::from_raw_parts(v.mv_data as *const u8, v.mv_size) }
-}
+/// The code of a failure to open the environment.
+const NO_ENVIRONMENT: Code = -1;
 
 /// Whether `key` starts with `var` (up to a NUL byte in `var`), as the C++
 /// `strncmp(var.c_str(), key, var.size()) == 0`.
@@ -222,15 +59,15 @@ fn lmdb_debug(rc: c_int, op: &str, scope: &str) {
     let msg = match op {
         "txn" => {
             let detail = match rc {
-                ffi::MDB_PANIC => {
+                lmdb::MDB_PANIC => {
                     "panic: a fatal error occurred earlier and the environment must be shut down.".to_string()
                 }
-                ffi::MDB_MAP_RESIZED => {
+                lmdb::MDB_MAP_RESIZED => {
                     "map resized: another process wrote data beyond this MDB_env's mapsize and this \
                                          environment's map must be resized as well. See mdb_env_set_mapsize()."
                         .to_string()
                 }
-                ffi::MDB_READERS_FULL => "max readers: a read-only transaction was requested and the reader lock \
+                lmdb::MDB_READERS_FULL => "max readers: a read-only transaction was requested and the reader lock \
                                           table is full. See mdb_env_set_maxreaders()."
                     .to_string(),
                 libc::ENOMEM => "out of memory.".to_string(),
@@ -240,7 +77,7 @@ fn lmdb_debug(rc: c_int, op: &str, scope: &str) {
         }
         "get" => {
             let detail = match rc {
-                ffi::MDB_NOTFOUND => "not found: the key was not in the database.",
+                lmdb::MDB_NOTFOUND => "not found: the key was not in the database.",
                 libc::EINVAL => "an invalid parameter was specified.",
                 _ => "not sure what is wrong.",
             };
@@ -280,26 +117,16 @@ impl Lmdb {
     }
 
     /// Begins an LMDB transaction, opening the shared environment on first
-    /// use; -1 when it could not be opened.
-    fn txn_begin(&self, flags: c_uint) -> Result<(Txn, MDB_dbi), c_int> {
-        let provider = MdbEnvProvider::instance();
-        if !provider.is_valid() {
-            return Err(-1);
-        }
-        let mut txn: *mut MDB_txn = ptr::null_mut();
-        // SAFETY: the environment is open; `txn` is a valid out pointer.
-        let rc = unsafe { ffi::mdb_txn_begin(provider.env, ptr::null_mut(), flags, &mut txn) };
-        if rc != 0 {
-            return Err(rc);
-        }
-        Ok((Txn { ptr: txn }, provider.dbi))
+    /// use; [`NO_ENVIRONMENT`] when it could not be opened.
+    fn txn_begin(&self, read_only: bool) -> Result<Txn<'static>, Code> {
+        Environment::shared(SHARED_COLLECTIONS_PATH).ok_or(NO_ENVIRONMENT)?.begin(read_only)
     }
 
     /// Writes `key` with the value computed from its previous data (if any)
     /// in one write transaction: the shared body of `store_or_update_first`
     /// and `set_expiry`. Returns the last LMDB code (0 on success).
     fn replace(&self, key: &[u8], scope: &str, build: impl FnOnce(CollectionData) -> CollectionData) -> c_int {
-        let (txn, dbi) = match self.txn_begin(0) {
+        let mut txn = match self.txn_begin(false) {
             Ok(t) => t,
             Err(rc) => {
                 lmdb_debug(rc, "txn", scope);
@@ -307,44 +134,38 @@ impl Lmdb {
             }
         };
 
-        let mut mdb_key = string2val(key);
-        let mut mdb_value_ret = empty_val();
         let mut previous_data = CollectionData::default();
-
-        // SAFETY: live write txn, valid dbi and MDB_vals.
-        let rc = unsafe { ffi::mdb_get(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
-        lmdb_debug(rc, "get", scope);
-        if rc == 0 {
-            // SAFETY: the value belongs to the open txn and is copied
-            // before the database is modified.
-            previous_data = CollectionData::from_bytes(unsafe { val_bytes(&mdb_value_ret, &txn) });
-            // SAFETY: as above; deletes the pair just read.
-            let rc = unsafe { ffi::mdb_del(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
-            lmdb_debug(rc, "del", scope);
-            if rc != 0 {
+        let previous = txn.get(key).map(<[u8]>::to_vec);
+        lmdb_debug(previous.as_ref().err().copied().unwrap_or(0), "get", scope);
+        if let Ok(previous) = previous {
+            previous_data = CollectionData::from_bytes(&previous);
+            // Deletes the pair just read.
+            if let Err(rc) = txn.del(key, &previous) {
+                lmdb_debug(rc, "del", scope);
                 return rc;
             }
         }
 
         let new_data = build(previous_data);
-        let serialized_data = new_data.serialize();
-        let mut mdb_value = string2val(&serialized_data);
-
-        // SAFETY: live write txn; key and value point at live buffers.
-        let rc = unsafe { ffi::mdb_put(txn.ptr, dbi, &mut mdb_key, &mut mdb_value, 0) };
-        lmdb_debug(rc, "put", scope);
-        if rc != 0 {
+        if let Err(rc) = txn.put(key, &new_data.serialize()) {
+            lmdb_debug(rc, "put", scope);
             return rc;
         }
 
-        let rc = txn.commit();
+        let rc = txn.commit().err().unwrap_or(0);
         lmdb_debug(rc, "commit", scope);
         rc
     }
 
     /// Deletes `key` if its value has expired.
     fn del_if_expired(&self, key: &[u8]) {
-        let (txn, dbi) = match self.txn_begin(0) {
+        self.delete(key, true);
+    }
+
+    /// Deletes the first value of `key` (only when it has expired with
+    /// `expired_only`), in its own write transaction.
+    fn delete(&self, key: &[u8], expired_only: bool) {
+        let mut txn = match self.txn_begin(false) {
             Ok(t) => t,
             Err(rc) => {
                 lmdb_debug(rc, "txn", "del");
@@ -352,28 +173,23 @@ impl Lmdb {
             }
         };
 
-        let mut mdb_key = string2val(key);
-        let mut mdb_value_ret = empty_val();
+        let value = match txn.get(key) {
+            Ok(v) => v.to_vec(),
+            Err(rc) => {
+                lmdb_debug(rc, "get", "del");
+                return;
+            }
+        };
 
-        // SAFETY: live write txn, valid dbi and MDB_vals.
-        let rc = unsafe { ffi::mdb_get(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
-        lmdb_debug(rc, "get", "del");
-        if rc != 0 {
-            return;
-        }
-
-        // SAFETY: the value belongs to the open txn and is copied.
-        let collection_data = CollectionData::from_bytes(unsafe { val_bytes(&mdb_value_ret, &txn) });
-        if collection_data.is_expired() {
-            // SAFETY: deletes the pair just read in the live write txn.
-            let rc = unsafe { ffi::mdb_del(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
-            lmdb_debug(rc, "del", "del");
-            if rc != 0 {
+        if !expired_only || CollectionData::from_bytes(&value).is_expired() {
+            // Deletes the pair just read.
+            if let Err(rc) = txn.del(key, &value) {
+                lmdb_debug(rc, "del", "del");
                 return;
             }
         }
 
-        let rc = txn.commit();
+        let rc = txn.commit().err().unwrap_or(0);
         lmdb_debug(rc, "commit", "del");
     }
 
@@ -381,15 +197,14 @@ impl Lmdb {
     /// `f(key, data)` for every non expired entry holding a value; the
     /// expired entries are deleted afterwards ([`Self::del_if_expired`]).
     ///
-    /// Both traversal modes start at the first database entry. In particular,
-    /// duplicate traversal deliberately does not seek to a requested key.
+    /// The walk starts at the first database entry.
     fn walk(&self, scope: &str, mut f: impl FnMut(&[u8], &[u8])) {
         let mut expired_vars: Vec<Vec<u8>> = Vec::new();
 
-        match self.txn_begin(ffi::MDB_RDONLY) {
+        match self.txn_begin(true) {
             Err(rc) => lmdb_debug(rc, "txn", scope),
-            Ok((txn, dbi)) => {
-                match Cursor::open(&txn, dbi) {
+            Ok(txn) => {
+                match txn.cursor() {
                     Err(rc) => lmdb_debug(rc, "cursor_open", scope),
                     Ok(mut cursor) => {
                         while let Ok((key, data)) = cursor.next() {
@@ -422,33 +237,7 @@ impl Collection for Lmdb {
     }
 
     fn del(&self, key: &[u8]) {
-        let (txn, dbi) = match self.txn_begin(0) {
-            Ok(t) => t,
-            Err(rc) => {
-                lmdb_debug(rc, "txn", "del");
-                return;
-            }
-        };
-
-        let mut mdb_key = string2val(key);
-        let mut mdb_value_ret = empty_val();
-
-        // SAFETY: live write txn, valid dbi and MDB_vals.
-        let rc = unsafe { ffi::mdb_get(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
-        lmdb_debug(rc, "get", "del");
-        if rc != 0 {
-            return;
-        }
-
-        // SAFETY: deletes the pair just read in the live write txn.
-        let rc = unsafe { ffi::mdb_del(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
-        lmdb_debug(rc, "del", "del");
-        if rc != 0 {
-            return;
-        }
-
-        let rc = txn.commit();
-        lmdb_debug(rc, "commit", "del");
+        self.delete(key, false);
     }
 
     fn set_expiry(&self, key: &[u8], expiry_seconds: i32) {
@@ -462,20 +251,17 @@ impl Collection for Lmdb {
         let mut ret = None;
         let mut collection_data = CollectionData::default();
 
-        match self.txn_begin(ffi::MDB_RDONLY) {
+        match self.txn_begin(true) {
             Err(rc) => lmdb_debug(rc, "txn", "resolveFirst"),
-            Ok((txn, dbi)) => {
-                let mut mdb_key = string2val(var);
-                let mut mdb_value_ret = empty_val();
-                // SAFETY: live txn, valid dbi and MDB_vals.
-                let rc = unsafe { ffi::mdb_get(txn.ptr, dbi, &mut mdb_key, &mut mdb_value_ret) };
-                lmdb_debug(rc, "get", "resolveFirst");
-                if rc == 0 {
-                    // SAFETY: the value belongs to the open txn and is copied.
-                    collection_data = CollectionData::from_bytes(unsafe { val_bytes(&mdb_value_ret, &txn) });
-                    if !collection_data.is_expired() {
-                        ret = collection_data.value.take();
+            Ok(txn) => {
+                match txn.get(var) {
+                    Ok(value) => {
+                        collection_data = CollectionData::from_bytes(value);
+                        if !collection_data.is_expired() {
+                            ret = collection_data.value.take();
+                        }
                     }
+                    Err(rc) => lmdb_debug(rc, "get", "resolveFirst"),
                 }
                 drop(txn); // mdb_txn_abort
             }
@@ -533,8 +319,7 @@ mod tests {
         let path = std::ffi::CString::new(dir.join("modsec-shared-collections").to_str().unwrap()).unwrap();
         // If another test already opened the default file, that one is
         // used; the keys below are unique to this test run.
-        ENV_PROVIDER.get_or_init(|| MdbEnvProvider::open(&path));
-        assert!(MdbEnvProvider::instance().is_valid());
+        assert!(Environment::shared(&path).is_some());
     }
 
     fn keys(l: &[VariableValue]) -> Vec<Vec<u8>> {

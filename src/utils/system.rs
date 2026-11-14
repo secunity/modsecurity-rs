@@ -1,57 +1,11 @@
 //! Operating system helpers: environment, files and directories, resource
 //! lookup, CPU time and local time formatting.
 
-use std::ffi::{CStr, CString, c_char, c_int};
-
 use jiff::fmt::strtime;
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 
-/// `wordexp(3)` bindings (glibc layout; not exposed by the `libc` crate).
-#[repr(C)]
-struct WordExpT {
-    we_wordc: usize,
-    we_wordv: *mut *mut c_char,
-    we_offs: usize,
-}
-
-const WRDE_NOCMD: c_int = 1 << 2;
-
-unsafe extern "C" {
-    fn wordexp(words: *const c_char, pwordexp: *mut WordExpT, flags: c_int) -> c_int;
-    fn wordfree(pwordexp: *mut WordExpT);
-}
-
-/// `setenv(name, value, 1)`. `name` must not be empty or contain `=`, and
-/// neither may contain a NUL (callers check: `setenv` rejects those).
-pub fn set_env(name: &[u8], value: &[u8]) {
-    use std::ffi::OsStr;
-    use std::os::unix::ffi::OsStrExt;
-    debug_assert!(!name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0));
-    // SAFETY: like the C++ code, this mutates the process environment, with
-    // the usual caveat about concurrent getenv(3) calls from other threads.
-    unsafe { std::env::set_var(OsStr::from_bytes(name), OsStr::from_bytes(value)) };
-}
-
-/// `mkstemp(3)`: creates and opens a new file named `template` with its
-/// final `XXXXXX` replaced. Returns the name and the file (`None` when it
-/// could not be created, or when `template` contains a NUL).
-pub fn mkstemp(template: &str) -> (String, Option<std::fs::File>) {
-    use std::os::fd::FromRawFd;
-    let mut buf = template.as_bytes().to_vec();
-    if buf.contains(&0) {
-        return (template.to_string(), None);
-    }
-    buf.push(0);
-    // SAFETY: `buf` is a writable, NUL terminated buffer; mkstemp only
-    // rewrites its last six characters before the NUL ("XXXXXX").
-    let fd = unsafe { libc::mkstemp(buf.as_mut_ptr().cast::<c_char>()) };
-    buf.pop();
-    let name = String::from_utf8_lossy(&buf).into_owned();
-    // SAFETY: mkstemp returned a freshly opened descriptor nothing else owns.
-    let file = (fd >= 0).then(|| unsafe { std::fs::File::from_raw_fd(fd) });
-    (name, file)
-}
+pub use modsecurity_native::posix::{mkstemp, set_env};
 
 /// The process CPU time in seconds.
 pub fn cpu_seconds() -> f64 {
@@ -102,33 +56,8 @@ pub fn parent_dir(file: &str) -> String {
 /// The `wordexp(3)` expansion (no command substitution) of `var`, keeping
 /// only the results that can be opened.
 pub fn expand_env(var: &str, flags: i32) -> Vec<String> {
-    let mut vars = Vec::new();
-    let Ok(c) = CString::new(var) else {
-        return vars;
-    };
-    let mut p = WordExpT { we_wordc: 0, we_wordv: std::ptr::null_mut(), we_offs: 0 };
-    let flags = flags | WRDE_NOCMD;
-    // SAFETY: `c` is NUL terminated, `p` is valid; wordfree releases it.
-    unsafe {
-        if wordexp(c.as_ptr(), &mut p, flags) == 0 {
-            if p.we_wordc > 0 {
-                let mut i = 0;
-                loop {
-                    let w = *p.we_wordv.add(i);
-                    if w.is_null() {
-                        break;
-                    }
-                    let s = CStr::from_ptr(w).to_string_lossy().into_owned();
-                    if std::fs::File::open(&s).is_ok() {
-                        vars.push(s);
-                    }
-                    i += 1;
-                }
-            }
-            wordfree(&mut p);
-        }
-    }
-    vars
+    use modsecurity_native::posix::{WRDE_NOCMD, word_expansion};
+    word_expansion(var, flags | WRDE_NOCMD).into_iter().filter(|w| std::fs::File::open(w).is_ok()).collect()
 }
 
 /// Creates the directory `dir` (`mkdir(dir, mode)`), accepting an existing
@@ -190,20 +119,7 @@ pub fn now() -> i64 {
 mod tests {
     use super::*;
 
-    /// The C++ implementation: `strftime(fmt, localtime_r(t))` in the C locale.
-    fn libc_strftime_local(t: i64, fmt: &str) -> String {
-        let tt = t as libc::time_t;
-        // SAFETY: tm is a plain C struct that localtime_r fills; buf is
-        // writable for its length and the format is NUL terminated.
-        unsafe {
-            let mut tm: libc::tm = std::mem::zeroed();
-            libc::localtime_r(&tt, &mut tm);
-            let cfmt = CString::new(fmt).unwrap();
-            let mut buf = [0u8; 256];
-            let n = libc::strftime(buf.as_mut_ptr() as *mut c_char, buf.len(), cfmt.as_ptr(), &tm);
-            String::from_utf8_lossy(&buf[..n]).into_owned()
-        }
-    }
+    use modsecurity_native::testing;
 
     /// Every format the library uses gives the same text as glibc in the C
     /// locale, in whatever zone `TZ` selects (run with several, e.g.
@@ -231,15 +147,9 @@ mod tests {
         times.extend([0, 951_782_400, 951_868_799, 1_709_164_800, 2_147_483_647]);
         for &t in &times {
             for fmt in FORMATS {
-                assert_eq!(strftime_local(t, fmt), libc_strftime_local(t, fmt), "t={t} fmt={fmt:?}");
+                assert_eq!(strftime_local(t, fmt), testing::strftime_local(t, fmt), "t={t} fmt={fmt:?}");
             }
-            // SAFETY: as above.
-            let tm_mon = unsafe {
-                let tt = t as libc::time_t;
-                let mut tm: libc::tm = std::mem::zeroed();
-                libc::localtime_r(&tt, &mut tm);
-                tm.tm_mon
-            };
+            let tm_mon = testing::localtime_month(t);
             assert_eq!(i32::from(localtime(t).month()), tm_mon + 1, "t={t}");
         }
     }
@@ -304,10 +214,7 @@ mod tests {
     #[test]
     fn strerror_matches_libc() {
         for errnum in 0..200 {
-            // SAFETY: strerror returns a NUL terminated string; the tests
-            // calling it do not race with other strerror users' buffers in a
-            // way that matters for this comparison.
-            let c = unsafe { CStr::from_ptr(libc::strerror(errnum)) }.to_string_lossy().into_owned();
+            let c = testing::strerror(errnum);
             assert_eq!(strerror(errnum), c, "errno {errnum}");
         }
     }
