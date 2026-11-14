@@ -228,6 +228,12 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   scanner ended the list at the end of the line, so `"id:1,phase:2,pass`
   loaded. (Seven upstream regression tests had the typo in their rules;
   their quotes are added.)
+- **Unknown operators** are a syntax error. The C++ scanner read an
+  unknown `@name` (a typo such as `@containz`), and a parameter given to an
+  operator that takes none (`@detectSQLi x`), as a regular expression of
+  the whole text, so the rule silently matched `@containz ...` literally.
+  A regular expression that starts with `@` followed by something else than
+  a letter is still one.
 - **`\"` in a double-quoted operator parameter** is a quote (upstream issue
   3750, PR 3753): `"@contains test()\"quote\""` matches `test()"quote"`. The
   C++ scanner kept the backslash, so the operator looked for `\"`. The

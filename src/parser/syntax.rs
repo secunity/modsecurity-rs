@@ -212,17 +212,6 @@ fn statement_from_pair(base: usize, statement: Pair<'_, Rule>) -> (Option<Statem
     (Some(Statement { offset, directive: directive(inner, base) }), end)
 }
 
-/// Reads `raw` as an operator parameter (quoted or not); `None` when it is
-/// not one.
-pub fn parse_param(raw: &str, quoted: bool) -> Option<Vec<Piece<'_>>> {
-    let rule = if quoted { Rule::param_q } else { Rule::param_s };
-    let pair = SecLang::parse(rule, raw).ok()?.next()?;
-    if pair.as_span().end() != raw.len() {
-        return None;
-    }
-    Some(pieces(pair))
-}
-
 fn syntax_error(text: &str, from: usize, e: &pest::error::Error<Rule>) -> SyntaxError {
     let offset = from
         + match e.location {

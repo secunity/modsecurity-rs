@@ -404,3 +404,20 @@ fn action_list_needs_its_closing_quote() {
     assert_eq!(load("SecAction \"id:1,phase:2,pass\n", "t").0, -1);
     assert_eq!(load("SecRule ARGS \"@rx a\" \"id:1,phase:2,pass\"\n", "t").0, 1);
 }
+
+/// `@name` must be a known operator (C++ read an unknown one, and a
+/// parameter given to an operator that takes none, as a regular expression
+/// of the whole text).
+#[test]
+fn unknown_operators() {
+    for op in ["@foo bar", "@containz x", "@lt3", "@lt' 3", "@detectSQLi x", "@unconditionalMatch x"] {
+        let rules = format!("SecRule ARGS \"{op}\" \"id:1,phase:2,pass\"\n");
+        assert_eq!(load(&rules, "t").0, -1, "{op}");
+    }
+    // Still regular expressions, and spaces before the closing quote of an
+    // operator without a parameter.
+    for op in ["@", "@1", "foo", "@detectSQLi  ", "!@rx a"] {
+        let rules = format!("SecRule ARGS \"{op}\" \"id:1,phase:2,pass\"\n");
+        assert_eq!(load(&rules, "t").0, 1, "{op}");
+    }
+}

@@ -323,32 +323,19 @@ impl Builder<'_, '_> {
                 if o.param.is_empty() {
                     return self.fail("Expecting an operator or a regular expression.");
                 }
-                // `"@lt' 3"`: an operator followed by something else than a
-                // space. C++ skips the unexpected characters (printing them
-                // to stdout); it is rejected here.
-                if let Some(word) = o.raw.strip_prefix('@') {
-                    let n = word.bytes().take_while(u8::is_ascii_alphanumeric).count();
-                    let word = &word[..n];
-                    if operator_name(word).is_some_and(|op| op.param) || takes_param_prefix(word) {
-                        return self.fail(&format!("Invalid operator: {}", string(o.raw)));
-                    }
+                // `"@lt' 3"`: an operator name followed by something else
+                // than a space.
+                if o.raw.strip_prefix('@').is_some_and(|w| w.starts_with(|c: char| c.is_ascii_alphabetic())) {
+                    return self.fail(&format!("Unknown operator: {}", string(o.raw)));
                 }
                 ("rx", self.run_time_string(&o.param)?)
             }
-            // An unknown operator (or a parameter given to one that takes
-            // none) is the start of a regular expression, as in C++.
-            // `@lt3`: an operator that takes a parameter, followed by more
-            // than a space, is an error in C++.
-            Some(None) if takes_param_prefix(o.name.unwrap_or("")) => {
-                return self.fail(&format!("Invalid operator: @{}", string(o.name.unwrap_or(""))));
+            Some(None) => {
+                return self.fail(&format!("Unknown operator: @{}", string(o.name.unwrap_or(""))));
             }
-            Some(op) if op.is_none_or(|op| !op.param && !blank_param(o)) => {
-                let Some(pieces) = syntax::parse_param(o.raw, o.quoted) else {
-                    return self.fail(&format!("Invalid input: {}", string(o.raw)));
-                };
-                ("rx", self.run_time_string(&pieces)?)
+            Some(Some(op)) if !op.param && !blank_param(o) => {
+                return self.fail(&format!("The operator @{} takes no parameter.", op.name));
             }
-            Some(None) => unreachable!("handled above"),
             Some(Some(op)) => {
                 if let Some(not_supported) = op.not_supported {
                     return self.fail(&format!("Operator: {} is not yet supported.", not_supported));
@@ -1166,12 +1153,6 @@ fn operator_name(name: &str) -> Option<Op> {
         "beginswith" => op("beginsWith", true),
         _ => None,
     }
-}
-
-/// Whether an operator that takes a parameter is a prefix of `name`.
-fn takes_param_prefix(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    (1..lower.len()).any(|n| operator_name(&lower[..n]).is_some_and(|op| op.param))
 }
 
 /// The actions whose value is a string with macros.
