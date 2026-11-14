@@ -228,6 +228,10 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   scanner ended the list at the end of the line, so `"id:1,phase:2,pass`
   loaded. (Seven upstream regression tests had the typo in their rules;
   their quotes are added.)
+- **`phase:'request'`** is phase 2. The C++ scanner built an `allow` action
+  from it (its `allow` rule also matches `phase:'request'` and comes
+  first), so the rule ran in phase 1 and allowed the transaction. The
+  quoted `phase:'phase'` (accepted as `allow` by C++) is an error.
 - **Unknown operators** are a syntax error. The C++ scanner read an
   unknown `@name` (a typo such as `@containz`), and a parameter given to an
   operator that takes none (`@detectSQLi x`), as a regular expression of

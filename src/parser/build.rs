@@ -537,13 +537,6 @@ impl Builder<'_, '_> {
             }
             "phase" => {
                 let v = value.unwrap_or("");
-                // `phase:'request'` is read as `allow` by the C++ scanner
-                // (the first of two rules that match it).
-                if let Some(q) = unquote(v)
-                    && (q.eq_ignore_ascii_case("request") || q.eq_ignore_ascii_case("phase"))
-                {
-                    return Ok(disruptive::allow::Allow::new(s).map(other));
-                }
                 let p = unquote(v).unwrap_or(v);
                 let known = ["request", "response", "logging"].iter().any(|n| p.eq_ignore_ascii_case(n));
                 if value.is_none() || !(known || is_number(p)) {

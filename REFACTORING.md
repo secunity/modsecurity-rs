@@ -284,7 +284,7 @@ Compatibility:
   line (fixed since); a directive on the line right after a rule without actions is an
   error (fixed since); a whole collection followed by a plain regular expression
   (`SecRule TX "foo"`) is an error (fixed since); an unknown `@operator` is a regular
-  expression (fixed since); `phase:'request'` builds an `allow` action.
+  expression (fixed since); `phase:'request'` builds an `allow` action (fixed since).
 - Syntax error messages and their line/column differ (approved: not part of
   the contract). The regression runner compares only that a syntax error
   happens, and the other errors without their position.

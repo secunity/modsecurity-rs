@@ -421,3 +421,16 @@ fn unknown_operators() {
         assert_eq!(load(&rules, "t").0, 1, "{op}");
     }
 }
+
+/// `phase:'request'` is the phase (C++ built an `allow` action from it: the
+/// scanner's `allow` rule also matches `phase:'request'` and comes first).
+#[test]
+fn quoted_phase_name() {
+    use crate::modsecurity::Phases;
+    let mut d = Driver::new();
+    assert!(d.parse("SecAction \"id:1,phase:'request',pass\"\n", "t"), "{}", d.properties.parser_error);
+    let rule = d.rules_set_phases.for_phase(Phases::RequestBody)[0].as_rule_with_actions().unwrap();
+    assert_eq!(rule.phase(), Some(Phases::RequestBody));
+    assert!(!format!("{rule:?}").contains("Allow"), "{rule:?}");
+    assert_eq!(load("SecAction \"id:1,phase:'phase',pass\"\n", "t").0, -1);
+}
