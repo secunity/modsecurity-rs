@@ -212,6 +212,11 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   actions, so `SecRule ...` / `#...` there was a syntax error ("Expecting an
   action"); a blank line was needed. Actions on that line are still the
   rule's actions, as in C++.
+- **A whole collection followed by text** is the collection followed by the
+  text. The C++ grammar read the text as the collection's key: `SecRule TX
+  "foo"` (a regular expression after `TX`, `IP`, `SESSION`, ...) failed to
+  load, and in a macro `%{tx}x` was `TX:x` (the rest of the string as the
+  key).
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, LMDB

@@ -344,3 +344,17 @@ fn directive_after_rule_without_actions() {
     assert_eq!(rule_lines("SecRule ARGS \"@rx a\"\n    \"id:1,phase:2,pass\"\n"), vec![(1, 1)]);
     assert_eq!(rule_lines("SecRule ARGS \"@rx a\"\nid:1\n"), vec![(1, 1)]);
 }
+
+/// A whole collection is a variable like any other: `SecRule TX "foo"` is
+/// a regular expression on `TX`, and `%{tx}x` is `TX` followed by `x` (the
+/// C++ grammar read what follows as the collection's key).
+#[test]
+fn whole_collection_followed_by_text() {
+    let mut d = Driver::new();
+    let rules = "SecRule TX \"foo\" \"id:1,phase:2,pass,msg:'%{tx}x'\"\n";
+    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
+    let dump = format!("{:#?}", d.rules_set_phases);
+    assert!(dump.contains("op: Rx"), "{dump}");
+    assert!(!dump.contains("dynamic"), "{dump}");
+    assert_eq!(dump.matches("full_name: \"TX\"").count(), 2, "{dump}");
+}

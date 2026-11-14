@@ -155,17 +155,6 @@ impl Builder<'_, '_> {
         let line = self.line as i32;
         match directive {
             Directive::Rule { variables, operator, actions } => {
-                // `SecRule TX "regex"`: after a whole collection, the C++
-                // grammar reads a regular expression as the collection's
-                // key (`TX:%{...}`), and the rule has no operator.
-                let regex = !operator.negated
-                    && operator
-                        .name
-                        .map(operator_name)
-                        .is_none_or(|op| op.is_none_or(|op| !op.param && !blank_param(&operator)));
-                if regex && variables.last().is_some_and(|t| is_whole_collection(&t.var)) {
-                    return self.fail("A collection can not be followed by a regular expression without an operator.");
-                }
                 let vars = self.targets(&variables)?;
                 let vars = exclusions(vars);
                 let op = self.operator(&operator)?;
@@ -291,17 +280,9 @@ impl Builder<'_, '_> {
 
     fn run_time_string(&mut self, pieces: &[Piece<'_>]) -> Res<RunTimeString> {
         let mut r = RunTimeString::new();
-        for (i, p) in pieces.iter().enumerate() {
+        for p in pieces {
             match p {
                 Piece::Text(t) => r.append_bytes(&syntax::bytes(t)),
-                // `%{tx}...`: the C++ grammar reads what follows a whole
-                // collection as its key (`TX` with the key `...`).
-                Piece::Macro(v) if is_whole_collection(v) && i + 1 < pieces.len() => {
-                    let key = self.run_time_string(&pieces[i + 1..])?;
-                    let var = self.new_var(v.name, VariableSelector::Dynamic(key))?;
-                    r.append_var(var);
-                    break;
-                }
                 Piece::Macro(v) => {
                     let var = self.var(v)?;
                     r.append_var(var);
@@ -1229,11 +1210,6 @@ fn transformation(name: &str) -> Option<TK> {
 /// the closing quote.
 fn blank_param(o: &syntax::Operator<'_>) -> bool {
     o.param.iter().all(|p| matches!(p, Piece::Text(t) if o.quoted && t.bytes().all(|c| c == b' ')))
-}
-
-/// A collection without a key (`TX`, `IP`, ...).
-fn is_whole_collection(v: &VarRef<'_>) -> bool {
-    matches!(v.selector, Selector::None) && is_collection(v.name)
 }
 
 /// The collections `setvar` can write to.
