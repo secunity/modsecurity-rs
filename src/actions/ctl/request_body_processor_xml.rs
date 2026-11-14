@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/request_body_processor_xml.cc`, `src/actions/ctl/request_body_processor_xml.h`.
-//!
 //! `ctl:requestBodyProcessor=XML` — parses the request body as XML.
 
 use crate::actions::action::{Action, name_of};

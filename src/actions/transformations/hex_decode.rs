@@ -1,4 +1,4 @@
-//! Port of `src/actions/transformations/hex_decode.cc`, `src/actions/transformations/hex_decode.h`.
+//! The `t:hexDecode` transformation: decodes a hex-encoded value.
 
 use crate::utils::string::x2c;
 

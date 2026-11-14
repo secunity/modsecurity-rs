@@ -1,14 +1,16 @@
-//! Port of `src/utils/decode.h` / `src/utils/decode.cc`.
+//! URL (percent) decoding.
 
 use crate::utils::string::{hex2dec, valid_hex, x2c};
 
-/// `urldecode_nonstrict_inplace`: returns whether the value changed and the
-/// number of invalid `%` encodings.
+/// Decodes `val` in place, turning `+` into a space; returns whether the
+/// value changed and the number of invalid `%` encodings.
 pub fn urldecode_nonstrict_inplace(val: &mut Vec<u8>, invalid_count: &mut i32) -> bool {
     urldecode_nonstrict_inplace_ext(val, true, invalid_count)
 }
 
-/// `urldecode_nonstrict_inplace_ext`
+/// Decodes the `%XX` escapes of `val` in place (and `+` into a space when
+/// `plus_to_space` is set). Invalid escapes are kept as they are and counted
+/// in `invalid_count`. Returns whether the value changed.
 pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool, invalid_count: &mut i32) -> bool {
     let e = val.len();
     let mut s = 0usize;
@@ -55,7 +57,8 @@ pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool, i
     changed
 }
 
-/// `uri_decode`
+/// Decodes the `%XX` escapes of `src`; invalid escapes are copied as they
+/// are.
 pub fn uri_decode(src: &[u8]) -> Vec<u8> {
     let len = src.len();
     let mut out = Vec::with_capacity(len);

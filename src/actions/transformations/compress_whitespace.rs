@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/compress_whitespace.cc`, `src/actions/transformations/compress_whitespace.h`.
+//! The `t:compressWhitespace` transformation: replaces each run of
+//! whitespace with a single space.
 
 use crate::utils::string::is_space;
 

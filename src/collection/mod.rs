@@ -1,4 +1,4 @@
-//! Port of `headers/modsecurity/collection/collection.h`.
+//! The [`Collection`] interface of the persistent collection backends.
 //!
 //! Shared persistent key/value stores (`IP`, `SESSION`, ...). Persistent
 //! collections are shared by every transaction (and thread) of a
@@ -15,9 +15,8 @@ use crate::utils::regex::Regex;
 use crate::variable_value::VariableValue;
 use crate::variables::variable::KeyExclusions;
 
-/// Builds the compartmentalised key used by the C++ overloads that take one
-/// or two compartments: `compartment::key` or
-/// `compartment::compartment2::key`.
+/// Builds the key of a value stored in one or two compartments:
+/// `compartment::key` or `compartment::compartment2::key`.
 pub fn compartment_key(key: &[u8], compartment: &[u8], compartment2: Option<&[u8]>) -> Vec<u8> {
     let mut nkey = compartment.to_vec();
     nkey.extend_from_slice(b"::");
@@ -30,7 +29,7 @@ pub fn compartment_key(key: &[u8], compartment: &[u8], compartment2: Option<&[u8
 }
 
 pub trait Collection: Send + Sync {
-    /// `m_name`
+    /// The collection name (`IP`, `SESSION`, ...).
     fn name(&self) -> &str;
 
     fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> bool;
@@ -50,9 +49,8 @@ pub trait Collection: Send + Sync {
     /// The values whose key matches `r`.
     fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions);
 
-    /// `resolveRegularExpression`: [`Collection::resolve_regex`] with the
-    /// pattern `var`, compiled as the C++ code does (case insensitive,
-    /// multi-line).
+    /// [`Collection::resolve_regex`] with the pattern `var`, compiled as
+    /// the C++ code does (case insensitive, multi-line).
     fn resolve_regular_expression(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         self.resolve_regex(&Regex::with_options(var, true, true), l, ke)
     }

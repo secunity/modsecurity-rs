@@ -1,10 +1,9 @@
-//! Port of `src/variables/rule.cc`, `src/variables/rule.h`.
-//!
-//! `RULE:id`, `RULE:rev`, `RULE:severity`, `RULE:logdata` and `RULE:msg`:
-//! properties of the rule being evaluated. Inside a chain, a property the
-//! rule does not set is looked up in its chain parents. In C++ each rule
-//! pointed at its parent (`m_chainedRuleParent`); here the ancestors of the
-//! rule being evaluated are on `Transaction::chained_rule_parents`.
+//! The `RULE` variable (`RULE:id`, `RULE:rev`, `RULE:severity`,
+//! `RULE:logdata` and `RULE:msg`): properties of the rule being evaluated.
+//! Inside a chain, a property the rule does not set is looked up in its
+//! chain parents. In C++ each rule pointed at its parent
+//! (`m_chainedRuleParent`); here the ancestors of the rule being evaluated
+//! are on `Transaction::chained_rule_parents`.
 
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;
@@ -13,21 +12,21 @@ use crate::variable_origin::VariableOrigin;
 use crate::variable_value::VariableValue;
 use crate::variables::variable::Selector;
 
-/// `Rule_DictElement::m_rule`
+/// The collection name of the `RULE` variable.
 pub const RULE: &str = "RULE";
-/// `Rule_DictElement::m_rule_id`
+/// The key of `RULE:id`.
 pub const RULE_ID: &str = "id";
-/// `Rule_DictElement::m_rule_rev`
+/// The key of `RULE:rev`.
 pub const RULE_REV: &str = "rev";
-/// `Rule_DictElement::m_rule_severity`
+/// The key of `RULE:severity`.
 pub const RULE_SEVERITY: &str = "severity";
-/// `Rule_DictElement::m_rule_logdata`
+/// The key of `RULE:logdata`.
 pub const RULE_LOGDATA: &str = "logdata";
-/// `Rule_DictElement::m_rule_msg`
+/// The key of `RULE:msg`.
 pub const RULE_MSG: &str = "msg";
 
-/// `r->m_chainedRuleParent`: the rule of the chain whose chained child is
-/// `r`, if `r` is being evaluated as part of a chain.
+/// The rule of the chain whose chained child is `r`, if `r` is being
+/// evaluated as part of a chain.
 fn chained_rule_parent<'r>(t: &'r Transaction<'_>, r: &RuleWithActions) -> Option<&'r RuleWithActions> {
     t.chained_rule_parents
         .iter()
@@ -37,8 +36,7 @@ fn chained_rule_parent<'r>(t: &'r Transaction<'_>, r: &RuleWithActions) -> Optio
 }
 
 /// Walks from `rule` up the chain parents and returns the first rule for
-/// which `has` holds (the `while (r && !has(r)) r = r->m_chainedRuleParent`
-/// loops of the C++ code).
+/// which `has` holds.
 fn find_in_chain<'r>(
     t: &'r Transaction<'_>,
     rule: Option<&'r RuleWithActions>,
@@ -54,14 +52,14 @@ fn find_in_chain<'r>(
     None
 }
 
-/// `Rule_DictElement::addVariableOrigin`
+/// Appends the value of `RULE:key`, with an empty origin, to `l`.
 fn add_variable_origin(key: &str, value: &[u8], l: &mut Vec<VariableValue>) {
     let mut var = VariableValue::with_collection(RULE.as_bytes(), key.as_bytes(), value);
     var.add_origin(VariableOrigin::default());
     l.push(var);
 }
 
-/// `Rule_DictElement::id`
+/// `RULE:id`: the id of the rule or of the nearest chain parent with one.
 fn id(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
     let Some(r) = find_in_chain(t, rule, |r| r.rule_id != 0) else {
         return;
@@ -69,7 +67,8 @@ fn id(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableV
     add_variable_origin(RULE_ID, r.rule_id.to_string().as_bytes(), l);
 }
 
-/// `Rule_DictElement::rev`
+/// `RULE:rev`: the revision of the rule or of the nearest chain parent
+/// with one.
 fn rev(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
     let Some(r) = find_in_chain(t, rule, |r| !r.rev.is_empty()) else {
         return;
@@ -77,21 +76,24 @@ fn rev(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<Variable
     add_variable_origin(RULE_REV, r.rev.as_bytes(), l);
 }
 
-/// `Rule_DictElement::severity`
+/// `RULE:severity`: the severity of the rule or of the nearest chain
+/// parent with one.
 fn severity(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
     if let Some(r) = find_in_chain(t, rule, |r| r.has_severity()) {
         add_variable_origin(RULE_SEVERITY, r.severity().to_string().as_bytes(), l);
     }
 }
 
-/// `Rule_DictElement::logData`
+/// `RULE:logdata`: the expanded `logdata` of the rule or of the nearest
+/// chain parent with one.
 fn log_data(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
     if let Some(r) = find_in_chain(t, rule, |r| r.has_log_data()) {
         add_variable_origin(RULE_LOGDATA, &r.log_data(t), l);
     }
 }
 
-/// `Rule_DictElement::msg`
+/// `RULE:msg`: the expanded `msg` of the rule or of the nearest chain
+/// parent with one.
 fn msg(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
     if let Some(r) = find_in_chain(t, rule, |r| r.has_msg()) {
         add_variable_origin(RULE_MSG, &r.msg(t), l);

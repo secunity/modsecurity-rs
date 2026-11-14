@@ -20,7 +20,7 @@ impl VerifyCC {
         VerifyCC { param: Param::new(param), re: None }
     }
 
-    /// `luhnVerify`: Luhn Mod-10 Method (ISO 2894/ANSI 4.13). Only the
+    /// Luhn Mod-10 Method (ISO 2894/ANSI 4.13). Only the
     /// digits of `ccnumber` are considered.
     pub fn luhn_verify(ccnumber: &[u8]) -> bool {
         let mut sum = [0i32; 2];

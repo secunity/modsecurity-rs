@@ -1,4 +1,5 @@
-//! Port of `src/operators/gt.cc`, `src/operators/gt.h`.
+//! The `@gt` operator: matches when the input, read as an integer, is
+//! greater than the parameter.
 
 use crate::operators::eq::atoll;
 use crate::operators::operator::{Operator, Param};

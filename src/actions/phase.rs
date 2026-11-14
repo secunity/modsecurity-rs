@@ -1,5 +1,3 @@
-//! Port of `src/actions/phase.cc`, `src/actions/phase.h`.
-//!
 //! `phase:N` (or `request`/`response`/`logging`) — the phase in which the
 //! rule runs (configuration time).
 

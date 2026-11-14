@@ -20,9 +20,8 @@ pub struct Position {
     pub column: usize,
 }
 
-/// Where the last `SecRule` lives (C++ `m_lastRule`, a raw pointer): the
-/// rule at `index` of phase `phase`, followed `depth` times through its
-/// chained children.
+/// Where the last `SecRule` lives: the rule at `index` of phase `phase`,
+/// followed `depth` times through its chained children.
 #[derive(Debug, Clone, Copy)]
 struct LastRule {
     phase: Phases,
@@ -34,14 +33,14 @@ pub struct Driver {
     pub properties: RulesSetProperties,
     pub rules_set_phases: RulesSetPhases,
 
-    /// `file`: name given to the location of the parser's initial state
+    /// Name given to the location of the parser's initial state
     /// (never set by the C++ code, hence empty).
     pub file: String,
 
-    /// `m_filenames`: the file names referenced by the locations.
+    /// The file names referenced by the locations.
     filenames: Vec<String>,
 
-    /// `m_lastRule`
+    /// The last `SecRule` added, which a chained rule attaches to.
     last_rule: Option<LastRule>,
 }
 
@@ -62,7 +61,7 @@ impl Driver {
         }
     }
 
-    /// Records a file name (`m_filenames.push_back`) and returns its index.
+    /// Records a file name and returns its index.
     pub(crate) fn add_filename(&mut self, name: String) -> usize {
         self.filenames.push(name);
         self.filenames.len() - 1
@@ -72,7 +71,7 @@ impl Driver {
         self.filenames.get(index).map(String::as_str).unwrap_or("")
     }
 
-    /// `addSecMarker`
+    /// Adds a `SecMarker` to every phase.
     pub fn add_sec_marker(&mut self, marker: &str, file_name: &str, line_number: i32) -> i32 {
         // FIXME (C++): we might move this to the parser.
         for phase in Phases::ALL {
@@ -83,19 +82,19 @@ impl Driver {
         0
     }
 
-    /// `addSecAction`
+    /// Adds a `SecAction` rule.
     pub fn add_sec_action(&mut self, rule: RuleWithActions) -> bool {
         self.rules_set_phases.insert(Arc::new(Rule::WithActions(rule)));
         true
     }
 
-    /// `addSecRuleScript`
+    /// Adds a `SecRuleScript` rule.
     pub fn add_sec_rule_script(&mut self, rule: RuleWithActions) -> bool {
         self.rules_set_phases.insert(Arc::new(Rule::WithActions(rule)));
         true
     }
 
-    /// The rule `m_lastRule` points to.
+    /// The rule `last_rule` points to.
     fn last_rule_mut(&mut self) -> Option<&mut RuleWithActions> {
         let lr = self.last_rule?;
         let arc = self.rules_set_phases.for_phase_mut(lr.phase).get_mut(lr.index)?;
@@ -107,7 +106,7 @@ impl Driver {
         Some(r)
     }
 
-    /// `addSecRule`: adds a `SecRule`, or chains it to the previous one
+    /// Adds a `SecRule`, or chains it to the previous one
     /// when that one has the `chain` action.
     pub fn add_sec_rule(&mut self, mut r: RuleWithActions) -> bool {
         // is it a chained rule?
@@ -161,7 +160,7 @@ impl Driver {
         true
     }
 
-    /// `parse(f, ref)`: parses the rules in `f`; `reference` names their
+    /// Parses the rules in `f`; `reference` names their
     /// origin in the error messages. Returns whether the rules were valid
     /// (the errors are in `properties.parser_error`).
     pub fn parse(&mut self, f: &str, reference: &str) -> bool {
@@ -187,7 +186,7 @@ impl Driver {
         crate::parser::build::load_with(self, f, idx, false).is_ok()
     }
 
-    /// `parseFile`
+    /// Parses the rules of the file `f`.
     pub fn parse_file(&mut self, f: &str) -> bool {
         let content = if is_file(f) { std::fs::read(f).ok() } else { None };
         let Some(content) = content else {
@@ -197,8 +196,8 @@ impl Driver {
         self.parse_bytes(&content, f)
     }
 
-    /// `error(location, message, context)`: the first error also writes the
-    /// position header.
+    /// Appends the error message `m` and its context `c` to the parser
+    /// errors; the first error also writes the position header.
     pub(crate) fn error(&mut self, at: Position, m: &str, c: &str) {
         if self.properties.parser_error.is_empty() {
             let header =

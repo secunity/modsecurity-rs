@@ -1,5 +1,3 @@
-//! Port of `src/actions/data/status.cc`, `src/actions/data/status.h`.
-//!
 //! `status:N` — the HTTP status code used by the disruptive actions.
 
 use crate::actions::action::{Action, name_and_payload};

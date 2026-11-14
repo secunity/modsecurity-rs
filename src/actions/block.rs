@@ -1,5 +1,3 @@
-//! Port of `src/actions/block.cc`, `src/actions/block.h`.
-//!
 //! `block` — executes the disruptive actions of the `SecDefaultAction` of
 //! the rule's phase. Rules containing it are classified by
 //! `RuleWithActions` (it is kept with the run time actions and flags the

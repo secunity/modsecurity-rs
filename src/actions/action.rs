@@ -1,8 +1,8 @@
-//! Port of `headers/modsecurity/actions/action.h` and `src/actions/action.cc`.
+//! The [`Action`] trait implemented by every SecLang action, and the
+//! splitting of an action's text into its name and payload.
 //!
-//! The C++ `Action` class hierarchy becomes the [`Action`] trait. There is
-//! no shared base data: an action keeps its name (as written in the rule)
-//! and whatever it parsed from its payload.
+//! Actions share no base data: an action keeps its name (as written in the
+//! rule) and whatever it parsed from its payload.
 
 use crate::actions::transformations::transformation::Transformation;
 use crate::rule_message::RuleMessage;
@@ -93,8 +93,7 @@ pub trait Action: Send + Sync + std::fmt::Debug {
     }
 }
 
-/// An action that is accepted but has no behaviour of its own (the plain
-/// C++ `Action` class).
+/// An action that is accepted but has no behaviour of its own.
 #[derive(Debug, Clone)]
 pub struct InertAction {
     name: String,

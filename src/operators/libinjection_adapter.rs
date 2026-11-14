@@ -1,5 +1,5 @@
-//! Port of `src/operators/libinjection_adapter.h` /
-//! `src/operators/libinjection_adapter.cc`.
+//! Runs the libinjection SQLi and XSS detectors, with per-thread
+//! overrides for tests.
 //!
 //! libinjection is provided by the pure Rust `libinjection` crate
 //! (vendored under `others/libinjection`). Its SQLi detector follows
@@ -12,9 +12,10 @@ use std::cell::Cell;
 
 pub use crate::operators::libinjection_utils::InjectionResult;
 
-/// `DetectSQLiFn`: input, fingerprint out-parameter.
+/// An SQLi detector: takes the input and fills the fingerprint
+/// out-parameter.
 pub type DetectSQLiFn = fn(&[u8], &mut Vec<u8>) -> InjectionResult;
-/// `DetectXSSFn`
+/// An XSS detector: takes the input.
 pub type DetectXSSFn = fn(&[u8]) -> InjectionResult;
 
 thread_local! {
@@ -23,8 +24,8 @@ thread_local! {
     static XSS_OVERRIDE: Cell<Option<DetectXSSFn>> = const { Cell::new(None) };
 }
 
-/// `runLibinjectionSQLi`: on detection `fingerprint` receives the
-/// libinjection fingerprint (e.g. `s&1o`).
+/// Checks `input` for SQL injection; on detection `fingerprint` receives
+/// the libinjection fingerprint (e.g. `s&1o`).
 pub fn run_libinjection_sqli(input: &[u8], fingerprint: &mut Vec<u8>) -> InjectionResult {
     if let Some(f) = SQLI_OVERRIDE.with(|c| c.get()) {
         return f(input, fingerprint);
@@ -39,7 +40,7 @@ pub fn run_libinjection_sqli(input: &[u8], fingerprint: &mut Vec<u8>) -> Injecti
     }
 }
 
-/// `runLibinjectionXSS`
+/// Checks `input` for cross-site scripting.
 pub fn run_libinjection_xss(input: &[u8]) -> InjectionResult {
     if let Some(f) = XSS_OVERRIDE.with(|c| c.get()) {
         return f(input);

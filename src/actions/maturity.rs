@@ -1,5 +1,3 @@
-//! Port of `src/actions/maturity.cc`, `src/actions/maturity.h`.
-//!
 //! `maturity:N` — the maturity level of the rule (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};

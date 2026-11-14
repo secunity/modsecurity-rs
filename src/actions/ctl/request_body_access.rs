@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/request_body_access.cc`, `src/actions/ctl/request_body_access.h`.
-//!
 //! `ctl:requestBodyAccess=On|Off` — overrides `SecRequestBodyAccess` for
 //! the transaction.
 

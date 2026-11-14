@@ -1,10 +1,9 @@
-//! Port of `src/actions/transformations/transformation.h` /
-//! `src/actions/transformations/transformation.cc`.
+//! The transformation action (`t:xxx`): looks up a transformation by name
+//! and applies it to a target value.
 //!
-//! In C++ every transformation is a subclass of `Transformation` (itself an
-//! `Action`). Here a transformation is one [`Transformation`] value whose
-//! [`TransformationKind`] selects the function applied; the functions live
-//! in the modules of `actions::transformations`.
+//! A transformation is one [`Transformation`] value whose
+//! [`TransformationKind`] selects the function applied; the functions
+//! live in the modules of `actions::transformations`.
 
 use crate::actions::action::{Action, Kind, name_of};
 use crate::actions::transformations::*;
@@ -52,13 +51,13 @@ pub enum TransformationKind {
     UrlDecodeUni,
     UrlEncode,
     Utf8ToUnicode,
-    /// The plain C++ `Transformation` class (returned for unknown names):
+    /// The transformation of an unknown name (and of `t:transformation`):
     /// leaves the value as it is.
     Identity,
 }
 
 /// A transformation (`t:xxx`): an action of kind
-/// `RunTimeBeforeMatchAttemptKind` that rewrites the target value.
+/// [`Kind::RunTimeBeforeMatchAttempt`] that rewrites the target value.
 #[derive(Debug, Clone)]
 pub struct Transformation {
     /// The name as written in the rule (e.g. `t:lowerCase`), which the
@@ -72,9 +71,9 @@ impl Transformation {
         Transformation { name: name_of(action), kind }
     }
 
-    /// `Transformation::instantiate`: the transformation named `a`
-    /// (`t:<name>`). Names are matched by prefix in the C++ order (so
-    /// `t:trimLeftX` is `trimLeft`); unknown names do nothing.
+    /// The transformation named `a` (`t:<name>`). Names are matched by
+    /// prefix in the C++ order (so `t:trimLeftX` is `trimLeft`); unknown
+    /// names do nothing.
     pub fn from_name(a: &str) -> Self {
         use TransformationKind as K;
         const NAMES: &[(&str, TransformationKind)] = &[

@@ -1245,9 +1245,8 @@ fn is_collection(name: &str) -> bool {
     ["TX", "IP", "SESSION", "USER", "GLOBAL", "RESOURCE"].iter().any(|c| name.eq_ignore_ascii_case(c))
 }
 
-/// `variables`: removes the excluded variables (`!ARGS:foo`) from the list,
-/// recording their keys as exclusions of the variables of the same
-/// collection.
+/// Removes the excluded variables (`!ARGS:foo`) from the list, recording their
+/// keys as exclusions of the variables of the same collection.
 fn exclusions(mut original_list: Vec<Variable>) -> Vec<Variable> {
     let mut new_list: Vec<Variable> = Vec::new();
     let mut new_new_list: Vec<Variable> = Vec::new();
@@ -1296,12 +1295,15 @@ fn is_audit_part(c: u8) -> bool {
     b"ABCDEFGHJKIZ".contains(&c)
 }
 
-/// `REMOVE_RULE_BY`
+/// Whether `c` may appear in the value of a `ctl:ruleRemoveById`,
+/// `ctl:ruleRemoveByTag`, `ctl:ruleRemoveTargetById` or
+/// `ctl:ruleRemoveTargetByTag` action.
 fn is_remove_rule_by(c: u8) -> bool {
     c.is_ascii_alphanumeric() || b"_-.*/:;$@=()[]'".contains(&c)
 }
 
-/// `CONFIG_VALUE_PATH`
+/// Whether `c` may appear in an unquoted path (`SecRuleScript`, and the
+/// directives with a path value).
 fn is_path(c: u8) -> bool {
     c.is_ascii_alphanumeric() || b"_/.*: \\()-".contains(&c)
 }
@@ -1375,17 +1377,18 @@ enum Effect {
 /// A character class of the C++ scanner.
 #[derive(Debug, Clone, Copy)]
 enum Class {
-    /// `CONFIG_VALUE_NUMBER`: `[0-9]+`
+    /// A number: `[0-9]+`.
     Number,
-    /// `CONFIG_VALUE_PATH`
+    /// A path: the bytes [`is_path`] accepts.
     Path,
-    /// `FREE_TEXT_NEW_LINE`: `[^"|\n]+`
+    /// Text up to a quote, `|` or line feed: `[^"|\n]+`.
     FreeTextNewLine,
-    /// `NEW_LINE_FREE_TEXT`, `FREE_TEXT_SPACE_COMMA_QUOTE`: `[^, \t"\n\r]+`
+    /// A word: `[^, \t"\n\r]+`.
     Word,
-    /// `AUDIT_PARTS`
+    /// Audit log part letters (`ABCDEFGHJKIZ`).
     AuditParts,
-    /// `FREE_TEXT`: `([^"]|([^\\]\\"))+`
+    /// Any byte but a quote (the C++ scanner's `FREE_TEXT` was
+    /// `([^"]|([^\\]\\"))+`).
     FreeText,
 }
 
@@ -1416,9 +1419,10 @@ enum Pattern {
     SepQuoted(Class),
     /// `CLASS`, right after the keyword.
     Direct(Class),
-    /// `[ \t]+FREE_TEXT_NEW_LINE[ ]+NUMBER` (`SecUnicodeMapFile`)
+    /// `[ \t]+[^"|\n]+[ ]+[0-9]+`: a file and a code page
+    /// (`SecUnicodeMapFile`).
     UnicodeMap,
-    /// `[ ][^ ]+[ ][^\n\r ]+` (`SecRemoteRules`)
+    /// `[ ][^ ]+[ ][^\n\r ]+`: a key and a URL (`SecRemoteRules`).
     Remote,
 }
 
@@ -1426,13 +1430,15 @@ enum Pattern {
 /// and the value).
 #[derive(Debug, Clone, Copy)]
 enum Extract {
-    /// `find_separator`: after the first space or tab.
+    /// After the first space or tab.
     FindSep,
-    /// `parserSanitizer(find_separator(...))`
+    /// After the first space or tab, without the spaces and quotes around
+    /// it.
     SanFindSep,
-    /// `strchr(text, ' ') + 2`
+    /// Two bytes after the first space (`strchr(text, ' ') + 2`).
     Strchr2,
-    /// `parserSanitizer(strchr(text, ' ') + 2)`
+    /// Two bytes after the first space, without the spaces and quotes
+    /// around it.
     SanStrchr2,
 }
 

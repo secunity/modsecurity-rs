@@ -1,5 +1,3 @@
-//! Port of `src/actions/chain.cc`, `src/actions/chain.h`.
-//!
 //! `chain` — chains the rule with the one that follows (configuration
 //! time).
 

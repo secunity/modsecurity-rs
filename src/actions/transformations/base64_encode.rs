@@ -1,4 +1,4 @@
-//! Port of `src/actions/transformations/base64_encode.cc`, `src/actions/transformations/base64_encode.h`.
+//! The `t:base64Encode` transformation: encodes the value as base64.
 
 use crate::utils::base64::Base64;
 

@@ -1,7 +1,5 @@
-//! Port of `src/audit_log/writer/parallel.cc`, `src/audit_log/writer/parallel.h`.
-//!
-//! The parallel writer saves every entry into its own file under
-//! `SecAuditLogStorageDir`, and an index line into `SecAuditLog` /
+//! The parallel audit log writer: saves every entry into its own file
+//! under `SecAuditLogStorageDir`, and an index line into `SecAuditLog` /
 //! `SecAuditLog2`.
 
 use std::fs::OpenOptions;
@@ -31,13 +29,12 @@ use crate::utils::system::{create_dir, strerror, strftime_local};
 ///
 /// `/20150710/20150710-1353/20150710-135353-143654723362.584244`
 ///
-/// These constants describe the subpaths of this structure
-/// (`AuditLogFilePath`).
+/// These constants describe the subpaths of this structure.
 pub const YEAR_MONTH_DAY_DIRECTORY: i32 = 2;
 pub const YEAR_MONTH_DAY_AND_TIME_DIRECTORY: i32 = 4;
 pub const YEAR_MONTH_DAY_AND_TIME_FILE_NAME: i32 = 8;
 
-/// `logFilePath`: the requested subpaths for the time `t` (local time).
+/// The requested subpaths for the time `t` (local time).
 pub fn log_file_path(t: i64, part: i32) -> String {
     let mut name = String::new();
 

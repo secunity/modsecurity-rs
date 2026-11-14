@@ -1,5 +1,3 @@
-//! Port of `src/actions/exec.cc`, `src/actions/exec.h`.
-//!
 //! `exec:/path/to/script.lua` — runs a Lua script when the rule matches.
 
 use crate::actions::action::{Action, name_and_payload};

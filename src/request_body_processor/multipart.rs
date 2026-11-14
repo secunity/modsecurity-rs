@@ -1,5 +1,3 @@
-//! Port of `src/request_body_processor/multipart.cc`, `src/request_body_processor/multipart.h`.
-//!
 //! The `multipart/form-data` request body processor. The parser is a line
 //! oriented state machine working on an internal buffer of
 //! [`MULTIPART_BUF_SIZE`] bytes, exactly as the C++ (and ModSecurity 2)
@@ -40,20 +38,22 @@ fn c_str(s: &[u8]) -> &[u8] {
     }
 }
 
-/// `s[i]` of a C string: reading at (or past) the end yields the NUL
-/// terminator.
+/// The byte at `i` of a C string: reading at (or past) the end yields the
+/// NUL terminator.
 #[inline]
 fn c_at(s: &[u8], i: usize) -> u8 {
     s.get(i).copied().unwrap_or(0)
 }
 
-/// `strncmp(s + from, needle, strlen(needle)) == 0`, for a `needle` without
+/// Whether `s` has `needle` at `from`, as
+/// `strncmp(s + from, needle, strlen(needle)) == 0` for a `needle` without
 /// NUL bytes: the comparison stops at the first difference (a NUL byte in
 /// `s` is always a difference).
 fn c_starts_with(s: &[u8], from: usize, needle: &[u8]) -> bool {
     needle.iter().enumerate().all(|(k, &n)| c_at(s, from + k) == n)
 }
 
+/// The position of the first `needle` in `haystack`, as
 /// `strstr(haystack, needle)` on a NUL free haystack.
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() {
@@ -73,8 +73,8 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 #[derive(Debug)]
 pub struct MultipartPartTmpFile {
     tmp_file_name: String,
-    /// The open file (`m_tmp_file_fd`); `None` once closed, or when the file
-    /// could not be created.
+    /// The open file; `None` once closed, or when the file could not be
+    /// created.
     file: Mutex<Option<File>>,
     /// Whether to delete the file when the transaction is done.
     delete: AtomicBool,
@@ -84,9 +84,8 @@ pub struct MultipartPartTmpFile {
 }
 
 impl MultipartPartTmpFile {
-    /// `MultipartPartTmpFile(transaction)` followed by `Open()`: creates the
-    /// file in `SecUploadDir`, named after the current time and the
-    /// transaction id.
+    /// Creates and opens the file in `SecUploadDir`, named after the current
+    /// time and the transaction id.
     fn open(t: &Transaction<'_>) -> Self {
         let tstr = crate::utils::system::strftime_local(crate::utils::system::now(), "/%Y%m%d-%H%M%S");
 
@@ -119,17 +118,17 @@ impl MultipartPartTmpFile {
         }
     }
 
-    /// `getFilename`
+    /// The name of the file.
     pub fn filename(&self) -> &str {
         &self.tmp_file_name
     }
 
-    /// `setDelete`: delete the file when the transaction is done.
+    /// Marks the file for deletion when the transaction is done.
     pub fn set_delete(&self) {
         self.delete.store(true, Ordering::Relaxed);
     }
 
-    /// `isValid`: the file was created (successfully or not: in the latter
+    /// Whether the file was created (successfully or not: in the latter
     /// case writing reports the failure).
     pub fn is_valid(&self) -> bool {
         !self.tmp_file_name.is_empty()
@@ -139,7 +138,7 @@ impl MultipartPartTmpFile {
         self.file.lock().map(|f| f.is_some()).unwrap_or(false)
     }
 
-    /// `write(fd, data, len) == len`
+    /// Appends `data` to the file; `false` unless all of it was written.
     fn write(&self, data: &[u8]) -> bool {
         let Ok(guard) = self.file.lock() else {
             return false;
@@ -150,18 +149,18 @@ impl MultipartPartTmpFile {
         }
     }
 
-    /// `Close`
+    /// Closes the file.
     pub fn close(&self) {
         if let Ok(mut f) = self.file.lock() {
             *f = None;
         }
     }
 
-    /// The C++ destructor: deletes the file if it was marked for deletion,
-    /// logging the outcome to the transaction's debug log. The transaction
-    /// may call this when it is done with its temporary files; otherwise the
-    /// deletion happens (without the debug messages) when the last reference
-    /// is dropped.
+    /// Deletes the file if it was marked for deletion (as the C++ destructor
+    /// does), logging the outcome to the transaction's debug log. The
+    /// transaction may call this when it is done with its temporary files;
+    /// otherwise the deletion happens (without the debug messages) when the
+    /// last reference is dropped.
     pub fn release(&self, t: Option<&Transaction<'_>>) {
         if self.released.swap(true, Ordering::Relaxed) {
             return;
@@ -201,18 +200,17 @@ impl Drop for MultipartPartTmpFile {
 // MultipartPart
 // ---------------------------------------------------------------------------
 
-/// `MULTIPART_FORMDATA` / `MULTIPART_FILE`
+/// Whether a part is a form field or a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PartType {
     FormData,
     File,
 }
 
-/// Part headers: name -> (offset, value); names compare case insensitively
-/// (the C++ `MyHash`/`MyEqual` unordered map).
+/// Part headers: name -> (offset, value); names compare case insensitively.
 type PartHeaders = Vec<(Vec<u8>, (usize, Vec<u8>))>;
 
-/// `MultipartPart`
+/// A part of the body: a form field or a file.
 #[derive(Debug)]
 struct MultipartPart {
     /// part type, can be `FormData` or `File`
@@ -297,13 +295,13 @@ impl MultipartPart {
 // Multipart
 // ---------------------------------------------------------------------------
 
-/// `Multipart`
+/// The state of the multipart parser for one request body.
 #[derive(Debug)]
 pub struct Multipart {
     pub reqbody_no_files_length: usize,
     /// The most recent parsing error (`MULTIPART_*` failures and the
     /// upload file limit), reported as `REQBODY_ERROR_MSG`. A later error
-    /// replaces an earlier one, as with the C++ `std::string *error`.
+    /// replaces an earlier one, as in C++.
     error: Option<String>,
     parts: Vec<MultipartPart>,
 
@@ -317,7 +315,7 @@ pub struct Multipart {
     /// internal buffer and other variables used while parsing
     buf: [u8; MULTIPART_BUF_SIZE + 2],
     buf_contains_line: bool,
-    /// Write position in `buf` (`m_bufptr`).
+    /// Write position in `buf`.
     bufptr: usize,
     bufleft: usize,
 
@@ -373,12 +371,12 @@ pub struct Multipart {
     header: Vec<u8>,
     /// `SecUploadKeepFiles`, read by the cleanup.
     upload_keep_files: Option<bool>,
-    /// Whether the cleanup of the C++ destructor already ran.
+    /// Whether `cleanup` (what the C++ destructor does) already ran.
     cleaned_up: bool,
 }
 
 impl Multipart {
-    /// `Multipart(header, transaction)`: `header` is the Content-Type.
+    /// A parser for a body with the Content-Type `header`.
     pub fn new(header: &[u8]) -> Self {
         Multipart {
             reqbody_no_files_length: 0,
@@ -421,7 +419,8 @@ impl Multipart {
         }
     }
 
-    /// `is_token_char`
+    /// Whether `c` is an RFC 2616 token character (no control, separator or
+    /// non-ASCII byte).
     pub fn is_token_char(c: u8) -> bool {
         // CTLs not allowed
         if c <= 32 || c >= 127 {
@@ -433,7 +432,8 @@ impl Multipart {
         )
     }
 
-    /// `boundary_characters_valid`
+    /// Whether the boundary only uses the characters RFC 2046 allows (a
+    /// space only before the last character).
     pub fn boundary_characters_valid(boundary: &[u8]) -> bool {
         let boundary = c_str(boundary);
         boundary.iter().enumerate().all(|(i, &c)| {
@@ -445,8 +445,8 @@ impl Multipart {
         })
     }
 
-    /// `count_boundary_params`: how many times the word "boundary" followed
-    /// (anywhere later) by `=` appears, case insensitively.
+    /// How many times the word "boundary" followed (anywhere later) by `=`
+    /// appears, case insensitively.
     pub fn count_boundary_params(str_header_value: &[u8]) -> i32 {
         let lower = str_header_value.to_ascii_lowercase();
         let mut s = c_str(&lower);
@@ -460,7 +460,8 @@ impl Multipart {
         count
     }
 
-    /// `validate_quotes`
+    /// Sets `MULTIPART_INVALID_QUOTING` when `data`, a value not enclosed in
+    /// double quotes, contains a single quote.
     fn validate_quotes(&mut self, t: &Transaction<'_>, data: &[u8], quote: u8) {
         // if the value was enclosed in double quotes, then we don't care
         // about a single quote character within the name.
@@ -481,9 +482,10 @@ impl Multipart {
         }
     }
 
-    /// `parse_content_disposition`: `c_d_value` is the header value (a C
-    /// string), `offset` where it starts. The error is the (negative) code
-    /// of the C++ function, which the error message shows.
+    /// Parses the Content-Disposition header of the current part: `c_d_value`
+    /// is the header value (a C string), `offset` where it starts. The error
+    /// is the (negative) code of the C++ function, which the error message
+    /// shows.
     fn parse_content_disposition(
         &mut self,
         t: &mut Transaction<'_>,
@@ -800,7 +802,9 @@ impl Multipart {
         Ok(())
     }
 
-    /// `process_part_data`
+    /// Adds the buffer to the data of the current part (its file or its
+    /// value), holding back a trailing line break that may belong to the
+    /// next boundary.
     fn process_part_data(&mut self, t: &mut Transaction<'_>, offset: usize) -> bool {
         let p = MULTIPART_BUF_SIZE - self.bufleft;
         let mut localreserve = [0u8; 2];
@@ -969,9 +973,9 @@ impl Multipart {
         true
     }
 
-    /// `process_part_header`. Like the C++ code (whose failures return 0,
-    /// which its caller does not treat as fatal), a failure only records
-    /// the error.
+    /// Handles a line of the headers of the current part. Like the C++ code
+    /// (whose failures return 0, which its caller does not treat as fatal), a
+    /// failure only records the error.
     fn process_part_header(&mut self, t: &mut Transaction<'_>, offset: usize) {
         // Check for nul bytes.
         let len = MULTIPART_BUF_SIZE - self.bufleft;
@@ -1192,7 +1196,8 @@ impl Multipart {
         }
     }
 
-    /// `process_boundary`
+    /// Handles a boundary line: finishes the part being built, and starts a
+    /// new one unless this is the last boundary.
     fn process_boundary(&mut self, t: &mut Transaction<'_>, last_part: bool) {
         // if there was a part being built finish it
         if let Some(mut mpp) = self.mpp.take() {
@@ -1286,19 +1291,19 @@ impl Multipart {
         }
     }
 
-    /// `multipart_complete`: finalizes multipart processing. This method is
-    /// invoked at the end, when it is clear that there is no more data to be
-    /// processed.
-    ///
-    /// The cleanup the C++ destructor did (marking the temporary files for
-    /// deletion, with its debug messages) needs the transaction, so it runs
-    /// at the end of this method: `Transaction::processRequestBody` always
-    /// destroyed the processor right after calling `multipart_complete`.
     /// The error to report, if processing failed.
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
 
+    /// Finalizes multipart processing. This method is invoked at the end,
+    /// when it is clear that there is no more data to be processed.
+    ///
+    /// The cleanup the C++ destructor did (marking the temporary files for
+    /// deletion, with its debug messages) needs the transaction, so it runs
+    /// at the end of this method: the C++ `Transaction::processRequestBody`
+    /// always destroyed the processor right after calling
+    /// `multipart_complete`.
     pub fn multipart_complete(&mut self, t: &mut Transaction<'_>) -> bool {
         let ret = self.complete(t);
         self.cleanup(Some(t));
@@ -1506,7 +1511,7 @@ impl Multipart {
         true
     }
 
-    /// `init`: validates the Content-Type header and extracts the boundary.
+    /// Validates the Content-Type header and extracts the boundary.
     pub fn init(&mut self, t: &mut Transaction<'_>) -> bool {
         self.upload_keep_files = t.rules.properties.upload_keep_files;
         self.bufleft = MULTIPART_BUF_SIZE;
@@ -1689,8 +1694,8 @@ impl Multipart {
         true
     }
 
-    /// `process`: assumes that all data is in `data` (we are not processing
-    /// chunks); `offset` is where the body starts.
+    /// Parses the body. Assumes that all data is in `data` (we are not
+    /// processing chunks); `offset` is where the body starts.
     pub fn process(&mut self, t: &mut Transaction<'_>, data: &[u8], offset: usize) -> bool {
         let mut inptr = 0usize;
         let mut inleft = data.len();
@@ -1925,9 +1930,9 @@ impl Multipart {
         true
     }
 
-    /// The C++ destructor: marks the temporary files of the parts for
-    /// deletion (unless `SecUploadKeepFiles` is on); they stay on disk until
-    /// the transaction is done with them.
+    /// What the C++ destructor does: marks the temporary files of the parts
+    /// for deletion (unless `SecUploadKeepFiles` is on); they stay on disk
+    /// until the transaction is done with them.
     fn cleanup(&mut self, t: Option<&Transaction<'_>>) {
         if self.cleaned_up {
             return;

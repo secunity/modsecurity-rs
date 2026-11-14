@@ -1,5 +1,3 @@
-//! Port of `src/actions/disruptive/allow.cc`, `src/actions/disruptive/allow.h`.
-//!
 //! `allow`, `allow:phase`, `allow:request` — stops the evaluation of the
 //! rules (from now on, for the current phase, or for the request phases).
 
@@ -38,7 +36,7 @@ impl Allow {
         Ok(Allow { name: name.to_string(), allow_type })
     }
 
-    /// `allowTypeToName`
+    /// The name of an allow type, as the debug log prints it.
     fn allow_type_to_name(a: AllowType) -> &'static str {
         match a {
             AllowType::Request => "Request",

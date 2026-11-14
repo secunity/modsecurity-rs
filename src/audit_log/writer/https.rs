@@ -1,7 +1,5 @@
-//! Port of `src/audit_log/writer/https.cc`, `src/audit_log/writer/https.h`.
-//!
-//! The HTTPS writer posts every entry, as JSON, to the URL given by
-//! `SecAuditLog`.
+//! The HTTPS audit log writer: posts every entry, as JSON, to the URL
+//! given by `SecAuditLog`.
 
 use crate::audit_log::AuditLog;
 use crate::transaction::Transaction;

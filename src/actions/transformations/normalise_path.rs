@@ -1,7 +1,8 @@
-//! Port of `src/actions/transformations/normalise_path.cc`, `src/actions/transformations/normalise_path.h`.
+//! The `t:normalisePath` and `t:normalisePathWin` transformations: remove
+//! self references, back references and repeated slashes from a path.
 
-/// `NormalisePath::normalize_path_inplace`: normalises a path in place
-/// (removes self references, back references and repeated slashes).
+/// Normalises a path in place (removes self references, back references
+/// and repeated slashes).
 /// With `win`, backslashes are converted to forward slashes first.
 ///
 /// The C++ pointer arithmetic is kept as signed indices into `val`

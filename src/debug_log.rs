@@ -1,4 +1,4 @@
-//! Port of `headers/modsecurity/debug_log.h` and `src/debug_log/debug_log.cc`.
+//! The debug log (`SecDebugLog`, `SecDebugLogLevel`).
 //!
 //! The C++ `DebugLog` class is a concrete base with virtual methods that
 //! connectors (and the test utilities) override. Here the interface is the
@@ -34,8 +34,7 @@ pub trait DebugLog: std::any::Any + Send + Sync {
     }
 }
 
-/// The stock debug log: appends to a [`SharedFile`] (C++
-/// `DebugLogWriter`).
+/// The stock debug log: appends to a [`SharedFile`].
 #[derive(Debug, Default)]
 pub struct DefaultDebugLog {
     level: Option<i32>,

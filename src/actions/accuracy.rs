@@ -1,5 +1,3 @@
-//! Port of `src/actions/accuracy.cc`, `src/actions/accuracy.h`.
-//!
 //! `accuracy:N` — the accuracy level of the rule (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};

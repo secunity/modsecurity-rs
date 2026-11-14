@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/rule_remove_target_by_id.cc`, `src/actions/ctl/rule_remove_target_by_id.h`.
-//!
 //! `ctl:ruleRemoveTargetById=ID;VARIABLE` — removes a target from a rule
 //! for the rest of the transaction.
 

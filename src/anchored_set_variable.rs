@@ -1,8 +1,7 @@
-//! Port of `headers/modsecurity/anchored_set_variable.h` and
-//! `src/anchored_set_variable.cc`.
-//!
 //! A multi valued transaction variable (e.g. `ARGS`), keyed case
-//! insensitively. The C++ class *is* a
+//! insensitively.
+//!
+//! The C++ class *is* a
 //! `std::unordered_multimap<std::string, VariableValue *, MyHash, MyEqual>`;
 //! [`UnorderedMultimap`] reproduces that container's iteration order, which
 //! decides the order targets are evaluated in.
@@ -87,27 +86,28 @@ impl AnchoredSetVariable {
         self.map.insert(key.to_vec(), Entry { value, name });
     }
 
-    /// `set(key, value, offset, len)`
+    /// Adds a value under `key`; its origin is `len` bytes at `offset`.
     pub fn set_with_len(&mut self, key: &[u8], value: &[u8], offset: usize, len: usize) {
         let mut var = VariableValue::with_collection(self.name.as_bytes(), key, value);
         var.add_origin(VariableOrigin::new(len, offset));
         self.insert(key, var);
     }
 
-    /// `set(key, value, offset)`
+    /// Adds a value under `key`; its origin is the whole value at
+    /// `offset`.
     pub fn set(&mut self, key: &[u8], value: &[u8], offset: usize) {
         let mut var = VariableValue::with_collection(self.name.as_bytes(), key, value);
         var.add_origin(VariableOrigin::new(value.len(), offset));
         self.insert(key, var);
     }
 
-    /// `setCopy`
+    /// The same as [`Self::set`] (the C++ copying variant).
     pub fn set_copy(&mut self, key: &[u8], value: &[u8], offset: usize) {
         self.set(key, value, offset);
     }
 
-    /// `resolve(l)`: note the C++ code inserts at the front of `l`, so the
-    /// result is in reverse container order.
+    /// Adds every value to `l`. As in C++, the values are inserted at the
+    /// front of `l`, so they come out in reverse container order.
     pub fn resolve(&self, l: &mut Vec<VariableValue>) {
         self.resolve_pick(Pick::Value, l)
     }
@@ -118,7 +118,7 @@ impl AnchoredSetVariable {
         move_to_front_reversed(l, start);
     }
 
-    /// `resolve(l, ke)`
+    /// [`Self::resolve`], skipping the keys excluded by `ke`.
     pub fn resolve_with_exclusions(&self, l: &mut Vec<VariableValue>, ke: &KeyExclusions, t: Option<&Transaction<'_>>) {
         self.resolve_with_exclusions_pick(Pick::Value, l, ke, t)
     }
@@ -141,7 +141,7 @@ impl AnchoredSetVariable {
         move_to_front_reversed(l, start);
     }
 
-    /// `resolve(key, l)`
+    /// Appends the values stored under `key` to `l`.
     pub fn resolve_key(&self, key: &[u8], l: &mut Vec<VariableValue>) {
         self.resolve_key_pick(Pick::Value, key, l)
     }
@@ -152,12 +152,12 @@ impl AnchoredSetVariable {
         }
     }
 
-    /// `resolveFirst(key)`
+    /// The first value stored under `key`, if any.
     pub fn resolve_first(&self, key: &[u8]) -> Option<Vec<u8>> {
         self.map.find(key).map(|(_, e)| e.value.value().to_vec())
     }
 
-    /// `resolveRegularExpression(r, l)`
+    /// [`Self::resolve`] restricted to the keys that match `r`.
     pub fn resolve_regular_expression(&self, r: &Regex, l: &mut Vec<VariableValue>) {
         self.resolve_regular_expression_pick(Pick::Value, r, l)
     }
@@ -173,7 +173,8 @@ impl AnchoredSetVariable {
         move_to_front_reversed(l, start);
     }
 
-    /// `resolveRegularExpression(r, l, ke)`
+    /// [`Self::resolve_regular_expression`], skipping the keys excluded
+    /// by `ke`.
     pub fn resolve_regular_expression_with_exclusions(
         &self,
         r: &Regex,

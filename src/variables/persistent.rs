@@ -1,16 +1,14 @@
-//! Port of `src/variables/global.h`, `ip.h`, `resource.h`, `session.h` and
-//! `user.h`.
-//!
-//! The persistent collections (`GLOBAL`, `IP`, `RESOURCE`, `SESSION`,
-//! `USER`): `COL`, `COL:key`, `COL:/regex/` and `COL:%{macro}` (the
-//! `*_DynamicElement` used by `setvar`, `expirevar`, ...). Keys are
+//! The variables of the persistent collections (`GLOBAL`, `IP`,
+//! `RESOURCE`, `SESSION`, `USER`): `COL`, `COL:key`, `COL:/regex/` and
+//! `COL:%{macro}` (the form `setvar`, `expirevar`, ... write to). Keys are
 //! compartmentalised with the collection key set by
 //! `initcol`/`setsid`/`setuid` and the `SecWebAppId`.
 //!
 //! The C++ code has one set of four classes per collection; here the
 //! collection is a value and the variables are built by
-//! [`Persistent::variable`]. The RESOURCE regex naming quirk is retained; the SESSION deletion
-//! quirk is handled by the writable target in `variable.rs`.
+//! [`Persistent::variable`]. The RESOURCE regex naming quirk is retained;
+//! the SESSION deletion quirk is handled by the writable target in
+//! `variable.rs`.
 
 use crate::utils::regex::Regex;
 use crate::variables::VariableSelector;

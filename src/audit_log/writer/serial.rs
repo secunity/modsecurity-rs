@@ -1,7 +1,5 @@
-//! Port of `src/audit_log/writer/serial.cc`, `src/audit_log/writer/serial.h`.
-//!
-//! The serial writer appends every entry to the single file `SecAuditLog`
-//! (`path1`).
+//! The serial audit log writer: appends every entry to the single file
+//! `SecAuditLog` (`path1`).
 
 use std::sync::Arc;
 

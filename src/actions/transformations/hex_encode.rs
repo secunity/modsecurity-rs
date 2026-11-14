@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/hex_encode.cc`, `src/actions/transformations/hex_encode.h`.
+//! The `t:hexEncode` transformation: encodes every byte as two lowercase
+//! hex digits.
 
 use crate::utils::string::string_to_hex;
 

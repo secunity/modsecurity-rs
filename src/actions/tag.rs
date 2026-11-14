@@ -1,4 +1,4 @@
-//! Port of `src/actions/tag.cc`, `src/actions/tag.h`.
+//! `tag:'...'` — a tag (with macro expansion) that categorises the rule.
 //!
 //! Description: Assigns a tag (category) to a rule or a chain.
 //!

@@ -1,5 +1,5 @@
-//! Port of `headers/modsecurity/rule_with_actions.h` and
-//! `src/rule_with_actions.cc`.
+//! The rules that carry actions: `SecRule`, `SecAction` and
+//! `SecRuleScript`, and how their actions and transformations run.
 //!
 //! C++ has `RuleWithActions : Rule` with three subclasses
 //! (`RuleWithOperator`, `RuleUnconditional`, `RuleScript`). Here the shared
@@ -30,14 +30,14 @@ use crate::rules_set_properties::RuleEngine;
 use crate::transaction::Transaction;
 use crate::utils::string::limit_to;
 
-/// `TransformationResult`: the transformed value and the transformation
-/// path that produced it (e.g. `t:lowercase,t:urlDecode`).
+/// A transformed value and the transformation path that produced it
+/// (e.g. `t:lowercase,t:urlDecode`).
 pub type TransformationResult = (Vec<u8>, TransformationPath);
 
 /// The transformation path of a [`TransformationResult`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransformationPath {
-    /// `multiMatch`: the original value (empty path) or the one
+    /// With `multiMatch`: the original value (empty path) or the one
     /// transformation that produced this value.
     Step(String),
     /// All the transformations of the rule (see
@@ -144,11 +144,11 @@ pub enum LogPoint {
 /// The subclass specific part of a rule.
 #[derive(Debug)]
 pub enum RuleWithActionsKind {
-    /// `RuleWithOperator` (`SecRule`)
+    /// A `SecRule`.
     Operator(RuleWithOperator),
-    /// `RuleUnconditional` (`SecAction`)
+    /// A `SecAction`.
     Unconditional,
-    /// `RuleScript` (`SecRuleScript`)
+    /// A `SecRuleScript`.
     Script(RuleScript),
 }
 
@@ -186,8 +186,8 @@ pub struct RuleWithActions {
 }
 
 impl RuleWithActions {
-    /// `RuleWithActions(actions, transformations, fileName, lineNumber)`
-    /// plus the subclass part. Configuration actions (`id`, `phase`, ...)
+    /// Builds a rule from its parsed actions and transformations and its
+    /// kind specific part. Configuration actions (`id`, `phase`, ...)
     /// are applied to the rule here and dropped; run time actions are sorted
     /// into their slots.
     pub fn new(
@@ -266,7 +266,7 @@ impl RuleWithActions {
         self.phase = phase;
     }
 
-    /// `getReference`: the rule id for `SecRule`s, `file:line` otherwise.
+    /// The rule id for `SecRule`s, `file:line` otherwise.
     pub fn reference(&self) -> String {
         match self.kind {
             RuleWithActionsKind::Operator(_) => self.rule_id.to_string(),
@@ -329,17 +329,17 @@ impl RuleWithActions {
         self.severity.is_some()
     }
 
-    /// `logData(t)`
+    /// The expanded `logdata` of the rule (empty without one).
     pub fn log_data(&self, t: &Transaction<'_>) -> Vec<u8> {
         self.log_data.as_ref().map(|l| l.data(t)).unwrap_or_default()
     }
 
-    /// `msg(t)`
+    /// The expanded `msg` of the rule (empty without one).
     pub fn msg(&self, t: &Transaction<'_>) -> Vec<u8> {
         self.msg.as_ref().map(|m| m.data(t)).unwrap_or_default()
     }
 
-    /// `severity()`
+    /// The `severity` of the rule (0 without one).
     pub fn severity(&self) -> i32 {
         self.severity.as_ref().map(|s| s.severity).unwrap_or(0)
     }
@@ -366,13 +366,14 @@ impl RuleWithActions {
 
     // --- evaluation ---
 
-    /// `evaluate(transaction)`
+    /// Evaluates the rule with a new rule message. Returns whether it
+    /// matched.
     pub fn evaluate<'a>(&'a self, t: &mut Transaction<'a>) -> bool {
         let mut rm = RuleMessage::new(self);
         self.evaluate_with_message(t, &mut rm)
     }
 
-    /// `evaluate(transaction, ruleMessage)`: dispatches to the subclass.
+    /// Evaluates the rule with the message `rm`, according to its kind.
     pub fn evaluate_with_message<'a>(&'a self, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
         match &self.kind {
             RuleWithActionsKind::Operator(o) => o.evaluate(self, t, rm),
@@ -381,13 +382,16 @@ impl RuleWithActions {
         }
     }
 
-    /// The `RuleWithActions::evaluate` body shared by the subclasses:
-    /// matched values are cleared at every new rule execution.
+    /// The part of the evaluation shared by every kind of rule: matched
+    /// values are cleared at every new rule execution.
     pub fn evaluate_base(&self, t: &mut Transaction<'_>) {
         t.matched.clear();
     }
 
-    /// `executeActionsIndependentOfChainedRuleResult`. Returns whether a
+    /// Runs the actions that do not depend on the result of the chain:
+    /// `setvar` (including the ones added by `SecRuleUpdateActionById`)
+    /// and, for a `multiMatch` rule that is not a chain child, `severity`,
+    /// `logdata`, `msg` and `tag`. Returns whether a
     /// `SecRuleUpdateActionById` added a `block` action to the rule.
     pub fn execute_actions_independent_of_chained_rule_result<'a>(
         &'a self,
@@ -428,7 +432,10 @@ impl RuleWithActions {
         contains_block
     }
 
-    /// `executeActionsAfterFullMatch`
+    /// Runs the actions of a rule whose chain matched: the
+    /// `SecDefaultAction` ones that run on a match, `tag`, the ones added
+    /// by `SecRuleUpdateActionById`, `severity`, `logdata`, `msg`, the
+    /// other run time actions and last the disruptive action.
     pub fn execute_actions_after_full_match<'a>(
         &'a self,
         t: &mut Transaction<'a>,
@@ -478,7 +485,9 @@ impl RuleWithActions {
         }
     }
 
-    /// `executeAction`
+    /// Runs one action. A disruptive action (or `block`) runs only when
+    /// the rule engine is `On`, and one from `SecDefaultAction`
+    /// (`default_context`) only when the rule contains `block`.
     pub fn execute_action<'a>(
         &'a self,
         t: &mut Transaction<'a>,
@@ -507,7 +516,7 @@ impl RuleWithActions {
         crate::ms_dbg_a!(t, 4, "Not running any disruptive action (or block): {}. SecRuleEngine is not On.", a.name());
     }
 
-    /// The transformations `executeTransformations` applies, in order:
+    /// The transformations the rule applies, in order:
     /// the `SecDefaultAction` ones (unless the rule has `t:none`), the
     /// rule's own (from its last `t:none` on) and the `SecRuleUpdateActionById`
     /// ones (likewise).
@@ -569,8 +578,7 @@ impl RuleWithActions {
         self.for_each_transformation(rules, |a| chain.push(a));
     }
 
-    /// `executeTransformations` (with `executeTransformation` inlined):
-    /// applies `chain` (see [`Self::transformations_in`]) to `input`.
+    /// Applies `chain` (see [`Self::transformations_in`]) to `input`.
     ///
     /// `ret` is cleared first; the buffer of its last value is reused. The
     /// path of the final value (without `multiMatch`) is
@@ -615,8 +623,8 @@ impl RuleWithActions {
         }
     }
 
-    /// The names of the transformations `executeTransformations` applies,
-    /// joined with `,` (the C++ code builds this path for every value).
+    /// The names of the transformations the rule applies, joined with `,`
+    /// (the C++ code builds this path for every value).
     pub fn transformation_path(&self, t: &Transaction<'_>) -> String {
         let mut path = String::new();
         self.for_each_transformation(t.rules, |a| {
@@ -628,17 +636,18 @@ impl RuleWithActions {
         path
     }
 
-    /// `containsTag`
+    /// Whether one of the rule's `tag`s expands to `name`.
     pub fn contains_tag(&self, name: &str, t: &Transaction<'_>) -> bool {
         self.actions_tag.iter().any(|tag| *tag.string.evaluate_cow(Some(t)) == *name.as_bytes())
     }
 
-    /// `containsMsg`
+    /// Whether the rule's `msg` expands to `name`.
     pub fn contains_msg(&self, name: &str, t: &Transaction<'_>) -> bool {
         self.msg.as_ref().is_some_and(|m| *m.string.evaluate_cow(Some(t)) == *name.as_bytes())
     }
 
-    /// `getActionsByName`
+    /// The rule's actions and transformations named `name`, including the
+    /// ones added by `SecRuleUpdateActionById`.
     pub fn actions_by_name<'s>(&'s self, name: &str, t: &'s Transaction<'_>) -> Vec<&'s dyn Action> {
         let mut ret: Vec<&dyn Action> = Vec::new();
         for z in &self.actions_runtime_pos {
@@ -665,8 +674,8 @@ impl RuleWithActions {
         ret
     }
 
-    /// `performLogging`: saves the message for the audit log and sends it
-    /// to the server log, depending on where the rule is in its evaluation.
+    /// Saves the message for the audit log and sends it to the server log,
+    /// depending on where the rule is in its evaluation.
     pub fn perform_logging<'a>(&'a self, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>, point: LogPoint) {
         let mut is_it_to_be_logged = rm.save_message;
         if point != LogPoint::EachMatch {

@@ -1,5 +1,3 @@
-//! Port of `src/actions/set_env.cc`, `src/actions/set_env.h`.
-//!
 //! `setenv:name=value` — sets an environment variable.
 
 use crate::actions::action::Action;

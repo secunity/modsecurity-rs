@@ -1,5 +1,3 @@
-//! Port of `src/actions/skip.cc`, `src/actions/skip.h`.
-//!
 //! `skip:N` — skips the next N rules (or chains) when the rule matches.
 
 use crate::actions::action::{Action, name_and_payload};

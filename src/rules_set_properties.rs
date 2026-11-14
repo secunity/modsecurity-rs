@@ -1,5 +1,5 @@
-//! Port of `headers/modsecurity/rules_set_properties.h` and
-//! `src/rules_set_properties.cc`.
+//! The configuration of a rule set: the values set by the SecLang
+//! directives.
 //!
 //! The configuration state shared by the parser `Driver` and `RulesSet`
 //! (both derive from `RulesSetProperties` in C++; both embed it here).
@@ -47,8 +47,8 @@ config_number!(i32, true, i32::MIN as i128);
 config_number!(u32, false, 0);
 config_number!(u64, false, 0);
 
-/// `ConfigValue::parse`: `std::stoll` / `std::stoull` plus the range checks
-/// of the C++ type, with its error messages.
+/// Parses a numeric directive value: `std::stoll` / `std::stoull` plus the
+/// range checks of the C++ type, with its error messages.
 pub fn parse_config_number<T: ConfigNumber>(a: &str) -> Result<T, String> {
     let val: i128 = match parse_cxx_integer(a, T::SIGNED) {
         CxxInt::Invalid => return Err("Invalid number format (not numeric)".to_string()),
@@ -102,8 +102,7 @@ fn parse_cxx_integer(a: &str, signed: bool) -> CxxInt {
     }
 }
 
-/// `ConfigOctalInt::parse`: a file mode (`SecUploadFileMode`), "0640" is
-/// 0640.
+/// Parses a file mode (`SecUploadFileMode`) in octal: "0640" is 0640.
 pub fn parse_octal_mode(a: &str) -> Result<u32, String> {
     if a.is_empty() || a.bytes().any(|c| !(b'0'..=b'7').contains(&c)) {
         return Err("Invalid octal number".to_string());
@@ -118,15 +117,16 @@ pub fn parse_octal_mode(a: &str) -> Result<u32, String> {
     parse_config_number(&v.to_string())
 }
 
-/// The C++ `merge` of the optional configuration values: a value set in
-/// `to` wins over the one of `from`.
+/// Merges an optional configuration value: a value set in `to` wins over
+/// the one of `from`.
 fn merge_value<T: Clone>(to: &mut Option<T>, from: &Option<T>) {
     if to.is_none() {
         to.clone_from(from);
     }
 }
 
-/// `ConfigSet`
+/// A set of strings configured by directives (`SecResponseBodyMimeType`);
+/// `clear` records `SecResponseBodyMimeTypesClear`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConfigSet {
     pub set: bool,
@@ -134,7 +134,7 @@ pub struct ConfigSet {
     pub value: BTreeSet<String>,
 }
 
-/// `UnicodeMapHolder`: code point -> mapped byte (-1 when unmapped).
+/// A Unicode map: code point -> mapped byte (-1 when unmapped).
 #[derive(Debug, Clone)]
 pub struct UnicodeMapHolder {
     pub data: Vec<i32>,
@@ -156,7 +156,7 @@ impl UnicodeMapHolder {
     }
 }
 
-/// `ConfigUnicodeMap`
+/// `SecUnicodeMapFile`: the code page and its map, when set.
 #[derive(Debug, Clone, Default)]
 pub struct ConfigUnicodeMap {
     pub set: bool,
@@ -176,8 +176,8 @@ impl ConfigUnicodeMap {
         self.unicode_map_table = from.unicode_map_table.clone();
     }
 
-    /// `ConfigUnicodeMap::loadConfig`: loads the mapping for `code_page` from
-    /// a `unicode.mapping` file into `driver`.
+    /// Loads the mapping for `code_page` from a `unicode.mapping` file
+    /// into `driver`.
     pub fn load_config(f: &str, config_code_page: f64, driver: &mut RulesSetProperties) -> Result<(), String> {
         driver.unicode_map_table.set = true;
         driver.unicode_map_table.unicode_code_page = config_code_page;
@@ -227,7 +227,8 @@ impl ConfigUnicodeMap {
     }
 }
 
-/// `strtol(s, nullptr, 16)`
+/// Parses a hexadecimal number as `strtol(s, nullptr, 16)` does (0 when
+/// there is none).
 fn strtol16(s: &[u8]) -> i64 {
     let s = std::str::from_utf8(s).unwrap_or("");
     let s = s.trim_start();
@@ -276,8 +277,8 @@ pub enum OnFailedRemoteRulesAction {
     Warn,
 }
 
-/// `RulesSetProperties::ruleEngineStateString` (`None` is the C++ not-set
-/// state).
+/// The name of a rule engine state as the logs print it (`None` is the
+/// C++ not-set state).
 pub fn rule_engine_state_string(i: Option<RuleEngine>) -> &'static str {
     match i {
         Some(RuleEngine::Disabled) => "Disabled",
@@ -287,7 +288,7 @@ pub fn rule_engine_state_string(i: Option<RuleEngine>) -> &'static str {
     }
 }
 
-/// `RulesSetProperties::configBooleanString`
+/// The name of an optional boolean setting as the logs print it.
 pub fn config_boolean_string(i: Option<bool>) -> &'static str {
     match i {
         Some(true) => "True",
@@ -367,7 +368,7 @@ impl RulesSetProperties {
         Self::default()
     }
 
-    /// `RulesSetProperties(DebugLog *debugLog)`
+    /// Empty properties that write the debug log to `debug_log`.
     pub fn with_debug_log(debug_log: Box<dyn DebugLog>) -> Self {
         RulesSetProperties {
             audit_log: AuditLog::new(),
@@ -410,7 +411,8 @@ impl RulesSetProperties {
         self.sec_web_app_id.as_deref().unwrap_or_default().as_bytes()
     }
 
-    /// `mergeProperties(from, to, err)`. A failure (audit log or debug log
+    /// Merges `from` into `to`: values set in `to` win, lists (exceptions,
+    /// default actions, ...) are appended. A failure (audit log or debug log
     /// file) stops the merge of the remaining logging properties.
     pub fn merge_properties(from: &mut RulesSetProperties, to: &mut RulesSetProperties) -> Result<(), String> {
         merge_value(&mut to.sec_rule_engine, &from.sec_rule_engine);

@@ -1,4 +1,5 @@
-//! Port of `headers/modsecurity/audit_log.h`, `src/audit_log/audit_log.cc`.
+//! The audit log: its configuration (`SecAuditEngine`, `SecAuditLog*`),
+//! which transactions are relevant, and the writers that save them.
 
 pub mod writer;
 
@@ -87,8 +88,7 @@ impl Default for AuditLog {
     }
 }
 
-/// `PARTS_CONSTAINS` / `PARTS_CONSTAINS_REM`: the parts whose letter
-/// (either case) appears anywhere in `new_parts`.
+/// The parts whose letter (either case) appears anywhere in `new_parts`.
 fn parts_in(new_parts: &str) -> i32 {
     const LETTERS: [(u8, i32); 12] = [
         (b'A', AuditLog::A_AUDIT_LOG_PART),
@@ -235,8 +235,8 @@ impl AuditLog {
         self.audit_type = Some(audit_type);
     }
 
-    /// `init`: (re)creates the writer for the configured type. The `Err`
-    /// carries the C++ `std::string *error`.
+    /// (Re)creates the writer for the configured type. The `Err` carries
+    /// the error message.
     pub fn init(&mut self) -> Result<(), String> {
         if matches!(self.status, None | Some(AuditLogStatus::Off)) && !self.ctl_audit_engine_active {
             self.writer = None;
@@ -252,12 +252,11 @@ impl AuditLog {
         Ok(())
     }
 
-    /// `saveIfRelevant(transaction, parts)`: writes the transaction to the
-    /// audit log if the engine is on, or if it is relevant. Without `parts`
-    /// the configured ones are logged; sic: not the default ones, so when
-    /// `SecAuditLogParts` was never set that is every part (C++ `m_parts`
-    /// is -1 then). Returns `false` when nothing was saved because the
-    /// transaction is not relevant or writing failed.
+    /// Writes the transaction to the audit log if the engine is on, or if it
+    /// is relevant. Without `parts` the configured ones are logged; sic: not
+    /// the default ones, so when `SecAuditLogParts` was never set that is
+    /// every part (C++ `m_parts` is -1 then). Returns `false` when nothing was
+    /// saved because the transaction is not relevant or writing failed.
     pub fn save_if_relevant(&self, t: &Transaction<'_>, parts: Option<i32>) -> bool {
         // A `ctl:auditEngine` of the transaction overrides the configuration.
         let status = t.ctl_audit_engine.or(self.status);
@@ -318,8 +317,8 @@ impl AuditLog {
         self.ctl_audit_engine_active = true;
     }
 
-    /// `merge`: the values set in `from` override this configuration, then
-    /// the writer is re-initialised.
+    /// Overrides this configuration with the values set in `from`, then
+    /// re-initialises the writer.
     pub fn merge(&mut self, from: &AuditLog) -> Result<(), String> {
         // AL_MERGE_STRING_CONF
         fn merge_string(from: &str, to: &mut String) {

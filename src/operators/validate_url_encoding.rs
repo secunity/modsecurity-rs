@@ -1,5 +1,5 @@
-//! Port of `src/operators/validate_url_encoding.cc`,
-//! `src/operators/validate_url_encoding.h`.
+//! The `@validateUrlEncoding` operator: matches when the input holds an
+//! invalid `%xx` escape.
 
 use crate::operators::operator::{Operator, log_offset};
 use crate::rule_message::RuleMessage;
@@ -20,9 +20,9 @@ impl ValidateUrlEncoding {
         ValidateUrlEncoding
     }
 
-    /// `validate_url_encoding`: 1 when valid, -1 for an empty input, -2 for
-    /// non hexadecimal digits and -3 for a truncated `%xx`; `offset`
-    /// receives the position of the offending `%`.
+    /// Checks the `%xx` escapes of `input`: 1 when valid, -1 for an empty
+    /// input, -2 for non hexadecimal digits and -3 for a truncated `%xx`;
+    /// `offset` receives the position of the offending `%`.
     pub fn validate_url_encoding(input: &[u8], offset: &mut usize) -> i32 {
         *offset = 0;
 

@@ -1,5 +1,3 @@
-//! Port of `src/actions/disruptive/redirect.cc`, `src/actions/disruptive/redirect.h`.
-//!
 //! `redirect:URL` — redirects the client (302 unless a 301..307 status was
 //! already set), with macro expansion of the URL.
 

@@ -1,8 +1,10 @@
-//! Port of `src/actions/transformations/escape_seq_decode.cc`, `src/actions/transformations/escape_seq_decode.h`.
+//! The `t:escapeSeqDecode` transformation: decodes ANSI C escape
+//! sequences (`\n`, `\x41`, `\101`, ...).
 
 use crate::utils::string::{isodigit, x2c};
 
-/// `strtol(buf, NULL, base)` for a short buffer of valid digits.
+/// The value of a short buffer of valid digits in `base`, as
+/// `strtol(buf, NULL, base)` computes it.
 fn strtol_digits(buf: &[u8], base: u32) -> i64 {
     buf.iter().fold(0i64, |acc, &c| acc * i64::from(base) + i64::from((c as char).to_digit(base).unwrap_or(0)))
 }

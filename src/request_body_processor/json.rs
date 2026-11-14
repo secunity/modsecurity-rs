@@ -1,5 +1,3 @@
-//! Port of `src/request_body_processor/json.cc`, `src/request_body_processor/json.h`.
-//!
 //! The JSON request body processor: every scalar of the document becomes an
 //! `ARGS` entry (origin "JSON") named after its path, e.g. `json.a.b` for
 //! `{"a":{"b":1}}` and `json.a.array_0` for `{"a":[1]}`.
@@ -14,12 +12,12 @@ use crate::utils::json::{JsonHandler, parse};
 const JSON_DEPTH_LIMIT_DEFAULT: u32 = 10000;
 const JSON_DEPTH_LIMIT_EXCEEDED_MSG: &str = ". Parsing depth limit exceeded";
 
-/// `JSONContainer` / `JSONContainerArray` / `JSONContainerMap`.
+/// An open array or object, named after the key it was found under.
 #[derive(Debug)]
 enum JsonContainer {
-    /// `JSONContainerArray`: the name and `m_elementCounter`.
+    /// An array: its name and the number of elements seen so far.
     Array { name: Vec<u8>, element_counter: usize },
-    /// `JSONContainerMap`
+    /// An object: its name.
     Map { name: Vec<u8> },
 }
 
@@ -31,7 +29,8 @@ impl JsonContainer {
     }
 }
 
-/// `JSON`
+/// The state of the JSON body processor: the open containers, the current
+/// key and the depth limit.
 #[derive(Debug)]
 pub struct Json {
     containers: Vec<JsonContainer>,
@@ -56,7 +55,7 @@ impl Json {
         Self::default()
     }
 
-    /// `setMaxDepth`
+    /// Sets the maximum nesting depth (`SecRequestBodyJsonDepthLimit`).
     pub fn set_max_depth(&mut self, d: u32) {
         self.max_depth = d;
     }
@@ -74,12 +73,13 @@ impl Json {
         })
     }
 
-    /// `isPreviousArray`
+    /// Whether the innermost container is an array.
     fn is_previous_array(&self) -> bool {
         matches!(self.containers.last(), Some(JsonContainer::Array { .. }))
     }
 
-    /// `getCurrentKey(emptyIsNull = false)`
+    /// Takes the current key: `json` outside any container, empty inside an
+    /// array, and `empty-key` for an empty key in an object.
     fn current_key(&mut self) -> Vec<u8> {
         if self.containers.is_empty() {
             return b"json".to_vec();
@@ -135,7 +135,8 @@ struct JsonParser<'j, F> {
 }
 
 impl<F: FnMut(&[u8], &[u8]) -> bool> JsonParser<'_, F> {
-    /// `addArgument`
+    /// Passes a scalar to the sink, named after its path; `false` cancels
+    /// the parse.
     fn add_argument(&mut self, value: &[u8]) -> bool {
         let json = &mut *self.json;
         let mut path: Vec<u8> = Vec::new();

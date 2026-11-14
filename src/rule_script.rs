@@ -1,4 +1,4 @@
-//! Port of `src/rule_script.h` / `src/rule_script.cc` (`SecRuleScript`).
+//! A `SecRuleScript`: a rule that runs a Lua script.
 
 use crate::engine::lua::Lua;
 use crate::rule_message::RuleMessage;
@@ -16,13 +16,14 @@ impl RuleScript {
         RuleScript { name: name.to_string(), lua: Lua::new() }
     }
 
-    /// `init`: loads (compiles) the script.
+    /// Loads (compiles) the script.
     pub fn init(&mut self) -> Result<(), String> {
         let name = self.name.clone();
         self.lua.load(&name)
     }
 
-    /// `RuleScript::evaluate`
+    /// Runs the script; the rule matches when the script's `main` returns
+    /// a non empty string (or number).
     pub fn evaluate<'a>(
         &'a self,
         rule: &'a RuleWithActions,

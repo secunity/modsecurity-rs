@@ -1,4 +1,5 @@
-//! Port of `src/operators/gsblookup.cc`, `src/operators/gsblookup.h`.
+//! The `@gsbLookup` operator (Google Safe Browsing lookup), which always
+//! matches.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;

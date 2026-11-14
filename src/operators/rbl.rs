@@ -1,4 +1,5 @@
-//! Port of `src/operators/rbl.cc`, `src/operators/rbl.h`.
+//! The `@rbl` operator: looks the input (an IPv4 address or a domain) up
+//! in a DNS block list.
 //!
 //! The DNS lookup uses the platform `getaddrinfo` (no hints, first result),
 //! exactly as the C++ operator does.
@@ -11,7 +12,8 @@ use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 
-/// `RblProvider`
+/// The block list service, recognized from the parameter. It decides
+/// whether an access key is needed and how an answer is logged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RblProvider {
     UnknownProvider,
@@ -37,7 +39,8 @@ fn c_str(s: &[u8]) -> &[u8] {
     &s[..end]
 }
 
-/// `sscanf(s, "%d.%d.%d.%d", ...) == 4`
+/// The four numbers of a dotted quad, parsed like
+/// `sscanf(s, "%d.%d.%d.%d", ...) == 4`.
 fn scan_dotted_quad(s: &[u8]) -> Option<[i32; 4]> {
     let s = c_str(s);
     let mut pos = 0usize;
@@ -89,7 +92,7 @@ impl Rbl {
         Rbl { param, service, demands_password, provider }
     }
 
-    /// `mapIpToAddress`: the DNS name to query for `ip_str` (empty when the
+    /// The DNS name to query for `ip_str` (empty when the
     /// lookup cannot be done).
     pub fn map_ip_to_address(&self, ip_str: &[u8], trans: Option<&Transaction<'_>>) -> Vec<u8> {
         let key: Vec<u8> =
@@ -130,7 +133,8 @@ impl Rbl {
         addr
     }
 
-    /// `futherInfo_httpbl`
+    /// Logs an httpbl.org answer: days since last activity, threat score
+    /// and visitor type.
     fn further_info_httpbl(sin_addr: Ipv4Addr, ip_str: &str, trans: Option<&Transaction<'_>>) {
         // inet_ntoa + sscanf("%d.%d.%d.%d")
         let [first, days, score, ty] = sin_addr.octets();
@@ -164,7 +168,7 @@ impl Rbl {
         );
     }
 
-    /// `futherInfo_spamhaus`
+    /// Logs the spamhaus.org list named by the answer.
     fn further_info_spamhaus(high8bits: u32, ip_str: &str, trans: Option<&Transaction<'_>>) {
         match high8bits {
             2 | 3 => crate::ms_dbg_opt!(trans, 4, "RBL lookup of {} succeeded (Static UBE sources).", ip_str),
@@ -179,7 +183,7 @@ impl Rbl {
         }
     }
 
-    /// `futherInfo_uribl`
+    /// Logs the uribl.com list named by the answer.
     fn further_info_uribl(high8bits: u32, ip_str: &str, trans: Option<&Transaction<'_>>) {
         match high8bits {
             2 => crate::ms_dbg_opt!(trans, 4, "RBL lookup of {} succeeded (BLACK).", ip_str),
@@ -191,7 +195,7 @@ impl Rbl {
         }
     }
 
-    /// `furtherInfo`
+    /// Logs a successful lookup, with the details the provider gives.
     fn further_info(sin_addr: Ipv4Addr, ip_str: &str, trans: Option<&Transaction<'_>>, provider: RblProvider) {
         // `sin->sin_addr.s_addr >> 24`: s_addr is in network byte order,
         // read as a host integer (the last octet on little endian hosts).

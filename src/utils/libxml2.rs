@@ -280,7 +280,7 @@ pub fn init_parser() {
 /// Whether the parsers of this thread may load external entities (the
 /// libxml2 default loader) or load none (`SecXMLExternalEntity Off`).
 pub fn allow_external_entities(allowed: bool) {
-    /// `XML::unloadExternalEntity`: loads nothing.
+    /// An external entity loader that loads nothing.
     unsafe extern "C" fn load_nothing(_uri: *const c_char, _enc: c_int) -> *mut ffi::xmlParserInputBuffer {
         ptr::null_mut()
     }
@@ -741,8 +741,8 @@ pub enum SchemaError {
     ValidationContext,
 }
 
-/// `s.c_str()`: a NUL terminated copy of `s`, cut at its first NUL byte (as
-/// the C string view of a `std::string` would be).
+/// A NUL terminated copy of `s`, cut at its first NUL byte (as the C++
+/// code's `c_str()` view of a `std::string` would be).
 fn c_string(s: &[u8]) -> CString {
     let end = s.iter().position(|&c| c == 0).unwrap_or(s.len());
     CString::new(&s[..end]).expect("no NUL byte")

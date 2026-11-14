@@ -1,5 +1,5 @@
-//! Port of `headers/modsecurity/rules_exceptions.h` and
-//! `src/rules_exceptions.cc`.
+//! Rule exceptions configured by `SecRuleRemoveBy*` and
+//! `SecRuleUpdate*`.
 //!
 //! The C++ class keeps the "update target/action by id" tables in
 //! `std::unordered_multimap<double, ...>`. Every consumer looks those
@@ -86,7 +86,8 @@ impl RulesExceptions {
         Self::default()
     }
 
-    /// `loadUpdateActionById`
+    /// `SecRuleUpdateActionById`: adds the run time actions to the rule
+    /// `id`, to run before or after the match according to their kind.
     pub fn load_update_action_by_id(&mut self, id: f64, actions: Vec<Box<dyn Action>>) {
         for a in actions {
             match a.kind() {
@@ -106,38 +107,40 @@ impl RulesExceptions {
         }
     }
 
-    /// `loadRemoveRuleByMsg`
+    /// `SecRuleRemoveByMsg`: removes the rules whose `msg` is `msg`.
     pub fn load_remove_rule_by_msg(&mut self, msg: &str) {
         self.remove_rule_by_msg.push(msg.to_string());
     }
 
-    /// `loadRemoveRuleByTag`
+    /// `SecRuleRemoveByTag`: removes the rules with the `tag` `tag`.
     pub fn load_remove_rule_by_tag(&mut self, tag: &str) {
         self.remove_rule_by_tag.push(tag.to_string());
     }
 
-    /// `loadUpdateTargetByMsg`
+    /// `SecRuleUpdateTargetByMsg`: changes the targets of the rules whose
+    /// `msg` is `msg`.
     pub fn load_update_target_by_msg(&mut self, msg: &str, vars: Vec<Variable>) {
         for v in vars {
             self.variable_update_target_by_msg.push((Arc::new(msg.to_string()), Arc::from(v)));
         }
     }
 
-    /// `loadUpdateTargetByTag`
+    /// `SecRuleUpdateTargetByTag`: changes the targets of the rules with
+    /// the `tag` `tag`.
     pub fn load_update_target_by_tag(&mut self, tag: &str, vars: Vec<Variable>) {
         for v in vars {
             self.variable_update_target_by_tag.push((Arc::new(tag.to_string()), Arc::from(v)));
         }
     }
 
-    /// `loadUpdateTargetById`
+    /// `SecRuleUpdateTargetById`: changes the targets of the rule `id`.
     pub fn load_update_target_by_id(&mut self, id: f64, vars: Vec<Variable>) {
         for v in vars {
             self.variable_update_target_by_id.emplace(id, Arc::from(v));
         }
     }
 
-    /// `load`: parses the argument of `SecRuleRemoveById` (ids and ranges).
+    /// Parses the argument of `SecRuleRemoveById` (ids and ranges).
     pub fn load(&mut self, a: &str) -> Result<(), String> {
         let mut added = false;
         for r in ssplit(a.as_bytes(), b' ') {
@@ -184,12 +187,12 @@ impl RulesExceptions {
         self.ranges.push((a, b));
     }
 
-    /// `contains`
+    /// Whether `SecRuleRemoveById` removes the rule id `a`.
     pub fn contains(&self, a: i32) -> bool {
         self.numbers.contains(&a) || self.ranges.iter().any(|&(x, y)| x <= a && y >= a)
     }
 
-    /// `merge`
+    /// Adds the exceptions of `from` (of a merged rule set) to these.
     pub fn merge(&mut self, from: &RulesExceptions) {
         for &a in &from.numbers {
             self.add_number(a);

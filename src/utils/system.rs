@@ -1,4 +1,5 @@
-//! Port of `src/utils/system.h` / `src/utils/system.cc`.
+//! Operating system helpers: environment, files and directories, resource
+//! lookup, CPU time and local time formatting.
 
 use std::ffi::{CStr, CString, c_char, c_int};
 
@@ -52,7 +53,7 @@ pub fn mkstemp(template: &str) -> (String, Option<std::fs::File>) {
     (name, file)
 }
 
-/// `cpu_seconds`: process CPU time in seconds.
+/// The process CPU time in seconds.
 pub fn cpu_seconds() -> f64 {
     let t = rustix::time::clock_gettime(rustix::time::ClockId::ProcessCPUTime);
     t.tv_sec as f64 + (t.tv_nsec as f64 / 1_000_000_000.0)
@@ -69,8 +70,8 @@ pub struct ResourceLookup {
     pub looked_at: String,
 }
 
-/// `find_resource`: looks for `resource` as given, through shell expansion,
-/// and relative to the directory of `config`.
+/// Looks for `resource` as given, through shell expansion, and relative to
+/// the directory of `config`.
 pub fn find_resource(resource: &str, config: &str) -> ResourceLookup {
     let relative = format!("{}/{}", parent_dir(config), resource);
     // Each name is tried as a file, then through shell expansion.
@@ -87,7 +88,7 @@ pub fn find_resource(resource: &str, config: &str) -> ResourceLookup {
     ResourceLookup { path: None, looked_at }
 }
 
-/// `parent_dir`: directory part of `file`. As in C++, a name without any
+/// The directory part of `file`. As in C++, a name without any
 /// separator is returned unchanged (`npos > 0` and `substr(0, npos)`), and a
 /// separator at position 0 yields an empty string.
 pub fn parent_dir(file: &str) -> String {
@@ -98,7 +99,7 @@ pub fn parent_dir(file: &str) -> String {
     }
 }
 
-/// `expandEnv`: `wordexp(3)` expansion (no command substitution), keeping
+/// The `wordexp(3)` expansion (no command substitution) of `var`, keeping
 /// only the results that can be opened.
 pub fn expand_env(var: &str, flags: i32) -> Vec<String> {
     let mut vars = Vec::new();
@@ -130,7 +131,8 @@ pub fn expand_env(var: &str, flags: i32) -> Vec<String> {
     vars
 }
 
-/// `createDir`: `mkdir(dir, mode)`, accepting an existing directory.
+/// Creates the directory `dir` (`mkdir(dir, mode)`), accepting an existing
+/// one.
 pub fn create_dir(dir: &str, mode: u32) -> Result<(), String> {
     use std::os::unix::fs::DirBuilderExt;
     if dir.contains('\0') {
@@ -144,7 +146,7 @@ pub fn create_dir(dir: &str, mode: u32) -> Result<(), String> {
     }
 }
 
-/// `isFile`
+/// Whether `f` is a regular file that can be opened for reading.
 pub fn is_file(f: &str) -> bool {
     match std::fs::metadata(f) {
         Ok(m) => std::fs::File::open(f).is_ok() && m.is_file(),
@@ -168,7 +170,7 @@ pub fn localtime(t: i64) -> Zoned {
     Timestamp::from_second(t).unwrap_or(Timestamp::UNIX_EPOCH).to_zoned(TimeZone::system())
 }
 
-/// `strftime(fmt, localtime_r(t))`.
+/// Formats `t` in the local time zone: `strftime(fmt, localtime_r(t))`.
 ///
 /// Formatting is that of the C ("POSIX") locale: `%c` is
 /// `%a %b %e %H:%M:%S %Y` and names are English. C++'s `strftime` follows
@@ -179,7 +181,7 @@ pub fn strftime_local(t: i64, fmt: &str) -> String {
     strtime::BrokenDownTime::from(&localtime(t)).to_string_with_config(&config, fmt).unwrap_or_default()
 }
 
-/// `std::time(nullptr)`
+/// The current time in seconds since the epoch.
 pub fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }

@@ -1,5 +1,3 @@
-//! Port of `src/actions/disruptive/deny.cc`, `src/actions/disruptive/deny.h`.
-//!
 //! `deny` — stops the transaction with the configured status (403 by
 //! default).
 

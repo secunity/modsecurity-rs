@@ -1,4 +1,4 @@
-//! Port of `headers/modsecurity/rule_marker.h` (`SecMarker`).
+//! A `SecMarker`: the target of `skipAfter`.
 
 use crate::modsecurity::Phases;
 use crate::transaction::Transaction;

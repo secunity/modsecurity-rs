@@ -1,11 +1,11 @@
-//! Port of `headers/modsecurity/rule_unconditional.h` and
-//! `src/rule_unconditional.cc` (`SecAction`).
+//! The evaluation of a `SecAction`: a rule without an operator.
 
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::{LogPoint, RuleWithActions};
 use crate::transaction::Transaction;
 
-/// `RuleUnconditional::evaluate`
+/// Evaluates a `SecAction`: runs its actions and logs it. It always
+/// matches.
 pub fn evaluate<'a>(rule: &'a RuleWithActions, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
     rule.evaluate_base(t);
     // FIXME (C++): This needs to be removed on the runtime exception review.

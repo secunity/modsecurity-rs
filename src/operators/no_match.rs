@@ -1,4 +1,4 @@
-//! Port of `src/operators/no_match.cc`, `src/operators/no_match.h`.
+//! The `@noMatch` operator: never matches.
 
 use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;

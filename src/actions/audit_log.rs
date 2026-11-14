@@ -1,5 +1,3 @@
-//! Port of `src/actions/audit_log.cc`, `src/actions/audit_log.h`.
-//!
 //! `auditlog` — marks the transaction for audit logging.
 
 use crate::actions::action::{Action, name_of};

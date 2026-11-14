@@ -1,4 +1,4 @@
-//! Port of `headers/modsecurity/rules_set.h` and `src/rules_set.cc`.
+//! A loaded rule set: loading, merging and per-phase evaluation.
 
 use crate::actions::disruptive::allow::AllowType;
 use crate::debug_log::DebugLog;
@@ -27,7 +27,7 @@ impl RulesSet {
         RulesSet { properties: RulesSetProperties::new(), rules_set_phases: RulesSetPhases::default() }
     }
 
-    /// `RulesSet(DebugLog *customLog)`
+    /// An empty rule set that writes its debug log to `custom_log`.
     pub fn with_debug_log(custom_log: Box<dyn DebugLog>) -> Self {
         RulesSet {
             properties: RulesSetProperties::with_debug_log(custom_log),
@@ -41,8 +41,7 @@ impl RulesSet {
         Err(self.properties.parser_error.clone())
     }
 
-    /// `loadFromUri`: loads the rules of a file. Returns the number of rules
-    /// loaded.
+    /// Loads the rules of a file. Returns the number of rules loaded.
     pub fn load_from_uri(&mut self, uri: &str) -> Result<usize, String> {
         let mut driver = Driver::new();
         if !driver.parse_file(uri) {
@@ -52,7 +51,8 @@ impl RulesSet {
         self.merge_driver(&mut driver)
     }
 
-    /// `load(rules, ref)`
+    /// Loads rules from text; `reference` names their origin in messages
+    /// (a file name or URL). Returns the number of rules loaded.
     pub fn load_with_ref(&mut self, rules: &str, reference: &str) -> Result<usize, String> {
         let mut driver = Driver::new();
         if !driver.parse(rules, reference) {
@@ -66,7 +66,8 @@ impl RulesSet {
         })
     }
 
-    /// `loadRemote`
+    /// Downloads rules from `uri`, sending `key` as `SecRemoteRules` does,
+    /// and loads them. Returns the number of rules loaded.
     pub fn load_remote(&mut self, key: &str, uri: &str) -> Result<usize, String> {
         let mut client = HttpsClient::new();
         client.set_key(key);
@@ -77,7 +78,7 @@ impl RulesSet {
         self.failed()
     }
 
-    /// `load(plainRules)`
+    /// Loads rules from text. Returns the number of rules loaded.
     pub fn load(&mut self, plain_rules: &str) -> Result<usize, String> {
         self.load_with_ref(plain_rules, "")
     }
@@ -86,7 +87,8 @@ impl RulesSet {
         self.properties.parser_error.clone()
     }
 
-    /// `cleanMatchedVars`
+    /// Clears `MATCHED_VAR`, `MATCHED_VARS` and their `*_NAME(S)`
+    /// counterparts after a rule.
     pub fn clean_matched_vars(t: &mut Transaction<'_>) {
         crate::ms_dbg_a!(t, 9, "Matched vars cleaned.");
         // Every match adds to MATCHED_VARS, so when that is empty no rule
@@ -101,7 +103,8 @@ impl RulesSet {
         t.vars.matched_vars_names.unset();
     }
 
-    /// `evaluate(phase, transaction)`
+    /// Runs the rules of `phase`, honouring `allow`, `skip`, `skipAfter`,
+    /// the rule removals and a disruptive intervention.
     pub fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
         let rules = self.rules_set_phases.for_phase(phase);
         crate::ms_dbg_a!(t, 9, "This phase consists of {} rule(s).", rules.len());
@@ -206,20 +209,22 @@ impl RulesSet {
         }
     }
 
-    /// `merge(Parser::Driver *from)`
+    /// Appends the rules parsed by `from` and merges its properties.
+    /// Returns the number of rules appended.
     pub fn merge_driver(&mut self, from: &mut Driver) -> Result<usize, String> {
         self.merge_parts(&from.rules_set_phases, &mut from.properties)
     }
 
-    /// `merge(RulesSet *from)`: appends the rules of `from` and merges its
-    /// properties. Returns the number of rules appended.
+    /// Appends the rules of `from` and merges its properties. Returns the
+    /// number of rules appended.
     pub fn merge(&mut self, from: &mut RulesSet) -> Result<usize, String> {
         self.merge_parts(&from.rules_set_phases, &mut from.properties)
     }
 
-    /// The two `merge` overloads. The properties are merged even when the
-    /// rules could not be (duplicated id), and a failure to merge them is
-    /// only recorded in the parser errors; both as in C++.
+    /// The body of [`Self::merge`] and [`Self::merge_driver`]. The
+    /// properties are merged even when the rules could not be (duplicated
+    /// id), and a failure to merge them is only recorded in the parser
+    /// errors; both as in C++.
     fn merge_parts(&mut self, phases: &RulesSetPhases, properties: &mut RulesSetProperties) -> Result<usize, String> {
         let appended = self.rules_set_phases.append(phases);
         if let Err(e) = &appended {
@@ -231,7 +236,8 @@ impl RulesSet {
         appended.or_else(|_| self.failed())
     }
 
-    /// `debug(level, id, uri, msg)`
+    /// Writes `msg` to the debug log for the transaction `id` handling
+    /// `uri`.
     pub fn debug(&self, level: i32, id: &str, uri: &str, msg: &str) {
         self.properties.debug_log.write_ctx(level, id, uri, msg);
     }

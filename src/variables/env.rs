@@ -1,7 +1,6 @@
-//! Port of `src/variables/env.cc`, `src/variables/env.h`.
-//!
-//! `ENV` / `ENV:name`: the process environment plus the variables set with
-//! the `setenv` action (`Transaction::variable_envs`).
+//! The `ENV` variable (`ENV` / `ENV:name`): the process environment plus
+//! the variables set with the `setenv` action
+//! (`Transaction::variable_envs`).
 
 use std::collections::BTreeMap;
 use std::os::unix::ffi::OsStrExt;

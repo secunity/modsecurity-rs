@@ -1,8 +1,6 @@
-//! Port of `src/operators/validate_schema.cc`, `src/operators/validate_schema.h`.
-//!
-//! `@validateSchema`: validates the XML document parsed by the XML request
-//! body processor against an XML Schema. Matches (returns true) when the
-//! document is missing, not well formed or not valid.
+//! The `@validateSchema` operator: validates the XML document parsed by
+//! the XML request body processor against an XML Schema. Matches (returns
+//! true) when the document is missing, not well formed or not valid.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
@@ -15,7 +13,7 @@ pub struct ValidateSchema {
     param: Param,
     #[cfg(feature = "libxml2")]
     resource: String,
-    /// `m_err`: the messages reported while loading the schema. As in the
+    /// The messages reported while loading the schema. As in the
     /// C++ code they accumulate over the lifetime of the operator (the C++
     /// member was written without synchronisation; a mutex is used here).
     #[cfg(feature = "libxml2")]
@@ -34,9 +32,9 @@ impl ValidateSchema {
     }
 }
 
-/// `callback_func` (shared with `@validateDTD`): a libxml2 message
-/// (formatted by the C++ code into a 1024 bytes buffer, hence at most 1023
-/// bytes) prefixed by its level; `None` when it is empty.
+/// Formats a libxml2 message for the log (shared with `@validateDTD`):
+/// the message (formatted by the C++ code into a 1024 bytes buffer, hence
+/// at most 1023 bytes) prefixed by its level; `None` when it is empty.
 #[cfg(feature = "libxml2")]
 pub(crate) fn message(m: crate::utils::libxml2::Message<'_>) -> Option<String> {
     const PREFIX_WARNING: &str = "XML Warning: ";
@@ -69,7 +67,8 @@ impl Operator for ValidateSchema {
         Ok(())
     }
 
-    /// Without libxml2 the C++ class only had the base `Operator::evaluate`.
+    /// Without libxml2 the operator logs that it is not implemented and
+    /// matches, as the base `Operator::evaluate` does in C++.
     #[cfg(not(feature = "libxml2"))]
     fn evaluate(
         &self,

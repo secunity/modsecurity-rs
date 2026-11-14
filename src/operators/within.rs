@@ -1,4 +1,5 @@
-//! Port of `src/operators/within.cc`, `src/operators/within.h`.
+//! The `@within` operator: matches when the input occurs in the parameter
+//! (an empty input always matches).
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;

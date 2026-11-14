@@ -1,4 +1,5 @@
-//! Port of `src/actions/msg.cc`, `src/actions/msg.h`.
+//! `msg:'...'` — the message (with macro expansion) logged with the rule
+//! match.
 //!
 //! Description: Assigns a custom message to the rule or chain in which it
 //! appears. The message will be logged along with every alert.

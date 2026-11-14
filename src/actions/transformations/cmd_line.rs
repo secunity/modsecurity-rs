@@ -1,4 +1,6 @@
-//! Port of `src/actions/transformations/cmd_line.cc`, `src/actions/transformations/cmd_line.h`.
+//! The `t:cmdLine` transformation: normalises a command line (drops
+//! quotes, backslashes and carets, collapses separators into one space,
+//! removes a space before `/` or `(`, and lowercases).
 
 /// Transforms `value` in place; returns whether it changed.
 pub fn transform(value: &mut Vec<u8>) -> bool {

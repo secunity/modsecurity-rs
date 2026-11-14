@@ -1,4 +1,5 @@
-//! Port of `src/operators/contains_word.cc`, `src/operators/contains_word.h`.
+//! The `@containsWord` operator: matches when the parameter occurs in the
+//! input as a whole word, not next to an ASCII letter.
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
@@ -17,9 +18,9 @@ impl ContainsWord {
         ContainsWord { param: Param::new(param) }
     }
 
-    /// `acceptableChar`: true when `a[pos]` is not an ASCII letter. A
-    /// position out of range (including `0 - 1`, which wraps around in
-    /// C++) is not acceptable.
+    /// Whether `a[pos]` can border a word: true when it is not an ASCII
+    /// letter. A position out of range (including `0 - 1`, which wraps
+    /// around in C++) is not acceptable.
     fn acceptable_char(a: &[u8], pos: usize) -> bool {
         if a.len().wrapping_sub(1) < pos {
             return false;

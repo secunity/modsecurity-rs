@@ -1,4 +1,5 @@
-//! Port of `src/operators/ge.cc`, `src/operators/ge.h`.
+//! The `@ge` operator: matches when the input, read as an integer, is
+//! greater than or equal to the parameter.
 
 use crate::operators::eq::atoll;
 use crate::operators::operator::{Operator, Param};

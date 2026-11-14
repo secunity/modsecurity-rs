@@ -1,4 +1,4 @@
-//! Port of `src/utils/base64.cc`, `src/utils/base64.h`.
+//! Base64 encoding and decoding, strict (mbedtls) and forgiving.
 //!
 //! The C++ code delegates the strict encoder/decoder to mbedtls
 //! (`mbedtls_base64_encode` / `mbedtls_base64_decode`). Their exact semantics
@@ -8,7 +8,7 @@
 //! using a different base64 implementation. The forgiving decoder
 //! (`decode_forgiven_engine`) is ModSecurity's own code.
 
-/// `Utils::Base64`
+/// Base64 encoding and decoding.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Base64;
 
@@ -28,8 +28,8 @@ fn mbedtls_dec_value(c: u8) -> i8 {
     }
 }
 
-/// `mbedtls_base64_encode` (with the output buffer sized by the
-/// `base64HelperMbedtls` sizing call).
+/// Encodes `src` as `mbedtls_base64_encode` does (with the output buffer
+/// sized by a first sizing call, as the C++ code does).
 fn mbedtls_encode(src: &[u8]) -> Vec<u8> {
     let slen = src.len();
     if slen == 0 {
@@ -67,7 +67,8 @@ fn mbedtls_encode(src: &[u8]) -> Vec<u8> {
     out
 }
 
-/// `mbedtls_base64_decode`: `None` on `MBEDTLS_ERR_BASE64_INVALID_CHARACTER`.
+/// Decodes `src` as `mbedtls_base64_decode` does: `None` on
+/// `MBEDTLS_ERR_BASE64_INVALID_CHARACTER`.
 fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
     let slen = src.len();
     let mut equals = 0usize;
@@ -175,7 +176,7 @@ fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// `b64_reverse_t` of `decode_forgiven_engine`: -1 for skipped whitespace,
+/// The digit table of `decode_forgiven_engine`: -1 for skipped whitespace,
 /// -2 for invalid characters (both are ignored), otherwise the digit value.
 /// Both `+`/`-` map to 62 and both `/`/`_` map to 63 (URL-safe alphabet).
 #[rustfmt::skip]
@@ -199,14 +200,15 @@ static B64_REVERSE_T: [i32; 256] = [
 ];
 
 impl Base64 {
-    /// `Base64::encode`: standard base64 with `=` padding. (The C++ version
+    /// Standard base64 with `=` padding. (The C++ version
     /// can only fail on a null output pointer or a size overflow, so this
     /// one is infallible.)
     pub fn encode(data: &[u8]) -> Vec<u8> {
         mbedtls_encode(data)
     }
 
-    /// `Base64::decode(data, output, forgiven)`.
+    /// Decodes `data` strictly ([`Self::decode`]), or leniently
+    /// ([`Self::decode_forgiven`]) when `forgiven` is set.
     pub fn decode_with(data: &[u8], forgiven: bool) -> Option<Vec<u8>> {
         if forgiven {
             return Self::decode_forgiven(data);
@@ -214,9 +216,9 @@ impl Base64 {
         Self::decode(data)
     }
 
-    /// `Base64::decode`: strict (mbedtls) decoding; `None` when the input is
-    /// not valid base64. Spaces at line ends and `\n` / `\r\n` line breaks
-    /// are accepted.
+    /// Strict (mbedtls) decoding; `None` when the input is not valid
+    /// base64. Spaces at line ends and `\n` / `\r\n` line breaks are
+    /// accepted.
     ///
     /// As in C++ (`strlen(data.c_str())`), the input stops at the first NUL
     /// byte.
@@ -225,7 +227,7 @@ impl Base64 {
         mbedtls_decode(&data[..len])
     }
 
-    /// `Base64::decode_forgiven`: lenient decoding (`t:base64DecodeExt`).
+    /// Lenient decoding (`t:base64DecodeExt`).
     /// Never fails (always `Some`): invalid input decodes to an empty value.
     pub fn decode_forgiven(data: &[u8]) -> Option<Vec<u8>> {
         // base64HelperForgiven: a sizing call, then the decoding call.
@@ -238,7 +240,8 @@ impl Base64 {
         Some(ret)
     }
 
-    /// `Base64::decode_forgiven_engine`.
+    /// The forgiving decoder: skips whitespace and invalid characters, and
+    /// accepts the URL-safe alphabet.
     ///
     /// With an empty `plain_text` this is the sizing call and the return
     /// value is the buffer size the decoding needs (0 on invalid input).

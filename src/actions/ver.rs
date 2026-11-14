@@ -1,5 +1,3 @@
-//! Port of `src/actions/ver.cc`, `src/actions/ver.h`.
-//!
 //! `ver:'...'` — the rule set version (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};

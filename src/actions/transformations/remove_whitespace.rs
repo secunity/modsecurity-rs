@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/remove_whitespace.cc`, `src/actions/transformations/remove_whitespace.h`.
+//! The `t:removeWhitespace` transformation: removes whitespace and the
+//! bytes 0xa0 and 0xc2 (non-breaking space).
 
 use crate::actions::transformations::remove_nulls::remove_if;
 use crate::utils::string::is_space;

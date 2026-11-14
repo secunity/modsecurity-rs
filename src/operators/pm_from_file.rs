@@ -1,4 +1,4 @@
-//! Port of `src/operators/pm_from_file.cc`, `src/operators/pm_from_file.h`.
+//! The `@pmFromFile` (`@pmf`) operator.
 
 use std::io::Read;
 
@@ -24,13 +24,13 @@ impl PmFromFile {
         Self::with_name("PmFromFile", param)
     }
 
-    /// `PmFromFile(n, param)`
+    /// An operator named `name` in messages (`PmFromF` for `@pmf`).
     pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
         PmFromFile { pm: Pm::with_name(name, param) }
     }
 
-    /// `isComment`: empty lines and lines whose first non blank character
-    /// is `#`.
+    /// Whether a line is a comment: empty lines and lines whose first non
+    /// blank character is `#`.
     fn is_comment(s: &[u8]) -> bool {
         if s.is_empty() {
             return true;

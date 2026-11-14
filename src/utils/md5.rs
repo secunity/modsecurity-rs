@@ -1,9 +1,8 @@
-//! Port of `src/utils/md5.h`.
+//! MD5 digests.
 
 use crate::utils::sha1::DigestImpl;
 
-/// `Utils::Md5` (`DigestImpl<MBEDTLS_MD_MD5, 16>`): provides `digest`,
-/// `digest_replace` and `hexdigest`.
+/// MD5 digests: provides `digest`, `digest_replace` and `hexdigest`.
 pub type Md5 = DigestImpl<::md5::Md5>;
 
 #[cfg(test)]

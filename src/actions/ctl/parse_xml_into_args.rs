@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/parse_xml_into_args.cc`, `src/actions/ctl/parse_xml_into_args.h`.
-//!
 //! `ctl:parseXmlIntoArgs=On|Off|OnlyArgs` — overrides
 //! `SecParseXmlIntoArgs` for the transaction.
 

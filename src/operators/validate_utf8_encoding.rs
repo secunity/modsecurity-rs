@@ -1,5 +1,5 @@
-//! Port of `src/operators/validate_utf8_encoding.cc`,
-//! `src/operators/validate_utf8_encoding.h`.
+//! The `@validateUtf8Encoding` operator: matches when the input is not
+//! valid UTF-8.
 
 use crate::operators::operator::{Operator, log_offset};
 use crate::rule_message::RuleMessage;
@@ -26,8 +26,8 @@ impl ValidateUtf8Encoding {
         ValidateUtf8Encoding
     }
 
-    /// `detect_utf8_character`: the length of the UTF-8 character at the
-    /// start of `p_read` or one of the `UNICODE_ERROR_*` codes.
+    /// The length of the UTF-8 character at the start of `p_read`, or one
+    /// of the `UNICODE_ERROR_*` codes.
     pub fn detect_utf8_character(p_read: &[u8]) -> i32 {
         let length = p_read.len();
         let unicode_len;

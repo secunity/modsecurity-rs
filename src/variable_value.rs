@@ -1,4 +1,4 @@
-//! Port of `headers/modsecurity/variable_value.h`.
+//! Resolved variable values ([`VariableValue`]).
 //!
 //! Keys and values are byte strings: they come straight from the HTTP
 //! request.
@@ -50,7 +50,7 @@ struct Inner {
 }
 
 impl VariableValue {
-    /// `VariableValue(const std::string *key, const std::string *value)`
+    /// A value with a key but no collection name.
     pub fn new(key: &[u8], value: &[u8]) -> Self {
         let mut data = Vec::with_capacity(key.len() + value.len());
         data.extend_from_slice(key);
@@ -58,7 +58,7 @@ impl VariableValue {
         VariableValue(Arc::new(Inner { origin: Vec::new(), data, kwc_len: key.len(), collection_len: None }))
     }
 
-    /// `VariableValue(collection, key, value)`
+    /// A value of `collection`: its full name is `collection:key`.
     pub fn with_collection(collection: &[u8], key: &[u8], value: &[u8]) -> Self {
         let kwc_len = collection.len() + 1 + key.len();
         let mut data = Vec::with_capacity(kwc_len + value.len());

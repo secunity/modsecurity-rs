@@ -1,5 +1,3 @@
-//! Port of `src/actions/xmlns.cc`, `src/actions/xmlns.h`.
-//!
 //! `xmlns:prefix=http://...` — declares an XML namespace for the `XML`
 //! variable's XPath expressions (read by that variable).
 

@@ -1,5 +1,3 @@
-//! Port of `src/actions/set_rsc.cc`, `src/actions/set_rsc.h`.
-//!
 //! `setrsc:'...'` — sets the key of the RESOURCE collection (the C++ action
 //! name is `setsrc`; kept as is).
 

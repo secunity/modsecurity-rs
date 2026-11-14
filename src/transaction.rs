@@ -1,4 +1,5 @@
-//! Port of `headers/modsecurity/transaction.h` and `src/transaction.cc`.
+//! A transaction: one HTTP request and its response, fed by the connector
+//! phase by phase and inspected by the rules.
 //!
 //! A `Transaction` borrows its `ModSecurity` instance and `RulesSet` for its
 //! whole life (`'a`), exactly as the C++ object keeps raw pointers to them
@@ -57,8 +58,8 @@ pub enum RequestBodyType {
     XMLRequestBody,
 }
 
-/// `TransactionAnchoredVariables`: the request/response variables filled
-/// while the transaction is processed.
+/// The request/response variables filled while the transaction is
+/// processed.
 #[derive(Debug, Clone)]
 pub struct TransactionAnchoredVariables {
     pub request_headers_names: AnchoredSetVariable,
@@ -290,10 +291,8 @@ pub struct Transaction<'a> {
     pub rule_remove_target_by_tag: Vec<(String, String)>,
     pub rule_remove_target_by_id: Vec<(i32, String)>,
     pub request_body_access: Option<bool>,
-    /// `ctl:auditLogParts` modifications: (0 = add / 1 = remove, parts).
     /// `ctl:auditLogParts` changes for this transaction, in rule order.
     pub audit_log_modifier: Vec<(PartsChange, String)>,
-    /// This transaction's most recent `ctl:auditEngine`.
     /// `ctl:auditEngine`, when a rule set it for this transaction.
     pub ctl_audit_engine: Option<AuditLogStatus>,
     /// Messages saved by `log`/`msg`/... for the audit log.
@@ -315,7 +314,7 @@ pub struct Transaction<'a> {
     /// Sticky flag set the first time a disruptive intervention is consumed
     /// through [`Transaction::intervention`].
     pub is_interrupted: bool,
-    /// Creation time (`std::time`).
+    /// Creation time, in seconds since the epoch.
     pub time_stamp: i64,
     pub collections: Collections<'a>,
     /// Matched strings, used by the `capture` action.
@@ -329,7 +328,7 @@ pub struct Transaction<'a> {
     pub variable_envs: BTreeMap<Vec<u8>, Vec<u8>>,
     pub multipart_part_tmp_files: Vec<Arc<MultipartPartTmpFile>>,
     pub vars: TransactionAnchoredVariables,
-    /// `TransactionSecMarkerManagement`: the marker being skipped to.
+    /// The `SecMarker` being skipped to (by `skipAfter`).
     pub marker: Option<String>,
     /// Chain ancestors of the rule being evaluated (replaces the C++
     /// `RuleWithActions::m_chainedRuleParent` back pointers).
@@ -347,12 +346,13 @@ fn transaction_id(id: Option<&str>, timestamp: i64) -> String {
 }
 
 impl<'a> Transaction<'a> {
-    /// `Transaction(ms, rules, logCbData)`
+    /// A transaction with a generated unique id. `log_cb_data` is handed
+    /// to the server log callback.
     pub fn new(ms: &'a ModSecurity, rules: &'a RulesSet, log_cb_data: Option<Box<dyn Any + Send>>) -> Self {
         Self::with_id_and_time(ms, rules, None, log_cb_data, crate::utils::system::now())
     }
 
-    /// `Transaction(ms, rules, id, logCbData)`
+    /// A transaction with the unique id `id`.
     pub fn with_id(
         ms: &'a ModSecurity,
         rules: &'a RulesSet,
@@ -442,7 +442,7 @@ impl<'a> Transaction<'a> {
         self.rules.properties.debug_log.enabled(level)
     }
 
-    /// `debug(level, message)`
+    /// Writes `message` to the debug log with the transaction id and URI.
     pub fn debug(&self, level: i32, message: &str) {
         self.rules.debug(level, &self.id, &String::from_utf8_lossy(&self.uri), message);
     }
@@ -476,7 +476,8 @@ impl<'a> Transaction<'a> {
         rules.evaluate(phase, self);
     }
 
-    /// `processConnection`
+    /// Records the client and server addresses and ports and runs the
+    /// rules of the connection phase.
     pub fn process_connection(&mut self, client: &str, c_port: i32, server: &str, s_port: i32) {
         self.client_ip_address = client.to_string();
         self.server_ip_address = server.to_string();
@@ -508,18 +509,22 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    /// `extractArguments`
+    /// Adds the arguments of a query string or URL-encoded form body
+    /// (`origin` is `GET` or `POST`). Always returns `true`.
     pub fn extract_arguments(&mut self, origin: &str, buf: &[u8], offset: usize) -> bool {
         self.argument_writer().extract(origin, buf, offset);
         true
     }
 
-    /// `addArgument`
+    /// Adds one argument to `ARGS` and to `ARGS_GET` or `ARGS_POST`
+    /// according to `origin`. Returns `false` when `SecArgumentsLimit` was
+    /// reached.
     pub fn add_argument(&mut self, origin: &str, key: &[u8], value: &[u8], offset: usize) -> bool {
         self.argument_writer().add(origin, key, value, offset)
     }
 
-    /// `processURI`
+    /// Records the request line (URI, method, HTTP version) and fills the
+    /// URI variables and the query string arguments. No rules run here.
     pub fn process_uri(&mut self, uri: &[u8], method: &[u8], http_version: &[u8]) {
         crate::ms_dbg_a!(self, 4, "Starting phase URI. (SecRules 0 + 1/2)");
         self.http_version = String::from_utf8_lossy(http_version).into_owned();
@@ -600,7 +605,7 @@ impl<'a> Transaction<'a> {
         self.vars.offset += 1;
     }
 
-    /// `processRequestHeaders`
+    /// Phase 1: runs the request headers rules.
     pub fn process_request_headers(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_HEADERS.  (SecRules 1)");
         if self.rule_engine_state() == Some(RuleEngine::Disabled) {
@@ -610,7 +615,7 @@ impl<'a> Transaction<'a> {
         self.evaluate_phase(Phases::RequestHeaders);
     }
 
-    /// `addRequestHeader`
+    /// Adds a request header (`REQUEST_HEADERS`, `AUTH_TYPE`).
     pub fn add_request_header(&mut self, key: &[u8], value: &[u8]) {
         let off = self.vars.offset;
         self.vars.request_headers_names.set(key, key, off);
@@ -678,7 +683,8 @@ impl<'a> Transaction<'a> {
         self.vars.offset = off + value.len() + 1;
     }
 
-    /// `processRequestBody`
+    /// Phase 2: parses the request body with its body processor and runs
+    /// the request body rules.
     pub fn process_request_body(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_BODY. (SecRules 2)");
 
@@ -882,8 +888,7 @@ impl<'a> Transaction<'a> {
         self.evaluate_phase(Phases::RequestBody);
     }
 
-    /// `requestBodyFromFile`: [`Self::append_request_body`] with the
-    /// content of a file.
+    /// [`Self::append_request_body`] with the content of a file.
     pub fn request_body_from_file(&mut self, path: &str) -> std::io::Result<bool> {
         let s = std::fs::read(path).inspect_err(|_| {
             crate::ms_dbg_a!(self, 3, "Failed to open request body at: {}", path);
@@ -898,8 +903,8 @@ impl<'a> Transaction<'a> {
         Ok(self.append_request_body(&s))
     }
 
-    /// `appendRequestBody`: adds `buf` to the request body. Returns `false`
-    /// when the body limit was hit and only a part was kept
+    /// Adds `buf` to the request body. Returns `false` when the body limit
+    /// was hit and only a part was kept
     /// (`SecRequestBodyLimitAction ProcessPartial`).
     pub fn append_request_body(&mut self, buf: &[u8]) -> bool {
         let current_size = self.request_body.len();
@@ -945,7 +950,8 @@ impl<'a> Transaction<'a> {
         true
     }
 
-    /// `processResponseHeaders`
+    /// Phase 3: records the response status and protocol and runs the
+    /// response headers rules.
     pub fn process_response_headers(&mut self, code: i32, proto: &str) {
         crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_HEADERS. (SecRules 3)");
         self.http_code_returned = code;
@@ -960,7 +966,8 @@ impl<'a> Transaction<'a> {
         self.evaluate_phase(Phases::ResponseHeaders);
     }
 
-    /// `addResponseHeader`
+    /// Adds a response header (`RESPONSE_HEADERS`,
+    /// `RESPONSE_CONTENT_TYPE`).
     pub fn add_response_header(&mut self, key: &[u8], value: &[u8]) {
         let off = self.vars.offset;
         self.vars.response_headers_names.set(key, key, off);
@@ -980,7 +987,8 @@ impl<'a> Transaction<'a> {
         bi.contains(&ct)
     }
 
-    /// `processResponseBody`
+    /// Phase 4: runs the response body rules, when the response body is
+    /// inspected.
     pub fn process_response_body(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_BODY. (SecRules 4)");
 
@@ -1026,8 +1034,8 @@ impl<'a> Transaction<'a> {
         self.evaluate_phase(Phases::ResponseBody);
     }
 
-    /// `appendResponseBody`: adds `buf` to the response body. Returns
-    /// `false` when the body limit was hit and only a part was kept
+    /// Adds `buf` to the response body. Returns `false` when the body
+    /// limit was hit and only a part was kept
     /// (`SecResponseBodyLimitAction ProcessPartial`).
     pub fn append_response_body(&mut self, buf: &[u8]) -> bool {
         let current_size = self.response_body.len();
@@ -1084,22 +1092,23 @@ impl<'a> Transaction<'a> {
         true
     }
 
-    /// `getResponseBody`
+    /// The response body kept so far.
     pub fn response_body(&self) -> &[u8] {
         &self.response_body
     }
 
-    /// `getResponseBodyLength`
+    /// The length of the response body kept so far.
     pub fn response_body_length(&self) -> usize {
         self.response_body.len()
     }
 
-    /// `getRequestBodyLength`
+    /// The length of the request body kept so far.
     pub fn request_body_length(&self) -> usize {
         self.request_body.len()
     }
 
-    /// `processLogging`
+    /// Phase 5: runs the logging rules, then writes the audit log entry
+    /// if the transaction is relevant.
     pub fn process_logging(&mut self) {
         crate::ms_dbg_a!(self, 4, "Starting phase LOGGING. (SecRules 5)");
 
@@ -1132,9 +1141,9 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    /// `intervention`: the pending disruptive intervention, if any, with
-    /// `%d` in its log replaced by the status code. Handing it out resets
-    /// the status and the disruptive flag (the url and log stay, as in C++).
+    /// The pending disruptive intervention, if any, with `%d` in its log
+    /// replaced by the status code. Handing it out resets the status and
+    /// the disruptive flag (the url and log stay, as in C++).
     pub fn intervention(&mut self) -> Option<Intervention> {
         if !self.intervention.disruptive {
             return None;
@@ -1148,7 +1157,8 @@ impl<'a> Transaction<'a> {
         Some(it)
     }
 
-    /// `toOldAuditLogFormatIndex`
+    /// The index line of the native audit log format for an entry stored
+    /// in its own file (`SecAuditLogType Concurrent`).
     pub fn to_old_audit_log_format_index(&self, filename: &str, size: f64, md5: &str) -> Vec<u8> {
         let tstr = crate::utils::system::strftime_local(self.time_stamp, "[%d/%b/%Y:%H:%M:%S %z]");
         let mut ss: Vec<u8> = Vec::new();
@@ -1191,7 +1201,7 @@ impl<'a> Transaction<'a> {
         ss
     }
 
-    /// `toOldAuditLogFormat`
+    /// The audit log entry in the native format, with the given parts.
     pub fn to_old_audit_log_format(&self, parts: i32, trailer: &str, prefix: &str) -> Vec<u8> {
         use audit_log::AuditLog as AL;
         let tstr = crate::utils::system::strftime_local(self.time_stamp, "[%d/%b/%Y:%H:%M:%S %z]");
@@ -1299,7 +1309,7 @@ impl<'a> Transaction<'a> {
         a
     }
 
-    /// `toJSON`
+    /// The audit log entry in the JSON format, with the given parts.
     pub fn to_json(&self, parts: i32) -> Vec<u8> {
         use audit_log::AuditLog as AL;
         let ts = asc_time(self.time_stamp);
@@ -1418,25 +1428,25 @@ impl<'a> Transaction<'a> {
         log
     }
 
-    /// `serverLog`
+    /// Sends a rule message to the server log callback.
     pub fn server_log(&self, rm: &RuleMessage<'_>) {
         self.ms.server_log(self.log_cb_data.as_deref(), rm, self);
     }
 
-    /// `getRuleEngineState`: this transaction's `ctl:ruleEngine`, else
+    /// The rule engine state: this transaction's `ctl:ruleEngine`, else
     /// `SecRuleEngine`.
     pub fn rule_engine_state(&self) -> Option<RuleEngine> {
         self.sec_rule_engine.or(self.rules.properties.sec_rule_engine)
     }
 
-    /// `updateStatusCode`
+    /// Sets the response status (`RESPONSE_STATUS`).
     pub fn update_status_code(&mut self, code: i32) {
         self.http_code_returned = code;
         let off = self.vars.offset;
         self.vars.response_status.set(code.to_string().as_bytes(), off);
     }
 
-    /// `setRequestHostName`
+    /// Sets the host name the logs report (ignored when empty).
     pub fn set_request_host_name(&mut self, hostname: &str) {
         if !hostname.is_empty() {
             self.request_host_name = hostname.to_string();

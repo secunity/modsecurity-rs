@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/base64_decode_ext.cc`, `src/actions/transformations/base64_decode_ext.h`.
+//! The `t:base64DecodeExt` transformation: decodes base64 leniently
+//! (invalid input decodes to an empty value).
 
 use crate::utils::base64::Base64;
 

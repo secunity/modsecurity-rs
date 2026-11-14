@@ -1,4 +1,5 @@
-//! Port of `src/operators/fuzzy_hash.cc`, `src/operators/fuzzy_hash.h`.
+//! The `@fuzzyHash` operator: matches when the ssdeep hash of the input is
+//! similar enough to one of the hashes listed in a file.
 //!
 //! ssdeep (libfuzzy) is bound through a small `extern "C"` block when the
 //! `ssdeep` feature is enabled (C++ `WITH_SSDEEP`; build.rs links the
@@ -15,9 +16,9 @@ use crate::transaction::Transaction;
 mod ffi {
     use std::ffi::c_char;
 
-    /// `SPAMSUM_LENGTH`
+    /// The length of an ssdeep signature (`SPAMSUM_LENGTH` in fuzzy.h).
     pub const SPAMSUM_LENGTH: usize = 64;
-    /// `FUZZY_MAX_RESULT`
+    /// The size of a `fuzzy_hash_buf` result buffer (`FUZZY_MAX_RESULT`).
     pub const FUZZY_MAX_RESULT: usize = 2 * SPAMSUM_LENGTH + 20;
 
     // libfuzzy (fuzzy.h)

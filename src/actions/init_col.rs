@@ -1,5 +1,3 @@
-//! Port of `src/actions/init_col.cc`, `src/actions/init_col.h`.
-//!
 //! `initcol:ip=%{REMOTE_ADDR}` — selects the record (key) of a persistent
 //! collection for this transaction.
 

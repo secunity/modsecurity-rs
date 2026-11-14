@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/sql_hex_decode.cc`, `src/actions/transformations/sql_hex_decode.h`.
+//! The `t:sqlHexDecode` transformation: decodes SQL hex literals
+//! (`0xHHHH...`).
 
 use crate::utils::string::{valid_hex, x2c};
 

@@ -1,9 +1,7 @@
-//! Port of `headers/modsecurity/anchored_variable.h` and
-//! `src/anchored_variable.cc`.
+//! A single valued transaction variable (e.g. `REQUEST_METHOD`).
 //!
-//! A single valued transaction variable (e.g. `REQUEST_METHOD`). The C++
-//! class kept a back pointer to its transaction that was never used for
-//! anything but construction; it is not needed here.
+//! The C++ class kept a back pointer to its transaction that was never
+//! used for anything but construction; it is not needed here.
 
 use crate::variable_origin::VariableOrigin;
 use crate::variable_value::VariableValue;
@@ -32,7 +30,8 @@ impl AnchoredVariable {
         self.var.set_value(b"");
     }
 
-    /// `set(a, offset, offsetLen)`
+    /// Sets the value to `a` and adds an origin of `offset_len` bytes at
+    /// `offset`.
     pub fn set_with_len(&mut self, a: &[u8], offset: usize, offset_len: usize) {
         self.offset = offset;
         self.value.clear();
@@ -41,7 +40,7 @@ impl AnchoredVariable {
         self.var.add_origin(VariableOrigin::new(offset_len, offset));
     }
 
-    /// `set(a, offset)`
+    /// Sets the value to `a` and adds an origin covering it at `offset`.
     pub fn set(&mut self, a: &[u8], offset: usize) {
         self.offset = offset;
         self.value.clear();
@@ -50,7 +49,7 @@ impl AnchoredVariable {
         self.var.add_origin(VariableOrigin::new(self.value.len(), offset));
     }
 
-    /// `evaluate(std::vector<const VariableValue *> *l)`
+    /// Appends the variable to `l` (nothing when it has no name).
     pub fn evaluate_into(&self, l: &mut Vec<VariableValue>) {
         if self.name.is_empty() {
             return;
@@ -60,12 +59,12 @@ impl AnchoredVariable {
         l.push(self.var.clone());
     }
 
-    /// `std::string *evaluate()`
+    /// The current value.
     pub fn evaluate(&self) -> &[u8] {
         &self.value
     }
 
-    /// `resolveFirst`
+    /// The current value, or `None` when it is empty.
     pub fn resolve_first(&self) -> Option<Vec<u8>> {
         if self.value.is_empty() {
             return None;

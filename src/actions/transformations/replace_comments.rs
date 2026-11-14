@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/replace_comments.cc`, `src/actions/transformations/replace_comments.h`.
+//! The `t:replaceComments` transformation: replaces each `/* */` comment
+//! (also an unterminated one) with a single space.
 
 fn inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();

@@ -1,6 +1,4 @@
-//! Port of `src/utils/https_client.cc`, `src/utils/https_client.h`.
-//!
-//! Minimal HTTP(S) client used by `SecRemoteRules`, the remote
+//! A minimal HTTP(S) client used by `SecRemoteRules`, the remote
 //! `@pmFromFile`/`@ipMatchFromFile` resources and the HTTPS audit log
 //! writer. Built on libcurl (the `curl` feature, C++ `MSC_WITH_CURL`).
 
@@ -20,7 +18,7 @@ impl HttpsClient {
         Self::default()
     }
 
-    /// `handle_impl`: the libcurl write callback, accumulates the body.
+    /// The libcurl write callback: accumulates the body.
     #[cfg(any(feature = "curl", test))]
     fn handle_impl(&mut self, data: &[u8]) -> usize {
         self.content.extend_from_slice(data);

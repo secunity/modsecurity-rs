@@ -1,4 +1,4 @@
-//! Port of `src/operators/unconditional_match.cc`, `src/operators/unconditional_match.h`.
+//! The `@unconditionalMatch` operator: always matches.
 
 use crate::operators::operator::Operator;
 use crate::rule_message::RuleMessage;

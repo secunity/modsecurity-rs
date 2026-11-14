@@ -1,4 +1,6 @@
-//! Port of `src/actions/transformations/url_decode_uni.cc`, `src/actions/transformations/url_decode_uni.h`.
+//! The `t:urlDecodeUni` transformation: URL decoding that also decodes
+//! IIS-style `%uHHHH` sequences, through the `SecUnicodeMapFile` map when
+//! one is configured.
 
 use crate::rules_set_properties::UnicodeMapHolder;
 use crate::transaction::Transaction;

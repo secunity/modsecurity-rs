@@ -22,9 +22,8 @@ impl Default for Intervention {
 }
 
 impl Intervention {
-    /// `intervention::reset`: clears the status and the disruptive flag but
-    /// keeps `url` and `log` (as C++ does; a later disruptive action
-    /// replaces them).
+    /// Clears the status and the disruptive flag but keeps `url` and `log`
+    /// (as C++ does; a later disruptive action replaces them).
     pub(crate) fn reset(&mut self) {
         self.status = 200;
         self.disruptive = false;

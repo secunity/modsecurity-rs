@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/rule_engine.cc`, `src/actions/ctl/rule_engine.h`.
-//!
 //! `ctl:ruleEngine=On|Off|DetectionOnly` — overrides `SecRuleEngine` for
 //! the transaction.
 

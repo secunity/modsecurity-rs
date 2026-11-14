@@ -14,7 +14,7 @@
 //! The parser is iterative, so deeply nested input cannot overflow the
 //! stack (yajl is iterative as well).
 
-/// `yajl_gen`
+/// A compact JSON writer, like `yajl_gen` with ModSecurity's options.
 #[derive(Debug, Default)]
 pub struct JsonGen {
     buf: Vec<u8>,
@@ -45,7 +45,7 @@ impl JsonGen {
         }
     }
 
-    /// `yajl_gen_string`
+    /// Writes a string (or a map key), escaped.
     pub fn string(&mut self, s: &[u8]) {
         self.before_value();
         self.buf.push(b'"');
@@ -53,69 +53,69 @@ impl JsonGen {
         self.buf.push(b'"');
     }
 
-    /// `yajl_gen_integer`
+    /// Writes an integer.
     pub fn integer(&mut self, v: i64) {
         self.before_value();
         self.buf.extend_from_slice(v.to_string().as_bytes());
     }
 
-    /// `yajl_gen_number`: raw number text.
+    /// Writes a number given as its raw text.
     pub fn number(&mut self, raw: &[u8]) {
         self.before_value();
         self.buf.extend_from_slice(raw);
     }
 
-    /// `yajl_gen_bool`
+    /// Writes `true` or `false`.
     pub fn bool(&mut self, v: bool) {
         self.before_value();
         self.buf.extend_from_slice(if v { b"true" } else { b"false" });
     }
 
-    /// `yajl_gen_null`
+    /// Writes `null`.
     pub fn null(&mut self) {
         self.before_value();
         self.buf.extend_from_slice(b"null");
     }
 
-    /// `yajl_gen_map_open`
+    /// Opens an object.
     pub fn map_open(&mut self) {
         self.before_value();
         self.buf.push(b'{');
         self.stack.push((true, 0));
     }
 
-    /// `yajl_gen_map_close`
+    /// Closes the innermost object.
     pub fn map_close(&mut self) {
         self.stack.pop();
         self.buf.push(b'}');
     }
 
-    /// `yajl_gen_array_open`
+    /// Opens an array.
     pub fn array_open(&mut self) {
         self.before_value();
         self.buf.push(b'[');
         self.stack.push((false, 0));
     }
 
-    /// `yajl_gen_array_close`
+    /// Closes the innermost array.
     pub fn array_close(&mut self) {
         self.stack.pop();
         self.buf.push(b']');
     }
 
-    /// `LOGFY_ADD(key, value)`
+    /// Writes the object member `key`: `value` (a string).
     pub fn add(&mut self, key: &str, value: &[u8]) {
         self.string(key.as_bytes());
         self.string(value);
     }
 
-    /// `LOGFY_ADD_NUM(key, value)`
+    /// Writes the object member `key`: `value` (an integer).
     pub fn add_num(&mut self, key: &str, value: i64) {
         self.string(key.as_bytes());
         self.integer(value);
     }
 
-    /// `yajl_gen_get_buf`
+    /// The JSON written so far.
     pub fn as_bytes(&self) -> &[u8] {
         &self.buf
     }
@@ -700,7 +700,8 @@ impl JsonHandler for TreeBuilder {
     }
 }
 
-/// `yajl_tree_parse`
+/// Parses `input` (a complete document) into a [`JsonValue`] tree, as
+/// `yajl_tree_parse` does. Returns yajl's error message on failure.
 pub fn parse_tree(input: &[u8]) -> Result<JsonValue, String> {
     let mut b = TreeBuilder::default();
     parse(input, &mut b)?;

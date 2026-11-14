@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/utf8_to_unicode.cc`, `src/actions/transformations/utf8_to_unicode.h`.
+//! The `t:utf8toUnicode` transformation: replaces each UTF-8 encoded
+//! non-ASCII character with `%uHHHH`.
 
 const UNICODE_ERROR_CHARACTERS_MISSING: i32 = -1;
 const UNICODE_ERROR_INVALID_ENCODING: i32 = -2;

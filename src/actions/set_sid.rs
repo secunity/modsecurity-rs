@@ -1,5 +1,3 @@
-//! Port of `src/actions/set_sid.cc`, `src/actions/set_sid.h`.
-//!
 //! `setsid:'...'` — sets the session id (SESSION collection key and SESSIONID).
 
 use crate::actions::action::Action;

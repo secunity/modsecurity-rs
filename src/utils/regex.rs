@@ -1,4 +1,5 @@
-//! Port of `src/utils/regex.h` / `src/utils/regex.cc` (PCRE2 build).
+//! PCRE2 regular expressions, used by `@rx`, `@rxGlobal`, regular
+//! expression variable keys (`ARGS:/^id/`) and other parts of the engine.
 //!
 //! The PCRE2 C library is used directly through `pcre2-sys` so that the
 //! compile options, JIT usage, match limits and error codes are exactly the
@@ -9,7 +10,8 @@ use pcre2_sys::*;
 use std::cell::RefCell;
 use std::ptr;
 
-/// `OVECCOUNT` (only meaningful for the legacy PCRE build, kept for parity).
+/// The ovector size of the legacy PCRE build (unused with PCRE2, kept for
+/// parity).
 pub const OVECCOUNT: usize = 900;
 
 /// Outcome of a search that may hit PCRE2 limits.
@@ -101,7 +103,7 @@ impl Drop for MatchData {
     }
 }
 
-/// RAII owner of a `pcre2_match_context` (`Pcre2MatchContextPtr`).
+/// RAII owner of a `pcre2_match_context`.
 struct MatchContext(*mut pcre2_match_context_8);
 
 impl MatchContext {
@@ -176,17 +178,19 @@ impl Drop for Regex {
 }
 
 impl Regex {
-    /// `Regex(pattern, ignoreCase = false, multiLine = true)`
+    /// Compiles `pattern`, case sensitive, in multi-line mode.
     pub fn new(pattern: &str) -> Self {
         Self::with_options(pattern.as_bytes(), false, true)
     }
 
-    /// `Regex(pattern, ignoreCase)`
+    /// Compiles `pattern` in multi-line mode, ignoring case if
+    /// `ignore_case`.
     pub fn new_case(pattern: &str, ignore_case: bool) -> Self {
         Self::with_options(pattern.as_bytes(), ignore_case, true)
     }
 
-    /// `Regex(pattern, ignoreCase, multiLine)`; the pattern is a byte string.
+    /// Compiles the byte string `pattern` (`.*` when empty) with the given
+    /// options; `.` always matches newlines.
     pub fn with_options(pattern: &[u8], ignore_case: bool, multi_line: bool) -> Self {
         let pattern: Vec<u8> = if pattern.is_empty() { b".*".to_vec() } else { pattern.to_vec() };
         let mut options = PCRE2_DOTALL | if multi_line { PCRE2_MULTILINE } else { PCRE2_DOLLAR_ENDONLY };
@@ -295,7 +299,9 @@ impl Regex {
         }
     }
 
-    /// `searchAll`
+    /// The groups of the successive matches in `s`, last first (the C++
+    /// code pushes them to the front of a list). Each search resumes after
+    /// the last group of the previous match, and an empty group ends it.
     pub fn search_all(&self, s: &[u8]) -> Vec<SMatch> {
         // std::list with push_front: pushed in match order and reversed at
         // the end (front insertion into a Vec would be quadratic).
@@ -332,7 +338,8 @@ impl Regex {
         ret
     }
 
-    /// `searchOneMatch`
+    /// Appends the groups of the first match in `s` to `captures` (group 0
+    /// is the whole match), with `match_limit` (0 for PCRE2's default).
     pub fn search_one_match(&self, s: &[u8], captures: &mut Vec<SMatchCapture>, match_limit: u64) -> RegexResult {
         if self.has_error() {
             return RegexResult::ErrorOther;
@@ -350,7 +357,10 @@ impl Regex {
         })
     }
 
-    /// `searchGlobal`
+    /// Appends the groups of every match in `s` to `captures`, numbered
+    /// across matches, with `match_limit` (0 for PCRE2's default). After an
+    /// empty match the search moves on by one character (two over a CRLF
+    /// when it is a newline).
     pub fn search_global(&self, s: &[u8], captures: &mut Vec<SMatchCapture>, match_limit: u64) -> RegexResult {
         if self.has_error() {
             return RegexResult::ErrorOther;
@@ -415,7 +425,9 @@ impl Regex {
         RegexResult::Ok
     }
 
-    /// `search(s, match)`: stores the last captured group of the first match.
+    /// Stores the first match of `s` in `m`; returns 1 on match, 0
+    /// otherwise. (The C++ code means to store the last captured group, but
+    /// always stores group 0.)
     pub fn search_match(&self, s: &[u8], m: &mut SMatch) -> i32 {
         if self.has_error() {
             return 0;
@@ -451,7 +463,7 @@ impl Regex {
         })
     }
 
-    /// `search(s)`: 1 on match, 0 otherwise.
+    /// Whether `s` matches: 1 on match, 0 otherwise.
     pub fn search(&self, s: &[u8]) -> i32 {
         if self.has_error() {
             return 0;
@@ -470,12 +482,12 @@ impl Regex {
     }
 }
 
-/// `regex_search(s, match, regex)`
+/// [`Regex::search_match`] as a free function.
 pub fn regex_search_match(s: &[u8], m: &mut SMatch, regex: &Regex) -> i32 {
     regex.search_match(s, m)
 }
 
-/// `regex_search(s, regex)`
+/// [`Regex::search`] as a free function.
 pub fn regex_search(s: &[u8], regex: &Regex) -> i32 {
     regex.search(s)
 }

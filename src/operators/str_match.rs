@@ -1,4 +1,5 @@
-//! Port of `src/operators/str_match.cc`, `src/operators/str_match.h`.
+//! The `@strmatch` operator: matches when the parameter occurs anywhere in
+//! the input.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;

@@ -1,4 +1,5 @@
-//! Port of `headers/modsecurity/modsecurity.h` and `src/modsecurity.cc`.
+//! The engine instance ([`ModSecurity`]), the phases and the version
+//! constants.
 
 use std::any::Any;
 use std::ffi::{CStr, CString};
@@ -61,7 +62,8 @@ pub const MODSECURITY_TAG_NUM: &str = "100";
 pub const MODSECURITY_VERSION: &str = "3.0.17";
 pub const MODSECURITY_VERSION_NUM: u64 = 30170100;
 
-/// `MODSECURITY_CHECK_VERSION(a)`
+/// Whether the library version number is at most `a` (the
+/// `MODSECURITY_CHECK_VERSION` macro of the C header).
 pub const fn modsecurity_check_version(a: u64) -> bool {
     MODSECURITY_VERSION_NUM <= a
 }
@@ -81,8 +83,9 @@ pub enum ServerLogEntry<'m, 't> {
     RuleMessage(&'m RuleMessage<'m>, &'m Transaction<'t>),
 }
 
-/// `ModSecLogCb`: called with the transaction's callback data (the C++
-/// `void *` given to the `Transaction` constructor) and the log entry.
+/// The server log callback: called with the transaction's callback data
+/// (the C++ `void *` given to the `Transaction` constructor) and the log
+/// entry.
 pub type ModSecLogCb = Box<dyn Fn(Option<&(dyn Any + Send)>, ServerLogEntry<'_, '_>) + Send + Sync>;
 
 /// The engine instance: persistent collections, connector information and
@@ -138,7 +141,8 @@ impl ModSecurity {
         }
     }
 
-    /// `whoAmI`: e.g. `ModSecurity v3.0.17 (Linux)`.
+    /// The library version and platform, e.g.
+    /// `ModSecurity v3.0.17 (Linux)`.
     pub fn who_am_i(&self) -> &str {
         // ASCII: the conversion cannot fail.
         self.who_am_i_c().to_str().unwrap_or_default()
@@ -180,18 +184,21 @@ impl ModSecurity {
         &self.connector
     }
 
-    /// `setServerLogCb(cb)` (text log entries).
+    /// Sets the server log callback; it receives text log entries.
     pub fn set_server_log_cb(&mut self, cb: ModSecLogCb) {
         self.set_server_log_cb_with_properties(cb, TEXT_LOG_PROPERTY);
     }
 
-    /// `setServerLogCb(cb, properties)`
+    /// Sets the server log callback and the `*_LOG_PROPERTY` flags that
+    /// choose what it receives.
     pub fn set_server_log_cb_with_properties(&mut self, cb: ModSecLogCb, properties: i32) {
         self.log_cb = Some(cb);
         self.log_properties = properties;
     }
 
-    /// `serverLog(data, rm)`
+    /// Sends a rule message to the server log callback, as text or as the
+    /// message itself depending on the log properties (to stderr when no
+    /// callback is set).
     pub fn server_log(&self, data: Option<&(dyn Any + Send)>, rm: &RuleMessage<'_>, t: &Transaction<'_>) {
         let Some(cb) = &self.log_cb else {
             eprintln!("Server log callback is not set -- {}", rm.error_log(t));
@@ -207,8 +214,8 @@ impl ModSecurity {
         }
     }
 
-    /// `processContentOffset`: renders the highlight information of a
-    /// `RuleMessage` reference as JSON.
+    /// Renders the highlight information of a `RuleMessage` reference as
+    /// JSON.
     ///
     /// `match_string` holds the offsets as written in the logs, e.g.
     /// `o0,4v64,13v114,4t:lowercase` (`v<start>,<size>` variable offsets

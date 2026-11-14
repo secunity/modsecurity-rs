@@ -1,4 +1,5 @@
-//! Port of `src/operators/ends_with.cc`, `src/operators/ends_with.h`.
+//! The `@endsWith` operator: matches when the input ends with the
+//! parameter.
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;

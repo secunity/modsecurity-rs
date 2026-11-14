@@ -1,4 +1,4 @@
-//! Port of `src/actions/transformations/css_decode.cc`, `src/actions/transformations/css_decode.h`.
+//! The `t:cssDecode` transformation: decodes CSS escape sequences.
 
 use crate::utils::string::{is_space, valid_hex, x2c, xsingle2c};
 

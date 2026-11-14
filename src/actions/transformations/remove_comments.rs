@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/remove_comments.cc`, `src/actions/transformations/remove_comments.h`.
+//! The `t:removeComments` transformation: removes `/* */` and `<!-- -->`
+//! comments, and cuts the value at `--` or `#`.
 
 fn inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();

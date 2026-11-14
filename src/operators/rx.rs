@@ -1,4 +1,4 @@
-//! Port of `src/operators/rx.cc`, `src/operators/rx.h`.
+//! The `@rx` operator: matches a PCRE2 regular expression.
 
 use crate::operators::operator::{Operator, Param, log_offset, report_regex_compile_error, report_regex_search_error};
 use crate::rule_message::RuleMessage;
@@ -7,8 +7,8 @@ use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 use crate::utils::regex::{Regex, RegexResult, SMatchCapture};
 
-/// C++ `kRxMultiLine`: `$` only matches at the very end of the subject when
-/// built with `MODSEC_REGEX_DOLLAR_ENDONLY` (cargo feature
+/// Whether patterns are multi-line: `$` only matches at the very end of
+/// the subject when built with `MODSEC_REGEX_DOLLAR_ENDONLY` (cargo feature
 /// `regex-dollar-endonly`), otherwise the pattern is multi-line.
 const MULTI_LINE: bool = !cfg!(feature = "regex-dollar-endonly");
 

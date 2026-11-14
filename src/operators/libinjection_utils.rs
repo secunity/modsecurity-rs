@@ -1,6 +1,7 @@
-//! Port of `src/operators/libinjection_utils.h`.
+//! Helpers for the libinjection results of `@detectSQLi` and `@detectXSS`.
 
-/// `injection_result_t` (libinjection v4).
+/// The outcome of a libinjection check (`injection_result_t` in
+/// libinjection v4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InjectionResult {
     False,

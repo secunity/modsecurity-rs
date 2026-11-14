@@ -1,7 +1,6 @@
-//! Port of `src/actions/transformations/remove_nulls.cc`, `src/actions/transformations/remove_nulls.h`.
+//! The `t:removeNulls` transformation: removes NUL bytes.
 
-/// `RemoveNulls::remove_if`: removes the bytes matching `pred`; returns
-/// whether any was removed.
+/// Removes the bytes matching `pred`; returns whether any was removed.
 pub fn remove_if(val: &mut Vec<u8>, pred: impl Fn(u8) -> bool) -> bool {
     let old_size = val.len();
     val.retain(|&c| !pred(c));

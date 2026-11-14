@@ -1,5 +1,3 @@
-//! Port of `src/actions/rule_id.cc`, `src/actions/rule_id.h`.
-//!
 //! `id:N` — the rule id (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};
@@ -23,7 +21,8 @@ impl RuleId {
     }
 }
 
-/// `std::ostringstream << std::setprecision(40) << d`, i.e. `%.40g`.
+/// Formats `d` as C++ `std::ostringstream << std::setprecision(40)` does,
+/// i.e. `%.40g`.
 fn format_g40(d: f64) -> String {
     format_g(d, 40)
 }

@@ -1,7 +1,5 @@
-//! Port of `src/utils/ip_tree.cc`, `src/utils/ip_tree.h`.
-//!
 //! A set of IPv4/IPv6 addresses and networks backed by the radix trees of
-//! [`crate::utils::msc_tree`].
+//! [`crate::utils::msc_tree`] (used by `@ipMatch` and `@ipMatchFromFile`).
 
 use std::io::Read;
 
@@ -18,8 +16,8 @@ impl IpTree {
         IpTree { tree: TreeRoot::new() }
     }
 
-    /// `addFromBuffer(std::istream *, ...)`: one or more comma separated
-    /// entries per line, `#` starts a comment. Returns `false` if an entry
+    /// Adds the entries of `buffer`: one or more comma separated entries
+    /// per line, `#` starts a comment. Returns `false` if an entry
     /// is invalid; there is no error message (the C code never fills one).
     pub fn add_from_buffer(&mut self, buffer: &[u8]) -> bool {
         // std::getline: a trailing newline does not produce an extra line.
@@ -46,7 +44,7 @@ impl IpTree {
         if ok { Ok(()) } else { Err(String::new()) }
     }
 
-    /// `addFromFile`
+    /// Adds the entries of the file `file`.
     pub fn add_from_file(&mut self, file: &str) -> Result<(), String> {
         let Ok(mut f) = std::fs::File::open(file) else {
             return Err(format!("Failed to open file: {}", file));
@@ -57,7 +55,7 @@ impl IpTree {
         Self::loaded(self.add_from_buffer(&content))
     }
 
-    /// `addFromUrl`
+    /// Adds the entries downloaded from `url`.
     pub fn add_from_url(&mut self, url: &str) -> Result<(), String> {
         let mut c = HttpsClient::new();
         if !c.download(url) {
@@ -66,7 +64,8 @@ impl IpTree {
         Self::loaded(self.add_from_buffer(&c.content))
     }
 
-    /// `contains`
+    /// Whether `ip` is one of the addresses, or in one of the networks, of
+    /// the set.
     pub fn contains(&self, ip: &[u8]) -> bool {
         self.tree.contains_ip(ip) > 0
     }

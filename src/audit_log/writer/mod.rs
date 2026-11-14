@@ -1,4 +1,4 @@
-//! Port of `src/audit_log/writer/writer.cc`, `src/audit_log/writer/writer.h`.
+//! The audit log writers: serial file, parallel directory tree and HTTPS.
 
 pub mod https;
 pub mod parallel;
@@ -30,8 +30,8 @@ pub enum Writer {
 }
 
 impl Writer {
-    /// `init`: the writer of `SecAuditLogType` (serial when not set), with
-    /// what it needs open.
+    /// Creates the writer of `SecAuditLogType` (serial when not set) and
+    /// opens what it needs.
     pub fn open(audit: &AuditLog) -> Result<Self, String> {
         match audit.audit_type {
             Some(AuditLogType::Parallel) => parallel::open(audit),
@@ -40,7 +40,7 @@ impl Writer {
         }
     }
 
-    /// `write`: saves the `parts` of `transaction`.
+    /// Saves the `parts` of `transaction`.
     pub fn write(&self, audit: &AuditLog, transaction: &Transaction<'_>, parts: i32) -> Result<(), String> {
         match self {
             Writer::Serial { log } => serial::write(log, audit, transaction, parts),
@@ -52,8 +52,8 @@ impl Writer {
     }
 }
 
-/// `Writer::generateBoundary`: `SERIAL_AUDIT_LOG_BOUNDARY_LENGTH` random
-/// alphanumeric characters. The C++ code uses the C library `rand()` (seeded
+/// A boundary of `SERIAL_AUDIT_LOG_BOUNDARY_LENGTH` random alphanumeric
+/// characters. The C++ code uses the C library `rand()` (seeded
 /// with `srand(time(NULL))` by the `ModSecurity` constructor); the `rand`
 /// crate's thread local generator is used instead, so creating an engine no
 /// longer reseeds the host process's `rand()`.

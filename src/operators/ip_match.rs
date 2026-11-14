@@ -1,4 +1,5 @@
-//! Port of `src/operators/ip_match.cc`, `src/operators/ip_match.h`.
+//! The `@ipMatch` operator: matches when the input is an IP address in one
+//! of the listed addresses or networks.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
@@ -19,7 +20,8 @@ impl IpMatch {
         Self::with_name("IpMatch", param)
     }
 
-    /// `IpMatch(n, param)`: used by `@ipMatchFromFile` / `@ipMatchF`.
+    /// An operator named `name` in messages: used by `@ipMatchFromFile` /
+    /// `@ipMatchF`.
     pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
         IpMatch { name, param: Param::new(param), tree: IpTree::new() }
     }

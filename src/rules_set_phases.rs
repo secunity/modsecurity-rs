@@ -12,7 +12,7 @@ pub struct RulesSetPhases {
 }
 
 impl RulesSetPhases {
-    /// `insert`: adds the rule to its phase. Returns whether it has one.
+    /// Adds the rule to its phase. Returns whether it has one.
     pub fn insert(&mut self, rule: Arc<Rule>) -> bool {
         let Some(phase) = rule.phase() else {
             return false;
@@ -21,9 +21,9 @@ impl RulesSetPhases {
         true
     }
 
-    /// `append`: merges `from` into `self` phase by phase, refusing
-    /// duplicated `SecRule` ids. Returns the number of appended rules. On a
-    /// duplicate the phases before it stay appended (as in C++).
+    /// Merges `from` into `self` phase by phase, refusing duplicated
+    /// `SecRule` ids. Returns the number of appended rules. On a duplicate
+    /// the phases before it stay appended (as in C++).
     pub fn append(&mut self, from: &RulesSetPhases) -> Result<usize, String> {
         let mut ids: Vec<i64> =
             self.rules_at_phase.iter().flatten().filter_map(|r| r.rule_with_operator_id()).collect();

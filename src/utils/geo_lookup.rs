@@ -93,7 +93,7 @@ fn parse_numeric_host(target: &[u8]) -> Result<std::net::IpAddr, String> {
     }
 }
 
-/// `gai_strerror(code)`
+/// The text of a `getaddrinfo` error code (`gai_strerror(code)`).
 #[cfg(feature = "maxmind")]
 fn gai_message(code: i32) -> String {
     // SAFETY: gai_strerror returns a static NUL terminated string.

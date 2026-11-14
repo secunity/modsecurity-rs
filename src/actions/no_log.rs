@@ -1,5 +1,3 @@
-//! Port of `src/actions/no_log.cc`, `src/actions/no_log.h`.
-//!
 //! `nolog` — the rule match is not to be logged.
 
 use crate::actions::action::{Action, name_of};

@@ -1,5 +1,5 @@
-//! Port of `src/operators/verify_svnr.cc`, `src/operators/verify_svnr.h`
-//! (Austrian social security numbers).
+//! The `@verifySVNR` operator: finds Austrian social security numbers
+//! whose check digit is valid.
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
@@ -36,12 +36,13 @@ impl VerifySVNR {
         VerifySVNR { param, re }
     }
 
-    /// `convert_to_int`
+    /// The value of a decimal digit (0 for any other byte).
     fn convert_to_int(c: u8) -> i32 {
         if c.is_ascii_digit() { i32::from(c - b'0') } else { 0 }
     }
 
-    /// `verify`
+    /// Whether `svnrnumber` holds a valid SVNR: 10 digits, not a known bad
+    /// number, and the check digit right.
     pub fn verify(&self, svnrnumber: &[u8]) -> bool {
         const SVNR_LEN: usize = 10;
         let mut svnr = [0i32; 11];

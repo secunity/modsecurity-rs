@@ -1,5 +1,3 @@
-//! Port of `src/actions/capture.cc`, `src/actions/capture.h`.
-//!
 //! `capture` — a marker: `RuleWithActions` records its presence and the
 //! operators store their captures in `TX:0..9` when it is set.
 

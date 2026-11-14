@@ -1,8 +1,8 @@
-//! Port of `src/actions/transformations/parity_even_7bit.cc`,
-//! `parity_odd_7bit.cc` and `parity_zero_7bit.cc` (with their headers).
+//! The `t:parityEven7bit`, `t:parityOdd7bit` and `t:parityZero7bit`
+//! transformations: set or clear the high bit of every byte.
 
-/// `ParityEven7bit::inplace<even>`: sets the high bit of every byte so that
-/// the byte has even (`even == true`) or odd parity.
+/// Sets the high bit of every byte so that the byte has even
+/// (`even == true`) or odd parity.
 fn set_parity(value: &mut [u8], even: bool) -> bool {
     if value.is_empty() {
         return false;
@@ -21,12 +21,14 @@ fn set_parity(value: &mut [u8], even: bool) -> bool {
     true
 }
 
-/// `t:parityEven7bit`
+/// `t:parityEven7bit`: sets the high bit so that every byte has even
+/// parity.
 pub fn even(value: &mut [u8]) -> bool {
     set_parity(value, true)
 }
 
-/// `t:parityOdd7bit`
+/// `t:parityOdd7bit`: sets the high bit so that every byte has odd
+/// parity.
 pub fn odd(value: &mut [u8]) -> bool {
     set_parity(value, false)
 }

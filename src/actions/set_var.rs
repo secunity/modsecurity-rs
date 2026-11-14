@@ -1,5 +1,3 @@
-//! Port of `src/actions/set_var.cc`, `src/actions/set_var.h`.
-//!
 //! `setvar:tx.name=value`, `setvar:tx.name=+N`, `setvar:tx.name=-N`,
 //! `setvar:tx.name`, `setvar:!tx.name` — creates, updates or removes a
 //! variable of the TX or of a persistent collection.
@@ -35,7 +33,8 @@ impl SetVar {
     }
 }
 
-/// `std::stoi` where any failure (no digits, out of `int` range) is 0.
+/// Parses a leading integer as `std::stoi` does; any failure (no digits,
+/// out of `int` range) gives 0.
 fn stoi_or_zero(s: &[u8]) -> i32 {
     stoi(s).and_then(|v| i32::try_from(v).ok()).unwrap_or(0)
 }

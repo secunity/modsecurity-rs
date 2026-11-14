@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/audit_log_parts.cc`, `src/actions/ctl/audit_log_parts.h`.
-//!
 //! `ctl:auditLogParts=+E` / `=-E` — adds or removes audit log parts for
 //! the transaction.
 

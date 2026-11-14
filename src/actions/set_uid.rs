@@ -1,5 +1,3 @@
-//! Port of `src/actions/set_uid.cc`, `src/actions/set_uid.h`.
-//!
 //! `setuid:'...'` — sets the user id (USER collection key and USERID).
 
 use crate::actions::action::Action;

@@ -1,5 +1,3 @@
-//! Port of `src/actions/expire_var.cc`, `src/actions/expire_var.h`.
-//!
 //! `expirevar:collection.variable=seconds` — sets the expiry of a variable
 //! of a persistent collection.
 

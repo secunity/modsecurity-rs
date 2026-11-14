@@ -1,5 +1,5 @@
-//! Port of `src/operators/validate_byte_range.cc`,
-//! `src/operators/validate_byte_range.h`.
+//! The `@validateByteRange` operator: matches when the input holds a byte
+//! outside the allowed values and ranges.
 
 use crate::operators::eq::stoi;
 use crate::operators::operator::{Operator, Param, log_offset};
@@ -24,7 +24,7 @@ impl ValidateByteRange {
         self.table[(b >> 3) as usize] |= 1 << (b & 0x7);
     }
 
-    /// `getRange`: adds `N` or `N-M` to the table.
+    /// Adds `N` or `N-M` to the table.
     pub fn add_range(&mut self, range_representation: &[u8]) -> Result<(), String> {
         let lossy = |s: &[u8]| String::from_utf8_lossy(s).into_owned();
         let Some(pos) = range_representation.iter().position(|&c| c == b'-') else {

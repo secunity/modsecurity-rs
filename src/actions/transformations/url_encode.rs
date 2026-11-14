@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/url_encode.cc`, `src/actions/transformations/url_encode.h`.
+//! The `t:urlEncode` transformation: URL-encodes the value (a space
+//! becomes `+`).
 
 use crate::utils::string::c2x;
 

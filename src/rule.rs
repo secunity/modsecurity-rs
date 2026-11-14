@@ -1,4 +1,4 @@
-//! Port of `headers/modsecurity/rule.h` and `src/rule.cc`.
+//! A rule of a rule set: a `SecMarker` or a rule with actions.
 //!
 //! The abstract C++ `Rule` base has two direct subclasses, `RuleMarker`
 //! (`SecMarker`) and `RuleWithActions` (everything else); `Rule` is the
@@ -19,7 +19,8 @@ pub enum Rule {
 }
 
 impl Rule {
-    /// `evaluate(transaction)`
+    /// Evaluates the rule. Returns whether it matched (always `true` for a
+    /// marker).
     pub fn evaluate<'a>(&'a self, t: &mut Transaction<'a>) -> bool {
         match self {
             Rule::Marker(m) => m.evaluate(t),
@@ -50,7 +51,8 @@ impl Rule {
         }
     }
 
-    /// `getReference`
+    /// How the logs refer to the rule: its id for a `SecRule`,
+    /// `file:line` otherwise.
     pub fn reference(&self) -> String {
         match self {
             Rule::Marker(m) => format!("{}:{}", m.file_name, m.line_number),
@@ -62,7 +64,7 @@ impl Rule {
         matches!(self, Rule::Marker(_))
     }
 
-    /// `dynamic_cast<RuleWithActions *>`
+    /// The rule with actions, unless this is a marker.
     pub fn as_rule_with_actions(&self) -> Option<&RuleWithActions> {
         match self {
             Rule::WithActions(r) => Some(r),
@@ -77,7 +79,7 @@ impl Rule {
         }
     }
 
-    /// `dynamic_cast<RuleWithOperator *>`: the id of a `SecRule`.
+    /// The id of a `SecRule`; `None` for any other rule.
     pub fn rule_with_operator_id(&self) -> Option<i64> {
         match self {
             Rule::WithActions(r) if r.is_rule_with_operator() => Some(r.rule_id),

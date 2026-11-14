@@ -7,7 +7,8 @@
 //!
 //! libxml2 itself is behind the safe API of `utils::libxml2`.
 
-/// `xmlInitParser()`, done once by the `ModSecurity` constructor.
+/// Initialises libxml2 (`xmlInitParser()`), done once by the `ModSecurity`
+/// constructor.
 pub fn init_parser() {
     #[cfg(feature = "libxml2")]
     crate::utils::libxml2::init_parser();
@@ -22,13 +23,13 @@ mod with_libxml2 {
     use crate::transaction::Transaction;
     use crate::utils::libxml2::{self, Document, PushParser, SaxHandler, SaxParser};
 
-    /// `NodeData` for parsing XML into args.
+    /// An open element while parsing XML into args.
     #[derive(Debug, Default)]
     struct NodeData {
         has_child: bool,
     }
 
-    /// `XMLNodes`: the state of the SAX parser that turns the XML into
+    /// The state of the SAX parser that turns the XML into
     /// `ARGS`.
     #[derive(Debug)]
     struct XmlNodes {
@@ -52,7 +53,8 @@ mod with_libxml2 {
             }
         }
 
-        /// `MSCSAXHandler::onStartElement`
+        /// Opens the element `name`: appends it to the current path and
+        /// clears the current value.
         fn on_start_element(&mut self, name: &[u8]) {
             self.nodes.push(NodeData::default());
             self.node_depth += 1;
@@ -73,9 +75,9 @@ mod with_libxml2 {
             self.currval_is_set = false;
         }
 
-        /// `MSCSAXHandler::onEndElement`: adds the leaf element as an
-        /// argument. Returns `false` when parsing has to stop because the
-        /// number of arguments reached the limit.
+        /// Closes the element `name`; a leaf element becomes an argument.
+        /// Returns `false` when parsing has to stop because the number of
+        /// arguments reached the limit.
         fn on_end_element(&mut self, t: &mut Transaction<'_>, name: &[u8]) -> bool {
             let mut keep_parsing = true;
             if self.nodes.last().is_some_and(|nd| !nd.has_child) {
@@ -95,7 +97,7 @@ mod with_libxml2 {
             keep_parsing
         }
 
-        /// `MSCSAXHandler::onCharacters`
+        /// Appends text to the value of the current element.
         fn on_characters(&mut self, content: &[u8]) {
             // libxml2 SAX parser will call this function multiple times
             // during the parsing of a single node, if the value has
@@ -117,24 +119,24 @@ mod with_libxml2 {
     }
 
     impl SaxHandler for ArgsHandler<'_, '_> {
-        /// `MSC_startElement`
+        /// An element starts.
         fn start_element(&mut self, name: &[u8]) {
             self.nodes.on_start_element(name);
         }
 
-        /// `MSC_endElement`
+        /// An element ends; `false` stops the parser.
         fn end_element(&mut self, name: &[u8]) -> bool {
             self.nodes.on_end_element(self.t, name)
         }
 
-        /// `MSC_xmlcharacters`
+        /// Text of the current element.
         fn characters(&mut self, text: &[u8]) {
             self.nodes.on_characters(text);
         }
     }
 
-    /// `XML` (with its `xml_data` member): the parsers and the resulting
-    /// document.
+    /// The XML body processor of a transaction: the parsers and the
+    /// resulting document.
     #[derive(Debug, Default)]
     pub struct Xml {
         parsing_ctx: Option<PushParser>,
@@ -152,12 +154,13 @@ mod with_libxml2 {
             Self::default()
         }
 
-        /// The parsed document (`m_data.doc`).
+        /// The parsed document.
         pub(crate) fn document(&self) -> Option<&Document> {
             self.doc.as_ref()
         }
 
-        /// `m_data.well_formed`
+        /// Whether the document is well formed: 1 if it is, 0 otherwise (or
+        /// before parsing completed).
         pub fn well_formed(&self) -> u32 {
             self.well_formed
         }
@@ -175,7 +178,8 @@ mod with_libxml2 {
             t.sec_xml_parse_xml_into_args == Some(ParseXmlIntoArgs::OnlyArgs)
         }
 
-        /// `init`
+        /// Prepares the processor for a body: sets the external entity
+        /// policy and, when parsing into `ARGS`, the SAX parser state.
         pub fn init(&mut self, t: &mut Transaction<'_>) -> bool {
             libxml2::allow_external_entities(t.rules.properties.sec_xml_external_entity == Some(true));
 
@@ -215,7 +219,8 @@ mod with_libxml2 {
             }
         }
 
-        /// `processChunk`
+        /// Feeds a chunk of the body to the parsers (the first chunk creates
+        /// them).
         pub fn process_chunk(&mut self, t: &mut Transaction<'_>, buf: &[u8]) -> Result<(), String> {
             // We want to initialise our parsing context here, to enable us
             // to pass it the first chunk of data so that it can attempt to
@@ -270,7 +275,7 @@ mod with_libxml2 {
             Ok(())
         }
 
-        /// `complete`
+        /// Ends the body: finishes the parsers and keeps the document.
         pub fn complete(&mut self, t: &mut Transaction<'_>) -> Result<(), String> {
             // Only if we have a context, meaning we've done some work.
             if self.parsing_ctx.is_none() && self.parsing_ctx_arg.is_none() {

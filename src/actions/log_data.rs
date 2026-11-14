@@ -1,5 +1,3 @@
-//! Port of `src/actions/log_data.cc`, `src/actions/log_data.h`.
-//!
 //! `logdata:'...'` — data (with macro expansion) logged with the rule
 //! match.
 

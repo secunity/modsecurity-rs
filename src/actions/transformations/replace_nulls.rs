@@ -1,4 +1,4 @@
-//! Port of `src/actions/transformations/replace_nulls.cc`, `src/actions/transformations/replace_nulls.h`.
+//! The `t:replaceNulls` transformation: replaces NUL bytes with spaces.
 
 /// Transforms `value` in place; returns whether it changed.
 pub fn transform(value: &mut [u8]) -> bool {

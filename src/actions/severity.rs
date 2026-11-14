@@ -1,5 +1,3 @@
-//! Port of `src/actions/severity.cc`, `src/actions/severity.h`.
-//!
 //! `severity:N` or `severity:'CRITICAL'` — the severity of the rule match.
 
 use crate::actions::action::{Action, name_and_payload};

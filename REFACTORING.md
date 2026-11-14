@@ -383,3 +383,15 @@ Kept as process state, on purpose:
 - The `SharedFile` registry (weak entries, see above), the per-machine
   `UNIQUE_ID`, and the per-thread PCRE2 match scratch and libinjection test
   hooks, which are caches or test aids rather than configuration.
+
+## Documentation describes the Rust code
+
+The module headers no longer start with "Port of `file.cc`" (161 files),
+and doc comments that only named the C++ counterpart (`` /// `resolveFirst` ``,
+`` /// `luhnVerify`: ... ``) now say what the item does (about 400). Names
+that mean something to users stay: SecLang directives, actions, operators
+and variables, `msc_*`, and library functions (`luaL_checkstring`,
+`getaddrinfo`); so do the notes on how the code relates to C++ behavior
+(quirks kept, "as in C++"), since C++ remains the behavioral reference.
+Comments only: checked by comparing the code with comments stripped, and
+`cargo doc` gives the same warnings as before (all new links resolve).

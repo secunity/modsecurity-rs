@@ -1,4 +1,4 @@
-//! Port of `src/operators/str_eq.cc`, `src/operators/str_eq.h`.
+//! The `@streq` operator: matches when the input equals the parameter.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;

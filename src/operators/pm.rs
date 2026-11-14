@@ -1,4 +1,5 @@
-//! Port of `src/operators/pm.cc`, `src/operators/pm.h`.
+//! The `@pm` operator: matches when the input contains one of a set of
+//! phrases (case insensitive).
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
@@ -9,9 +10,9 @@ use crate::transaction::Transaction;
 use crate::utils::acmp::{Acmp, Acmpt};
 use crate::utils::string::valid_hex;
 
-/// `parse_pm_content`: strips optional surrounding quotes and decodes the
-/// `|hex|` blocks and the `\:`, `\;`, `\\` and `\"` escapes. On any invalid
-/// sequence the parameter is returned unchanged.
+/// Strips optional surrounding quotes and decodes the `|hex|` blocks and
+/// the `\:`, `\;`, `\\` and `\"` escapes. On any invalid sequence the
+/// parameter is returned unchanged.
 pub fn parse_pm_content(op_parm: &[u8]) -> Vec<u8> {
     let Some(mut offset) = op_parm.iter().position(|&c| c != b' ' && c != b'\t') else {
         return op_parm.to_vec();
@@ -162,7 +163,8 @@ impl Pm {
         Self::with_name("Pm", param)
     }
 
-    /// `Pm(n, param)`: used by `@pmFromFile` / `@pmf`.
+    /// An operator named `name` in messages: used by `@pmFromFile` /
+    /// `@pmf`.
     pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
         Pm { name, param: Param::new(param), p: Matcher::new() }
     }
@@ -172,7 +174,9 @@ impl Pm {
         self.p.prepare();
     }
 
-    /// `Pm::evaluate`, shared by the `@pm` family.
+    /// Searches `input` for the first phrase; a match is logged with its
+    /// offset, added to the matched values and, with `capture`, stored in
+    /// `TX.0`. Shared by the `@pm` family.
     pub(crate) fn evaluate_pm(
         &self,
         t: &mut Transaction<'_>,

@@ -1,5 +1,4 @@
-//! Port of `src/operators/verify_ssn.cc`, `src/operators/verify_ssn.h`
-//! (US social security numbers).
+//! The `@verifySSN` operator: finds plausible US social security numbers.
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
@@ -21,7 +20,7 @@ impl VerifySSN {
         VerifySSN { param, re }
     }
 
-    /// `convert_to_int`
+    /// The value of a hexadecimal digit (0 for any other byte).
     fn convert_to_int(c: u8) -> i32 {
         match c {
             b'0'..=b'9' => i32::from(c - b'0'),
@@ -31,7 +30,9 @@ impl VerifySSN {
         }
     }
 
-    /// `verify`
+    /// Whether `ssnumber` is a plausible SSN: nine digits, not all
+    /// sequential or repeated, no zero area, group or serial, and an area
+    /// below 740 other than 666.
     pub fn verify(&self, ssnumber: &[u8]) -> bool {
         let mut num = [0i32; 9];
         let mut digits = 0usize;

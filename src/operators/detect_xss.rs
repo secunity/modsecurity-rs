@@ -1,4 +1,5 @@
-//! Port of `src/operators/detect_xss.cc`, `src/operators/detect_xss.h`.
+//! The `@detectXSS` operator: detects cross-site scripting with
+//! libinjection.
 
 use crate::operators::libinjection_adapter::run_libinjection_xss;
 use crate::operators::libinjection_utils::{

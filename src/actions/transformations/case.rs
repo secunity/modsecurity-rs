@@ -1,8 +1,6 @@
-//! Port of `src/actions/transformations/lower_case.cc` and `upper_case.cc`
-//! (with their headers).
+//! The `t:lowercase` and `t:uppercase` transformations.
 
-/// `LowerCase::convert`: applies `op` to every byte; returns whether any
-/// byte changed.
+/// Applies `op` to every byte; returns whether any byte changed.
 fn convert(val: &mut [u8], op: impl Fn(u8) -> u8) -> bool {
     let mut changed = false;
     for c in val.iter_mut() {

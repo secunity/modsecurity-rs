@@ -1,4 +1,5 @@
-//! Port of `src/operators/eq.cc`, `src/operators/eq.h`.
+//! The `@eq` operator: matches when the input and the parameter, read as
+//! integers, are equal.
 //!
 //! Also hosts the C number parsing helpers shared by the numeric
 //! comparison operators (`@eq`, `@ge`, `@gt`, `@le`, `@lt`).
@@ -53,13 +54,13 @@ fn parse_c_integer(s: &[u8]) -> (i64, bool, bool) {
     }
 }
 
-/// `atoll` (glibc: `strtoll(s, NULL, 10)`).
+/// Parses like `atoll` (glibc: `strtoll(s, NULL, 10)`).
 pub(crate) fn atoll(s: &[u8]) -> i64 {
     parse_c_integer(s).0
 }
 
-/// `std::stoi`: `None` where the C++ function throws (no conversion, or a
-/// value out of the `int` range).
+/// Parses like `std::stoi`: `None` where the C++ function throws (no
+/// conversion, or a value out of the `int` range).
 pub(crate) fn stoi(s: &[u8]) -> Option<i32> {
     let (v, overflow, digits) = parse_c_integer(s);
     if !digits || overflow {

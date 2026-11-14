@@ -1,4 +1,5 @@
-//! Port of `src/operators/lt.cc`, `src/operators/lt.h`.
+//! The `@lt` operator: matches when the input, read as an integer, is
+//! less than the parameter.
 
 use crate::operators::eq::atoll;
 use crate::operators::operator::{Operator, Param};

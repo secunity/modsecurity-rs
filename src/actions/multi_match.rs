@@ -1,5 +1,3 @@
-//! Port of `src/actions/multi_match.cc`, `src/actions/multi_match.h`.
-//!
 //! `multiMatch` — a marker: `RuleWithActions` records its presence and then
 //! runs the operator against every intermediate transformation result.
 

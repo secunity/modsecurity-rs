@@ -1,5 +1,3 @@
-//! Port of `src/utils/msc_tree.cc`, `src/utils/msc_tree.h`.
-//!
 //! The crit-bit (radix) tree inherited from ModSecurity v2 that backs
 //! `@ipMatch`, `@ipMatchFromFile` and `@ipMatchF`.
 //!
@@ -23,8 +21,9 @@
 //! With the `ipmatch-prefix-trie` feature (off by default, not a C++
 //! option), [`TreeRoot`] stores the networks in prefix tries (the
 //! `prefix-trie` and `ipnet` crates) instead: entries are still parsed and
-//! rejected exactly as by `TreeAddIP` ([`parse_ipv4`], [`parse_ipv6`]), but an
-//! address matches whenever any listed network contains it.
+//! rejected exactly as by [`CptTree::add_ip`] ([`parse_ipv4`],
+//! [`parse_ipv6`]), but an address matches whenever any listed network
+//! contains it.
 //!
 //! Reads past the end of the prefix buffers that the C code performs in
 //! branches whose outcome does not depend on the value read are replaced by
@@ -44,27 +43,27 @@ const NETMASK_32: u32 = 0x20;
 const NETMASK_8: u32 = 0x8;
 const NETMASK_2: u32 = 0x2;
 
-/// `SHIFT_LEFT_MASK(x)`: `(int)(~0U << x)`.
+/// All bits set, shifted left by `x`: `(int)(~0U << x)`.
 #[inline]
 fn shift_left_mask(x: u32) -> i32 {
     (!0u32).wrapping_shl(x) as i32
 }
 
-/// `SHIFT_RIGHT_MASK(x, y)` with `x = NETMASK_128`: the bit of `bit` within
-/// its byte.
+/// The mask of bit number `bit` within its byte (most significant bit
+/// first).
 #[inline]
 fn bit_in_byte(bit: u32) -> u8 {
     (NETMASK_128 >> (bit % 8)) as u8
 }
 
-/// `TREE_CHECK(buffer[bit >> 3], bit mask)`
+/// Whether bit number `bit` of `buffer` is set (unset past its end).
 #[inline]
 fn tree_check(buffer: &[u8], bit: u32) -> bool {
     buffer.get((bit >> 3) as usize).copied().unwrap_or(0) & bit_in_byte(bit) != 0
 }
 
-/// `TreePrefix`: the address bytes of a node and its list of netmasks
-/// (the `CPTData` linked list, kept as a vector in list order).
+/// The address bytes of a node and its list of netmasks (a linked list in
+/// the C code, kept as a vector in list order).
 #[derive(Debug, Clone)]
 pub struct TreePrefix {
     pub buffer: Vec<u8>,
@@ -73,8 +72,8 @@ pub struct TreePrefix {
 }
 
 impl TreePrefix {
-    /// `CPTCreatePrefix` (+ `InsertDataPrefix`): `None` when `ip_bitmask`
-    /// is not a multiple of 8.
+    /// The first `ip_bitmask` bits of `ipdata` with the single netmask
+    /// `netmask`; `None` when `ip_bitmask` is not a multiple of 8.
     fn create(ipdata: &[u8], ip_bitmask: u32, netmask: u8) -> Option<TreePrefix> {
         if !ip_bitmask.is_multiple_of(8) {
             return None;
@@ -86,20 +85,20 @@ impl TreePrefix {
         Some(TreePrefix { buffer, bitlen: ip_bitmask, prefix_data: vec![netmask] })
     }
 
-    /// `CPTAppendToCPTDataList`: inserts `netmask` keeping the list sorted
+    /// Inserts `netmask` keeping the list sorted
     /// by decreasing netmask.
     fn append_to_data_list(&mut self, netmask: u8) {
         let pos = self.prefix_data.iter().position(|&nm| netmask > nm).unwrap_or(self.prefix_data.len());
         self.prefix_data.insert(pos, netmask);
     }
 
-    /// `TreePrefixContainNetmask`
+    /// Whether `netmask` is one of the netmasks of the prefix.
     pub fn contains_netmask(&self, netmask: u8) -> bool {
         self.prefix_data.contains(&netmask)
     }
 
-    /// `TreePrefixNetmask`: with `flag` only the first netmask of the list
-    /// is considered (`TreeCheckData` otherwise).
+    /// Whether the prefix has `netmask`; with `flag` only the first netmask
+    /// of the list is considered.
     fn netmask(&self, netmask: u32, flag: bool) -> bool {
         if flag {
             return match self.prefix_data.first() {
@@ -111,7 +110,8 @@ impl TreePrefix {
     }
 }
 
-/// `TreeNode`
+/// A node of the tree: the bit it tests, its netmasks and prefix (if any),
+/// and its links.
 #[derive(Debug, Default, Clone)]
 pub struct TreeNode {
     pub bit: u32,
@@ -124,7 +124,8 @@ pub struct TreeNode {
     pub parent: Option<usize>,
 }
 
-/// `CPTTree`: owns its nodes (arena, indexes are node handles).
+/// A crit-bit tree of one address family; owns its nodes (arena, indexes
+/// are node handles).
 #[derive(Debug, Default)]
 pub struct CptTree {
     pub count: i32,
@@ -132,7 +133,8 @@ pub struct CptTree {
     nodes: Vec<TreeNode>,
 }
 
-/// `TreeRoot`
+/// The addresses and networks of an `@ipMatch` list: one tree per address
+/// family.
 ///
 /// With the `ipmatch-prefix-trie` feature the networks are kept in prefix
 /// tries instead of [`CptTree`]s: entries are parsed and validated as in C++,
@@ -150,7 +152,7 @@ pub struct TreeRoot {
     ipv6_set: prefix_trie::PrefixSet<ipnet::Ipv6Net>,
 }
 
-/// `ConvertIPNetmask`: clears the host bits of `buffer`.
+/// Clears the host bits of `buffer`.
 fn convert_ip_netmask(buffer: &mut [u8], netmask: u8, ip_bitmask: u32) {
     let bytes = (ip_bitmask / 8) as usize;
     let netmask = u32::from(netmask);
@@ -165,7 +167,8 @@ fn convert_ip_netmask(buffer: &mut [u8], netmask: u8, ip_bitmask: u32) {
     }
 }
 
-/// `CheckBitmask`
+/// Whether `netmask` covers the whole address (or is `0xff`), so that a
+/// node needs no netmask entry for it.
 fn check_bitmask(netmask: u8, ip_bitmask: u32) -> bool {
     match netmask {
         0xff => true,
@@ -201,7 +204,7 @@ fn fresh_netmasks_with(count: i32, netmask: u8) -> Vec<u8> {
 }
 
 impl CptTree {
-    /// `CPTCreateRadixTree`
+    /// An empty tree.
     pub fn new() -> Self {
         Self::default()
     }
@@ -211,13 +214,14 @@ impl CptTree {
         &self.nodes[n]
     }
 
-    /// `CPTCreateNode`
+    /// Adds an empty node to the arena and returns its handle.
     fn create_node(&mut self) -> usize {
         self.nodes.push(TreeNode::default());
         self.nodes.len() - 1
     }
 
-    /// `CPTCreateHead`
+    /// Makes `node` the head of the tree, holding `prefix`, and records
+    /// `netmask` on it unless it covers the whole address.
     fn create_head(&mut self, prefix: TreePrefix, node: usize, netmask: u8, ip_bitmask: u32) -> Option<usize> {
         let n = &mut self.nodes[node];
         n.bit = prefix.bitlen;
@@ -234,8 +238,7 @@ impl CptTree {
         Some(node)
     }
 
-    /// `SetParentNode`: replaces `node` by `new_node` in its parent (or as
-    /// the head).
+    /// Replaces `node` by `new_node` in its parent (or as the head).
     fn set_parent_node(&mut self, node: usize, new_node: usize) -> usize {
         match self.nodes[node].parent {
             None => self.head = Some(new_node),
@@ -264,7 +267,9 @@ impl CptTree {
         node
     }
 
-    /// `InsertNetmask`
+    /// Records `netmask` (unless it covers the whole address) on the topmost
+    /// ancestor of `new_node` it still reaches, replacing the netmasks there
+    /// (see the module documentation). Returns 1 when that node had none.
     fn insert_netmask(&mut self, new_node: usize, netmask: u8, bitlen: u8) -> i32 {
         let nm32 = u32::from(netmask);
         if nm32 != NETMASK_256 - 1 && nm32 != NETMASK_128 && (nm32 != NETMASK_32 || u32::from(bitlen) != NETMASK_32) {
@@ -280,8 +285,8 @@ impl CptTree {
         0
     }
 
-    /// `CPTAddElement`: adds `ipdata` (`ip_bitmask` bits) with `netmask`.
-    /// `ipdata` is masked in place, as in C.
+    /// Adds `ipdata` (`ip_bitmask` bits) with `netmask`. `ipdata` is masked in
+    /// place, as in C.
     pub fn add_element(&mut self, ipdata: &mut [u8], ip_bitmask: u32, netmask: u8) -> Option<usize> {
         convert_ip_netmask(ipdata, netmask, ip_bitmask);
 
@@ -439,7 +444,8 @@ impl CptTree {
         Some(new_node)
     }
 
-    /// `CPTRetriveNode`
+    /// Descends from `node` along the bits of `buffer` to the first node
+    /// that tests bit `ip_bitmask` or beyond; `None` at a missing branch.
     fn retrive_node(&self, buffer: &[u8], ip_bitmask: u32, node: Option<usize>) -> Option<usize> {
         let mut node = node?;
         while self.nodes[node].bit < ip_bitmask {
@@ -449,7 +455,7 @@ impl CptTree {
         Some(node)
     }
 
-    /// `CPTRetriveParentNode`
+    /// The first node, from `node` upwards, that has netmasks.
     fn retrive_parent_node(&self, mut node: Option<usize>) -> Option<usize> {
         while let Some(n) = node {
             if self.nodes[n].netmasks.is_some() {
@@ -460,8 +466,9 @@ impl CptTree {
         node
     }
 
-    /// `CPTFindElementIPNetblock` (the C tail recursion on the parent of
-    /// the netmask node is a loop here). `ipdata` is masked in place.
+    /// Looks for a network containing `ipdata` on the netmask nodes above
+    /// `node` (the C tail recursion on the parent of the netmask node is a
+    /// loop here). `ipdata` is masked in place.
     fn find_element_ip_netblock(&self, ipdata: &mut [u8], ip_bitmask: u8, mut node: Option<usize>) -> Option<usize> {
         let ip_bitmask32 = u32::from(ip_bitmask);
         loop {
@@ -509,7 +516,8 @@ impl CptTree {
         }
     }
 
-    /// `CPTFindElement`
+    /// The node of the address `ipdata` (`ip_bitmask` bits), or of a
+    /// network containing it.
     fn find_element(&self, ipdata: &[u8], ip_bitmask: u32) -> Option<usize> {
         let head = self.head?;
 
@@ -544,7 +552,8 @@ impl CptTree {
         self.find_element_ip_netblock(&mut temp_data, ip_bitmask as u8, Some(node))
     }
 
-    /// `CPTIpMatch`
+    /// The node matching the address `ipdata` in a tree of type `ty`
+    /// (`IPV4_TREE` or `IPV6_TREE`).
     pub fn ip_match(&self, ipdata: &[u8], ty: i32) -> Option<usize> {
         match ty {
             IPV4_TREE => self.find_element(ipdata, NETMASK_32),
@@ -553,7 +562,8 @@ impl CptTree {
         }
     }
 
-    /// `TreeAddIP`: `buffer` is an address with an optional `/cidr`.
+    /// Adds `buffer`, an address with an optional `/cidr`, to a tree of type
+    /// `ty`; `None` when it cannot be added.
     pub fn add_ip(&mut self, buffer: &[u8], ty: i32) -> Option<usize> {
         match ty {
             IPV4_TREE => {
@@ -571,8 +581,9 @@ impl CptTree {
     }
 }
 
-/// The parsing half of `TreeAddIP` for `IPV4_TREE`: the address and CIDR of
-/// `buffer` (an address with an optional `/cidr`), `None` when invalid.
+/// The parsing half of [`CptTree::add_ip`] for `IPV4_TREE`: the address and
+/// CIDR of `buffer` (an address with an optional `/cidr`), `None` when
+/// invalid.
 pub fn parse_ipv4(buffer: &[u8]) -> Option<([u8; 4], u8)> {
     let buffer = c_str(buffer);
     // `strchr(buffer, '/') - buffer`. Without a `/` the C code computes
@@ -593,8 +604,9 @@ pub fn parse_ipv4(buffer: &[u8]) -> Option<([u8; 4], u8)> {
     Some((parse_v4(&ip_strv4)?, netmask_v4))
 }
 
-/// The parsing half of `TreeAddIP` for `IPV6_TREE`: the address and CIDR of
-/// `buffer` (an address with an optional `/cidr`), `None` when invalid.
+/// The parsing half of [`CptTree::add_ip`] for `IPV6_TREE`: the address and
+/// CIDR of `buffer` (an address with an optional `/cidr`), `None` when
+/// invalid.
 pub fn parse_ipv6(buffer: &[u8]) -> Option<([u8; 16], u8)> {
     let buffer = c_str(buffer);
     let pos = buffer.iter().position(|&c| c == b'/');
@@ -615,13 +627,13 @@ pub fn parse_ipv6(buffer: &[u8]) -> Option<([u8; 16], u8)> {
 }
 
 impl TreeRoot {
-    /// `create_radix_tree`
+    /// An empty set.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// `tree_contains_ip`: 1 when `value` is in the tree, 0 when it is not
-    /// and -1 when `value` is not a valid address.
+    /// 1 when `value` is in the tree, 0 when it is not and -1 when `value` is
+    /// not a valid address.
     pub fn contains_ip(&self, value: &[u8]) -> i32 {
         let value = c_str(value);
         if !value.contains(&b':') {
@@ -642,8 +654,8 @@ impl TreeRoot {
         0
     }
 
-    /// `add_ip_from_param`: adds the comma separated addresses/networks of
-    /// `param`; 0 on success, -1 when an entry cannot be added.
+    /// Adds the comma separated addresses/networks of `param`; 0 on success,
+    /// -1 when an entry cannot be added.
     pub fn add_ip_from_param(&mut self, param: &[u8]) -> i32 {
         let param = c_str(param);
         // strtok_r(..., ",") skips empty tokens.
@@ -656,7 +668,8 @@ impl TreeRoot {
         0
     }
 
-    /// `ip_tree_from_param`: a new tree holding the entries of `param`.
+    /// A new tree holding the entries of `param`; `None` when one is
+    /// invalid.
     pub fn from_param(param: &[u8]) -> Option<TreeRoot> {
         let mut t = TreeRoot::new();
         if t.add_ip_from_param(param) != 0 {
@@ -665,25 +678,25 @@ impl TreeRoot {
         Some(t)
     }
 
-    /// `TreeAddIP(..., tree->ipv4_tree, IPV4_TREE) != NULL`
+    /// Adds an IPv4 entry; `false` when it is invalid.
     #[cfg(not(feature = "ipmatch-prefix-trie"))]
     fn add_ipv4(&mut self, s: &[u8]) -> bool {
         self.ipv4_tree.add_ip(s, IPV4_TREE).is_some()
     }
 
-    /// `TreeAddIP(..., tree->ipv6_tree, IPV6_TREE) != NULL`
+    /// Adds an IPv6 entry; `false` when it is invalid.
     #[cfg(not(feature = "ipmatch-prefix-trie"))]
     fn add_ipv6(&mut self, s: &[u8]) -> bool {
         self.ipv6_tree.add_ip(s, IPV6_TREE).is_some()
     }
 
-    /// `CPTIpMatch(..., tree->ipv4_tree, IPV4_TREE) != NULL`
+    /// Whether the IPv4 tree matches `in4`.
     #[cfg(not(feature = "ipmatch-prefix-trie"))]
     fn match_ipv4(&self, in4: &[u8; 4]) -> bool {
         self.ipv4_tree.ip_match(in4, IPV4_TREE).is_some()
     }
 
-    /// `CPTIpMatch(..., tree->ipv6_tree, IPV6_TREE) != NULL`
+    /// Whether the IPv6 tree matches `in6`.
     #[cfg(not(feature = "ipmatch-prefix-trie"))]
     fn match_ipv6(&self, in6: &[u8; 16]) -> bool {
         self.ipv6_tree.ip_match(in6, IPV6_TREE).is_some()
@@ -730,18 +743,19 @@ fn c_str(s: &[u8]) -> &[u8] {
     &s[..end]
 }
 
-/// `inet_pton(AF_INET, ..)`: strict dotted decimal (no leading zeros, no
-/// short forms), which is also what `Ipv4Addr` parses.
+/// Parses an IPv4 address as `inet_pton(AF_INET, ..)` does: strict dotted
+/// decimal (no leading zeros, no short forms), which is also what `Ipv4Addr`
+/// parses.
 fn parse_v4(src: &[u8]) -> Option<[u8; 4]> {
     std::str::from_utf8(c_str(src)).ok()?.parse::<Ipv4Addr>().ok().map(|a| a.octets())
 }
 
-/// `inet_pton(AF_INET6, ..)`
+/// Parses an IPv6 address as `inet_pton(AF_INET6, ..)` does.
 fn parse_v6(src: &[u8]) -> Option<[u8; 16]> {
     std::str::from_utf8(c_str(src)).ok()?.parse::<Ipv6Addr>().ok().map(|a| a.octets())
 }
 
-/// `atoi` (glibc: `(int) strtol(s, NULL, 10)`).
+/// Parses an integer as glibc's `atoi` does (`(int) strtol(s, NULL, 10)`).
 fn c_atoi(s: &[u8]) -> i32 {
     let mut i = 0;
     while i < s.len() && matches!(s[i], b' ' | b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r') {
@@ -771,7 +785,7 @@ fn c_atoi(s: &[u8]) -> i32 {
     v as i32
 }
 
-/// `is_netmask_v4`: the CIDR of `ip_strv4` (32 without one), 0 when invalid.
+/// The CIDR of `ip_strv4` (32 without one), 0 when invalid.
 pub fn is_netmask_v4(ip_strv4: &[u8]) -> u8 {
     let Some(p) = ip_strv4.iter().position(|&c| c == b'/') else {
         return 32;
@@ -790,7 +804,7 @@ pub fn is_netmask_v4(ip_strv4: &[u8]) -> u8 {
     cidr as u8
 }
 
-/// `is_netmask_v6`: the CIDR of `ip_strv6` (128 without one), 0 when invalid.
+/// The CIDR of `ip_strv6` (128 without one), 0 when invalid.
 pub fn is_netmask_v6(ip_strv6: &[u8]) -> u8 {
     let Some(p) = ip_strv6.iter().position(|&c| c == b'/') else {
         return 128;

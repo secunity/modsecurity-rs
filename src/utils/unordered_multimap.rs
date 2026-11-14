@@ -12,10 +12,10 @@
 //! keys (a new element is placed in front of its equivalents, a new bucket at
 //! the front of the list).
 //!
-//! `MyHash` sums `tolower(c)` over the key's `char`s and `MyEqual` compares
-//! with `tolower`. Because `char` is signed on some targets (x86_64) and
-//! unsigned on others (aarch64 Linux), the hash of non-ASCII keys follows the
-//! target's `c_char`, as the C++ build does.
+//! [`my_hash`] sums `tolower(c)` over the key's `char`s and [`my_equal`]
+//! compares with `tolower`. Because `char` is signed on some targets (x86_64)
+//! and unsigned on others (aarch64 Linux), the hash of non-ASCII keys follows
+//! the target's `c_char`, as the C++ build does.
 
 use std::os::raw::c_char;
 
@@ -329,6 +329,7 @@ const PRIME_LIST: [u64; 305] = [
     18446744073709551557,
 ];
 
+/// When to grow and to how many buckets: libstdc++'s
 /// `_Prime_rehash_policy` with `max_load_factor() == 1.0`.
 #[derive(Debug, Clone, Copy, Default)]
 struct PrimeRehashPolicy {
@@ -392,7 +393,8 @@ struct Node<V> {
     next: Option<usize>,
 }
 
-/// `MyHash`
+/// The hash of a key: the sum of its lowercased `char`s (see the module
+/// documentation).
 pub fn my_hash(key: &[u8]) -> usize {
     let mut h: usize = 0;
     for &b in key {
@@ -405,7 +407,7 @@ pub fn my_hash(key: &[u8]) -> usize {
     h
 }
 
-/// `MyEqual`
+/// Whether two keys are equal, ignoring ASCII case.
 #[inline]
 pub fn my_equal(a: &[u8], b: &[u8]) -> bool {
     a.eq_ignore_ascii_case(b)
@@ -441,7 +443,8 @@ impl<V> UnorderedMultimap<V> {
         }
     }
 
-    /// `unordered_multimap()` followed by `reserve(n)`.
+    /// An empty container with buckets for `n` elements (a default
+    /// constructed one followed by `reserve(n)`).
     pub fn with_reserve(n: usize) -> Self {
         let mut m = Self::new();
         m.reserve(n);
@@ -486,12 +489,14 @@ impl<V> UnorderedMultimap<V> {
         self.buckets.len()
     }
 
-    /// `reserve(n)`
+    /// Makes room for `n` elements without exceeding the load factor, as
+    /// libstdc++'s `reserve(n)`.
     pub fn reserve(&mut self, n: usize) {
         self.rehash(PrimeRehashPolicy::bkt_for_elements(n));
     }
 
-    /// `rehash(n)`
+    /// Rehashes to at least `bkt_count` buckets (and enough for the current
+    /// elements), as libstdc++'s `rehash(n)`.
     pub fn rehash(&mut self, bkt_count: usize) {
         let saved = self.policy;
         let bkt_count = std::cmp::max(PrimeRehashPolicy::bkt_for_elements(self.element_count + 1), bkt_count);
@@ -503,8 +508,8 @@ impl<V> UnorderedMultimap<V> {
         }
     }
 
-    /// `_M_rehash_aux(n, false_type)`: multi-key rehash that keeps
-    /// equivalent elements' relative order.
+    /// Moves the elements into `bkt_count` buckets, keeping the relative
+    /// order of equivalent elements (libstdc++'s multi-key `_M_rehash_aux`).
     fn do_rehash(&mut self, bkt_count: usize) {
         let mut new_buckets: Vec<Option<Before>> = vec![None; bkt_count];
         let mut p = self.head;
@@ -565,7 +570,8 @@ impl<V> UnorderedMultimap<V> {
         self.buckets = new_buckets;
     }
 
-    /// `_M_find_before_node`
+    /// The node before the first element equivalent to `key` in bucket
+    /// `bkt`, or `None` when the bucket holds none.
     fn find_before_node(&self, bkt: usize, key: &[u8], hash: usize) -> Option<Before> {
         let mut prev = self.buckets[bkt]?;
         let mut p = self.next_of(prev)?;
@@ -585,7 +591,8 @@ impl<V> UnorderedMultimap<V> {
         None
     }
 
-    /// `emplace(key, value)`
+    /// Inserts `value` under `key` where libstdc++'s `emplace` puts it: in
+    /// front of its equivalents, or else at the start of its bucket.
     pub fn insert(&mut self, key: Vec<u8>, value: V) {
         let hash = my_hash(&key);
         let node = Node { key, value, hash, next: None };
@@ -617,7 +624,8 @@ impl<V> UnorderedMultimap<V> {
         self.element_count += 1;
     }
 
-    /// `_M_insert_bucket_begin`
+    /// Links node `idx` at the start of bucket `bkt`; an empty bucket gets
+    /// the node at the front of the list.
     fn insert_bucket_begin(&mut self, bkt: usize, idx: usize) {
         match self.buckets[bkt] {
             Some(b) => {
@@ -647,7 +655,7 @@ impl<V> UnorderedMultimap<V> {
         self.next_of(prev)
     }
 
-    /// `find(key)`
+    /// The first element equivalent to `key`.
     pub fn find(&self, key: &[u8]) -> Option<(&[u8], &V)> {
         self.find_index(key).map(|i| {
             let n = self.node(i);
@@ -655,13 +663,13 @@ impl<V> UnorderedMultimap<V> {
         })
     }
 
-    /// `find(key)` (mutable value).
+    /// The value of the first element equivalent to `key`, mutably.
     pub fn find_mut(&mut self, key: &[u8]) -> Option<&mut V> {
         let i = self.find_index(key)?;
         Some(&mut self.node_mut(i).value)
     }
 
-    /// `equal_range(key)`
+    /// The elements equivalent to `key`, in container order.
     pub fn equal_range<'s>(&'s self, key: &[u8]) -> impl Iterator<Item = (&'s [u8], &'s V)> {
         let start = self.find_index(key);
         let hash = my_hash(key);
@@ -683,7 +691,7 @@ impl<V> UnorderedMultimap<V> {
         Iter { map: self, cur: self.head }
     }
 
-    /// `erase(key)`: removes every element equivalent to `key`; returns the
+    /// Removes every element equivalent to `key`; returns the
     /// number of removed elements.
     pub fn erase(&mut self, key: &[u8]) -> usize {
         if self.element_count == 0 {
@@ -732,7 +740,7 @@ impl<V> UnorderedMultimap<V> {
         }
     }
 
-    /// `clear()`
+    /// Removes every element, keeping the bucket count.
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.free.clear();

@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/remove_comments_char.cc`, `src/actions/transformations/remove_comments_char.h`.
+//! The `t:removeCommentsChar` transformation: removes the comment
+//! characters `/*`, `*/`, `<!--`, `-->`, `--` and `#`.
 
 /// Transforms `value` in place; returns whether it changed.
 pub fn transform(value: &mut Vec<u8>) -> bool {

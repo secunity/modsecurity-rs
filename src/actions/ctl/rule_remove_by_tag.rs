@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/rule_remove_by_tag.cc`, `src/actions/ctl/rule_remove_by_tag.h`.
-//!
 //! `ctl:ruleRemoveByTag=TAG` — disables the rules carrying a tag for the
 //! rest of the transaction.
 

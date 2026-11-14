@@ -1,5 +1,3 @@
-//! Port of `src/utils/acmp.cc`, `src/utils/acmp.h`.
-//!
 //! Aho-Corasick-based multi-pattern parser (ACMP), used by `@pm`,
 //! `@pmFromFile` and `@pmf`.
 //!
@@ -17,11 +15,11 @@
 //! * the reported match is the node text up to its first NUL byte (C
 //!   string semantics).
 //!
-//! Only the functions implemented by the C++ `acmp.cc` are ported
-//! (`acmp_create`, `acmp_add_pattern`, `acmp_prepare` and
-//! `acmp_process_quick`); the per-pattern callbacks are never invoked by the
-//! C++ code and are not carried over, nor is the bookkeeping that nothing
-//! reads (node depth, pattern copy, `bp_buffer` length, active node).
+//! Only what the C++ `acmp.cc` implements is here (creating a parser, adding
+//! patterns, preparing it and the quick search); the per-pattern callbacks are
+//! never invoked by the C++ code and are not carried over, nor is the
+//! bookkeeping that nothing reads (node depth, pattern copy, `bp_buffer`
+//! length, active node).
 
 use std::ffi::c_char;
 
@@ -41,7 +39,7 @@ fn c_tolower(letter: i64) -> i64 {
 }
 
 /// One node of the binary search tree built over the children of a trie
-/// node (`acmp_btree_node_t`).
+/// node.
 #[derive(Debug)]
 struct AcmpBtreeNode {
     letter: i64,
@@ -50,7 +48,7 @@ struct AcmpBtreeNode {
     node: usize,
 }
 
-/// One node in the trie (`acmp_node_t`).
+/// One node in the trie.
 #[derive(Debug, Default)]
 struct AcmpNode {
     letter: i64,
@@ -65,7 +63,7 @@ struct AcmpNode {
     text: Vec<u8>,
 }
 
-/// Data related to the parser, not to individual nodes (`ACMP`).
+/// Data related to the parser, not to individual nodes.
 #[derive(Debug)]
 pub struct Acmp {
     is_case_sensitive: bool,
@@ -76,7 +74,7 @@ pub struct Acmp {
     is_active: bool,
 }
 
-/// `ACMPT`: keeps the search state separated from the trie so that one
+/// The search state of a parser, kept separated from the trie so that one
 /// prepared parser can be shared by concurrent searches.
 #[derive(Debug)]
 pub struct Acmpt<'a> {
@@ -91,7 +89,7 @@ impl Default for Acmp {
 }
 
 impl Acmp {
-    /// `acmp_create`: `flags` are OR-ed `ACMP_FLAG_*` values.
+    /// An empty parser; `flags` are OR-ed `ACMP_FLAG_*` values.
     pub fn create(flags: i32) -> Self {
         Acmp {
             is_case_sensitive: (flags & ACMP_FLAG_CASE_SENSITIVE) != 0,
@@ -103,17 +101,17 @@ impl Acmp {
         }
     }
 
-    /// `is_failtree_done`
+    /// Whether the parser was prepared (its fail tree built).
     pub fn is_failtree_done(&self) -> bool {
         self.is_failtree_done
     }
 
-    /// Number of distinct patterns added (`dict_count`).
+    /// Number of distinct patterns added.
     pub fn dict_count(&self) -> usize {
         self.dict_count
     }
 
-    /// `acmp_child_for_code`: the child of `parent` with the given letter.
+    /// The child of `parent` with the given letter.
     fn child_for_code(&self, parent: usize, letter: i64) -> Option<usize> {
         let mut node = self.nodes[parent].child;
         while let Some(n) = node {
@@ -125,8 +123,7 @@ impl Acmp {
         None
     }
 
-    /// `acmp_add_node_to_parent`: adds `child` to `parent` if it is not
-    /// already there.
+    /// Adds `child` to `parent` if it is not already there.
     fn add_node_to_parent(&mut self, parent: usize, child: usize) {
         self.nodes[child].parent = Some(parent);
         let Some(mut node) = self.nodes[parent].child else {
@@ -147,7 +144,8 @@ impl Acmp {
         }
     }
 
-    /// `acmp_btree_find` / `acmp_goto`
+    /// The child of `node` with the given letter, found through its binary
+    /// tree (built by `prepare`).
     #[inline]
     fn goto(&self, node: usize, letter: i64) -> Option<usize> {
         let mut bnode = self.nodes[node].btree.as_deref();
@@ -171,9 +169,9 @@ impl Acmp {
         out
     }
 
-    /// `acmp_connect_other_matches`: connects each node with its first fail
-    /// node that is the end of a phrase. (The C code recurses; the order of
-    /// the visit does not matter, an explicit stack is used instead.)
+    /// Connects each node with its first fail node that is the end of a
+    /// phrase. (The C code recurses; the order of the visit does not matter,
+    /// an explicit stack is used instead.)
     fn connect_other_matches(&mut self, start: usize) {
         let mut stack = vec![start];
         while let Some(node) = stack.pop() {
@@ -198,8 +196,8 @@ impl Acmp {
         }
     }
 
-    /// `acmp_add_btree_leaves`: adds leaves to the binary tree, working from
-    /// a sorted array of keyword tree nodes.
+    /// Adds leaves to the binary tree, working from a sorted array of keyword
+    /// tree nodes.
     fn add_btree_leaves(&self, node: &mut AcmpBtreeNode, nodes: &[usize], pos: i64, lb: i64, rb: i64) {
         let mut left = 0;
         let mut right = 0;
@@ -223,9 +221,8 @@ impl Acmp {
         }
     }
 
-    /// `acmp_build_binary_tree`: builds a balanced binary tree from the
-    /// children of every node below `start` (explicit stack instead of the
-    /// C recursion).
+    /// Builds a balanced binary tree from the children of every node below
+    /// `start` (explicit stack instead of the C recursion).
     fn build_binary_tree(&mut self, start: usize) {
         let mut stack = vec![start];
         while let Some(node) = stack.pop() {
@@ -253,7 +250,7 @@ impl Acmp {
         }
     }
 
-    /// `acmp_connect_fail_branches`: constructs the fail paths of the trie.
+    /// Constructs the fail paths of the trie.
     fn connect_fail_branches(&mut self) -> i32 {
         if self.is_failtree_done {
             return 1;
@@ -296,8 +293,7 @@ impl Acmp {
         1
     }
 
-    /// `acmp_prepare`: creates the fail tree and makes the parser ready for
-    /// searching.
+    /// Creates the fail tree and makes the parser ready for searching.
     pub fn prepare(&mut self) -> i32 {
         let st = self.connect_fail_branches();
         if st != 1 {
@@ -307,8 +303,8 @@ impl Acmp {
         1
     }
 
-    /// `acmp_add_pattern`: adds a pattern to the parser. Cannot be done
-    /// after `prepare()` (returns -1).
+    /// Adds a pattern to the parser. Cannot be done after `prepare()` (returns
+    /// -1).
     pub fn add_pattern(&mut self, pattern: &[u8]) -> i32 {
         if self.is_active {
             return -1;
@@ -351,14 +347,14 @@ impl Acmp {
 }
 
 impl<'a> Acmpt<'a> {
-    /// `ACMPT pt; pt.parser = parser; pt.ptr = NULL;`
+    /// A search over `parser` that starts at the root of the trie.
     pub fn new(parser: &'a Acmp) -> Self {
         Acmpt { parser, ptr: None }
     }
 
-    /// `acmp_process_quick`: processes `data` keeping the state in `self`.
-    /// Returns the offset (in `data`) of the last byte of the first match
-    /// together with the matched text, or `None` (C: -1) without a match.
+    /// Searches `data`, keeping the state in `self`. Returns the offset (in
+    /// `data`) of the last byte of the first match together with the matched
+    /// text, or `None` (C: -1) without a match.
     pub fn process_quick(&mut self, data: &[u8]) -> Option<(usize, &'a [u8])> {
         let parser = self.parser;
         let mut node = self.ptr.unwrap_or(ROOT);

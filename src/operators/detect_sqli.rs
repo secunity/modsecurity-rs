@@ -1,4 +1,4 @@
-//! Port of `src/operators/detect_sqli.cc`, `src/operators/detect_sqli.h`.
+//! The `@detectSQLi` operator: detects SQL injection with libinjection.
 
 use crate::operators::libinjection_adapter::run_libinjection_sqli;
 use crate::operators::libinjection_utils::{

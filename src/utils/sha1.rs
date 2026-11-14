@@ -1,8 +1,7 @@
-//! Port of `src/utils/sha1.h`.
+//! SHA-1 digests, and the digest helpers shared with MD5.
 //!
-//! The C++ `DigestImpl<DigestType, DigestSize>` template computes the digest
-//! with mbedtls; here it is generic over a RustCrypto [`Digest`] (the `sha1`
-//! and `md-5` crates).
+//! The C++ code computes the digests with mbedtls; here they are generic
+//! over a RustCrypto [`Digest`] (the `sha1` and `md-5` crates).
 
 use std::marker::PhantomData;
 
@@ -10,7 +9,7 @@ use ::sha1::Digest;
 
 use crate::utils::string::string_to_hex;
 
-/// `Utils::DigestImpl`: the digest helpers shared by [`Sha1`] and
+/// The digest helpers shared by [`Sha1`] and
 /// [`crate::utils::md5::Md5`].
 ///
 /// (The C++ helpers return `false` only for a null output pointer or an
@@ -20,24 +19,24 @@ use crate::utils::string::string_to_hex;
 pub struct DigestImpl<D: Digest>(PhantomData<D>);
 
 impl<D: Digest> DigestImpl<D> {
-    /// `digest`: the raw digest bytes of `input`.
+    /// The raw digest bytes of `input`.
     pub fn digest(input: &[u8]) -> Vec<u8> {
         D::digest(input).to_vec()
     }
 
-    /// `digestReplace`: replaces `value` with its raw digest bytes.
+    /// Replaces `value` with its raw digest bytes.
     pub fn digest_replace(value: &mut Vec<u8>) -> bool {
         *value = Self::digest(value);
         true
     }
 
-    /// `hexdigest`: the lowercase hexadecimal digest of `input`.
+    /// The lowercase hexadecimal digest of `input`.
     pub fn hexdigest(input: &[u8]) -> String {
         string_to_hex(&D::digest(input))
     }
 }
 
-/// `Utils::Sha1`
+/// SHA-1 digests: provides `digest`, `digest_replace` and `hexdigest`.
 pub type Sha1 = DigestImpl<::sha1::Sha1>;
 
 #[cfg(test)]

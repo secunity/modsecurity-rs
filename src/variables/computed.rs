@@ -1,8 +1,6 @@
 //! The variables whose value is computed when they are evaluated: `TIME*`,
 //! `DURATION`, `MODSEC_BUILD`, `HIGHEST_SEVERITY`, `REMOTE_USER` and
-//! `WEBAPPID` (C++ `src/variables/time*.cc`, `duration.cc`,
-//! `modsec_build.cc`, `highest_severity.cc`, `remote_user.cc`,
-//! `web_app_id.h`).
+//! `WEBAPPID`.
 
 use crate::modsecurity::{MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, MODSECURITY_TAG_NUM};
 use crate::transaction::Transaction;

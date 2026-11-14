@@ -1,5 +1,3 @@
-//! Port of `src/actions/rev.cc`, `src/actions/rev.h`.
-//!
 //! `rev:'1.2'` — the rule revision (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};

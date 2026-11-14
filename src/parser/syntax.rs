@@ -271,7 +271,8 @@ fn directive(pair: Pair<'_, Rule>, from: usize) -> Directive<'_> {
     }
 }
 
-/// `value`, `update_value`: the text, without quotes.
+/// The value of a `value` or `update_value` pair: the text, without
+/// quotes.
 fn value(pair: Pair<'_, Rule>) -> Value<'_> {
     let inner = pair.into_inner().next().expect("a value");
     match inner.as_rule() {
@@ -298,7 +299,7 @@ fn targets(pair: Pair<'_, Rule>) -> Vec<Target<'_>> {
         .collect()
 }
 
-/// `var_ref` and `macro_var`.
+/// The variable reference of a `var_ref` or `macro_var` pair.
 fn var_ref(pair: Pair<'_, Rule>) -> VarRef<'_> {
     let mut inner = pair.into_inner();
     let name = inner.next().expect("a name").as_str();

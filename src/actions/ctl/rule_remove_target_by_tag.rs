@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/rule_remove_target_by_tag.cc`, `src/actions/ctl/rule_remove_target_by_tag.h`.
-//!
 //! `ctl:ruleRemoveTargetByTag=TAG;VARIABLE` — removes a target from the
 //! rules carrying a tag for the rest of the transaction.
 

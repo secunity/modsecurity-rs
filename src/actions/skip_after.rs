@@ -1,5 +1,3 @@
-//! Port of `src/actions/skip_after.cc`, `src/actions/skip_after.h`.
-//!
 //! `skipAfter:MARKER` — skips the rules up to (and including) the
 //! `SecMarker` of that name.
 

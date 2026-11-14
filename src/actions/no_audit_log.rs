@@ -1,5 +1,3 @@
-//! Port of `src/actions/no_audit_log.cc`, `src/actions/no_audit_log.h`.
-//!
 //! `noauditlog` — the rule match does not make the transaction relevant for
 //! the audit log.
 

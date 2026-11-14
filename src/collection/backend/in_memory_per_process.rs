@@ -1,5 +1,4 @@
-//! Port of `src/collection/backend/in_memory-per_process.h` /
-//! `src/collection/backend/in_memory-per_process.cc`.
+//! The in-memory collection backend, local to the process.
 
 use std::sync::RwLock;
 
@@ -30,12 +29,12 @@ impl InMemoryPerProcess {
         self.map.read().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// `store`
+    /// Adds a value under `key` (keeping any existing ones).
     pub fn store(&self, key: &[u8], value: &[u8]) {
         self.write().insert(key.to_vec(), CollectionData::with_value(value));
     }
 
-    /// `delIfExpired`
+    /// Deletes `key` if one of its entries has expired.
     pub fn del_if_expired(&self, key: &[u8]) {
         let mut m = self.write();
         let found = m.iter().any(|(k, v)| k == key && v.is_expired());

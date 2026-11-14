@@ -1,4 +1,4 @@
-//! Port of `src/actions/transformations/js_decode.cc`, `src/actions/transformations/js_decode.h`.
+//! The `t:jsDecode` transformation: decodes JavaScript escape sequences.
 
 use crate::utils::string::{isodigit, valid_hex, x2c};
 

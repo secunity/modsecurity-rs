@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/base64_decode.cc`, `src/actions/transformations/base64_decode.h`.
+//! The `t:base64Decode` transformation: decodes base64 strictly, leaving
+//! the value unchanged when it is not valid base64.
 
 use crate::utils::base64::Base64;
 

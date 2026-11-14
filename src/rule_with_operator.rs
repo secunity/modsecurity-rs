@@ -1,5 +1,5 @@
-//! Port of `headers/modsecurity/rule_with_operator.h` and
-//! `src/rule_with_operator.cc`.
+//! The evaluation of a `SecRule`: its targets are resolved, transformed
+//! and passed to its operator.
 
 use crate::operators::operator::RuleOperator;
 use crate::rule_message::{Matched, RuleMessage};
@@ -23,12 +23,13 @@ impl RuleWithOperator {
         RuleWithOperator { variables, operator: op }
     }
 
-    /// `getOperatorName`
+    /// The operator name (`rx`, `pm`, ...).
     pub fn operator_name(&self) -> &str {
         self.operator.op.name()
     }
 
-    /// `updateMatchedVars`
+    /// Records a matched target in `MATCHED_VAR`, `MATCHED_VAR_NAME`,
+    /// `MATCHED_VARS` and `MATCHED_VARS_NAMES`.
     pub fn update_matched_vars(t: &mut Transaction<'_>, key: &[u8], value: &[u8]) {
         crate::ms_dbg_a!(t, 9, "Matched vars updated.");
         let off = t.vars.offset;
@@ -38,7 +39,7 @@ impl RuleWithOperator {
         t.vars.matched_vars_names.set(key, key, off);
     }
 
-    /// `executeOperatorAt`
+    /// Runs the operator on one (transformed) target value.
     fn execute_operator_at<'a>(
         &'a self,
         rule: &'a RuleWithActions,
@@ -57,7 +58,9 @@ impl RuleWithOperator {
         self.operator.evaluate(t, rule, value, rm)
     }
 
-    /// `getVariablesExceptions`
+    /// The targets that `SecRuleUpdateTargetByTag`, `...ByMsg` and
+    /// `...ById` exclude from (`exclusion`) or add to (`addition`) the
+    /// rule.
     fn variables_exceptions<'a>(
         rule: &'a RuleWithActions,
         t: &Transaction<'a>,
@@ -84,7 +87,9 @@ impl RuleWithOperator {
         }
     }
 
-    /// `getFinalVars`
+    /// The targets to inspect: the rule's own, minus the excluded ones
+    /// (by `SecRuleUpdateTarget*` and the `ctl:ruleRemoveTarget*` of the
+    /// transaction), plus the added ones.
     fn final_vars<'a>(
         &'a self,
         rule: &'a RuleWithActions,
@@ -117,7 +122,10 @@ impl RuleWithOperator {
         }
     }
 
-    /// `RuleWithOperator::evaluate(transaction, ruleMessage)`
+    /// Evaluates the rule: runs the operator on every transformed target
+    /// value, then the chained rule and the actions. Returns whether the
+    /// rule (with its chain) matched; `true` also for a rule removed by
+    /// `ctl:ruleRemoveById`, as in C++.
     pub fn evaluate<'a>(
         &'a self,
         rule: &'a RuleWithActions,

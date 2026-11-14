@@ -1,4 +1,4 @@
-//! Port of `src/collection/backend/lmdb.cc`, `src/collection/backend/lmdb.h`.
+//! The LMDB collection backend.
 //!
 //! Persistent collections (`IP`, `SESSION`, `USER`, `GLOBAL`, `RESOURCE`)
 //! stored in an LMDB file shared by every process using the library:
@@ -25,7 +25,8 @@ use crate::utils::regex::Regex;
 use crate::variable_value::{VariableValue, move_to_front_reversed};
 use crate::variables::variable::KeyExclusions;
 
-/// The C++ `#undef LMDB_STDOUT_COUT`: the LMDB failures are not printed.
+/// Whether LMDB failures are printed on stdout: no, as in the C++ build
+/// (where `LMDB_STDOUT_COUT` is undefined).
 const LMDB_STDOUT_COUT: bool = false;
 
 /// The location of the shared collections file.
@@ -33,8 +34,8 @@ const SHARED_COLLECTIONS_PATH: &CStr = c"./modsec-shared-collections";
 
 /// The LMDB environment and its single (unnamed) database, opened on first
 /// use and shared by every collection of the process. It stays a process
-/// singleton (C++ `MDBEnvProvider`) because LMDB requires it: an environment
-/// must not be opened twice in one process, and the path is fixed.
+/// singleton (as in C++) because LMDB requires it: an environment must
+/// not be opened twice in one process, and the path is fixed.
 struct MdbEnvProvider {
     env: *mut MDB_env,
     dbi: MDB_dbi,
@@ -52,12 +53,13 @@ unsafe impl Sync for MdbEnvProvider {}
 static ENV_PROVIDER: OnceLock<MdbEnvProvider> = OnceLock::new();
 
 impl MdbEnvProvider {
-    /// `GetInstance` (the Meyers singleton).
+    /// The process-wide provider, opened on first use.
     fn instance() -> &'static MdbEnvProvider {
         ENV_PROVIDER.get_or_init(|| MdbEnvProvider::open(SHARED_COLLECTIONS_PATH))
     }
 
-    /// The C++ constructor.
+    /// Opens the environment at `path` and its database; the provider is
+    /// invalid when the environment cannot be opened.
     fn open(path: &CStr) -> MdbEnvProvider {
         let mut env: *mut MDB_env = ptr::null_mut();
         let mut dbi: MDB_dbi = 0;
@@ -176,7 +178,7 @@ impl Drop for Cursor<'_> {
     }
 }
 
-/// `string2val`: an `MDB_val` pointing at `s` (LMDB only reads it).
+/// An `MDB_val` pointing at `s` (LMDB only reads it).
 fn string2val(s: &[u8]) -> MDB_val {
     MDB_val { mv_size: s.len(), mv_data: s.as_ptr() as *mut _ }
 }
@@ -200,8 +202,8 @@ unsafe fn val_bytes<'txn>(v: &MDB_val, _txn: &'txn Txn) -> &'txn [u8] {
     unsafe { std::slice::from_raw_parts(v.mv_data as *const u8, v.mv_size) }
 }
 
-/// The C++ `strncmp(var.c_str(), key, var.size()) == 0`: `key` starts with
-/// `var` (up to a NUL byte in `var`).
+/// Whether `key` starts with `var` (up to a NUL byte in `var`), as the C++
+/// `strncmp(var.c_str(), key, var.size()) == 0`.
 ///
 /// Deviation: the C++ code reads past the end of a key shorter than `var`
 /// (into the LMDB page); such keys never match here.
@@ -219,8 +221,8 @@ fn key_matches_prefix(var: &[u8], key: &[u8]) -> bool {
     true
 }
 
-/// `lmdb_debug`: describes an LMDB failure on stdout (compiled out, as in
-/// C++, unless `LMDB_STDOUT_COUT` is set).
+/// Describes an LMDB failure on stdout (compiled out, as in C++, unless
+/// `LMDB_STDOUT_COUT` is set).
 fn lmdb_debug(rc: c_int, op: &str, scope: &str) {
     if !LMDB_STDOUT_COUT || rc == 0 {
         return;
@@ -286,8 +288,8 @@ impl Lmdb {
         Lmdb { name: name.to_string() }
     }
 
-    /// `txn_begin`: opens the shared environment on first use; -1 when it
-    /// could not be opened.
+    /// Begins an LMDB transaction, opening the shared environment on first
+    /// use; -1 when it could not be opened.
     fn txn_begin(&self, flags: c_uint) -> Result<(Txn, MDB_dbi), c_int> {
         let provider = MdbEnvProvider::instance();
         if !provider.is_valid() {
@@ -303,9 +305,9 @@ impl Lmdb {
     }
 
     /// Writes `key` with the value computed from its previous data (if any)
-    /// in one write transaction: the shared body of `storeOrUpdateFirst`,
-    /// `updateFirst` and `setExpiry`. `must_exist` makes a missing key an
-    /// error (`updateFirst`). Returns the last LMDB code (0 on success).
+    /// in one write transaction: the shared body of `store_or_update_first`,
+    /// `update_first` and `set_expiry`. `must_exist` makes a missing key an
+    /// error (`update_first`). Returns the last LMDB code (0 on success).
     fn replace(
         &self,
         key: &[u8],
@@ -358,7 +360,7 @@ impl Lmdb {
         rc
     }
 
-    /// `delIfExpired`
+    /// Deletes `key` if its value has expired.
     fn del_if_expired(&self, key: &[u8]) {
         let (txn, dbi) = match self.txn_begin(0) {
             Ok(t) => t,
@@ -395,7 +397,7 @@ impl Lmdb {
 
     /// Walks the database with a cursor in a read-only transaction, calling
     /// `f(key, data)` for every non expired entry holding a value; the
-    /// expired entries are deleted afterwards (`delIfExpired`).
+    /// expired entries are deleted afterwards ([`Self::del_if_expired`]).
     ///
     /// Both traversal modes start at the first database entry. In particular,
     /// duplicate traversal deliberately does not seek to a requested key.

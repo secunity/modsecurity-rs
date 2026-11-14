@@ -1,4 +1,5 @@
-//! Port of `src/actions/transformations/html_entity_decode.cc`, `src/actions/transformations/html_entity_decode.h`.
+//! The `t:htmlEntityDecode` transformation: decodes numeric and named HTML
+//! entities.
 
 use crate::utils::string::NBSP;
 
@@ -84,8 +85,9 @@ fn lookup_named_entity(name: &[u8]) -> Option<u8> {
     NAMED_ENTITIES.iter().find(|(n, _)| n.len() == name.len() && n.eq_ignore_ascii_case(name)).map(|&(_, ch)| ch)
 }
 
-/// `(unsigned char)strtol(digits, nullptr, base)` for a non-empty run of
-/// valid digits: strtol saturates at LONG_MAX on overflow.
+/// The byte that `(unsigned char)strtol(digits, nullptr, base)` gives for
+/// a non-empty run of valid digits: strtol saturates at LONG_MAX on
+/// overflow, and the result keeps its low byte.
 fn strtol_to_byte(digits: &[u8], base: u32) -> u8 {
     let mut acc: i64 = 0;
     for &c in digits {

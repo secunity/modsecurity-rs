@@ -1,4 +1,5 @@
-//! Port of `src/operators/operator.h` / `src/operators/operator.cc`.
+//! The [`Operator`] trait, operator parameters, helpers shared by the
+//! operators, and [`instantiate`], which builds an operator by name.
 
 use std::borrow::Cow;
 
@@ -18,7 +19,7 @@ pub struct Param {
     pub literal: Vec<u8>,
     pub string: RunTimeString,
     /// Whether the match message shows the parameter expanded for the
-    /// transaction (C++ `m_couldContainsMacro`) or the literal.
+    /// transaction or the literal.
     expanded_in_message: bool,
 }
 
@@ -59,7 +60,7 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
         None
     }
 
-    /// `init(file, &error)`: compiles/loads what the parameter names;
+    /// Compiles or loads what the parameter names, when the rule is read;
     /// `file` is the configuration file of the rule.
     fn init(&mut self, _file: &str) -> Result<(), String> {
         Ok(())
@@ -93,9 +94,8 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
         }
     }
 
-    /// The text logged for a match of `value` in the variable `key`
-    /// (`resolveMatchMessage`); `param` is [`Operator::message_param`] at
-    /// the time of the match.
+    /// The text logged for a match of `value` in the variable `key`;
+    /// `param` is [`Operator::message_param`] at the time of the match.
     fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
         let mut ret = Vec::new();
         ret.extend_from_slice(b"Matched \"Operator `");
@@ -135,12 +135,15 @@ impl RuleOperator {
     }
 }
 
-/// `Operator::logOffset`
+/// Appends the position of a match in the input (`o<offset>,<length>`)
+/// to the reference of the rule message.
 pub fn log_offset(rm: &mut RuleMessage<'_>, offset: usize, len: usize) {
     rm.reference.extend_from_slice(format!("o{},{}", offset, len).as_bytes());
 }
 
-/// `Operator::reportRegexCompileError`: shared by `@rx` and `@rxGlobal`.
+/// Reports a regular expression that failed to compile: logs it and sets
+/// `MSC_PCRE_ERROR` and `TX.MSC_PCRE_ERROR`. Shared by `@rx` and
+/// `@rxGlobal`.
 pub fn report_regex_compile_error(t: &mut Transaction<'_>, re: &Regex) {
     crate::ms_dbg_a!(t, 1, "Error with regular expression: \"{}\"", re.pattern);
     let off = t.vars.offset;
@@ -149,7 +152,9 @@ pub fn report_regex_compile_error(t: &mut Transaction<'_>, re: &Regex) {
     crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
 }
 
-/// `Operator::reportRegexSearchError`
+/// Reports a failed regular expression search by `op_name`: sets
+/// `MSC_PCRE_ERROR` (and `MSC_PCRE_LIMITS_EXCEEDED` when the match limit
+/// was hit), in TX too, and logs the error.
 pub fn report_regex_search_error(t: &mut Transaction<'_>, re: &Regex, result: RegexResult, op_name: &str) {
     let off = t.vars.offset;
     t.vars.msc_pcre_error.set(b"1", off);
@@ -171,7 +176,7 @@ pub fn report_regex_search_error(t: &mut Transaction<'_>, re: &Regex, result: Re
     );
 }
 
-/// `Operator::instantiate(op, param)`: the operator named `op` (case
+/// The operator named `op` (case
 /// insensitive, without the `@`) with a literal parameter.
 pub fn instantiate(op: &str, param_str: &str) -> Option<Box<dyn Operator>> {
     let mut param = RunTimeString::new();

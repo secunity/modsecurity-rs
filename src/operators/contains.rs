@@ -1,4 +1,5 @@
-//! Port of `src/operators/contains.cc`, `src/operators/contains.h`.
+//! The `@contains` operator: matches when the parameter occurs anywhere in
+//! the input.
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;

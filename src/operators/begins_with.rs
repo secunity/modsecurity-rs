@@ -1,4 +1,5 @@
-//! Port of `src/operators/begins_with.cc`, `src/operators/begins_with.h`.
+//! The `@beginsWith` operator: matches when the input starts with the
+//! parameter.
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;

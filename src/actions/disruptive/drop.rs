@@ -1,5 +1,3 @@
-//! Port of `src/actions/disruptive/drop.cc`, `src/actions/disruptive/drop.h`.
-//!
 //! `drop` — meant to close the connection; executes `deny` instead.
 
 use crate::actions::action::{Action, name_of};

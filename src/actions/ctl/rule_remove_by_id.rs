@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/rule_remove_by_id.cc`, `src/actions/ctl/rule_remove_by_id.h`.
-//!
 //! `ctl:ruleRemoveById=1 2 100-200` — disables rules (by id or id range)
 //! for the rest of the transaction.
 
@@ -16,7 +14,8 @@ pub struct RuleRemoveById {
     ids: Vec<i32>,
 }
 
-/// `std::stoi` (no digits or out of `int` range -> `None`).
+/// Parses a leading integer as `std::stoi` does; `None` when there are no
+/// digits or the value is out of `int` range.
 fn stoi_int(s: &str) -> Option<i32> {
     stoi(s.as_bytes()).and_then(|v| i32::try_from(v).ok())
 }

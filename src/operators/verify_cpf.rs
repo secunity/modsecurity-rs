@@ -1,5 +1,5 @@
-//! Port of `src/operators/verify_cpf.cc`, `src/operators/verify_cpf.h`
-//! (Brazilian CPF numbers).
+//! The `@verifyCPF` operator: finds Brazilian CPF numbers (taxpayer IDs)
+//! whose check digits are valid.
 
 use crate::operators::operator::{Operator, Param, log_offset};
 use crate::rule_message::RuleMessage;
@@ -35,7 +35,7 @@ impl VerifyCPF {
         VerifyCPF { param, re }
     }
 
-    /// `convert_to_int`
+    /// The value of a hexadecimal digit (0 for any other byte).
     fn convert_to_int(c: u8) -> i32 {
         match c {
             b'0'..=b'9' => i32::from(c - b'0'),
@@ -45,7 +45,8 @@ impl VerifyCPF {
         }
     }
 
-    /// `verify`: checks the two CPF check digits.
+    /// Whether `cpfnumber` holds a valid CPF: 11 digits, not a known bad
+    /// number, and both check digits right.
     pub fn verify(&self, cpfnumber: &[u8]) -> bool {
         const CPF_LEN: usize = 11;
         let mut cpf = [0i32; CPF_LEN];

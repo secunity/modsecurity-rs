@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/audit_engine.cc`, `src/actions/ctl/audit_engine.h`.
-//!
 //! `ctl:auditEngine=On|Off|RelevantOnly` — overrides `SecAuditEngine` for
 //! the transaction.
 

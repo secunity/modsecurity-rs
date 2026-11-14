@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/request_body_processor_urlencoded.cc`, `src/actions/ctl/request_body_processor_urlencoded.h`.
-//!
 //! `ctl:requestBodyProcessor=URLENCODED` — parses the request body as
 //! `application/x-www-form-urlencoded`. (Unlike the JSON and XML variants
 //! C++ sets the request body *type* here, not the processor; kept.)

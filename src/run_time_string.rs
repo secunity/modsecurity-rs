@@ -1,5 +1,3 @@
-//! Port of `src/run_time_string.h` / `src/run_time_string.cc`.
-//!
 //! A string with `%{VAR}` macros, expanded per transaction.
 
 use std::borrow::Cow;
@@ -45,12 +43,12 @@ impl RunTimeString {
         r
     }
 
-    /// `appendText`
+    /// Appends literal text.
     pub fn append_text(&mut self, text: &str) {
         self.append_bytes(text.as_bytes());
     }
 
-    /// `appendText` with raw bytes.
+    /// Appends literal bytes.
     pub fn append_bytes(&mut self, text: &[u8]) {
         match &mut self.content {
             Content::Literal(literal) => literal.extend_from_slice(text),
@@ -61,7 +59,7 @@ impl RunTimeString {
         }
     }
 
-    /// `appendVar`
+    /// Appends a macro: the variable is expanded at evaluation.
     pub fn append_var(&mut self, var: Variable) {
         let variable = Element::Variable(Box::new(var));
         match &mut self.content {
@@ -77,8 +75,9 @@ impl RunTimeString {
         matches!(self.content, Content::Interpolated(_))
     }
 
-    /// `evaluate(t, r)`: concatenates the literals and the first value of
-    /// each variable. Without a transaction, variables expand to nothing.
+    /// Expands the string for the rule `r`: concatenates the literals and
+    /// the first value of each variable. Without a transaction, variables
+    /// expand to nothing.
     pub fn evaluate_rule(&self, t: Option<&Transaction<'_>>, r: Option<&RuleWithActions>) -> Vec<u8> {
         let elements = match &self.content {
             Content::Literal(text) => return text.clone(),
@@ -104,8 +103,9 @@ impl RunTimeString {
         s
     }
 
-    /// `evaluate(t)` without copying when the string is plain text (no
-    /// macro): for hot comparisons such as `containsTag`.
+    /// [`Self::evaluate`] without copying when the string is plain text
+    /// (no macro): for hot comparisons such as
+    /// [`RuleWithActions::contains_tag`].
     pub fn evaluate_cow(&self, t: Option<&Transaction<'_>>) -> Cow<'_, [u8]> {
         match &self.content {
             Content::Literal(text) => Cow::Borrowed(text),
@@ -113,17 +113,18 @@ impl RunTimeString {
         }
     }
 
-    /// `evaluate(t)`
+    /// Expands the string (outside of any rule).
     pub fn evaluate(&self, t: Option<&Transaction<'_>>) -> Vec<u8> {
         self.evaluate_rule(t, None)
     }
 
-    /// `evaluate()` (no transaction).
+    /// Expands the string without a transaction: macros expand to nothing.
     pub fn evaluate_static(&self) -> Vec<u8> {
         self.evaluate(None)
     }
 
-    /// `evaluate()` as a (lossy) UTF-8 string, for configuration values.
+    /// [`Self::evaluate_static`] as a (lossy) UTF-8 string, for
+    /// configuration values.
     pub fn evaluate_static_string(&self) -> String {
         String::from_utf8_lossy(&self.evaluate_static()).into_owned()
     }

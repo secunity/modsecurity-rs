@@ -1,4 +1,5 @@
-//! Port of `src/operators/inspect_file.cc`, `src/operators/inspect_file.h`.
+//! The `@inspectFile` operator: checks the value with a script or an
+//! external program.
 //!
 //! The parameter is either a Lua script (run through `engine::lua::Lua`) or
 //! an external program that receives the value as its only argument; the

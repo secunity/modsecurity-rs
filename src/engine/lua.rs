@@ -1,5 +1,3 @@
-//! Port of `src/engine/lua.cc`, `src/engine/lua.h`.
-//!
 //! The Lua engine behind `SecRuleScript` and the `exec` action. A script is
 //! compiled once when the rules are loaded ([`Lua::load`]) and kept as Lua
 //! bytecode (`lua_dump`); every run ([`Lua::run`]) loads that bytecode into
@@ -23,8 +21,8 @@ pub use self::with_lua::Lua;
 pub use self::without_lua::Lua;
 
 impl Lua {
-    /// `Lua::isCompatible`: an engine with `script` loaded. The script must
-    /// be a `.lua` file that compiles.
+    /// An engine with `script` loaded. The script must be a `.lua` file
+    /// that compiles.
     pub fn from_script(script: &str) -> Result<Lua, String> {
         if cfg!(not(feature = "lua")) {
             return Err("Lua support was not enabled.".to_string());
@@ -42,7 +40,8 @@ impl Lua {
 mod without_lua {
     use super::Transaction;
 
-    /// `Lua` (built without `WITH_LUA`).
+    /// The Lua engine of a build without the `lua` feature: no script can
+    /// be loaded.
     #[derive(Debug, Default)]
     pub struct Lua {
         pub script_name: String,
@@ -53,12 +52,12 @@ mod without_lua {
             Self::default()
         }
 
-        /// `load`
+        /// Fails: Lua support is not enabled.
         pub fn load(&mut self, _script: &str) -> Result<(), String> {
             Err("Lua support was not enabled.".to_string())
         }
 
-        /// `run`
+        /// Logs that Lua support is not enabled and returns `false`.
         pub fn run(&self, t: &mut Transaction<'_>, _s: &[u8]) -> bool {
             crate::ms_dbg_a!(t, 9, "Lua support was not enabled.");
             false
@@ -100,10 +99,10 @@ return function(impl)
 end
 "#;
 
-    /// `Lua`
+    /// The Lua engine: one compiled script.
     #[derive(Debug, Default)]
     pub struct Lua {
-        /// `m_blob` (the C++ `LuaScriptBlob`): the compiled script.
+        /// The compiled script (Lua bytecode).
         blob: Vec<u8>,
         pub script_name: String,
     }
@@ -146,7 +145,7 @@ end
         }
     }
 
-    /// `lua_type`
+    /// The type code `lua_type` returns for `v` (-1 for no value).
     fn lua_type(v: Option<&Value>) -> i32 {
         match v {
             None => -1,
@@ -281,8 +280,8 @@ end
             unsafe { mlua::Lua::unsafe_new() }
         }
 
-        /// `load`: compiles `script` (`luaL_loadfile`) and keeps its
-        /// bytecode (`lua_dump`).
+        /// Compiles `script` (`luaL_loadfile`) and keeps its bytecode
+        /// (`lua_dump`).
         pub fn load(&mut self, script: &str) -> Result<(), String> {
             let lua = Self::new_state();
             self.script_name = script.to_string();
@@ -302,9 +301,9 @@ end
             Ok(())
         }
 
-        /// `run`: runs the script with `s` as the argument of `main` (none
-        /// when empty). Returns whether `main` returned a non empty string
-        /// (or number); `false` on errors.
+        /// Runs the script with `s` as the argument of `main` (none when
+        /// empty). Returns whether `main` returned a non empty string (or
+        /// number); `false` on errors.
         pub fn run(&self, t: &mut Transaction<'_>, s: &[u8]) -> bool {
             let lua = Self::new_state();
             match self.run_in(&lua, t, s) {
@@ -481,7 +480,7 @@ end
             .map_err(|e| Some(mlua_error_text(&e)))
     }
 
-    /// `m.log(level, text)`
+    /// `m.log(level, text)`: writes `text` to the debug log at `level`.
     fn log(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
         // Retrieve parameters.
         let level = check_number(lua, args.front(), 1)? as i32;
@@ -491,7 +490,8 @@ end
         Ok(())
     }
 
-    /// `m.getvar(name [, transformations])`
+    /// `m.getvar(name [, transformations])`: the first value of a
+    /// variable, transformed.
     fn getvar(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<MultiValue> {
         // Retrieve parameters.
         let varname = check_string(lua, args.front(), 1)?;
@@ -544,7 +544,8 @@ end
         Ok(list)
     }
 
-    /// `m.setvar("collection.name", value)`
+    /// `m.setvar("collection.name", value)`: sets a `TX` or persistent
+    /// collection variable.
     fn setvar(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
         if args.len() != 2 {
             crate::ms_dbg_a!(&**t.borrow(), 8, "m.setvar: Failed m.setvar funtion must has 2 arguments");
@@ -575,7 +576,7 @@ end
         Ok(())
     }
 
-    /// `applyTransformations`: the second argument of `m.getvar`, a
+    /// Applies the second argument of `m.getvar` to `var`: a
     /// transformation name or a list of them.
     fn apply_transformations(
         lua: &mlua::Lua,

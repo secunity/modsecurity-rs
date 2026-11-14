@@ -1,4 +1,4 @@
-//! Port of `src/variables/variable.h` / `src/variables/variable.cc`.
+//! SecRule targets and the resolution of variables by name.
 //!
 //! [`Variable`] is a SecRule target (`ARGS`, `TX:foo`, `&ARGS`,
 //! `!ARGS:id`, ...). In C++ every target is its own class (three per multi
@@ -23,12 +23,12 @@ use crate::variables::{VariableSelector, env, rule, xml};
 // Key exclusions (`!ARGS:foo`, `!ARGS:/regex/`)
 // ---------------------------------------------------------------------------
 
-/// `KeyExclusion` and its two implementations.
+/// A key excluded from a variable (`!ARGS:foo` or `!ARGS:/regex/`).
 #[derive(Debug)]
 pub enum KeyExclusion {
-    /// `KeyExclusionRegex`
+    /// The keys a regular expression matches (case insensitive).
     Regex(Regex),
-    /// `KeyExclusionString`: stored upper case, compared case insensitively.
+    /// One key, stored upper case and compared case insensitively.
     String(Vec<u8>),
 }
 
@@ -49,7 +49,7 @@ impl KeyExclusion {
     }
 }
 
-/// `KeyExclusions`
+/// The keys excluded from a variable.
 #[derive(Debug, Default)]
 pub struct KeyExclusions(pub Vec<KeyExclusion>);
 
@@ -58,7 +58,7 @@ impl KeyExclusions {
         KeyExclusions(Vec::new())
     }
 
-    /// `toOmit`
+    /// Whether the key `a` is excluded.
     pub fn to_omit(&self, a: &[u8]) -> bool {
         self.0.iter().any(|z| z.matches(a))
     }
@@ -208,12 +208,12 @@ impl Variable {
         }
     }
 
-    /// `!var` (C++ `VariableModificatorExclusion`), named like `var`.
+    /// `!var`, named like `var`.
     pub fn exclusion(var: Variable) -> Self {
         Self::wrapping(var, Source::Exclusion)
     }
 
-    /// `&var` (C++ `VariableModificatorCount`), named like `var`.
+    /// `&var`, named like `var`.
     pub fn count(var: Variable) -> Self {
         Self::wrapping(var, Source::Count)
     }
@@ -331,14 +331,15 @@ impl Variable {
         }
     }
 
-    /// `belongsToCollection`
+    /// Whether `var` is in the same collection: this variable's collection
+    /// name, upper-cased, equals the one of `var`.
     pub fn belongs_to_collection(&self, var: &Variable) -> bool {
         let a = self.collection_name.as_bytes();
         let b = var.collection_name.as_bytes();
         a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_ascii_uppercase() == *y)
     }
 
-    /// `addsKeyExclusion`: if `v` is an exclusion (`!ARGS:foo`), record its
+    /// If `v` is an exclusion (`!ARGS:foo`), records its
     /// key (or regex) as excluded from this variable.
     pub fn adds_key_exclusion(&mut self, v: &Variable) {
         let Some(base) = v.exclusion_base() else {
@@ -351,7 +352,8 @@ impl Variable {
         self.key_exclusion.push(r);
     }
 
-    /// `operator==`
+    /// Whether `b` is the same target: same collection, name and full
+    /// name.
     pub fn same_as(&self, b: &Variable) -> bool {
         self.collection_name == b.collection_name && self.name == b.name && self.full_name == b.full_name
     }
@@ -363,12 +365,12 @@ impl Variable {
     }
 }
 
-/// The name of a `COLLECTION:/regex/` variable (C++ `VariableRegex`).
+/// The name of a `COLLECTION:/regex/` variable.
 pub(crate) fn regex_name(collection: &str, regex: &str) -> String {
     format!("{}:regex({})", collection, regex)
 }
 
-/// `Variables`: a list of (borrowed) variables.
+/// A list of (borrowed) variables.
 #[derive(Default)]
 pub struct Variables<'v>(pub Vec<&'v Variable>);
 
@@ -377,12 +379,13 @@ impl<'v> Variables<'v> {
         Variables(Vec::new())
     }
 
-    /// `contains(const Variable *)`
+    /// Whether the list holds the same target as `v`.
     pub fn contains_var(&self, v: &Variable) -> bool {
         self.0.iter().any(|m| v.same_as(m))
     }
 
-    /// `contains(const VariableValue *)`
+    /// Whether a variable of the list selects the value `v`: by regex for
+    /// a `COLLECTION:/regex/` variable, by full name otherwise.
     pub fn contains_value(&self, v: &VariableValue) -> bool {
         self.0.iter().any(|m| match m.regex() {
             Some(r) => r.search(v.key()) > 0,
@@ -395,7 +398,7 @@ impl<'v> Variables<'v> {
     }
 }
 
-/// `operator+(std::string, const Variables *)`: full names joined by `|`.
+/// The full names of `vars` joined by `|`.
 pub fn variables_to_string<'a, I>(vars: I) -> String
 where
     I: IntoIterator<Item = &'a Variable>,
@@ -427,14 +430,14 @@ impl std::fmt::Display for VariableNotFound {
 
 impl std::error::Error for VariableNotFound {}
 
-/// `VariableMonkeyResolution::comp`: `a` upper-cased equals `b`.
+/// Whether `a` upper-cased equals `b`.
 #[inline]
 pub fn comp(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).all(|(x, y)| x.to_ascii_uppercase() == y)
 }
 
-/// `VariableMonkeyResolution::stringMatchResolveMulti`: resolves a variable
-/// given by name (used by the Lua engine).
+/// Resolves a variable given by name, appending its values to `l` (used
+/// by the Lua engine).
 pub fn string_match_resolve_multi(
     t: &Transaction<'_>,
     variable: &str,
@@ -596,8 +599,7 @@ fn single_anchored<'t>(
     table.iter().find(|(n, _)| comp(variable, n)).map(|(_, a)| *a)
 }
 
-/// `VariableMonkeyResolution::stringMatchResolve`: resolves a variable given
-/// by name to its first value (empty if none).
+/// Resolves a variable given by name to its first value (empty if none).
 pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u8>, VariableNotFound> {
     let collection = variable.find('.').or_else(|| variable.find(':'));
     let web_app_id = t.rules.properties.web_app_id();

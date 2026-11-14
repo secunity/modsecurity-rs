@@ -1,17 +1,16 @@
-//! Port of `src/actions/transformations/trim.cc`, `src/actions/transformations/trim.h`.
+//! The `t:trim`, `t:trimLeft` and `t:trimRight` transformations: remove
+//! whitespace from the ends of the value.
 
 use crate::utils::string::is_space;
 
-/// `Trim::ltrim`: removes leading whitespace; returns whether any was
-/// removed.
+/// Removes leading whitespace; returns whether any was removed.
 pub fn ltrim(s: &mut Vec<u8>) -> bool {
     let start = s.iter().position(|&c| !is_space(c)).unwrap_or(s.len());
     s.drain(..start);
     start != 0
 }
 
-/// `Trim::rtrim`: removes trailing whitespace; returns whether any was
-/// removed.
+/// Removes trailing whitespace; returns whether any was removed.
 pub fn rtrim(s: &mut Vec<u8>) -> bool {
     let end = s.iter().rposition(|&c| !is_space(c)).map_or(0, |p| p + 1);
     let changed = end != s.len();
@@ -19,7 +18,8 @@ pub fn rtrim(s: &mut Vec<u8>) -> bool {
     changed
 }
 
-/// `Trim::trim`
+/// Removes leading and trailing whitespace; returns whether any was
+/// removed.
 pub fn trim(s: &mut Vec<u8>) -> bool {
     let mut changed = false;
     changed |= rtrim(s);

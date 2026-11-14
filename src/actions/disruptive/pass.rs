@@ -1,5 +1,3 @@
-//! Port of `src/actions/disruptive/pass.cc`, `src/actions/disruptive/pass.h`.
-//!
 //! `pass` — continues with the next rule; discards any pending
 //! intervention.
 

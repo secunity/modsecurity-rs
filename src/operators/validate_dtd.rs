@@ -1,8 +1,7 @@
-//! Port of `src/operators/validate_dtd.cc`, `src/operators/validate_dtd.h`.
-//!
-//! `@validateDTD`: validates the XML document parsed by the XML request body
-//! processor against a DTD. Matches (returns true) when the DTD cannot be
-//! loaded or the document is missing, not well formed or not valid.
+//! The `@validateDTD` operator: validates the XML document parsed by the
+//! XML request body processor against a DTD. Matches (returns true) when
+//! the DTD cannot be loaded or the document is missing, not well formed or
+//! not valid.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
@@ -47,7 +46,8 @@ impl Operator for ValidateDTD {
         Ok(())
     }
 
-    /// Without libxml2 the C++ class only had the base `Operator::evaluate`.
+    /// Without libxml2 the operator logs that it is not implemented and
+    /// matches, as the base `Operator::evaluate` does in C++.
     #[cfg(not(feature = "libxml2"))]
     fn evaluate(
         &self,

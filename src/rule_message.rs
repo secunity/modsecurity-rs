@@ -1,4 +1,5 @@
-//! Port of `headers/modsecurity/rule_message.h` and `src/rule_message.cc`.
+//! The message a rule produces: what the error log and the audit log
+//! report about a match.
 //!
 //! In C++ a `RuleMessage` holds references to its rule *and* to the
 //! transaction, and copies of it are stored inside that same transaction
@@ -14,8 +15,11 @@ use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
 use crate::variable_value::VariableValue;
 
-/// `RuleMessage::LogMessageInfo`
+/// A flag of [`RuleMessage::log`]: ends the line with the error log tail
+/// ([`RuleMessage::error_log_tail`]).
 pub const ERROR_LOG_TAIL_LOG_MESSAGE_INFO: i32 = 2;
+/// A flag of [`RuleMessage::log`]: starts the line with
+/// `[client <address>]`.
 pub const CLIENT_LOG_MESSAGE_INFO: i32 = 4;
 
 /// A match of a rule's operator: what the match message is made of. Most
@@ -77,16 +81,17 @@ impl<'r> RuleMessage<'r> {
         self.tags.clear();
     }
 
-    /// The match message (C++ `m_match`): `Matched "Operator ..." against
-    /// variable ...`; empty when the operator did not match.
+    /// The match message: `Matched "Operator ..." against variable ...`;
+    /// empty when the operator did not match.
     pub fn match_message(&self) -> Vec<u8> {
         self.matched.as_ref().map_or_else(Vec::new, |m| {
             m.operator.resolve_match_message(&m.param, m.value.key_with_collection(), m.value.value())
         })
     }
 
-    /// `log()` / `log(props)` / `log(props, responseCode)`; `code` -1 keeps
-    /// a `%d` placeholder for the status code.
+    /// The log line of the message, with the optional parts selected by
+    /// the `*_LOG_MESSAGE_INFO` flags in `props`; `code` -1 keeps a `%d`
+    /// placeholder for the status code.
     pub fn log(&self, t: &Transaction<'_>, props: i32, code: i32) -> String {
         let mut msg: Vec<u8> = Vec::with_capacity(2048);
         if props & CLIENT_LOG_MESSAGE_INFO != 0 {
@@ -112,12 +117,13 @@ impl<'r> RuleMessage<'r> {
         to_hex_if_needed(&msg, false)
     }
 
-    /// `errorLog()`
+    /// The error log line: [`Self::log`] with the client address and the
+    /// error log tail.
     pub fn error_log(&self, t: &Transaction<'_>) -> String {
         self.log(t, CLIENT_LOG_MESSAGE_INFO | ERROR_LOG_TAIL_LOG_MESSAGE_INFO, -1)
     }
 
-    /// `_details`
+    /// The details of the log line: ` [file "..."] [line "..."] ...`.
     pub fn details(rm: &RuleMessage<'_>, t: &Transaction<'_>) -> Vec<u8> {
         let r = rm.rule;
         let mut msg: Vec<u8> = Vec::new();
@@ -150,7 +156,8 @@ impl<'r> RuleMessage<'r> {
         msg
     }
 
-    /// `_errorLogTail`
+    /// The tail of an error log line: the server address (as `hostname`),
+    /// the uri and the unique id.
     pub fn error_log_tail(t: &Transaction<'_>) -> Vec<u8> {
         let mut msg: Vec<u8> = Vec::new();
         msg.extend_from_slice(format!("[hostname \"{}\"]", t.server_ip_address).as_bytes());
@@ -161,7 +168,7 @@ impl<'r> RuleMessage<'r> {
         msg
     }
 
-    /// `getPhase`: the SecLang phase number (1..5) of the rule.
+    /// The SecLang phase number (1..5) of the rule.
     pub fn phase_number(&self) -> i32 {
         // C++ `m_phase - 1`, with -1 as the phase of an unknown name.
         self.rule.phase().map_or(-1, |p| p as i32) - 1

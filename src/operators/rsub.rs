@@ -1,4 +1,5 @@
-//! Port of `src/operators/rsub.cc`, `src/operators/rsub.h`.
+//! The `@rsub` operator (regular expression substitution), which always
+//! matches.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;

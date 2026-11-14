@@ -1,9 +1,8 @@
-//! Port of `src/variables/xml.cc`, `src/variables/xml.h`.
-//!
-//! `XML` (the whole document, used as the target of `@validateDTD` and
-//! `@validateSchema`) and `XML:/xpath` (the content of the nodes the XPath
-//! expression selects in the document parsed by the XML request body
-//! processor; namespaces come from the rule's `xmlns` actions).
+//! The `XML` variables: `XML` (the whole document, used as the target of
+//! `@validateDTD` and `@validateSchema`) and `XML:/xpath` (the content of
+//! the nodes the XPath expression selects in the document parsed by the XML
+//! request body processor; namespaces come from the rule's `xmlns`
+//! actions).
 
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;

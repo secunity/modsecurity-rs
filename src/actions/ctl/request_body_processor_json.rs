@@ -1,5 +1,3 @@
-//! Port of `src/actions/ctl/request_body_processor_json.cc`, `src/actions/ctl/request_body_processor_json.h`.
-//!
 //! `ctl:requestBodyProcessor=JSON` — parses the request body as JSON.
 
 use crate::actions::action::{Action, name_of};

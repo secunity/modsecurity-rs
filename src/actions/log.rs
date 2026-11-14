@@ -1,5 +1,3 @@
-//! Port of `src/actions/log.cc`, `src/actions/log.h`.
-//!
 //! `log` — the rule match is to be logged.
 
 use crate::actions::action::{Action, name_of};

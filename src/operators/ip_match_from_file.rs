@@ -1,5 +1,4 @@
-//! Port of `src/operators/ip_match_from_file.cc`,
-//! `src/operators/ip_match_from_file.h`.
+//! The `@ipMatchFromFile` (`@ipMatchF`) operator.
 
 use crate::operators::ip_match::IpMatch;
 use crate::operators::operator::{Operator, Param};

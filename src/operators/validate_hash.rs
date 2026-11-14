@@ -1,4 +1,4 @@
-//! Port of `src/operators/validate_hash.cc`, `src/operators/validate_hash.h`.
+//! The `@validateHash` operator, which always matches.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;

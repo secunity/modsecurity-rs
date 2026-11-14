@@ -1,4 +1,5 @@
-//! Port of `headers/modsecurity/anchored_set_variable_translation_proxy.h`.
+//! The `*_NAMES` collections (`ARGS_NAMES`, ...): the keys of a multi
+//! valued variable, resolved as values.
 //!
 //! Exposes the *names* of an [`AnchoredSetVariable`] as a collection of its
 //! own (`ARGS_NAMES` over `ARGS`, ...). In C++ the proxy held a pointer to
@@ -12,8 +13,8 @@ use crate::variable_origin::VariableOrigin;
 use crate::variable_value::VariableValue;
 use crate::variables::variable::KeyExclusions;
 
-/// `m_translate` of one value: a value of collection `name` whose key and
-/// value are `v`'s key, with the origins moved to point at the key.
+/// Translates one value: a value of collection `name` whose key and value
+/// are `v`'s key, with the origins moved to point at the key.
 pub(crate) fn translate(name: &str, v: &VariableValue) -> VariableValue {
     let mut nv = VariableValue::with_collection(name.as_bytes(), v.key(), v.key());
     nv.reserve_origin(v.origin().len());
@@ -33,8 +34,9 @@ impl AnchoredSetVariableTranslationProxy {
         AnchoredSetVariableTranslationProxy { name: name.to_string() }
     }
 
-    /// `m_translate`: replaces each value (of the whole list, as in C++) by one whose key and value are the
-    /// original key, adjusting the origins to point at the key.
+    /// Replaces each value (of the whole list, as in C++) by one whose key
+    /// and value are the original key, adjusting the origins to point at
+    /// the key.
     fn translate(&self, l: &mut [VariableValue]) {
         for v in l.iter_mut() {
             *v = translate(&self.name, v);
@@ -101,8 +103,7 @@ impl AnchoredSetVariableTranslationProxy {
         self.translate(l);
     }
 
-    /// `resolveFirst(key)`: note the C++ implementation ignores `key` and
-    /// returns the first name.
+    /// The first name of `fount`. As in C++, `key` is ignored.
     pub fn resolve_first(&self, fount: &AnchoredSetVariable, _key: &[u8]) -> Option<Vec<u8>> {
         let mut l = Vec::new();
         self.resolve(fount, &mut l);
