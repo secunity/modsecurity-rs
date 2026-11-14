@@ -2,9 +2,6 @@
 //!
 //! `setenv:name=value` — sets an environment variable.
 
-use std::ffi::OsStr;
-use std::os::unix::ffi::OsStrExt;
-
 use crate::actions::action::Action;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
@@ -40,10 +37,7 @@ impl Action for SetENV {
         // which C++ ignores); `set_var` would panic on those and on NULs.
         let valid = !name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0);
         if valid {
-            // SAFETY: like the C++ code, this mutates the process
-            // environment and is subject to the usual caveat about
-            // concurrent getenv(3) calls from other threads.
-            unsafe { std::env::set_var(OsStr::from_bytes(&name), OsStr::from_bytes(&value)) };
+            crate::utils::system::set_env(&name, &value);
         }
         // The transaction's view of the environment (the `ENV` variable).
         t.variable_envs.insert(name, value);

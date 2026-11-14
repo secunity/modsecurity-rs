@@ -21,6 +21,37 @@ unsafe extern "C" {
     fn wordfree(pwordexp: *mut WordExpT);
 }
 
+/// `setenv(name, value, 1)`. `name` must not be empty or contain `=`, and
+/// neither may contain a NUL (callers check: `setenv` rejects those).
+pub fn set_env(name: &[u8], value: &[u8]) {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    debug_assert!(!name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0));
+    // SAFETY: like the C++ code, this mutates the process environment, with
+    // the usual caveat about concurrent getenv(3) calls from other threads.
+    unsafe { std::env::set_var(OsStr::from_bytes(name), OsStr::from_bytes(value)) };
+}
+
+/// `mkstemp(3)`: creates and opens a new file named `template` with its
+/// final `XXXXXX` replaced. Returns the name and the file (`None` when it
+/// could not be created, or when `template` contains a NUL).
+pub fn mkstemp(template: &str) -> (String, Option<std::fs::File>) {
+    use std::os::fd::FromRawFd;
+    let mut buf = template.as_bytes().to_vec();
+    if buf.contains(&0) {
+        return (template.to_string(), None);
+    }
+    buf.push(0);
+    // SAFETY: `buf` is a writable, NUL terminated buffer; mkstemp only
+    // rewrites its last six characters before the NUL ("XXXXXX").
+    let fd = unsafe { libc::mkstemp(buf.as_mut_ptr().cast::<c_char>()) };
+    buf.pop();
+    let name = String::from_utf8_lossy(&buf).into_owned();
+    // SAFETY: mkstemp returned a freshly opened descriptor nothing else owns.
+    let file = (fd >= 0).then(|| unsafe { std::fs::File::from_raw_fd(fd) });
+    (name, file)
+}
+
 /// `cpu_seconds`: process CPU time in seconds.
 pub fn cpu_seconds() -> f64 {
     let t = rustix::time::clock_gettime(rustix::time::ClockId::ProcessCPUTime);

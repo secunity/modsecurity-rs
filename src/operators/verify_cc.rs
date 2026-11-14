@@ -1,54 +1,18 @@
-//! Port of `src/operators/verify_cc.cc`, `src/operators/verify_cc.h`.
-//!
-//! Like the C++ operator, the PCRE2 API is used directly: the pattern is
-//! matched at every offset of the input (not through `utils::regex`).
-
-use std::ptr;
-
-use pcre2_sys::*;
+//! `@verifyCC`: finds credit card numbers. The pattern is tried at every
+//! offset of the input (as in C++), and a match counts when it passes the
+//! Luhn check.
 
 use crate::operators::operator::{Operator, Param};
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
-
-/// A compiled pattern (`m_pc`) and its JIT compilation status (`m_pcje`).
-#[derive(Debug)]
-struct CompiledPattern {
-    pc: *mut pcre2_code_8,
-    pcje: i32,
-}
-
-// SAFETY: a compiled pcre2_code (and its JIT code) is immutable after
-// compilation and may be used from several threads; the per-match state
-// (match data) is allocated per evaluation.
-unsafe impl Send for CompiledPattern {}
-unsafe impl Sync for CompiledPattern {}
-
-impl Drop for CompiledPattern {
-    fn drop(&mut self) {
-        // SAFETY: `pc` was returned by pcre2_compile_8 (non-null) and is
-        // freed exactly once.
-        unsafe { pcre2_code_free_8(self.pc) }
-    }
-}
-
-/// RAII owner of a `pcre2_match_data`.
-struct MatchData(*mut pcre2_match_data_8);
-
-impl Drop for MatchData {
-    fn drop(&mut self) {
-        // SAFETY: allocated by pcre2_match_data_create_from_pattern_8 (a
-        // null pointer is accepted by pcre2_match_data_free) and freed once.
-        unsafe { pcre2_match_data_free_8(self.0) }
-    }
-}
+use crate::utils::regex::Regex;
 
 #[derive(Debug)]
 pub struct VerifyCC {
     param: Param,
-    re: Option<CompiledPattern>,
+    re: Option<Regex>,
 }
 
 impl VerifyCC {
@@ -99,31 +63,14 @@ impl Operator for VerifyCC {
     }
 
     fn init(&mut self, _file: &str) -> Result<(), String> {
-        // PCRE2_ZERO_TERMINATED: the pattern ends at its first NUL byte.
-        let param = &self.param.literal;
-        let len = param.iter().position(|&c| c == 0).unwrap_or(param.len());
-        let mut errornumber: i32 = 0;
-        let mut erroroffset: usize = 0;
-        // SAFETY: `param` holds at least `len` readable bytes; the
-        // out-parameters are valid; a null compile context selects the
-        // defaults.
-        let pc = unsafe {
-            pcre2_compile_8(
-                param.as_ptr(),
-                len,
-                PCRE2_DOTALL | PCRE2_MULTILINE,
-                &mut errornumber,
-                &mut erroroffset,
-                ptr::null_mut(),
-            )
-        };
-        if pc.is_null() {
+        // `PCRE2_DOTALL | PCRE2_MULTILINE`; the pattern ends at its first
+        // NUL byte.
+        let re = Regex::with_options(&self.param.literal, false, true);
+        if re.has_error() {
             // The C++ (PCRE2) code fails without an error message.
             return Err(String::new());
         }
-        // SAFETY: `pc` is a valid compiled pattern.
-        let pcje = unsafe { pcre2_jit_compile_8(pc, PCRE2_JIT_COMPLETE) };
-        self.re = Some(CompiledPattern { pc, pcje });
+        self.re = Some(re);
         Ok(())
     }
 
@@ -133,63 +80,28 @@ impl Operator for VerifyCC {
         let Some(re) = self.re.as_ref() else {
             return false;
         };
-        let target_length = i.len();
-        // SAFETY: `re.pc` is a valid compiled pattern; a null general
-        // context selects malloc.
-        let match_data = MatchData(unsafe { pcre2_match_data_create_from_pattern_8(re.pc, ptr::null_mut()) });
-        if match_data.0.is_null() {
-            return false;
-        }
-
-        for offset in 0..target_length {
-            let mut ret = 0;
-            if re.pcje == 0 {
-                // SAFETY: valid pattern and match data; `i` is readable for
-                // `target_length` bytes and `offset` is within it.
-                ret = unsafe {
-                    pcre2_jit_match_8(re.pc, i.as_ptr(), target_length, offset, 0, match_data.0, ptr::null_mut())
-                };
-            }
-
-            if re.pcje != 0 || ret == PCRE2_ERROR_JIT_STACKLIMIT {
-                // SAFETY: as above.
-                ret = unsafe {
-                    pcre2_match_8(re.pc, i.as_ptr(), target_length, offset, PCRE2_NO_JIT, match_data.0, ptr::null_mut())
-                };
-            }
-
+        for offset in 0..i.len() {
             // If there was no match, then we are done.
-            if ret < 0 {
-                break;
+            let Some((start, end)) = re.find_at(i, offset) else { break };
+            if start > end || end > i.len() {
+                continue;
             }
-
-            if ret > 0 {
-                // SAFETY: after a successful match the ovector holds at
-                // least one (start, end) pair.
-                let (start, end) = unsafe {
-                    let ov = pcre2_get_ovector_pointer_8(match_data.0);
-                    (*ov, *ov.add(1))
-                };
-                if start > end || end > target_length {
-                    continue;
+            let m = &i[start..end];
+            if Self::luhn_verify(m) {
+                if rule.has_capture_action() {
+                    t.collections.tx.set(b"0", m.to_vec());
+                    crate::ms_dbg_a!(t, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
                 }
-                let m = &i[start..end];
-                if Self::luhn_verify(m) {
-                    if rule.has_capture_action() {
-                        t.collections.tx.set(b"0", m.to_vec());
-                        crate::ms_dbg_a!(t, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
-                    }
-                    crate::ms_dbg_a!(
-                        t,
-                        9,
-                        "CC# match \"{}\" at {}. [offset {}]",
-                        String::from_utf8_lossy(&self.param.literal),
-                        String::from_utf8_lossy(i),
-                        offset
-                    );
+                crate::ms_dbg_a!(
+                    t,
+                    9,
+                    "CC# match \"{}\" at {}. [offset {}]",
+                    String::from_utf8_lossy(&self.param.literal),
+                    String::from_utf8_lossy(i),
+                    offset
+                );
 
-                    return true;
-                }
+                return true;
             }
         }
 

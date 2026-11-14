@@ -96,23 +96,7 @@ impl MultipartPartTmpFile {
         path.push_str(&t.id);
         path.push_str("-file-XXXXXX");
 
-        let mut file: Option<File> = None;
-        let mut template = path.clone().into_bytes();
-        if !template.contains(&0) {
-            template.push(0);
-            // SAFETY: `template` is a writable, NUL terminated buffer ending
-            // in "XXXXXX" as mkstemp requires; mkstemp only rewrites those
-            // six characters.
-            let fd = unsafe { libc::mkstemp(template.as_mut_ptr() as *mut libc::c_char) };
-            template.pop();
-            path = String::from_utf8_lossy(&template).into_owned();
-            if fd >= 0 {
-                use std::os::fd::FromRawFd;
-                // SAFETY: mkstemp returned a freshly opened descriptor that
-                // nothing else owns.
-                file = Some(unsafe { File::from_raw_fd(fd) });
-            }
-        }
+        let (path, mut file) = crate::utils::system::mkstemp(&path);
         crate::ms_dbg_a!(t, 4, "MultipartPartTmpFile: Create filename= {}", path);
 
         let mode = t.rules.properties.upload_file_mode.unwrap_or(0);

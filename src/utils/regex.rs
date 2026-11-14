@@ -439,6 +439,18 @@ impl Regex {
         })
     }
 
+    /// The bounds of the first match starting at or after `offset`, without
+    /// a match limit; `None` when there is none or matching failed.
+    pub fn find_at(&self, s: &[u8], offset: usize) -> Option<(usize, usize)> {
+        if self.has_error() {
+            return None;
+        }
+        self.with_match_data(0, |md, _| {
+            let rc = self.exec(s, offset, 0, md, ptr::null_mut(), true);
+            (rc > 0).then(|| Self::ovec(md, 0))
+        })
+    }
+
     /// `search(s)`: 1 on match, 0 otherwise.
     pub fn search(&self, s: &[u8]) -> i32 {
         if self.has_error() {
