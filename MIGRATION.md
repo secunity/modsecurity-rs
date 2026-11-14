@@ -198,6 +198,15 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
     to stdout.
   - `setvar:tx.a=\%{x}` sets `TX:a` to `\%{x}` instead of making
     `a=\%{x}` the key.
+- **Rule line numbers** (error log `[line "N"]`, the debug log's rule
+  locations) are the line of the rule's keyword. The C++ scanner did not
+  count the line feeds inside quoted texts (a multi-line `msg` or operator),
+  between a rule's variables and its operator or between `SecAction` and its
+  actions on the next line, after `SecRuleUpdateTargetBy*` (with the blank
+  lines that follow), a blank line after a rule without actions, nor the
+  blank lines after a commented out `SecRule ... \`, so the rules after
+  those were reported too early (CRS: from 1 to 13 lines). The differential
+  test compares line numbers out.
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, LMDB

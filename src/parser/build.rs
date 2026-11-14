@@ -56,12 +56,11 @@ pub(crate) fn load_with(driver: &mut Driver, data: &[u8], file: usize, whole_fil
     let source = syntax::Source::new(data);
     let text = source.text();
     let mut lines = Lines { text, offset: 0, line: 1 };
-    let mut cpp_line = 1;
     // The usual case: the whole file is read at once.
     if let Some(Ok(statements)) = whole_file.then(|| syntax::parse_file(text)) {
         for (statement, _) in statements {
             let Some(statement) = statement else { break };
-            apply(driver, file, &mut lines, &mut cpp_line, statement)?;
+            apply(driver, file, &mut lines, statement)?;
         }
         return Ok(());
     }
@@ -80,21 +79,14 @@ pub(crate) fn load_with(driver: &mut Driver, data: &[u8], file: usize, whole_fil
         let Some(statement) = statement else {
             return Ok(());
         };
-        apply(driver, file, &mut lines, &mut cpp_line, statement)?;
+        apply(driver, file, &mut lines, statement)?;
         from = end;
     }
 }
 
-fn apply(
-    driver: &mut Driver,
-    file: usize,
-    lines: &mut Lines<'_>,
-    cpp_line: &mut usize,
-    statement: syntax::Statement<'_>,
-) -> Res<()> {
-    // The line of the keyword, as the C++ scanner counts lines.
-    let line = *cpp_line + statement.lines_before;
-    *cpp_line = line + statement.lines_in;
+fn apply(driver: &mut Driver, file: usize, lines: &mut Lines<'_>, statement: syntax::Statement<'_>) -> Res<()> {
+    // The line of the keyword.
+    let line = lines.line_of(statement.offset);
     let mut b = Builder { driver, file, lines, line, at: statement.offset };
     b.directive(statement.directive)
 }

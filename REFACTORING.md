@@ -276,9 +276,8 @@ Compatibility:
   of `test/test-cases/data` — 831 configurations.
 - C++ quirks kept by this change (fixed afterwards, each in its own commit;
   see `MIGRATION.md`):
-  rule line numbers as the C++ scanner counts them (it does not count line
-  feeds inside quoted texts, between a rule's variables and its operator,
-  between `SecAction` and its actions, or after `SecRuleUpdateTargetBy*`);
+  rule line numbers as the C++ scanner counts them (fixed since: they are
+  the line of the rule's keyword);
   a `%` right after a macro is dropped; the escaped quote of PR 3753 keeps
   its backslash; an action list may miss its closing quote at the end of a
   line; a directive on the line right after a rule without actions is an

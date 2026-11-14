@@ -45,9 +45,9 @@ comment = _{
 }
 // The first line, up to its final backslash.
 comment_head = _{ (!nl ~ !(ws* ~ "\\" ~ ws* ~ nl) ~ ANY)* ~ ws* ~ "\\" ~ ws* }
-// The line feeds after the first line of a commented out `SecRule`: the
-// C++ scanner reads them (blank lines included) as one line.
-comment_gap = { ("\r" | "\n")+ }
+// The line feeds after the first line of a commented out `SecRule` (blank
+// lines included).
+comment_gap = _{ ("\r" | "\n")+ }
 comment_cont = _{ (!("\\"? ~ "\r"? ~ "\n") ~ ANY)* ~ "\\" ~ "\r"? ~ "\n" ~ ws* }
 
 directive = _{

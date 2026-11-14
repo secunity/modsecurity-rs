@@ -22,7 +22,7 @@ root=$(cd "$here/../.." && pwd)
 # than a (possibly small) tmpfs.
 mkdir -p "$root/target"
 work=$(mktemp -d "$root/target/differential.XXXXXX")
-trap 'rm -rf "$work"' EXIT
+trap '[ -n "${KEEP_WORK:-}" ] || rm -rf "$work"' EXIT
 
 (cd "$root" && cargo build --release --lib ${FEATURES:+--features "$FEATURES"})
 # The cdylib's SONAME is libmodsecurity.so.3 (as with the C++ build).
@@ -39,15 +39,25 @@ for v in cpp rs; do
     (cd "$work/$v" && "../harness_$v" ../rules.conf ../requests.txt > out.txt)
 done
 
-diff "$work/cpp/out.txt" "$work/rs/out.txt"
+# The C++ parser gets some rule line numbers wrong (it does not count all
+# line feeds; see MIGRATION.md): `[line "N"]` is compared without N.
+lines() { sed -E 's/\[line "[0-9]+"\]/[line ""]/g' "$1"; }
+lines "$work/cpp/out.txt" > "$work/cpp/out.norm"
+lines "$work/rs/out.txt" > "$work/rs/out.norm"
+diff "$work/cpp/out.norm" "$work/rs/out.norm"
 python3 -I - "$work/cpp/debug.log" "$work/rs/debug.log" <<'PY'
-import itertools, sys
+import itertools, re, sys
+# Rule locations (`'<file>:<line>'`) are compared without the line (see
+# above).
+loc = re.compile(r"('[^']*):[0-9]+'")
+def norm(line):
+    return loc.sub(r"\1:'", line.decode('utf-8', 'replace'))
 # Stream both logs (each is hundreds of MB).
 n, bad = 0, []
 with open(sys.argv[1], 'rb') as fa, open(sys.argv[2], 'rb') as fb:
     for x, y in itertools.zip_longest(fa, fb):
         n += 1
-        if x is None or y is None or x.decode('utf-8', 'replace') != y.decode('utf-8', 'replace'):
+        if x is None or y is None or norm(x) != norm(y):
             bad.append(n)
             if len(bad) == 10:
                 break
@@ -63,5 +73,7 @@ for v in cpp rs; do
     mkdir "$work/$v-nodebug"
     (cd "$work/$v-nodebug" && "../harness_$v" ../rules-nodebug.conf ../requests.txt > out.txt)
 done
-diff "$work/cpp-nodebug/out.txt" "$work/rs-nodebug/out.txt"
+lines "$work/cpp-nodebug/out.txt" > "$work/cpp-nodebug/out.norm"
+lines "$work/rs-nodebug/out.txt" > "$work/rs-nodebug/out.norm"
+diff "$work/cpp-nodebug/out.norm" "$work/rs-nodebug/out.norm"
 echo "without debug log: outputs identical"

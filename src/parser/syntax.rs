@@ -160,22 +160,10 @@ pub enum SetVarOp {
 
 /// A directive read by [`parse_statement`]: the offset of its keyword and
 /// what it is.
-///
-/// Line numbers are counted as the C++ scanner counts them (they are in
-/// the error log): a line feed inside a quoted text (an operator parameter,
-/// a `msg`) is not counted, nor the line continuation between the variables
-/// and the operator of a `SecRule` or between `SecAction` and its actions,
-/// and a commented out `SecRule` counts the blank lines that follow its
-/// first line as one.
 #[derive(Debug)]
 pub struct Statement<'a> {
     pub offset: usize,
     pub directive: Directive<'a>,
-    /// The lines the C++ scanner counts before the keyword (from where the
-    /// statement was read).
-    pub lines_before: usize,
-    /// The lines it counts from the keyword to the end of the statement.
-    pub lines_in: usize,
 }
 
 /// A syntax error: the offset where the grammar stopped, and what is there.
@@ -190,114 +178,38 @@ pub struct SyntaxError {
 /// [`parse_statement`] then reads the statements before it one by one.
 pub fn parse_file(text: &str) -> Result<impl Iterator<Item = (Option<Statement<'_>>, usize)>, SyntaxError> {
     let file = SecLang::parse(Rule::file, text).map_err(|e| syntax_error(text, 0, &e))?;
-    let mut from = 0;
     let statements =
         file.into_iter().next().expect("a file").into_inner().filter(|p| p.as_rule() == Rule::directive_statement);
-    Ok(statements.map(move |p| {
-        let (statement, end) = statement_from_pair(text, 0, from, p);
-        from = end;
-        (statement, end)
-    }))
+    Ok(statements.map(|p| statement_from_pair(0, p)))
 }
 
 /// Reads the next statement of `text` from byte offset `from`. Returns the
 /// statement (`None` at the end of the text) and the offset after it.
 pub fn parse_statement(text: &str, from: usize) -> Result<(Option<Statement<'_>>, usize), SyntaxError> {
     let mut pairs = SecLang::parse(Rule::statement, &text[from..]).map_err(|e| syntax_error(text, from, &e))?;
-    Ok(statement_from_pair(text, from, from, pairs.next().expect("a statement")))
+    Ok(statement_from_pair(from, pairs.next().expect("a statement")))
 }
 
-/// A statement from its pair, whose spans are relative to `base`. Lines are
-/// counted from `from` (the end of the previous statement, which may be
-/// past the start of this one's pair).
-fn statement_from_pair<'a>(
-    text: &'a str,
-    base: usize,
-    from: usize,
-    statement: Pair<'a, Rule>,
-) -> (Option<Statement<'a>>, usize) {
+/// A statement from its pair, whose spans are relative to `base`.
+fn statement_from_pair(base: usize, statement: Pair<'_, Rule>) -> (Option<Statement<'_>>, usize) {
     let end = base + statement.as_span().end();
-    let sub = &text[base..];
-    // Line feeds of the comments that the C++ scanner does not count.
-    let mut absorbed = 0;
-    let mut inner = None;
-    for p in statement.into_inner() {
-        match p.as_rule() {
-            Rule::comment_gap => absorbed += line_feeds(p.as_str()) - 1,
+    let inner = statement.into_inner().find(|p| {
+        matches!(
+            p.as_rule(),
             Rule::sec_rule
-            | Rule::sec_rule_script
-            | Rule::sec_action
-            | Rule::sec_default_action
-            | Rule::update_target
-            | Rule::update_action
-            | Rule::setting => inner = Some(p),
-            // `end`, `EOI`, comment text.
-            _ => {}
-        }
-    }
+                | Rule::sec_rule_script
+                | Rule::sec_action
+                | Rule::sec_default_action
+                | Rule::update_target
+                | Rule::update_action
+                | Rule::setting
+        )
+    });
     let Some(inner) = inner else {
-        return (None, end.max(from));
+        return (None, end);
     };
-    let start = base + inner.as_span().start();
-    let mut uncounted = 0;
-    let mut tail = Tail::Initial;
-    let directive = directive(inner, sub, base, &mut uncounted, &mut tail);
-    // How the C++ scanner leaves the directive.
-    let bytes = text.as_bytes();
-    let mut end = end;
-    match tail {
-        Tail::Initial => {}
-        // After an unquoted action list a line feed right after the last
-        // action is not counted.
-        Tail::BareActions(e) => {
-            if bytes.get(base + e) == Some(&b'\n') {
-                uncounted += 1;
-            }
-        }
-        // After a rule without actions, the scanner reads the next line as
-        // its actions: a blank line there is not counted.
-        Tail::NoActions => {
-            let blank = text[end..].bytes().take_while(|&b| b == b' ' || b == b'\t').count();
-            if end > 0 && bytes[end - 1] == b'\n' && bytes.get(end + blank) == Some(&b'\n') {
-                end += blank + 1;
-                uncounted += 1;
-            }
-        }
-        // After the variables of `SecRuleUpdateTargetBy...`, the scanner
-        // skips `[ \t]*[\\\r\n]*[ \t]*` without counting lines.
-        Tail::Variables(e) => {
-            let rest = &bytes[base + e..];
-            let a = rest.iter().take_while(|&&b| b == b' ' || b == b'\t').count();
-            let b = rest[a..].iter().take_while(|&&b| matches!(b, b'\\' | b'\r' | b'\n')).count();
-            let c = rest[a + b..].iter().take_while(|&&b| b == b' ' || b == b'\t').count();
-            // That may go past the statement (blank lines after it).
-            end = end.max(base + e + a + b + c);
-            uncounted += line_feeds(&text[base + e..end]);
-        }
-    }
-    let statement = Statement {
-        offset: start,
-        directive,
-        lines_before: line_feeds(&text[from..start]) - absorbed,
-        lines_in: line_feeds(&text[start..end]) - uncounted,
-    };
-    (Some(statement), end)
-}
-
-/// The state the C++ scanner is in after a directive, when it matters for
-/// line numbers. Offsets are relative to where the statement was read from.
-enum Tail {
-    Initial,
-    /// Actions without quotes, ending at this offset.
-    BareActions(usize),
-    /// A `SecRule` without actions.
-    NoActions,
-    /// `SecRuleUpdateTargetBy...`: its variables end at this offset.
-    Variables(usize),
-}
-
-fn line_feeds(s: &str) -> usize {
-    s.bytes().filter(|&b| b == b'\n').count()
+    let offset = base + inner.as_span().start();
+    (Some(Statement { offset, directive: directive(inner, base) }), end)
 }
 
 /// Reads `raw` as an operator parameter (quoted or not); `None` when it is
@@ -323,53 +235,25 @@ fn syntax_error(text: &str, from: usize, e: &pest::error::Error<Rule>) -> Syntax
     SyntaxError { offset, message }
 }
 
-/// `uncounted` gets the line feeds of the directive that the C++ scanner
-/// does not count. `sub` is the text the pairs' spans are relative to.
-fn directive<'a>(
-    pair: Pair<'a, Rule>,
-    sub: &'a str,
-    from: usize,
-    uncounted: &mut usize,
-    tail: &mut Tail,
-) -> Directive<'a> {
+/// The directive of a statement. `from` is the offset the pairs' spans are
+/// relative to.
+fn directive(pair: Pair<'_, Rule>, from: usize) -> Directive<'_> {
     let rule = pair.as_rule();
-    let start = pair.as_span().start();
     let mut inner = pair.into_inner();
-    // The line feeds between `a` and `b`, not counted.
-    let gap = |a: usize, b: usize| line_feeds(&sub[a..b]);
     match rule {
         Rule::sec_rule => {
-            let v = inner.next().expect("variables");
-            let o = inner.next().expect("operator");
-            *uncounted += gap(v.as_span().end(), o.as_span().start());
-            let variables = targets(v);
-            let operator = operator(o, uncounted);
-            let actions = inner.next().map(|a| {
-                if !a.as_str().starts_with('"') {
-                    *tail = Tail::BareActions(a.as_span().end());
-                }
-                actions(a, from, uncounted)
-            });
-            if actions.is_none() {
-                *tail = Tail::NoActions;
-            }
+            let variables = targets(inner.next().expect("variables"));
+            let operator = operator(inner.next().expect("operator"));
+            let actions = inner.next().map(|a| actions(a, from));
             Directive::Rule { variables, operator, actions }
         }
         Rule::sec_rule_script => {
-            let p = inner.next().expect("path");
-            let path_end = p.as_span().end();
-            let path = value(p);
-            let actions = inner.next().map(|a| {
-                *uncounted += gap(path_end, a.as_span().start());
-                actions(a, from, uncounted)
-            });
+            let path = value(inner.next().expect("path"));
+            let actions = inner.next().map(|a| actions(a, from));
             Directive::RuleScript { path, actions }
         }
         Rule::sec_action | Rule::sec_default_action => {
-            let a = inner.next().expect("actions");
-            let keyword = if rule == Rule::sec_action { "SecAction" } else { "SecDefaultAction" };
-            *uncounted += gap(start + keyword.len(), a.as_span().start());
-            let list = actions(a, from, uncounted);
+            let list = actions(inner.next().expect("actions"), from);
             if rule == Rule::sec_action { Directive::Action(list) } else { Directive::DefaultAction(list) }
         }
         Rule::update_target => {
@@ -380,19 +264,13 @@ fn directive<'a>(
             };
             let lead = &inner.next().expect("separator").as_str()[1..];
             let selector = Value { lead, ..value(inner.next().expect("selector")) };
-            let v = inner.next().expect("variables");
-            *tail = Tail::Variables(v.as_span().end());
-            let variables = targets(v);
+            let variables = targets(inner.next().expect("variables"));
             Directive::UpdateTarget { by, selector, variables }
         }
         Rule::update_action => {
             let lead = &inner.next().expect("separator").as_str()[1..];
             let id = Value { lead, ..value(inner.next().expect("id")) };
-            let a = inner.next().expect("actions");
-            if !a.as_str().starts_with('"') {
-                *tail = Tail::BareActions(a.as_span().end());
-            }
-            let actions = actions(a, from, uncounted);
+            let actions = actions(inner.next().expect("actions"), from);
             Directive::UpdateAction { id, actions }
         }
         Rule::setting => {
@@ -456,7 +334,7 @@ fn pieces(pair: Pair<'_, Rule>) -> Vec<Piece<'_>> {
         .collect()
 }
 
-fn operator<'a>(pair: Pair<'a, Rule>, uncounted: &mut usize) -> Operator<'a> {
+fn operator(pair: Pair<'_, Rule>) -> Operator<'_> {
     let mut op = Operator { negated: false, name: None, param: Vec::new(), raw: "", quoted: false };
     for p in pair.into_inner() {
         match p.as_rule() {
@@ -464,7 +342,6 @@ fn operator<'a>(pair: Pair<'a, Rule>, uncounted: &mut usize) -> Operator<'a> {
             Rule::op_raw_q | Rule::op_raw_s => {
                 op.quoted = p.as_rule() == Rule::op_raw_q;
                 op.raw = p.as_str();
-                *uncounted += line_feeds(op.raw);
                 for q in p.into_inner() {
                     match q.as_rule() {
                         Rule::op_name => op.name = Some(q.into_inner().next().expect("operator name").as_str()),
@@ -478,14 +355,8 @@ fn operator<'a>(pair: Pair<'a, Rule>, uncounted: &mut usize) -> Operator<'a> {
     op
 }
 
-/// The actions; line feeds inside them (in quoted texts) are not counted.
-fn actions<'a>(pair: Pair<'a, Rule>, from: usize, uncounted: &mut usize) -> Vec<Action<'a>> {
-    pair.into_inner()
-        .map(|p| {
-            *uncounted += line_feeds(p.as_str());
-            action(p, from)
-        })
-        .collect()
+fn actions(pair: Pair<'_, Rule>, from: usize) -> Vec<Action<'_>> {
+    pair.into_inner().map(|p| action(p, from)).collect()
 }
 
 fn action(pair: Pair<'_, Rule>, from: usize) -> Action<'_> {

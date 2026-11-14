@@ -284,3 +284,50 @@ fn chains_and_duplicates() {
     assert_eq!(n, -1);
     assert_eq!(err, "Rule id: 40 is duplicated\n");
 }
+
+/// The line numbers of the rules of `rules` (sorted by id).
+fn rule_lines(rules: &str) -> Vec<(i64, i32)> {
+    let mut d = Driver::new();
+    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
+    let mut out: Vec<(i64, i32)> = crate::modsecurity::Phases::ALL
+        .iter()
+        .flat_map(|&p| d.rules_set_phases.for_phase(p).iter())
+        .filter_map(|r| r.as_rule_with_actions().map(|r| (r.rule_id, r.line_number)))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Rules are on the line of their keyword. (The C++ scanner did not count
+/// the line feeds inside quoted texts, between a rule's variables and its
+/// operator, between `SecAction` and its actions, after
+/// `SecRuleUpdateTargetBy*`, a blank line after a rule without actions,
+/// and the blank lines after a commented out `SecRule`.)
+#[test]
+fn line_numbers() {
+    let rules = [
+        r#"SecRule ARGS "@rx a" \"#,                         // 1
+        r#"    "id:1,phase:2,pass,msg:'one \"#,              // 2
+        r#"    two'""#,                                      // 3
+        r#"SecRule ARGS \"#,                                 // 4
+        r#"    "@rx b" "id:2,phase:2,pass""#,                // 5
+        r#"SecAction \"#,                                    // 6
+        r#"    "id:3,phase:2,pass""#,                        // 7
+        r#"SecRuleUpdateTargetById 1 !ARGS:x"#,              // 8
+        "",                                                  // 9
+        "",                                                  // 10
+        r#"SecRule ARGS "@rx c" "id:6,phase:2,pass,chain""#, // 11
+        r#"    SecRule ARGS "@rx c2""#,                      // 12
+        "",                                                  // 13
+        r#"SecRule ARGS "@rx d"#,                            // 14
+        r#"e" "id:4,phase:2,pass""#,                         // 15
+        r#"#SecRule ARGS "@rx e" \"#,                        // 16
+        "",                                                  // 17
+        "",                                                  // 18
+        r#"#  "id:9""#,                                      // 19
+        r#"SecAction "id:5,phase:2,pass""#,                  // 20
+    ]
+    .join("\n");
+    assert_eq!(rule_lines(&rules), vec![(1, 1), (2, 4), (3, 6), (4, 14), (5, 20), (6, 11)]);
+}
