@@ -1,6 +1,7 @@
 //! Port of `headers/modsecurity/modsecurity.h` and `src/modsecurity.cc`.
 
 use std::any::Any;
+use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 
 use crate::collection::Collection;
@@ -93,7 +94,8 @@ pub struct ModSecurity {
     pub session_collection: Box<dyn Collection>,
     pub user_collection: Box<dyn Collection>,
     connector: String,
-    whoami: OnceLock<String>,
+    /// NUL terminated for `msc_who_am_i`.
+    whoami: OnceLock<CString>,
     log_cb: Option<ModSecLogCb>,
     log_properties: i32,
 }
@@ -138,6 +140,12 @@ impl ModSecurity {
 
     /// `whoAmI`: e.g. `ModSecurity v3.0.17 (Linux)`.
     pub fn who_am_i(&self) -> &str {
+        // ASCII: the conversion cannot fail.
+        self.who_am_i_c().to_str().unwrap_or_default()
+    }
+
+    /// [`who_am_i`](Self::who_am_i) as a C string.
+    pub(crate) fn who_am_i_c(&self) -> &CStr {
         self.whoami.get_or_init(|| {
             let platform = if cfg!(target_os = "aix") {
                 "AIX"
@@ -160,7 +168,7 @@ impl ModSecurity {
             } else {
                 "Unknown platform"
             };
-            format!("ModSecurity v{} ({})", MODSECURITY_VERSION, platform)
+            CString::new(format!("ModSecurity v{} ({})", MODSECURITY_VERSION, platform)).unwrap_or_default()
         })
     }
 

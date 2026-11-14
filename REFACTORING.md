@@ -372,3 +372,14 @@ code gives it to the object it belongs to.
   database is read into memory, as before; one per `SecGeoLookupDb` loaded,
   where C++ replaced (and leaked) a memory map. Memory-mapping it would need
   `maxminddb`'s `mmap` feature.
+- **`msc_who_am_i`** returned a string cached in a process-wide static (the
+  first instance's). Each `ModSecurity` now keeps its own C string, which
+  lives as long as the instance, as the C++ API documents. Same text.
+
+Kept as process state, on purpose:
+- The LMDB environment of the persistent collections: LMDB forbids opening
+  one environment twice in a process, and its path is fixed
+  (`./modsec-shared-collections`).
+- The `SharedFile` registry (weak entries, see above), the per-machine
+  `UNIQUE_ID`, and the per-thread PCRE2 match scratch and libinjection test
+  hooks, which are caches or test aids rather than configuration.

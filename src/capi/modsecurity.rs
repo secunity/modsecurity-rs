@@ -2,7 +2,6 @@
 
 use crate::modsecurity::{ModSecurity, ServerLogEntry};
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::Mutex;
 
 /// `ModSecLogCb` of the C API.
 pub type CModSecLogCb = Option<unsafe extern "C" fn(*mut c_void, *const c_void)>;
@@ -23,13 +22,11 @@ pub extern "C" fn msc_init() -> *mut ModSecurity {
 /// `msc`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_who_am_i(msc: *mut ModSecurity) -> *const c_char {
-    static CACHE: Mutex<Option<CString>> = Mutex::new(None);
-    let Some(m) = (unsafe { msc.as_ref() }) else {
-        return std::ptr::null();
-    };
-    let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    let s = c.get_or_insert_with(|| CString::new(m.who_am_i()).unwrap_or_default());
-    s.as_ptr()
+    // SAFETY: `msc` is null or comes from `msc_init` (caller contract).
+    match unsafe { msc.as_ref() } {
+        Some(m) => m.who_am_i_c().as_ptr(),
+        None => std::ptr::null(),
+    }
 }
 
 /// # Safety
@@ -69,5 +66,27 @@ pub unsafe extern "C" fn msc_set_log_cb(msc: *mut ModSecurity, cb: CModSecLogCb)
 pub unsafe extern "C" fn msc_cleanup(msc: *mut ModSecurity) {
     if !msc.is_null() {
         drop(unsafe { Box::from_raw(msc) });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn who_am_i_belongs_to_the_instance() {
+        let a = msc_init();
+        let b = msc_init();
+        // SAFETY: `a` and `b` come from `msc_init` and are freed once below.
+        unsafe {
+            let (sa, sb) = (msc_who_am_i(a), msc_who_am_i(b));
+            assert_ne!(sa, sb);
+            assert_eq!(msc_who_am_i(a), sa);
+            assert!(CStr::from_ptr(sa).to_str().unwrap().starts_with("ModSecurity v3."));
+            assert_eq!(CStr::from_ptr(sa), CStr::from_ptr(sb));
+            assert!(msc_who_am_i(std::ptr::null_mut()).is_null());
+            msc_cleanup(a);
+            msc_cleanup(b);
+        }
     }
 }

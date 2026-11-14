@@ -31,8 +31,10 @@ const LMDB_STDOUT_COUT: bool = false;
 /// The location of the shared collections file.
 const SHARED_COLLECTIONS_PATH: &CStr = c"./modsec-shared-collections";
 
-/// The MDBEnvProvider is a singleton: the LMDB environment and its single
-/// (unnamed) database, opened on first use and shared by every collection.
+/// The LMDB environment and its single (unnamed) database, opened on first
+/// use and shared by every collection of the process. It stays a process
+/// singleton (C++ `MDBEnvProvider`) because LMDB requires it: an environment
+/// must not be opened twice in one process, and the path is fixed.
 struct MdbEnvProvider {
     env: *mut MDB_env,
     dbi: MDB_dbi,
