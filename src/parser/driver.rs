@@ -36,6 +36,7 @@ pub struct Driver {
 
     /// `loc`: one location per scanner buffer (the configuration, then the
     /// included files and downloaded rules being scanned).
+    #[cfg_attr(feature = "pest-parser", allow(dead_code))]
     pub(crate) loc: Vec<Location>,
 
     /// `m_filenames`: the file names referenced by the locations.
@@ -74,10 +75,12 @@ impl Driver {
     }
 
     /// `*driver.loc.back()`
+    #[cfg_attr(feature = "pest-parser", allow(dead_code))]
     pub(crate) fn loc_back(&self) -> &Location {
         self.loc.last().expect("the driver always has a location while parsing")
     }
 
+    #[cfg_attr(feature = "pest-parser", allow(dead_code))]
     pub(crate) fn loc_back_mut(&mut self) -> &mut Location {
         self.loc.last_mut().expect("the driver always has a location while parsing")
     }
@@ -179,13 +182,42 @@ impl Driver {
     }
 
     fn parse_bytes(&mut self, f: &[u8], reference: &str) -> bool {
+        #[cfg(feature = "pest-parser")]
+        {
+            self.parse_bytes_pest(f, reference)
+        }
+        #[cfg(not(feature = "pest-parser"))]
+        {
+            self.parse_bytes_flex(f, reference)
+        }
+    }
+
+    fn reference_name(reference: &str) -> String {
+        if reference.is_empty() { "<<reference missing or not informed>>".to_string() } else { reference.to_string() }
+    }
+
+    /// Parses `f` with the `pest` grammar (`syntax.rs`, `build.rs`).
+    #[cfg(feature = "pest-parser")]
+    pub(crate) fn parse_bytes_pest(&mut self, f: &[u8], reference: &str) -> bool {
         self.last_rule = None;
-        let name = if reference.is_empty() {
-            "<<reference missing or not informed>>".to_string()
-        } else {
-            reference.to_string()
-        };
-        let idx = self.add_filename(name);
+        let idx = self.add_filename(Self::reference_name(reference));
+        crate::parser::build::load(self, f, idx).is_ok()
+    }
+
+    /// `parse_bytes_pest`, reading the statements of the top file one by
+    /// one (the way used after a syntax error), for the tests.
+    #[cfg(all(test, feature = "pest-parser"))]
+    pub(crate) fn parse_bytes_pest_incremental(&mut self, f: &[u8], reference: &str) -> bool {
+        self.last_rule = None;
+        let idx = self.add_filename(Self::reference_name(reference));
+        crate::parser::build::load_with(self, f, idx, false).is_ok()
+    }
+
+    /// Parses `f` with the port of the C++ flex scanner and bison parser.
+    #[cfg_attr(feature = "pest-parser", allow(dead_code))]
+    pub(crate) fn parse_bytes_flex(&mut self, f: &[u8], reference: &str) -> bool {
+        self.last_rule = None;
+        let idx = self.add_filename(Self::reference_name(reference));
         self.loc.push(Location::new(idx));
 
         if f.is_empty() {

@@ -242,3 +242,70 @@ existing output quirks. Two regression tests covering integer boundaries,
 leading zeros, empty ranges and binary content passed before and after the
 change. Full default tests (199 library tests), strict Clippy and formatting
 pass; the known upstream failures and ignored diagnostics are unchanged.
+
+## SecLang front end: a `pest` grammar (opt-in, `pest-parser`)
+
+The SecLang parser was a port of the C++ flex scanner and bison parser: a
+table-driven LALR(1) automaton (`seclang_parser.rs`, ~3,500 lines) and a
+flex engine with 35 start conditions (`seclang_scanner.rs`, ~2,000 lines).
+It is hard to change and carries scanner bugs (e.g. upstream PR 3753). The
+`pest-parser` feature adds a replacement, off by default:
+
+- `src/parser/seclang.pest`: the grammar of directives, variables, operators
+  and actions (~230 lines).
+- `src/parser/syntax.rs`: reads one statement at a time into a small syntax
+  tree that borrows the configuration text.
+- `src/parser/build.rs`: applies each statement (names, values, rules,
+  `Include`) through the same constructors as before. Directive values are
+  read as the C++ scanner reads them (first separator, `parserSanitizer`,
+  longest match between its rules), so properties and rules are the same.
+
+With the feature, `Driver::parse` uses the new front end; the old one stays
+available (`parse_bytes_flex`) for the equivalence tests until it is removed.
+
+Compatibility:
+
+- What a configuration builds is identical on real configurations, compared
+  by `src/parser/equivalence.rs` (rules of every phase, all properties,
+  default actions, exceptions): OWASP CRS 4.8 (each file and the whole set
+  through `Include`), `modsecurity.conf-recommended`, the rules of every
+  regression test, the downloaded regression rule file and the `.conf` files
+  of `test/test-cases/data` — 831 configurations
+  (`CRS_DIR=... cargo test --features pest-parser equivalence`; the mutation
+  report: `... mutations_report -- --ignored`, written to
+  `target/parser-mutations.txt`).
+- C++ quirks kept on purpose (each one is a candidate for its own fix):
+  rule line numbers as the C++ scanner counts them (it does not count line
+  feeds inside quoted texts, between a rule's variables and its operator,
+  between `SecAction` and its actions, or after `SecRuleUpdateTargetBy*`);
+  a `%` right after a macro is dropped; the escaped quote of PR 3753 keeps
+  its backslash; an action list may miss its closing quote at the end of a
+  line; a directive on the line right after a rule without actions is an
+  error; a whole collection followed by a plain regular expression
+  (`SecRule TX "foo"`) is an error; an unknown `@operator` is a regular
+  expression; `phase:'request'` builds an `allow` action.
+- Syntax error messages and their line/column differ (approved: not part of
+  the contract). The regression runner compares, with this feature, only
+  that a syntax error happens, and the other errors without their position.
+- The whole regression suite passes with the feature; the differential
+  test against C++ (60 requests, CRS PL4, 582,671 debug log lines, and the
+  pass without the debug log) is identical; the CRS suite through nginx
+  passes (3,876/3,876).
+- A file is read at once; after a syntax error it is read again statement
+  by statement, so the statements before the error are applied first (as
+  in C++). Both reads build the same on every real configuration (tested).
+- Performance (7 interleaved runs against the flex parser, CRS with
+  `modsecurity.conf-recommended`): transactions/s, p99 and RSS unchanged
+  (PL1 3,560 → 3,555 tx/s median, PL4 2,199 → 2,214; RSS −1 MB); rule load
+  time PL1 43.9 → 48.1 ms best (44.4 → 51.7 median), PL4 44.1 → 48.4 best
+  (44.3 → 49.2 median), i.e. about +4 to +7 ms per CRS load. The text
+  classes are written so that pest skips plain runs with `memchr`
+  (`(!"x" ~ ANY)*` inside atomic rules), pest is built without its stack
+  guard, and ASCII configurations are parsed without copying.
+- On 1,004,685 single-character mutations of 1,000 configuration lines,
+  the new parser never accepts what the old one rejects. 10,169 mutations
+  are rejected by the new parser only: junk at token boundaries that the
+  flex scanner silently skips (its default rule echoes unmatched bytes to
+  stdout) or misreads, e.g. `SecRule% ARGS`, `"@lt 3""`, `"@lt' 3"`,
+  `!"@rx a"`. 4 build differently: `setvar:tx.a=\%{x}`, where flex makes
+  `=\%{x}` part of the key.

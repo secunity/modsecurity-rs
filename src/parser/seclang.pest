@@ -1,0 +1,242 @@
+// SecLang, the ModSecurity configuration language.
+//
+// The configuration is parsed one `statement` at a time (see `syntax.rs`), so
+// that each directive is applied before the next one is read: `Include`
+// files are read in place and the first error stops the load.
+//
+// The grammar describes the shape of directives, variables, operators and
+// actions. What a name means (which directive, action or operator, and the
+// values it accepts) is decided when the directive is applied (`build.rs`).
+//
+// There is no implicit whitespace: every rule says where separators go.
+
+// ---------------------------------------------------------------------------
+// Separators
+// ---------------------------------------------------------------------------
+
+ws       = _{ " " | "\t" }
+nl       = _{ "\r"? ~ "\n" }
+// A backslash at the end of a line continues the directive on the next one.
+cont     = _{ ws* ~ "\\" ~ "\r"? ~ "\n" ~ ws* }
+// The space between the parts of a directive.
+gap      = _{ (cont | ws)+ }
+rest     = @{ (!"\n" ~ ANY)* }
+
+// ---------------------------------------------------------------------------
+// Statements
+// ---------------------------------------------------------------------------
+
+// A whole configuration (read at once when it has no syntax error).
+file      = { SOI ~ directive_statement* ~ filler ~ EOI }
+directive_statement = { filler ~ directive ~ trailer }
+statement = { filler ~ (end | directive ~ trailer) }
+end       =  { EOI }
+filler    = _{ (ws | nl | "\r" | cont | comment)* }
+trailer   = _{ (ws | "\r")* ~ (nl | EOI) }
+
+// A comment runs to the end of the line. A commented out `SecRule` or
+// `SecAction` whose line ends with a backslash also comments out the lines
+// it continues on: up to the first line that does not end with a backslash
+// (right before the line feed).
+comment = _{
+    "#" ~ ws* ~ "SecRule" ~ !"\\" ~ comment_head ~ comment_gap ~ comment_cont* ~ rest ~ nl?
+  | "#" ~ ws* ~ "SecAction" ~ !"\\" ~ comment_head ~ ("\r" | "\n") ~ comment_cont* ~ rest ~ nl?
+  | "#" ~ rest
+}
+// The first line, up to its final backslash.
+comment_head = _{ (!nl ~ !(ws* ~ "\\" ~ ws* ~ nl) ~ ANY)* ~ ws* ~ "\\" ~ ws* }
+// The line feeds after the first line of a commented out `SecRule`: the
+// C++ scanner reads them (blank lines included) as one line.
+comment_gap = { ("\r" | "\n")+ }
+comment_cont = _{ (!("\\"? ~ "\r"? ~ "\n") ~ ANY)* ~ "\\" ~ "\r"? ~ "\n" ~ ws* }
+
+directive = _{
+    sec_rule_script
+  | sec_rule
+  | sec_action
+  | sec_default_action
+  | update_target
+  | update_action
+  | setting
+}
+
+// ---------------------------------------------------------------------------
+// Rules
+// ---------------------------------------------------------------------------
+
+sec_rule           = { ^"SecRule" ~ &(gap) ~ gap ~ variables ~ gap ~ operator ~ rule_end }
+// After a rule without actions on its line, the next line holds its
+// actions, or is blank (the C++ scanner reads the next line as actions).
+rule_end           = _{
+    gap ~ actions
+  | &"\"" ~ actions
+  | ws* ~ "\r"? ~ "\n" ~ ws* ~ actions
+  | &(ws* ~ (EOI | "\r"? ~ "\n" ~ ws* ~ ("\r"? ~ "\n" | EOI)))
+}
+sec_rule_script    = { ^"SecRuleScript" ~ gap ~ value ~ (gap ~ actions)? }
+sec_action         = { ^"SecAction" ~ gap ~ actions }
+sec_default_action = { ^"SecDefaultAction" ~ gap ~ actions }
+
+// SecRuleUpdateTargetById 942100 "!ARGS:foo"
+update_target    = { ^"SecRuleUpdateTargetBy" ~ update_by ~ update_sep ~ update_value ~ gap ~ variables }
+update_by        = { ^"Id" ~ &ws | ^"Tag" ~ &ws | ^"Msg" ~ &ws }
+// SecRuleUpdateActionById 942100 "t:none,pass"
+update_action    = { ^"SecRuleUpdateActionById" ~ update_sep ~ update_value ~ gap ~ actions }
+// The C++ scanner keeps what follows the first space or tab in the value.
+update_sep       = { ws+ }
+update_value     = { quoted | update_word }
+update_word      = @{ (!(ws | nl | "\r" | "\"" | ",") ~ ANY)+ }
+
+// ---------------------------------------------------------------------------
+// Other directives: a keyword and the rest of its line, e.g. `SecRuleEngine
+// On`, `SecAuditLogParts ABIJDEFHZ`, `Include rules/*.conf`. Which values a
+// directive accepts is checked when it is applied.
+// ---------------------------------------------------------------------------
+
+setting      = ${ !(structured ~ !(ASCII_ALPHANUMERIC | "_")) ~ keyword ~ setting_rest }
+// The directives with a grammar of their own: when one of them does not
+// parse, the error is reported where it stops, not as an unknown setting.
+structured   = _{
+    ^"SecRuleUpdateTargetById" | ^"SecRuleUpdateTargetByTag" | ^"SecRuleUpdateTargetByMsg"
+  | ^"SecRuleUpdateActionById" | ^"SecRuleScript" | ^"SecRule" | ^"SecAction" | ^"SecDefaultAction"
+}
+keyword      = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+setting_rest = @{ (!"\n" ~ ANY)* }
+
+// A directive value: quoted, or a word.
+value       = { quoted | word }
+quoted      = ${ "\"" ~ quoted_text ~ "\"" }
+quoted_text = @{ (!("\"" | nl) ~ ANY)* }
+word        = @{ (!(ws | nl | "\"") ~ ANY)+ }
+
+// ---------------------------------------------------------------------------
+// Variables: ARGS|!ARGS:foo|&TX:/^a/|REQUEST_HEADERS:User-Agent
+// ---------------------------------------------------------------------------
+
+variables = { "\"" ~ var_list ~ "\"" | var_list }
+var_list  = _{ target ~ (("|" | ",") ~ target)* }
+target    = { modifier? ~ var_ref }
+modifier  = { "!" | "&" }
+var_ref   = ${ var_name ~ (("." | ":") ~ selector)? }
+var_name  = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+selector  = _{ regex_quoted | regex | key }
+// A key ends where the variable ends.
+key       = @{ (!("\"" | "|" | "," | ws | nl | "}") ~ ("\\\"" | ANY))+ }
+var_end   = _{ ws | nl | "|" | "," | "\"" | EOI }
+regex     = ${ "/" ~ regex_text ~ "/" ~ &var_end }
+regex_text = @{ (!("/" ~ var_end) ~ !(ws | "=" | "|" | "\"" | nl) ~ ANY)+ }
+regex_quoted = ${ "'/" ~ regex_text_q ~ "/'" }
+regex_text_q = @{ (!("/'") ~ !(ws | "=" | "\"" | nl) ~ ANY)+ }
+
+// ---------------------------------------------------------------------------
+// Operator: "@rx ^a", "!@streq x", "^a" (a regex), @detectSQLi
+// ---------------------------------------------------------------------------
+
+operator        = { "\"" ~ negated? ~ op_raw_q ~ "\"" | negated? ~ op_raw_s }
+// The operator text, also read as a parameter: an unknown `@name` is not an
+// operator but the start of a regular expression.
+op_raw_q        = ${ operator_quoted }
+op_raw_s        = ${ operator_bare }
+operator_quoted = _{ op_name ~ (" " ~ param_q | " "*) ~ &"\"" | param_q }
+operator_bare   = _{ op_name ~ (" " ~ param_s | &(ws | nl | EOI)) | !"\\" ~ param_s }
+negated         = { "!" }
+op_name         = ${ "@" ~ op_word ~ &(" " | "\"" | ws | nl | EOI) }
+op_word         = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+
+// Operator parameters, with %{VAR} macros.
+//
+// The texts follow the C++ scanner classes: what ends them, `%` (a macro,
+// or text with the character after it), and the escapes that keep a
+// character in the text (`\"`, `\'`, `\=`, `\%{`, `\ `: the backslash stays
+// in the text). Escapes other than quotes need a character before them.
+param_q = { (macro_ref | text_q)* }
+text_q = @{ (text_q_first | text_q_run) ~ (text_q_more | text_q_run)* }
+text_q_run = @{ !("\"" | "%" | "\\") ~ ANY ~ (!("\"" | "%" | "\\") ~ ANY)* }
+text_q_first = _{ "\\\\" | "\\" ~ ("\"") | "%" ~ !"{" ~ ANY | "\\" }
+text_q_more = _{ "\\\\" | "\\" ~ ("\"" | "%{") | "%" ~ !"{" ~ ANY | "\\" }
+param_s = { (macro_ref | text_s)+ }
+text_s = @{ (text_s_first | text_s_run) ~ (text_s_more | text_s_run)* }
+text_s_run = @{ !(" " | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!(" " | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+text_s_first = _{ "\\\\" | "\\" }
+text_s_more = _{ "\\\\" | "\\" ~ (" " | "%{") | "\\" }
+// A `%` right after a macro is dropped (`%{MATCHED_VAR}%` is the variable).
+macro_ref   = ${ "%{" ~ macro_var ~ "}" ~ ("%" ~ !"{")? }
+macro_var   = ${ var_name ~ (("." | ":") ~ (macro_regex | macro_key))? }
+macro_regex = ${ "/" ~ macro_regex_text ~ "/" ~ &"}" }
+macro_regex_text = @{ (!("/" ~ "}") ~ !(ws | "=" | "|" | "\"" | nl) ~ ANY)+ }
+macro_key = @{ (!("}" | "\"" | "|" | "," | ws | nl) ~ ("\\\"" | ANY))+ }
+// ---------------------------------------------------------------------------
+// Actions: "id:1,phase:2,t:lowercase,msg:'%{MATCHED_VAR}',setvar:tx.a=+1"
+// ---------------------------------------------------------------------------
+
+// No space before the closing quote; the closing quote may be missing at the
+// end of the line.
+actions     = { "\"" ~ (ws | cont)* ~ action_list? ~ cont* ~ ("\"" | ws* ~ &("\r"? ~ "\n" | EOI)) | action }
+action_list = _{ action ~ ((ws | cont)* ~ "," ~ (ws | cont)* ~ action)* }
+
+action = _{ setvar | initcol | macro_action | plain_action }
+
+// setvar:tx.score=+%{tx.critical}, setvar:'!tx.a', setvar:ip.x=1
+setvar        = ${ ^"setvar:" ~ ("'" ~ setvar_body_q ~ "'" | setvar_body) }
+setvar_body   = ${ unset ~ setvar_target | setvar_target ~ (setvar_op ~ rts_setvar)? }
+setvar_body_q = ${ unset ~ setvar_target_q | setvar_target_q ~ (setvar_op ~ rts_setvar_q)? }
+unset         = { "!" }
+setvar_op     = { "=+" | "=-" | "=" }
+setvar_target   = ${ var_name ~ ("." | ":") ~ setvar_key }
+setvar_target_q = ${ var_name ~ ("." | ":") ~ setvar_key_q }
+setvar_key      = { (macro_ref | key_text)+ }
+setvar_key_q    = { (macro_ref | key_text_q)+ }
+key_text = @{ (key_text_first | key_text_run) ~ (key_text_more | key_text_run)* }
+key_text_run = @{ !("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+key_text_first = _{ "\\\\" | "%" ~ !"{" ~ !("\n" | "\r\n") ~ ANY | "\\" }
+key_text_more = _{ "\\\\" | "\\" ~ ("=" | "%{") | "%" ~ !"{" ~ !("\n" | "\r\n") ~ ANY | "\\" }
+key_text_q = @{ (key_text_q_first | key_text_q_run) ~ (key_text_q_more | key_text_q_run)* }
+key_text_q_run = @{ !("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+key_text_q_first = _{ "\\\\" | "%" ~ !"{" ~ !("\n" | "\r\n") ~ ANY | "\\" }
+key_text_q_more = _{ "\\\\" | "\\" ~ ("=" | "%{") | "%" ~ !"{" ~ !("\n" | "\r\n") ~ ANY | "\\" }
+// initcol:ip=%{REMOTE_ADDR}
+initcol    = ${ initcol_kw ~ col_name ~ "=" ~ macro_value }
+initcol_kw = @{ ^"initcol:" }
+col_name   = @{ ASCII_ALPHA+ }
+
+// Actions whose value is a string with macros.
+macro_action = ${ macro_name ~ ":" ~ macro_value }
+macro_name   = @{
+    ^"msg" | ^"logdata" | ^"tag" | ^"setenv" | ^"setrsc" | ^"setsid" | ^"setuid" | ^"expirevar" | ^"redirect"
+}
+macro_value  = _{ "'" ~ rts_single ~ "'" | "\"" ~ rts_double ~ "\"" | !"'" ~ rts_unquoted }
+rts_single   = { (macro_ref | text_single)+ }
+rts_double   = { (macro_ref | text_double)+ }
+rts_unquoted = { (macro_ref | text_unquoted)+ }
+// The value of a `setvar`: up to a comma, a quote or `=`.
+rts_setvar   = { (macro_ref | text_setvar)+ }
+text_setvar = @{ (text_setvar_first | text_setvar_run) ~ (text_setvar_more | text_setvar_run)* }
+text_setvar_run = @{ !("=" | "," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+text_setvar_first = _{ "\\\\" | "%" ~ !"{" ~ !("\n" | "\r\n") ~ ANY | "\\" }
+text_setvar_more = _{ "\\\\" | "\\" ~ ("=" | "%{") | "%" ~ !"{" ~ !("\n" | "\r\n") ~ ANY | "\\" }
+// The value of a quoted `setvar`: up to the quote, a comma or `=`.
+rts_setvar_q = { (macro_ref | text_setvar_q)+ }
+text_setvar_q = @{ (text_setvar_q_first | text_setvar_q_run) ~ (text_setvar_q_more | text_setvar_q_run)* }
+text_setvar_q_run = @{ !("'" | "\"" | "," | "=" | "%" | "\\") ~ ANY ~ (!("'" | "\"" | "," | "=" | "%" | "\\") ~ ANY)* }
+text_setvar_q_first = _{ "\\\\" | "\\" ~ ("'") | "%" ~ !"{" ~ ANY | "\\" }
+text_setvar_q_more = _{ "\\\\" | "\\" ~ ("=" | "%{" | "'") | "%" ~ !"{" ~ ANY | "\\" }
+// `%` is text only when it is not a macro; between single quotes it is not
+// allowed at all (as in the C++ scanner). Elsewhere it takes the next
+// character with it.
+text_single = @{ (text_single_first | text_single_run) ~ (text_single_more | text_single_run)* }
+text_single_run = @{ !("'" | "%" | "\\") ~ ANY ~ (!("'" | "%" | "\\") ~ ANY)* }
+text_single_first = _{ "\\\\" | "\\" ~ ("'") | "\\" }
+text_single_more = _{ "\\\\" | "\\" ~ ("'" | "%{") | "\\" }
+text_double = @{ (text_double_first | text_double_run) ~ (text_double_more | text_double_run)* }
+text_double_run = @{ !("\"" | "%" | "\\") ~ ANY ~ (!("\"" | "%" | "\\") ~ ANY)* }
+text_double_first = _{ "\\\\" | "\\" ~ ("\"") | "%" ~ !"{" ~ ANY | "\\" }
+text_double_more = _{ "\\\\" | "\\" ~ ("\"" | "%{") | "%" ~ !"{" ~ ANY | "\\" }
+text_unquoted = @{ (text_unquoted_first | text_unquoted_run) ~ (text_unquoted_more | text_unquoted_run)* }
+text_unquoted_run = @{ !("," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+text_unquoted_first = _{ "\\\\" | "\\" ~ ("\"") | "%" ~ !"{" ~ !("\n" | "\r\n") ~ ANY | "\\" }
+text_unquoted_more = _{ "\\\\" | "\\" ~ ("\"" | "%{") | "%" ~ !"{" ~ !("\n" | "\r\n") ~ ANY | "\\" }
+// Every other action: a name with an optional plain value. The whole text
+// (`name:value`, quotes included) is what the action is built from.
+plain_action = ${ action_name ~ (":" ~ plain_value)? }
+action_name  = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+plain_value  = @{ "'" ~ (!("'" | "\n" | "\r\n") ~ ANY)* ~ "'" | (!("," | "\"" | "\n" | "\r\n" | " " | "\t") ~ ANY)* }

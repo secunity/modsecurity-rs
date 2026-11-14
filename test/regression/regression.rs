@@ -157,6 +157,29 @@ fn contains(s: &str, pattern: &str) -> bool {
     Regex::new(pattern).search(s.as_bytes()) > 0
 }
 
+/// Whether the parser error `s` is the expected one.
+///
+/// With the `pest-parser` front end, the wording and position of syntax
+/// errors differ from the C++ parser (they are not part of the
+/// compatibility contract): a syntax error only has to be one, and the
+/// other errors are compared without their position.
+fn parser_error_matches(s: &str, expected: &str) -> bool {
+    if !cfg!(feature = "pest-parser") {
+        return contains(s, expected);
+    }
+    const SYNTAX: [&str; 4] = ["Expecting an action", "Expecting a variable", "Invalid input", "syntax error"];
+    if SYNTAX.iter().any(|e| expected.contains(e)) {
+        return true;
+    }
+    // `Rules error. File: X. Line: L. Column: C. ` (or the end of it).
+    let message = |e: &str| {
+        let e = e.split_once("Column: ").map_or(e, |(_, rest)| rest);
+        let e = e.trim_start_matches(|c: char| c.is_ascii_digit());
+        e.strip_prefix(". ").unwrap_or(e).to_string()
+    };
+    contains(&message(s), &message(expected))
+}
+
 fn clear_audit_log(filename: &str) {
     if !filename.is_empty() && std::fs::write(filename, b"").is_err() {
         println!("\nFailed to clear previous contents of audit log: {}", filename);
@@ -242,7 +265,7 @@ fn run_one(t: &RegressionTest, resources: &[&str]) -> Outcome {
             out.reason = format!("{}parse failed.{}\n{}\n", KRED, RESET, s);
             return out;
         }
-        if contains(&s, &t.parser_error) {
+        if parser_error_matches(&s, &t.parser_error) {
             out.passed = true;
         } else {
             out.reason = format!(

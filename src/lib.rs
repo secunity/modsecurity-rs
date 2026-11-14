@@ -48,6 +48,11 @@ macro_rules! ms_dbg_opt {
     }};
 }
 
+// The code `pest_derive` generates without pest's `std` feature (see
+// `Cargo.toml`) names `::alloc`.
+#[cfg(feature = "pest-parser")]
+extern crate alloc;
+
 pub mod actions;
 pub(crate) mod anchored_set_variable;
 pub(crate) mod anchored_set_variable_translation_proxy;

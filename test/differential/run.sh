@@ -11,7 +11,8 @@
 # Usage: CPP_TREE=/path/to/built/ModSecurity CRS_DIR=/path/to/coreruleset \
 #        test/differential/run.sh
 # (CRS_DIR must contain crs-setup.conf and rules/; the Rust release cdylib is
-# built if needed.)
+# built if needed.) FEATURES: extra cargo features for the Rust build (e.g.
+# pest-parser).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -23,7 +24,7 @@ mkdir -p "$root/target"
 work=$(mktemp -d "$root/target/differential.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-(cd "$root" && cargo build --release --lib)
+(cd "$root" && cargo build --release --lib ${FEATURES:+--features "$FEATURES"})
 # The cdylib's SONAME is libmodsecurity.so.3 (as with the C++ build).
 ln -sf libmodsecurity.so "$root/target/release/libmodsecurity.so.3"
 gcc -O1 -I"$CPP_TREE/headers" -o "$work/harness_cpp" "$here/harness.c" \

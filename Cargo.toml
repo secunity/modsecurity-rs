@@ -65,6 +65,10 @@ pm-aho-corasick = ["dep:aho-corasick"]
 # networks. Changes detection results compared with C++ (see
 # src/utils/msc_tree.rs).
 ipmatch-prefix-trie = ["dep:prefix-trie", "dep:ipnet"]
+# The SecLang parser built from the pest grammar `src/parser/seclang.pest`
+# instead of the port of the flex/bison one (in progress: both are built,
+# and the pest one is used, when enabled).
+pest-parser = ["dep:pest", "dep:pest_derive"]
 
 [dependencies]
 # PCRE2 is used through its C API (as the C++ code does) so that match
@@ -95,6 +99,11 @@ ipnet = { version = "2", optional = true }
 rustix = { version = "1.1.6", features = ["system", "fs", "process", "time"] }
 dns-lookup = "4.0.2"
 nix = { version = "0.31.3", default-features = false, features = ["net"] }
+# The SecLang grammar (`pest-parser` feature). Without `std`: pest's
+# stack-overflow guard probes the stack on every rule call (~10% of the
+# parse), and this grammar has no recursive rules.
+pest = { version = "2.9", optional = true, default-features = false, features = ["memchr"] }
+pest_derive = { version = "2.9", optional = true, default-features = false }
 
 [profile.dev]
 opt-level = 1

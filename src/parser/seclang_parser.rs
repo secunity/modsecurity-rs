@@ -115,14 +115,14 @@ pub(crate) enum ParsedAction {
 type ActResult = Result<ParsedAction, String>;
 
 impl ParsedAction {
-    fn into_action(self) -> Box<dyn Action> {
+    pub(crate) fn into_action(self) -> Box<dyn Action> {
         match self {
             ParsedAction::Action(a) => a.into_action(),
             ParsedAction::Transformation(t) => Box::new(t),
         }
     }
 
-    fn as_action(&self) -> &dyn Action {
+    pub(crate) fn as_action(&self) -> &dyn Action {
         match self {
             ParsedAction::Action(a) => a.as_action(),
             ParsedAction::Transformation(t) => t,
@@ -131,15 +131,15 @@ impl ParsedAction {
 }
 
 /// An action without a slot of its own in the rule.
-fn other(a: impl Action + 'static) -> ParsedAction {
+pub(crate) fn other(a: impl Action + 'static) -> ParsedAction {
     ParsedAction::Action(RuleAction::Other(Box::new(a)))
 }
 
 /// The actions and the transformations of a rule.
-type RuleActions = (Vec<RuleAction>, Vec<Transformation>);
+pub(crate) type RuleActions = (Vec<RuleAction>, Vec<Transformation>);
 
 /// Splits the actions of a rule into actions and transformations.
-fn split_actions(list: Vec<ParsedAction>) -> RuleActions {
+pub(crate) fn split_actions(list: Vec<ParsedAction>) -> RuleActions {
     let mut a = Vec::new();
     let mut t = Vec::new();
     for i in list {
@@ -273,7 +273,7 @@ fn is_c_space(c: u8) -> bool {
 
 /// `strtol(s, NULL, base)` truncated to `int`, as the C++ code passes the
 /// result to `int` parameters.
-fn strtol_int(s: &str, base: u32) -> i32 {
+pub(crate) fn strtol_int(s: &str, base: u32) -> i32 {
     let b = s.as_bytes();
     let mut i = 0;
     while i < b.len() && is_c_space(b[i]) {
@@ -308,7 +308,7 @@ fn strtol_int(s: &str, base: u32) -> i32 {
 
 /// `std::stod`: parses the longest floating point prefix (after leading
 /// white space); fails when nothing can be converted or on overflow.
-fn stod(s: &str) -> Option<f64> {
+pub(crate) fn stod(s: &str) -> Option<f64> {
     let b = s.as_bytes();
     let mut i = 0;
     while i < b.len() && is_c_space(b[i]) {
@@ -3198,6 +3198,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "pest-parser", ignore = "the wording of the flex parser's errors")]
     fn default_action_error_location() {
         let (n, err) =
             load("SecRuleEngine On\nSecDefaultAction \"phase:1,log,block,status:404\"\n", "action-block.json");
@@ -3209,6 +3210,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "pest-parser", ignore = "the wording of the flex parser's errors")]
     fn scanner_errors() {
         let (n, err) = load("SecRule ARGS \"@rx x\" \"id:1,phase:2,pass,t:trim,ctl:ruleRemoveById,123\"\n", "t");
         assert_eq!(n, -1);
@@ -3224,6 +3226,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "pest-parser", ignore = "the wording of the flex parser's errors")]
     fn syntax_errors() {
         let (n, err) = load("SecRuleEngine\n", "t");
         assert_eq!(n, -1);
