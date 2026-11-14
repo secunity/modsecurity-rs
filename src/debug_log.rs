@@ -6,7 +6,9 @@
 //! Writing happens through `&self` because one `RulesSet` (and therefore
 //! one debug log) is shared by concurrent transactions.
 
-use crate::utils::shared_files::SharedFiles;
+use std::sync::Arc;
+
+use crate::utils::shared_files::SharedFile;
 
 pub trait DebugLog: std::any::Any + Send + Sync {
     /// Logs `msg` at `level`.
@@ -32,12 +34,14 @@ pub trait DebugLog: std::any::Any + Send + Sync {
     }
 }
 
-/// The stock debug log: appends to a file shared through [`SharedFiles`]
-/// (C++ `DebugLogWriter`).
+/// The stock debug log: appends to a [`SharedFile`] (C++
+/// `DebugLogWriter`).
 #[derive(Debug, Default)]
 pub struct DefaultDebugLog {
     level: Option<i32>,
     file_name: Option<String>,
+    /// The open file (`None` when `file_name` could not be opened).
+    file: Option<Arc<SharedFile>>,
 }
 
 impl DefaultDebugLog {
@@ -47,13 +51,9 @@ impl DefaultDebugLog {
 
     fn append(&self, line: String) {
         // Write errors are ignored, as in C++.
-        let _ = SharedFiles::instance().write(self.file_name.as_deref().unwrap_or(""), line.as_bytes());
-    }
-}
-
-impl Drop for DefaultDebugLog {
-    fn drop(&mut self) {
-        SharedFiles::instance().close(self.file_name.as_deref().unwrap_or(""));
+        if let Some(file) = &self.file {
+            let _ = file.write(line.as_bytes());
+        }
     }
 }
 
@@ -83,11 +83,12 @@ impl DebugLog for DefaultDebugLog {
     }
 
     fn set_file(&mut self, file_name: &str) -> Result<(), String> {
-        if let Some(old) = &self.file_name {
-            SharedFiles::instance().close(old);
-        }
+        // The previous file is released before the new one is opened (it is
+        // reopened if it is the same and nothing else holds it).
+        self.file = None;
         self.file_name = Some(file_name.to_string());
-        SharedFiles::instance().open(file_name)
+        self.file = Some(SharedFile::open(file_name)?);
+        Ok(())
     }
 }
 

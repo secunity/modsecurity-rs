@@ -73,10 +73,10 @@ pub struct AuditLog {
     /// `SecAuditLogRelevantStatus` (`None` when not set or empty).
     relevant: Option<RelevantStatus>,
 
-    /// The C++ writer keeps a back pointer (`m_audit`) to its `AuditLog`;
-    /// here the owner passes itself to every writer call instead. With the
-    /// writer, the `path1` and `path2` it opened.
-    writer: Option<(Writer, String, String)>,
+    /// The writer, with the files it opened. (The C++ writer keeps a back
+    /// pointer, `m_audit`, to its `AuditLog`; here the owner passes itself
+    /// to every write instead.)
+    writer: Option<Writer>,
     /// Rules have at least one `ctl:auditEngine` action On or RelevantOnly.
     ctl_audit_engine_active: bool,
 }
@@ -84,12 +84,6 @@ pub struct AuditLog {
 impl Default for AuditLog {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Drop for AuditLog {
-    fn drop(&mut self) {
-        self.discard_writer();
     }
 }
 
@@ -241,33 +235,20 @@ impl AuditLog {
         self.audit_type = Some(audit_type);
     }
 
-    /// `delete m_writer`: the writer releases the files it opened.
-    fn discard_writer(&mut self) {
-        if let Some((w, path1, path2)) = self.writer.take() {
-            w.close(&path1, &path2);
-        }
-    }
-
     /// `init`: (re)creates the writer for the configured type. The `Err`
     /// carries the C++ `std::string *error`.
     pub fn init(&mut self) -> Result<(), String> {
         if matches!(self.status, None | Some(AuditLogStatus::Off)) && !self.ctl_audit_engine_active {
-            self.discard_writer();
+            self.writer = None;
             return Ok(());
         }
 
-        let tmp_writer = Writer::for_type(self.audit_type);
-
-        if let Err(e) = tmp_writer.init(self) {
-            // `delete tmp_writer`: its destructor releases what it opened.
-            tmp_writer.close(&self.path1, &self.path2);
-            return Err(e);
-        }
-
         // The new writer opens its files before the previous one releases
-        // its own, so a file both use stays open.
-        self.discard_writer();
-        self.writer = Some((tmp_writer, self.path1.clone(), self.path2.clone()));
+        // its own (with the assignment), so a file both use stays open. If
+        // it fails, what it opened is released and the previous writer is
+        // kept, as in C++.
+        let writer = Writer::open(self)?;
+        self.writer = Some(writer);
         Ok(())
     }
 
@@ -310,7 +291,7 @@ impl AuditLog {
             None => {
                 crate::ms_dbg_a!(t, 1, "Internal error, audit log writer is null");
             }
-            Some((w, _, _)) => {
+            Some(w) => {
                 if let Err(error) = w.write(self, t, parts) {
                     crate::ms_dbg_a!(t, 1, "Cannot save the audit log: {}", error);
                     return false;
@@ -713,7 +694,7 @@ mod tests {
             a.set_type(AuditLogType::Parallel);
         });
         let t = Transaction::with_id(&ms, &rules, "x", None);
-        let w = Writer::Parallel;
+        let w = Writer::Parallel { log: None, log2: None };
         assert_eq!(w.write(&rules.properties.audit_log, &t, ABFHZ).unwrap_err(), "Log path is not valid.");
         // Not able to create the storage directory.
         let mut a = AuditLog::new();
@@ -738,15 +719,15 @@ mod tests {
         a.init().unwrap();
         a.set_file_path1(&second);
         a.init().unwrap();
-        let files = crate::utils::shared_files::SharedFiles::instance();
-        assert!(files.write(&second, b"x").is_ok());
-        assert!(files.write(&first, b"x").is_err());
+        use crate::utils::shared_files::SharedFile;
+        assert!(SharedFile::is_open(&second));
+        assert!(!SharedFile::is_open(&first));
         drop(a);
-        assert!(files.write(&second, b"x").is_err());
+        assert!(!SharedFile::is_open(&second));
     }
 
     #[test]
-    fn writer_reference_counting() {
+    fn writer_keeps_its_files_open() {
         let d = temp_dir("refcount");
         let log = p(&d, "a.log");
         let mut a = AuditLog::new();
@@ -755,9 +736,9 @@ mod tests {
         a.init().unwrap();
         // Re-initialising keeps the file open (new writer opened first).
         a.init().unwrap();
-        let files = crate::utils::shared_files::SharedFiles::instance();
-        assert!(files.write(&log, b"x").is_ok());
+        use crate::utils::shared_files::SharedFile;
+        assert!(SharedFile::is_open(&log));
         drop(a);
-        assert!(files.write(&log, b"x").is_err());
+        assert!(!SharedFile::is_open(&log));
     }
 }

@@ -4,58 +4,50 @@ pub mod https;
 pub mod parallel;
 pub mod serial;
 
+use std::sync::Arc;
+
 use crate::audit_log::{AuditLog, AuditLogType};
 use crate::transaction::Transaction;
+use crate::utils::shared_files::SharedFile;
 
 pub const SERIAL_AUDIT_LOG_BOUNDARY_LENGTH: usize = 8;
 
-/// An audit log writer (serial file, parallel directory tree or HTTPS).
-///
-/// The C++ writers hold a back pointer to the `AuditLog` that owns them
-/// (`m_audit`); the owner passes itself as `audit` to every call instead.
-/// They have no state of their own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An audit log writer (serial file, parallel directory tree or HTTPS),
+/// with the files it opened (closed when it is dropped).
+#[derive(Debug)]
 pub enum Writer {
-    Serial,
-    Parallel,
+    /// Every entry goes to `SecAuditLog`.
+    Serial {
+        log: Arc<SharedFile>,
+    },
+    /// Every entry goes to its own file; the index lines to `SecAuditLog2`,
+    /// or else `SecAuditLog` (both are opened when set, as in C++).
+    Parallel {
+        log: Option<Arc<SharedFile>>,
+        log2: Option<Arc<SharedFile>>,
+    },
     Https,
 }
 
 impl Writer {
-    /// The writer of `SecAuditLogType` (serial when not set).
-    pub fn for_type(audit_type: Option<AuditLogType>) -> Self {
-        match audit_type {
-            Some(AuditLogType::Parallel) => Writer::Parallel,
-            Some(AuditLogType::Https) => Writer::Https,
-            Some(AuditLogType::Serial) | None => Writer::Serial,
-        }
-    }
-
-    /// `init`: opens what the writer needs.
-    pub fn init(self, audit: &AuditLog) -> Result<(), String> {
-        match self {
-            Writer::Serial => serial::init(audit),
-            Writer::Parallel => parallel::init(audit),
-            Writer::Https => Ok(()),
+    /// `init`: the writer of `SecAuditLogType` (serial when not set), with
+    /// what it needs open.
+    pub fn open(audit: &AuditLog) -> Result<Self, String> {
+        match audit.audit_type {
+            Some(AuditLogType::Parallel) => parallel::open(audit),
+            Some(AuditLogType::Https) => Ok(Writer::Https),
+            Some(AuditLogType::Serial) | None => serial::open(audit),
         }
     }
 
     /// `write`: saves the `parts` of `transaction`.
-    pub fn write(self, audit: &AuditLog, transaction: &Transaction<'_>, parts: i32) -> Result<(), String> {
+    pub fn write(&self, audit: &AuditLog, transaction: &Transaction<'_>, parts: i32) -> Result<(), String> {
         match self {
-            Writer::Serial => serial::write(audit, transaction, parts),
-            Writer::Parallel => parallel::write(audit, transaction, parts),
+            Writer::Serial { log } => serial::write(log, audit, transaction, parts),
+            Writer::Parallel { log, log2 } => {
+                parallel::write(log2.as_ref().or(log.as_ref()), audit, transaction, parts)
+            }
             Writer::Https => https::write(audit, transaction, parts),
-        }
-    }
-
-    /// The C++ destructor: releases the shared files `init` opened (the
-    /// owner's `path1` and `path2` at that time).
-    pub fn close(self, path1: &str, path2: &str) {
-        match self {
-            Writer::Serial => serial::close(path1),
-            Writer::Parallel => parallel::close(path1, path2),
-            Writer::Https => {}
         }
     }
 }

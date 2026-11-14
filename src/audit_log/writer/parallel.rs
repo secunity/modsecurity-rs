@@ -10,10 +10,12 @@ use std::os::unix::fs::OpenOptionsExt;
 
 use md5::{Digest, Md5};
 
-use crate::audit_log::writer::generate_boundary;
+use std::sync::Arc;
+
+use crate::audit_log::writer::{Writer, generate_boundary};
 use crate::audit_log::{AuditLog, AuditLogFormat};
 use crate::transaction::Transaction;
-use crate::utils::shared_files::SharedFiles;
+use crate::utils::shared_files::SharedFile;
 use crate::utils::string::string_to_hex;
 use crate::utils::system::{create_dir, strerror, strftime_local};
 
@@ -54,32 +56,35 @@ pub fn log_file_path(t: i64, part: i32) -> String {
     name
 }
 
-/// Writes the index line of an entry into the shared file `path`.
-fn write_index(transaction: &Transaction<'_>, path: &str, file_name: &str, log: &[u8]) -> Result<(), String> {
+/// Writes the index line of an entry into `index`.
+fn write_index(transaction: &Transaction<'_>, index: &SharedFile, file_name: &str, log: &[u8]) -> Result<(), String> {
     // `Utils::Md5::hexdigest` (cannot fail here).
     let log_md5 = string_to_hex(&Md5::digest(log));
 
     let msg = transaction.to_old_audit_log_format_index(file_name, log.len() as f64, &log_md5);
-    SharedFiles::instance().write(path, &msg)
+    index.write(&msg)
 }
 
-pub(super) fn init(audit: &AuditLog) -> Result<(), String> {
-    if !audit.path1.is_empty() {
-        SharedFiles::instance().open(&audit.path1)?;
-    }
-
-    if !audit.path2.is_empty() {
-        SharedFiles::instance().open(&audit.path2)?;
-    }
+pub(super) fn open(audit: &AuditLog) -> Result<Writer, String> {
+    let open = |path: &str| (!path.is_empty()).then(|| SharedFile::open(path)).transpose();
+    let log = open(&audit.path1)?;
+    let log2 = open(&audit.path2)?;
 
     if !audit.storage_dir.is_empty() {
         create_dir(&audit.storage_dir, audit.directory_permission() as u32)?;
     }
 
-    Ok(())
+    Ok(Writer::Parallel { log, log2 })
 }
 
-pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32) -> Result<(), String> {
+/// Saves the entry, and its index line into `index` (`SecAuditLog2`, or
+/// else `SecAuditLog`).
+pub(super) fn write(
+    index: Option<&Arc<SharedFile>>,
+    audit: &AuditLog,
+    transaction: &Transaction<'_>,
+    parts: i32,
+) -> Result<(), String> {
     let ts = transaction.time_stamp;
     let mut file_name = log_file_path(
         ts,
@@ -121,22 +126,9 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
     let _ = file.write_all(&log);
     drop(file);
 
-    let has_path1 = !audit.path1.is_empty();
-    let has_path2 = !audit.path2.is_empty();
-    if has_path1 && has_path2 {
-        write_index(transaction, &audit.path2, &file_name, &log)?;
-    }
-    if has_path1 && !has_path2 {
-        write_index(transaction, &audit.path1, &file_name, &log)?;
-    }
-    if !has_path1 && has_path2 {
-        write_index(transaction, &audit.path2, &file_name, &log)?;
+    if let Some(index) = index {
+        write_index(transaction, index, &file_name, &log)?;
     }
 
     Ok(())
-}
-
-pub(super) fn close(path1: &str, path2: &str) {
-    SharedFiles::instance().close(path1);
-    SharedFiles::instance().close(path2);
 }
