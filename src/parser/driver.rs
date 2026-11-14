@@ -1,20 +1,24 @@
-//! Port of `src/parser/driver.cc`, `src/parser/driver.h`.
-//!
-//! The driver runs the SecLang scanner and parser over a configuration and
-//! collects what they produce: the configuration properties (C++ `Driver`
-//! derives from `RulesSetProperties`) and the rules of every phase.
+//! The driver loads SecLang configurations (`build.rs`) and collects what
+//! they produce: the configuration properties and the rules of every phase.
 
 use std::sync::Arc;
 
 use crate::modsecurity::Phases;
-use crate::parser::seclang_parser::{Location, SeclangParser};
-use crate::parser::seclang_scanner::Scanner;
 use crate::rule::Rule;
 use crate::rule_marker::RuleMarker;
 use crate::rule_with_actions::RuleWithActions;
 use crate::rules_set_phases::RulesSetPhases;
 use crate::rules_set_properties::RulesSetProperties;
 use crate::utils::system::is_file;
+
+/// A position in a configuration file, for error messages: the file (an
+/// index in the driver's file names), and 1-based line and column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub file: usize,
+    pub line: usize,
+    pub column: usize,
+}
 
 /// Where the last `SecRule` lives (C++ `m_lastRule`, a raw pointer): the
 /// rule at `index` of phase `phase`, followed `depth` times through its
@@ -33,11 +37,6 @@ pub struct Driver {
     /// `file`: name given to the location of the parser's initial state
     /// (never set by the C++ code, hence empty).
     pub file: String,
-
-    /// `loc`: one location per scanner buffer (the configuration, then the
-    /// included files and downloaded rules being scanned).
-    #[cfg_attr(feature = "pest-parser", allow(dead_code))]
-    pub(crate) loc: Vec<Location>,
 
     /// `m_filenames`: the file names referenced by the locations.
     filenames: Vec<String>,
@@ -58,7 +57,6 @@ impl Driver {
             properties: RulesSetProperties::new(),
             rules_set_phases: RulesSetPhases::default(),
             file: String::new(),
-            loc: Vec::new(),
             filenames: Vec::new(),
             last_rule: None,
         }
@@ -72,17 +70,6 @@ impl Driver {
 
     pub(crate) fn filename(&self, index: usize) -> &str {
         self.filenames.get(index).map(String::as_str).unwrap_or("")
-    }
-
-    /// `*driver.loc.back()`
-    #[cfg_attr(feature = "pest-parser", allow(dead_code))]
-    pub(crate) fn loc_back(&self) -> &Location {
-        self.loc.last().expect("the driver always has a location while parsing")
-    }
-
-    #[cfg_attr(feature = "pest-parser", allow(dead_code))]
-    pub(crate) fn loc_back_mut(&mut self) -> &mut Location {
-        self.loc.last_mut().expect("the driver always has a location while parsing")
     }
 
     /// `addSecMarker`
@@ -181,62 +168,23 @@ impl Driver {
         self.parse_bytes(f.as_bytes(), reference)
     }
 
-    fn parse_bytes(&mut self, f: &[u8], reference: &str) -> bool {
-        #[cfg(feature = "pest-parser")]
-        {
-            self.parse_bytes_pest(f, reference)
-        }
-        #[cfg(not(feature = "pest-parser"))]
-        {
-            self.parse_bytes_flex(f, reference)
-        }
+    pub(crate) fn parse_bytes(&mut self, f: &[u8], reference: &str) -> bool {
+        self.last_rule = None;
+        let idx = self.add_filename(Self::reference_name(reference));
+        crate::parser::build::load(self, f, idx).is_ok()
     }
 
     fn reference_name(reference: &str) -> String {
         if reference.is_empty() { "<<reference missing or not informed>>".to_string() } else { reference.to_string() }
     }
 
-    /// Parses `f` with the `pest` grammar (`syntax.rs`, `build.rs`).
-    #[cfg(feature = "pest-parser")]
-    pub(crate) fn parse_bytes_pest(&mut self, f: &[u8], reference: &str) -> bool {
-        self.last_rule = None;
-        let idx = self.add_filename(Self::reference_name(reference));
-        crate::parser::build::load(self, f, idx).is_ok()
-    }
-
-    /// `parse_bytes_pest`, reading the statements of the top file one by
-    /// one (the way used after a syntax error), for the tests.
-    #[cfg(all(test, feature = "pest-parser"))]
-    pub(crate) fn parse_bytes_pest_incremental(&mut self, f: &[u8], reference: &str) -> bool {
+    /// `parse_bytes`, reading the statements of the top file one by one (the
+    /// way used after a syntax error), for the tests.
+    #[cfg(test)]
+    pub(crate) fn parse_bytes_incremental(&mut self, f: &[u8], reference: &str) -> bool {
         self.last_rule = None;
         let idx = self.add_filename(Self::reference_name(reference));
         crate::parser::build::load_with(self, f, idx, false).is_ok()
-    }
-
-    /// Parses `f` with the port of the C++ flex scanner and bison parser.
-    #[cfg_attr(feature = "pest-parser", allow(dead_code))]
-    pub(crate) fn parse_bytes_flex(&mut self, f: &[u8], reference: &str) -> bool {
-        self.last_rule = None;
-        let idx = self.add_filename(Self::reference_name(reference));
-        self.loc.push(Location::new(idx));
-
-        if f.is_empty() {
-            return true;
-        }
-
-        // scan_begin
-        let mut scanner = Scanner::new(f);
-        let res = SeclangParser::parse(self, &mut scanner);
-        // scan_end: the scanner (and its buffers) goes away here.
-        drop(scanner);
-
-        // need to check for rules marked as chained but without
-        // a chained rule.
-        //
-        // (Disabled in C++: "Last rule is marked as chained but there
-        // isn't a subsequent rule.")
-
-        res == 0
     }
 
     /// `parseFile`
@@ -251,14 +199,10 @@ impl Driver {
 
     /// `error(location, message, context)`: the first error also writes the
     /// position header.
-    pub(crate) fn error(&mut self, l: &Location, m: &str, c: &str) {
+    pub(crate) fn error(&mut self, at: Position, m: &str, c: &str) {
         if self.properties.parser_error.is_empty() {
-            let header = format!(
-                "Rules error. File: {}. Line: {}. Column: {}. ",
-                self.filename(l.end.filename),
-                l.end.line,
-                l.end.column - 1
-            );
+            let header =
+                format!("Rules error. File: {}. Line: {}. Column: {}. ", self.filename(at.file), at.line, at.column);
             self.properties.parser_error.push_str(&header);
         }
         if !m.is_empty() {

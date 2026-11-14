@@ -268,6 +268,112 @@ pub fn stoi(s: &[u8]) -> Option<i64> {
     if i < s.len() && s[i].is_ascii_digit() { Some(atoi(s)) } else { None }
 }
 
+fn is_c_space(c: u8) -> bool {
+    matches!(c, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
+}
+
+/// `strtol(s, NULL, base)` truncated to `int`, as the C++ code passes the
+/// result to `int` parameters.
+pub fn strtol_int(s: &str, base: u32) -> i32 {
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() && is_c_space(b[i]) {
+        i += 1;
+    }
+    let mut neg = false;
+    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+        neg = b[i] == b'-';
+        i += 1;
+    }
+    let mut v: i64 = 0;
+    let mut overflow = false;
+    while i < b.len() {
+        let Some(d) = (b[i] as char).to_digit(base) else {
+            break;
+        };
+        match v.checked_mul(i64::from(base)).and_then(|x| x.checked_add(i64::from(d))) {
+            Some(n) => v = n,
+            None => overflow = true,
+        }
+        i += 1;
+    }
+    let v = if overflow {
+        if neg { i64::MIN } else { i64::MAX }
+    } else if neg {
+        -v
+    } else {
+        v
+    };
+    v as i32
+}
+
+/// `std::stod`: parses the longest floating point prefix (after leading
+/// white space); fails when nothing can be converted or on overflow.
+pub fn stod(s: &str) -> Option<f64> {
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() && is_c_space(b[i]) {
+        i += 1;
+    }
+    let start = i;
+    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+        i += 1;
+    }
+    let rest = &s[i..];
+    let lower = rest.to_ascii_lowercase();
+    if lower.starts_with("inf") || lower.starts_with("nan") {
+        let n = if lower.starts_with("infinity") { 8 } else { 3 };
+        return s[start..i + n].parse::<f64>().ok();
+    }
+    if lower.starts_with("0x") {
+        // Hexadecimal floating point numbers: only the integer part is
+        // supported here.
+        let digits: String = rest[2..].chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+        if digits.is_empty() {
+            return Some(0.0);
+        }
+        let v = u128::from_str_radix(&digits, 16).map(|v| v as f64).unwrap_or(f64::INFINITY);
+        let neg = b.get(start) == Some(&b'-');
+        return if v.is_infinite() { None } else { Some(if neg { -v } else { v }) };
+    }
+    let mut digits = 0;
+    let mut nonzero = false;
+    while i < b.len() && b[i].is_ascii_digit() {
+        nonzero |= b[i] != b'0';
+        digits += 1;
+        i += 1;
+    }
+    if i < b.len() && b[i] == b'.' {
+        i += 1;
+        while i < b.len() && b[i].is_ascii_digit() {
+            nonzero |= b[i] != b'0';
+            digits += 1;
+            i += 1;
+        }
+    }
+    if digits == 0 {
+        return None;
+    }
+    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
+        let mut j = i + 1;
+        if j < b.len() && (b[j] == b'+' || b[j] == b'-') {
+            j += 1;
+        }
+        if j < b.len() && b[j].is_ascii_digit() {
+            while j < b.len() && b[j].is_ascii_digit() {
+                j += 1;
+            }
+            i = j;
+        }
+    }
+    let v: f64 = s[start..i].parse().ok()?;
+    if v.is_infinite() || (v == 0.0 && nonzero) {
+        // ERANGE: std::out_of_range
+        return None;
+    }
+    Some(v)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -243,13 +243,13 @@ leading zeros, empty ranges and binary content passed before and after the
 change. Full default tests (199 library tests), strict Clippy and formatting
 pass; the known upstream failures and ignored diagnostics are unchanged.
 
-## SecLang front end: a `pest` grammar (opt-in, `pest-parser`)
+## SecLang front end: a `pest` grammar
 
 The SecLang parser was a port of the C++ flex scanner and bison parser: a
 table-driven LALR(1) automaton (`seclang_parser.rs`, ~3,500 lines) and a
 flex engine with 35 start conditions (`seclang_scanner.rs`, ~2,000 lines).
-It is hard to change and carries scanner bugs (e.g. upstream PR 3753). The
-`pest-parser` feature adds a replacement, off by default:
+It was hard to change and carried scanner bugs (e.g. upstream PR 3753). It
+is replaced by:
 
 - `src/parser/seclang.pest`: the grammar of directives, variables, operators
   and actions (~230 lines).
@@ -260,8 +260,11 @@ It is hard to change and carries scanner bugs (e.g. upstream PR 3753). The
   read as the C++ scanner reads them (first separator, `parserSanitizer`,
   longest match between its rules), so properties and rules are the same.
 
-With the feature, `Driver::parse` uses the new front end; the old one stays
-available (`parse_bytes_flex`) for the equivalence tests until it is removed.
+The replacement was first added behind a `pest-parser` feature (commit
+4a83876), compared with the old parser as below, and then made the only
+parser (the owner accepted the load-time cost). The comparison harness was
+removed with the old parser; `src/parser/tests.rs` keeps the configuration
+corpus and checks that both ways of reading a file build the same.
 
 Compatibility:
 
@@ -270,11 +273,9 @@ Compatibility:
   default actions, exceptions): OWASP CRS 4.8 (each file and the whole set
   through `Include`), `modsecurity.conf-recommended`, the rules of every
   regression test, the downloaded regression rule file and the `.conf` files
-  of `test/test-cases/data` — 831 configurations
-  (`CRS_DIR=... cargo test --features pest-parser equivalence`; the mutation
-  report: `... mutations_report -- --ignored`, written to
-  `target/parser-mutations.txt`).
-- C++ quirks kept on purpose (each one is a candidate for its own fix):
+  of `test/test-cases/data` — 831 configurations.
+- C++ quirks kept by this change (fixed afterwards, each in its own commit;
+  see `MIGRATION.md`):
   rule line numbers as the C++ scanner counts them (it does not count line
   feeds inside quoted texts, between a rule's variables and its operator,
   between `SecAction` and its actions, or after `SecRuleUpdateTargetBy*`);
@@ -285,9 +286,9 @@ Compatibility:
   (`SecRule TX "foo"`) is an error; an unknown `@operator` is a regular
   expression; `phase:'request'` builds an `allow` action.
 - Syntax error messages and their line/column differ (approved: not part of
-  the contract). The regression runner compares, with this feature, only
-  that a syntax error happens, and the other errors without their position.
-- The whole regression suite passes with the feature; the differential
+  the contract). The regression runner compares only that a syntax error
+  happens, and the other errors without their position.
+- The whole regression suite passes; the differential
   test against C++ (60 requests, CRS PL4, 582,671 debug log lines, and the
   pass without the debug log) is identical; the CRS suite through nginx
   passes (3,876/3,876).
@@ -306,6 +307,6 @@ Compatibility:
   the new parser never accepts what the old one rejects. 10,169 mutations
   are rejected by the new parser only: junk at token boundaries that the
   flex scanner silently skips (its default rule echoes unmatched bytes to
-  stdout) or misreads, e.g. `SecRule% ARGS`, `"@lt 3""`, `"@lt' 3"`,
+  stdout; that output is gone) or misreads, e.g. `SecRule% ARGS`, `"@lt 3""`, `"@lt' 3"`,
   `!"@rx a"`. 4 build differently: `setvar:tx.a=\%{x}`, where flex makes
   `=\%{x}` part of the key.

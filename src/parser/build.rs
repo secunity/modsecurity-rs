@@ -20,7 +20,7 @@ use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
 use crate::modsecurity::Phases;
 use crate::operators::operator::{RuleOperator, instantiate_with_param};
 use crate::parser::driver::Driver;
-use crate::parser::seclang_parser::{Location, ParsedAction, Position, other, split_actions, stod, strtol_int};
+use crate::parser::driver::Position;
 use crate::parser::syntax::{
     self, ActionKind, Directive, Modifier, Piece, Selector, SetVarOp, Target, UpdateBy, VarRef,
 };
@@ -33,7 +33,7 @@ use crate::rules_set_properties::{
 };
 use crate::run_time_string::RunTimeString;
 use crate::utils::https_client::HttpsClient;
-use crate::utils::string::{atoi, parser_sanitizer, remove_brackets_if_needed, ssplit};
+use crate::utils::string::{atoi, parser_sanitizer, remove_brackets_if_needed, ssplit, stod, strtol_int};
 use crate::utils::system::{expand_env, find_resource};
 use crate::variables::variable::Variable;
 use crate::variables::{VariableSelector, new_variable};
@@ -73,7 +73,7 @@ pub(crate) fn load_with(driver: &mut Driver, data: &[u8], file: usize, whole_fil
             Ok(r) => r,
             Err(e) => {
                 let at = lines.location(file, e.offset);
-                driver.error(&at, &e.message, "");
+                driver.error(at, &e.message, "");
                 return Err(Failed);
             }
         };
@@ -117,12 +117,10 @@ impl Lines<'_> {
         self.line
     }
 
-    fn location(&mut self, file: usize, offset: usize) -> Location {
+    fn location(&mut self, file: usize, offset: usize) -> Position {
         let line = self.line_of(offset);
         let column = offset - self.text[..offset].rfind('\n').map_or(0, |i| i + 1) + 1;
-        // `Driver::error` prints the column before the end of the location.
-        let p = Position { filename: file, line: line as i32, column: column as i32 + 1 };
-        Location { begin: p, end: p }
+        Position { file, line, column }
     }
 }
 
@@ -148,7 +146,7 @@ struct Builder<'d, 't> {
 impl Builder<'_, '_> {
     fn fail<T>(&mut self, msg: &str) -> Res<T> {
         let at = self.lines.location(self.file, self.at);
-        self.driver.error(&at, msg, "");
+        self.driver.error(at, msg, "");
         Err(Failed)
     }
 
@@ -1018,7 +1016,7 @@ impl Builder<'_, '_> {
         let lookup = find_resource(file, &current);
         let Some(fi) = lookup.path else {
             let at = self.lines.location(self.file, self.at);
-            self.driver.error(&at, "", &format!("{}: Not able to open file. {}", file, lookup.looked_at));
+            self.driver.error(at, "", &format!("{}: Not able to open file. {}", file, lookup.looked_at));
             return Err(Failed);
         };
         for s in expand_env(&fi, 0) {
@@ -1026,7 +1024,7 @@ impl Builder<'_, '_> {
             let f = lookup.path.unwrap_or_default();
             let Ok(data) = std::fs::read(&f) else {
                 let at = self.lines.location(self.file, self.at);
-                self.driver.error(&at, "", &format!("{}: Not able to open file. {}", s, lookup.looked_at));
+                self.driver.error(at, "", &format!("{}: Not able to open file. {}", s, lookup.looked_at));
                 return Err(Failed);
             };
             let idx = self.driver.add_filename(f);
@@ -1058,6 +1056,56 @@ impl Builder<'_, '_> {
         let idx = self.driver.add_filename(url.to_string());
         load(self.driver, content, idx)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Actions as built
+// ---------------------------------------------------------------------------
+
+/// An action of a rule as built by the grammar: the C++ code keeps both
+/// kinds in a `std::vector<std::unique_ptr<actions::Action>>` and sorts the
+/// transformations out with `dynamic_cast` when the rule is built.
+#[derive(Debug)]
+pub(crate) enum ParsedAction {
+    Action(RuleAction),
+    Transformation(Transformation),
+}
+
+impl ParsedAction {
+    pub(crate) fn into_action(self) -> Box<dyn crate::actions::action::Action> {
+        match self {
+            ParsedAction::Action(a) => a.into_action(),
+            ParsedAction::Transformation(t) => Box::new(t),
+        }
+    }
+
+    pub(crate) fn as_action(&self) -> &dyn crate::actions::action::Action {
+        match self {
+            ParsedAction::Action(a) => a.as_action(),
+            ParsedAction::Transformation(t) => t,
+        }
+    }
+}
+
+/// An action without a slot of its own in the rule.
+pub(crate) fn other(a: impl crate::actions::action::Action + 'static) -> ParsedAction {
+    ParsedAction::Action(RuleAction::Other(Box::new(a)))
+}
+
+/// The actions and the transformations of a rule.
+pub(crate) type RuleActions = (Vec<RuleAction>, Vec<Transformation>);
+
+/// Splits the actions of a rule into actions and transformations.
+pub(crate) fn split_actions(list: Vec<ParsedAction>) -> RuleActions {
+    let mut a = Vec::new();
+    let mut t = Vec::new();
+    for i in list {
+        match i {
+            ParsedAction::Action(x) => a.push(x),
+            ParsedAction::Transformation(x) => t.push(x),
+        }
+    }
+    (a, t)
 }
 
 // ---------------------------------------------------------------------------

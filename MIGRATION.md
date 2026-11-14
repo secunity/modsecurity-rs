@@ -188,6 +188,16 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   glibc's across 1970–2040 in several zones.
 - `xmlCleanupParser()` is not called when a `ModSecurity` instance is
   dropped (unsafe with several instances).
+- **SecLang parser** (`src/parser/seclang.pest`, see `REFACTORING.md`):
+  every real configuration builds the same rules as with the C++
+  flex/bison parser, with these differences:
+  - Syntax error messages and their line/column differ.
+  - Junk that the flex scanner skipped (printing the bytes to stdout) or
+    misread is rejected, e.g. `SecRule% ARGS ...`, `"@lt 3""`,
+    `"@lt' 3"`, `!"@rx a"`, `SecRule ARGS "@rx" (a)"`; nothing is printed
+    to stdout.
+  - `setvar:tx.a=\%{x}` sets `TX:a` to `\%{x}` instead of making
+    `a=\%{x}` the key.
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, LMDB

@@ -1,0 +1,286 @@
+//! Tests of the SecLang front end.
+//!
+//! What a configuration builds is compared through the `Debug` text of the
+//! rules of every phase and the configuration properties. The configurations
+//! are OWASP CRS (`CRS_DIR`, skipped when not set),
+//! `modsecurity.conf-recommended`, the rules of every regression test and
+//! the `.conf` files of `test/test-cases/data`. (Commit 4a83876 compared
+//! them, and a million mutations, with the port of the C++ flex/bison
+//! parser, removed since.)
+
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
+
+use crate::parser::driver::Driver;
+
+/// What a parser built from a configuration.
+#[derive(Debug, PartialEq, Eq)]
+enum Outcome {
+    Accepted(String),
+    Rejected(String),
+}
+
+fn dump(d: &Driver) -> String {
+    let p = &d.properties;
+    let mut s = String::new();
+    let _ = writeln!(s, "rules: {:#?}", d.rules_set_phases);
+    let _ = writeln!(s, "audit_log: {:#?}", p.audit_log);
+    let _ = writeln!(
+        s,
+        "limits: {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+        p.request_body_limit_action,
+        p.response_body_limit_action,
+        p.arguments_limit,
+        p.request_body_json_depth_limit,
+        p.request_body_limit,
+        p.request_body_no_files_limit,
+        p.response_body_limit,
+        p.pcre_match_limit,
+        p.upload_file_limit,
+        p.upload_file_mode
+    );
+    let _ = writeln!(
+        s,
+        "switches: {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+        p.sec_request_body_access,
+        p.sec_response_body_access,
+        p.sec_xml_external_entity,
+        p.sec_xml_parse_xml_into_args,
+        p.tmp_save_uploaded_files,
+        p.upload_keep_files,
+        p.remote_rules_action_on_failed,
+        p.sec_rule_engine,
+        p.debug_log.level()
+    );
+    let _ = writeln!(s, "debug_log file: {:?}", p.debug_log.file());
+    let _ = writeln!(s, "exceptions: {:#?}", p.exceptions);
+    let _ = writeln!(s, "components: {:?}", p.components);
+    let _ = writeln!(s, "mime: {:?}", p.response_body_type_to_be_inspected);
+    let _ = writeln!(
+        s,
+        "strings: {:?} {:?} {:?} {:?} {:?}",
+        p.httpbl_key, p.upload_directory, p.upload_tmp_directory, p.sec_argument_separator, p.sec_web_app_id
+    );
+    let _ = writeln!(s, "default actions: {:#?}", p.default_actions);
+    let _ = writeln!(
+        s,
+        "unicode map: {} {} {}",
+        p.unicode_map_table.set,
+        p.unicode_map_table.unicode_code_page,
+        p.unicode_map_table.unicode_map_table.is_some()
+    );
+    s
+}
+
+/// Removes what differs between two loads of the same rules: addresses
+/// (`0x...`) printed by native handles.
+fn without_addresses(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find("0x") {
+        out.push_str(&rest[..i + 2]);
+        rest = rest[i + 2..].trim_start_matches(|c: char| c.is_ascii_hexdigit());
+    }
+    out.push_str(rest);
+    out
+}
+
+fn run(data: &[u8], reference: &str, whole_file: bool) -> Outcome {
+    let mut d = Driver::new();
+    let ok = if whole_file { d.parse_bytes(data, reference) } else { d.parse_bytes_incremental(data, reference) };
+    if ok {
+        Outcome::Accepted(without_addresses(&dump(&d)))
+    } else {
+        Outcome::Rejected(d.properties.parser_error.clone())
+    }
+}
+
+/// A configuration to compare: its text and the reference it is loaded
+/// with (relative paths in it are resolved from there).
+struct Config {
+    name: String,
+    data: Vec<u8>,
+    reference: String,
+}
+
+fn repo() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// `CRS_DIR`: an OWASP CRS checkout (its configurations are compared when
+/// it is set).
+fn crs_dir() -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var_os("CRS_DIR")?);
+    dir.join("rules").is_dir().then_some(dir)
+}
+
+fn sorted_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|r| {
+            r.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|e| e == ext)).collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+/// The rules of each test of the regression JSON files.
+fn regression_configs() -> Vec<Config> {
+    use crate::utils::json::JsonValue;
+    let dir = repo().join("test/test-cases/regression");
+    let mut out = Vec::new();
+    for f in sorted_files(&dir, "json") {
+        let Ok(bytes) = std::fs::read(&f) else { continue };
+        let Ok(v) = crate::utils::json::parse_tree(&bytes) else {
+            continue;
+        };
+        let tests = match v {
+            JsonValue::Array(a) => a,
+            other => vec![other],
+        };
+        for (i, t) in tests.iter().enumerate() {
+            let Some(JsonValue::Array(lines)) = t.get("rules") else { continue };
+            let mut rules = Vec::new();
+            for l in lines {
+                rules.extend_from_slice(l.as_str().unwrap_or_default());
+                rules.push(b'\n');
+            }
+            // The regression runner loads them from `test/` with the file
+            // name as reference.
+            let reference = repo().join("test").join(f.file_name().unwrap()).to_string_lossy().into_owned();
+            out.push(Config {
+                name: format!("{}#{}", f.file_name().unwrap().to_string_lossy(), i),
+                data: rules,
+                reference,
+            });
+        }
+    }
+    out
+}
+
+fn real_configs() -> Vec<Config> {
+    let mut out = Vec::new();
+    let file = |p: &Path| Config {
+        name: p.to_string_lossy().into_owned(),
+        data: std::fs::read(p).unwrap_or_default(),
+        reference: p.to_string_lossy().into_owned(),
+    };
+    out.push(file(&repo().join("modsecurity.conf-recommended")));
+    // What the `SecRemoteRules` regression tests download.
+    out.push(file(&repo().join("test/modsecurity-regression-rules.txt")));
+    if let Some(crs) = crs_dir() {
+        let setup = crs.join("crs-setup.conf.example");
+        if setup.is_file() {
+            out.push(file(&setup));
+        }
+        for f in sorted_files(&crs.join("rules"), "conf") {
+            out.push(file(&f));
+        }
+        // The whole CRS, as it is deployed.
+        let text = format!(
+            "Include {}\nInclude {}/rules/*.conf\n",
+            crs.join("crs-setup.conf.example").display(),
+            crs.display()
+        );
+        out.push(Config { name: "CRS (Include)".into(), data: text.into_bytes(), reference: "crs".into() });
+    }
+    for f in sorted_files(&repo().join("test/test-cases/data"), "conf") {
+        out.push(file(&f));
+    }
+    out.extend(regression_configs());
+    // No downloads: `SecRemoteRules` and the operators that read a list
+    // from a URL (`@ipMatchFromFile https://...`) are left out.
+    out.retain(|c| !downloads(&c.data));
+    out
+}
+
+/// Whether loading `data` downloads something.
+fn downloads(data: &[u8]) -> bool {
+    let lower = data.to_ascii_lowercase();
+    let has = |s: &[u8]| lower.windows(s.len()).any(|w| w == s);
+    has(b"secremoterules") || has(b"fromfile http") || has(b"@ipmatchf http") || has(b"@pmf http")
+}
+
+fn first_difference(a: &str, b: &str) -> String {
+    for (i, (x, y)) in a.lines().zip(b.lines()).enumerate() {
+        if x != y {
+            return format!("line {}:\n  {}\n  {}", i + 1, x.trim(), y.trim());
+        }
+    }
+    format!("length {} vs {}", a.lines().count(), b.lines().count())
+}
+
+fn describe(a: &Outcome, b: &Outcome) -> String {
+    match (a, b) {
+        (Outcome::Accepted(x), Outcome::Accepted(y)) => format!("built differently: {}", first_difference(x, y)),
+        (Outcome::Accepted(_), Outcome::Rejected(e)) | (Outcome::Rejected(e), Outcome::Accepted(_)) => {
+            format!("accepted one way only: {}", e.trim())
+        }
+        (Outcome::Rejected(x), Outcome::Rejected(y)) => format!("different errors: {} / {}", x.trim(), y.trim()),
+    }
+}
+
+/// The two ways the new front end reads a file (at once, or statement by
+/// statement after a syntax error) build the same.
+#[test]
+fn whole_file_and_statement_reads_are_identical() {
+    let mut failures = Vec::new();
+    let configs = real_configs();
+    for c in &configs {
+        let mut d = Driver::new();
+        let ok = d.parse_bytes_incremental(&c.data, &c.reference);
+        let incremental = if ok {
+            Outcome::Accepted(without_addresses(&dump(&d)))
+        } else {
+            Outcome::Rejected(d.properties.parser_error.clone())
+        };
+        let whole = run(&c.data, &c.reference, true);
+        if incremental != whole {
+            failures.push(format!("{}: {}", c.name, describe(&incremental, &whole)));
+        }
+    }
+    assert!(failures.is_empty(), "{} of {} differ:\n{}", failures.len(), configs.len(), failures.join("\n\n"));
+}
+
+/// The C API view of a load: the number of rules or -1, and the errors.
+fn load(rules: &str, reference: &str) -> (i32, String) {
+    let mut r = crate::rules_set::RulesSet::new();
+    let n = r.load_with_ref(rules, reference).map_or(-1, |n| n as i32);
+    (n, r.parser_error())
+}
+
+#[test]
+fn c_conversions() {
+    use crate::utils::string::{stod, strtol_int};
+    assert_eq!(strtol_int(" 0750", 8), 0o750);
+    assert_eq!(strtol_int("\"0750\"", 8), 0);
+    assert_eq!(stod("12"), Some(12.0));
+    assert_eq!(stod(" 1.5e3x"), Some(1500.0));
+    assert_eq!(stod("abc"), None);
+    assert_eq!(stod("1e999"), None);
+}
+
+#[test]
+fn empty_and_comments() {
+    assert_eq!(load("", "x").0, 0);
+    assert_eq!(load("# just a comment\n", "x").0, 0);
+    assert_eq!(load("\n\n", "x").0, 0);
+}
+
+#[test]
+fn chains_and_duplicates() {
+    use crate::modsecurity::Phases;
+    let rules = "SecRule ARGS \"@rx a\" \"id:1,phase:2,chain,deny\"\nSecRule ARGS \"@rx b\" \"chain\"\nSecRule ARGS \"@rx c\" \"t:none\"\nSecRule ARGS \"@rx d\" \"id:2,phase:2,pass\"\n";
+    let mut d = Driver::new();
+    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
+    let phase = d.rules_set_phases.for_phase(Phases::RequestBody);
+    assert_eq!(phase.len(), 2);
+    let r = phase[0].as_rule_with_actions().unwrap();
+    let child = r.chained_rule_child.as_ref().unwrap();
+    assert!(child.chained_rule_parent);
+    assert!(child.chained_rule_child.is_some());
+    assert_eq!(child.phase(), Some(Phases::RequestBody));
+    let (n, err) = load("SecRule ARGS \"@rx a\" \"id:40\"\nSecRule ARGS \"@rx a\" \"id:40\"\n", "t");
+    assert_eq!(n, -1);
+    assert_eq!(err, "Rule id: 40 is duplicated\n");
+}
