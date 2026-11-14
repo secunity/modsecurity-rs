@@ -217,6 +217,13 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   "foo"` (a regular expression after `TX`, `IP`, `SESSION`, ...) failed to
   load, and in a macro `%{tx}x` was `TX:x` (the rest of the string as the
   key).
+- **`%` that does not start a macro** is a plain character everywhere. The
+  C++ scanner rejected it between single quotes and in an unquoted operator
+  (`msg:'100%'` failed to load), and elsewhere took the next character with
+  it, so `"@contains 5%" "id:1"` did not end at the operator's quote and
+  `tag:a%,pass` swallowed the comma. `%{VAR}%` is still the variable (a `%`
+  right after a macro belongs to it, as in C++; the regression tests use
+  that form).
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, LMDB

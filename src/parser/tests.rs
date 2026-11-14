@@ -358,3 +358,22 @@ fn whole_collection_followed_by_text() {
     assert!(!dump.contains("dynamic"), "{dump}");
     assert_eq!(dump.matches("full_name: \"TX\"").count(), 2, "{dump}");
 }
+
+/// A `%` that does not start a macro is text: C++ rejected it between
+/// single quotes and in an unquoted operator, and elsewhere took the next
+/// character with it (`"@contains 5%"` did not end at its quote).
+#[test]
+fn percent_is_text() {
+    let mut d = Driver::new();
+    let rules = "SecRule ARGS \"@contains 5%\" \"id:1,phase:2,pass,msg:'100%',tag:a%,setvar:tx.a=5%\"\n\
+                 SecRule ARGS @contains b% \"id:2,phase:2,pass,msg:'%{tx.a}%'\"\n";
+    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
+    // Literals are printed as byte lists.
+    let dump = format!("{:?}", d.rules_set_phases);
+    let bytes = |s: &str| format!("{:?}", s.as_bytes().to_vec());
+    for literal in ["5%", "100%", "a%", "b%"] {
+        assert!(dump.contains(&bytes(literal)), "{literal} in {dump}");
+    }
+    // `%{VAR}%` stays the variable.
+    assert!(!dump.contains(&bytes("%")), "{dump}");
+}
