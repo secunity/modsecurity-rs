@@ -463,6 +463,7 @@ the owner):
 | `modsecurity-native` | `crates/modsecurity-native` | the C libraries behind safe APIs: PCRE2, libxml2, LMDB, ssdeep, Lua, libc calls |
 | `modsecurity-transformations` | `crates/modsecurity-transformations` | the `t:` transformations as pure functions, and the decoders shared with the engine |
 | `modsecurity-seclang` | `crates/modsecurity-seclang` | the SecLang grammar (`seclang.pest`) and its syntax tree |
+| `modsecurity-compat` | `crates/modsecurity-compat` | what reproduces C++ behavior: ACMP, the crit-bit IP tree, the libstdc++-ordered multimap, the yajl-compatible JSON |
 | `modsecurity-capi` | `crates/modsecurity-capi` | the `msc_*` C API: `libmodsecurity.so.3` and `libmodsecurity.a` |
 
 The engine stays at the root, so the test suites, the test data and the
@@ -532,3 +533,18 @@ kind) builds the context from the transaction.
 `parser::build` still decides which variables, operators and actions exist,
 so the crate also suits tools that only read configurations. The engine
 refers to it as `parser::syntax`.
+
+### The compat crate, and whole-program optimization
+
+`modsecurity-compat` holds the four modules that exist to reproduce what
+the C++ library does, quirks included, and that depend on nothing else:
+`acmp` (`@pm`), `msc_tree` (`@ipMatch` and its address parsing),
+`unordered_multimap` (the iteration order of `ARGS` & co.) and `json`
+(yajl's reader and writer). The engine re-exports them under `utils::`.
+The `ipmatch-prefix-trie` feature forwards to the crate, which now owns the
+`prefix-trie` and `ipnet` dependencies.
+
+The release profile is now `lto = "fat"` with `codegen-units = 1`. Thin
+LTO left this split about 1% slower (an A/A control put the noise floor at
+0.5%); whole-program optimization makes crate boundaries free and is about
+2% faster than before any split. A release build takes about 30 s.

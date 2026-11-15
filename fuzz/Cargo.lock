@@ -457,6 +457,7 @@ dependencies = [
  "maxminddb",
  "md-5",
  "mlua",
+ "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-seclang",
  "modsecurity-transformations",
@@ -465,6 +466,10 @@ dependencies = [
  "rustix",
  "sha1",
 ]
+
+[[package]]
+name = "modsecurity-compat"
+version = "3.0.17"
 
 [[package]]
 name = "modsecurity-fuzz"

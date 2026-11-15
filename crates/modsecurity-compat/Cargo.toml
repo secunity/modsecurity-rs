@@ -1,0 +1,22 @@
+[package]
+name = "modsecurity-compat"
+version = "3.0.17"
+edition = "2024"
+description = "Data structures and parsers that reproduce the observable behavior of the C++ libmodsecurity: ACMP, the crit-bit IP tree, libstdc++'s unordered_multimap order, yajl's JSON"
+license = "Apache-2.0"
+publish = false
+
+[features]
+# Store the networks of an IP list in prefix tries instead of the C++
+# crit-bit tree (the engine's feature of the same name).
+ipmatch-prefix-trie = ["dep:prefix-trie", "dep:ipnet"]
+
+[dependencies]
+prefix-trie = { version = "0.10", default-features = false, features = ["ipnet"], optional = true }
+ipnet = { version = "2", optional = true }
+
+[dev-dependencies]
+# inet_pton, which the address parsers are compared with.
+modsecurity-native = { path = "../modsecurity-native", features = ["testing"] }
+libc = "0.2"
+rand = "0.9"

@@ -738,18 +738,17 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
- "ipnet",
  "jiff",
  "libc",
  "libinjection",
  "maxminddb",
  "md-5",
  "mlua",
+ "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-seclang",
  "modsecurity-transformations",
  "nix",
- "prefix-trie",
  "rand 0.9.5",
  "rustix",
  "sha1",
@@ -772,6 +771,17 @@ version = "3.0.17"
 dependencies = [
  "libc",
  "modsecurity",
+]
+
+[[package]]
+name = "modsecurity-compat"
+version = "3.0.17"
+dependencies = [
+ "ipnet",
+ "libc",
+ "modsecurity-native",
+ "prefix-trie",
+ "rand 0.9.5",
 ]
 
 [[package]]

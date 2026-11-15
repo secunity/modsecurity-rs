@@ -6,6 +6,7 @@ members = [
     "crates/modsecurity-native",
     "crates/modsecurity-transformations",
     "crates/modsecurity-seclang",
+    "crates/modsecurity-compat",
     "crates/modsecurity-capi",
     "connectors/nginx",
     "examples/axum",
@@ -21,6 +22,7 @@ default-members = [
     "crates/modsecurity-native",
     "crates/modsecurity-transformations",
     "crates/modsecurity-seclang",
+    "crates/modsecurity-compat",
     "crates/modsecurity-capi",
 ]
 
@@ -80,7 +82,7 @@ pm-aho-corasick = ["dep:aho-corasick"]
 # the C++ crit-bit tree, fixing its missed matches when a list holds several
 # networks. Changes detection results compared with C++ (see
 # src/utils/msc_tree.rs).
-ipmatch-prefix-trie = ["dep:prefix-trie", "dep:ipnet"]
+ipmatch-prefix-trie = ["modsecurity-compat/ipmatch-prefix-trie"]
 # Not a C++ option (off by default): feed `http` crate requests and
 # responses into a transaction (`Transaction::process_request_head`, ...)
 # and turn an intervention into an `http::Response`.
@@ -115,11 +117,12 @@ rand = "0.9"
 # directories, TIME* variables); replaces libc localtime_r/strftime.
 jiff = "0.2"
 aho-corasick = { version = "1", optional = true }
-prefix-trie = { version = "0.10", default-features = false, features = ["ipnet"], optional = true }
-ipnet = { version = "2", optional = true }
 rustix = { version = "1.1.6", features = ["system", "fs", "process", "time"] }
 dns-lookup = "4.0.2"
 nix = { version = "0.31.3", default-features = false, features = ["net"] }
+# ACMP, the crit-bit IP tree, the libstdc++-ordered multimap and the
+# yajl-compatible JSON: what reproduces C++ behavior.
+modsecurity-compat = { path = "crates/modsecurity-compat" }
 # The SecLang grammar and syntax tree.
 modsecurity-seclang = { path = "crates/modsecurity-seclang" }
 # The `http` and `tower` features: the request/response types of the Rust
@@ -138,10 +141,13 @@ tower-service = { version = "0.3.3", optional = true }
 modsecurity-native = { path = "crates/modsecurity-native", features = ["testing"] }
 
 [profile.release]
-# The engine is several crates: without LTO, calls between them (the
-# transformations, the decoders) are not inlined, which measured 1-2% of
-# throughput. Thin LTO removes that cost for little build time.
-lto = "thin"
+# The engine is several crates. Whole-program optimization makes the crate
+# boundaries invisible to the optimizer: without LTO each split measured
+# about 1% of throughput, with thin LTO some of them still did; with this,
+# the build is about 2% faster than the single crate was (and takes about
+# 30 s from scratch instead of 20).
+lto = "fat"
+codegen-units = 1
 
 [profile.dev]
 opt-level = 1
