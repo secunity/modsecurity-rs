@@ -2367,7 +2367,6 @@ mod regression_dump {
         use crate::actions::xmlns::XmlNS;
         use crate::operators::operator::Operator;
         use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
-        use crate::run_time_string::RunTimeString;
 
         for l in lines {
             let Some(rest) = l.strip_prefix("SecRule XML") else {
@@ -2401,12 +2400,12 @@ mod regression_dump {
             }
             let (name, param) = op.split_once(' ').unwrap_or((op, ""));
             let mut o: Box<dyn Operator> = match name {
-                "@validateDTD" => {
-                    Box::new(crate::operators::validate_dtd::ValidateDTD::new(RunTimeString::from_text(param)))
-                }
-                "@validateSchema" => {
-                    Box::new(crate::operators::validate_schema::ValidateSchema::new(RunTimeString::from_text(param)))
-                }
+                "@validateDTD" => Box::new(crate::operators::validate_dtd::ValidateDTD::new(
+                    crate::operators::operator::Param::from_text(param),
+                )),
+                "@validateSchema" => Box::new(crate::operators::validate_schema::ValidateSchema::new(
+                    crate::operators::operator::Param::from_text(param),
+                )),
                 _ => continue,
             };
             o.init("x.json").unwrap();

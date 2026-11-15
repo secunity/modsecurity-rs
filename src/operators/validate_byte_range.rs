@@ -3,7 +3,6 @@
 
 use crate::operators::eq::stoi;
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 #[derive(Debug)]
 pub struct ValidateByteRange {
@@ -13,8 +12,8 @@ pub struct ValidateByteRange {
 }
 
 impl ValidateByteRange {
-    pub fn new(param: RunTimeString) -> Self {
-        ValidateByteRange { param: Param::new(param), table: [0; 32] }
+    pub fn new(param: Param) -> Self {
+        ValidateByteRange { param, table: [0; 32] }
     }
 
     fn set(&mut self, b: i32) {
@@ -101,7 +100,7 @@ mod tests {
     use crate::operators::operator::test_support::eval;
 
     fn op(p: &str) -> Result<ValidateByteRange, String> {
-        let mut o = ValidateByteRange::new(RunTimeString::from_text(p));
+        let mut o = ValidateByteRange::new(Param::from_text(p));
         o.init("").map(|_| o)
     }
 

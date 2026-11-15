@@ -7,7 +7,6 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 
 /// The block list service, recognized from the parameter. It decides
@@ -74,8 +73,7 @@ fn scan_dotted_quad(s: &[u8]) -> Option<[i32; 4]> {
 }
 
 impl Rbl {
-    pub fn new(param: RunTimeString) -> Self {
-        let param = Param::new(param);
+    pub fn new(param: Param) -> Self {
         let service = param.literal.clone();
         let contains = |needle: &[u8]| service.windows(needle.len()).any(|w| w == needle);
         let (demands_password, provider) = if contains(b"httpbl.org") {
@@ -285,11 +283,11 @@ mod tests {
 
     #[test]
     fn map_ip() {
-        let op = Rbl::new(RunTimeString::from_text("sbl-xbl.spamhaus.org"));
+        let op = Rbl::new(Param::from_text("sbl-xbl.spamhaus.org"));
         assert_eq!(op.provider, RblProvider::Spamhaus);
         assert_eq!(op.map_ip_to_address(b"1.2.3.4", None), b"4.3.2.1.sbl-xbl.spamhaus.org".to_vec());
         assert_eq!(op.map_ip_to_address(b"example.com", None), b"example.com.sbl-xbl.spamhaus.org".to_vec());
-        let op = Rbl::new(RunTimeString::from_text("dnsbl.httpbl.org"));
+        let op = Rbl::new(Param::from_text("dnsbl.httpbl.org"));
         assert!(op.map_ip_to_address(b"1.2.3.4", None).is_empty());
     }
 }

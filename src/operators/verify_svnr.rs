@@ -2,7 +2,6 @@
 //! whose check digit is valid.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::regex::Regex;
 
 const BAD_SVNR: [&[u8; 10]; 12] = [
@@ -27,8 +26,7 @@ pub struct VerifySVNR {
 }
 
 impl VerifySVNR {
-    pub fn new(param: RunTimeString) -> Self {
-        let param = Param::new(param);
+    pub fn new(param: Param) -> Self {
         let re = Regex::with_options(&param.literal, false, true);
         VerifySVNR { param, re }
     }
@@ -123,7 +121,7 @@ mod tests {
 
     #[test]
     fn svnr() {
-        let op = VerifySVNR::new(RunTimeString::from_text("x"));
+        let op = VerifySVNR::new(Param::from_text("x"));
         assert!(op.verify(b"1237 010180"));
         assert!(!op.verify(b"1238 010180"));
         assert!(!op.verify(b"0000000000"));

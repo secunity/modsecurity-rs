@@ -2,7 +2,6 @@
 //! of the listed addresses or networks.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::ip_tree::IpTree;
 
 #[derive(Debug)]
@@ -13,14 +12,14 @@ pub struct IpMatch {
 }
 
 impl IpMatch {
-    pub fn new(param: RunTimeString) -> Self {
+    pub fn new(param: Param) -> Self {
         Self::with_name("IpMatch", param)
     }
 
     /// An operator named `name` in messages: used by `@ipMatchFromFile` /
     /// `@ipMatchF`.
-    pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
-        IpMatch { name, param: Param::new(param), tree: IpTree::new() }
+    pub fn with_name(name: &'static str, param: Param) -> Self {
+        IpMatch { name, param, tree: IpTree::new() }
     }
 }
 
@@ -50,14 +49,14 @@ mod tests {
 
     #[test]
     fn ip_match() {
-        let mut op = IpMatch::new(RunTimeString::from_text("127.0.0.1,192.168.0.0/24,::1"));
+        let mut op = IpMatch::new(Param::from_text("127.0.0.1,192.168.0.0/24,::1"));
         op.init("").unwrap();
         assert!(eval(&op, b"127.0.0.1"));
         assert!(eval(&op, b"192.168.0.77"));
         assert!(!eval(&op, b"192.168.1.77"));
         assert!(eval(&op, b"::1"));
         assert!(!eval(&op, b"localhost"));
-        let mut bad = IpMatch::new(RunTimeString::from_text("300.1.1.1"));
+        let mut bad = IpMatch::new(Param::from_text("300.1.1.1"));
         assert!(bad.init("").is_err());
     }
 }

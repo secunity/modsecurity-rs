@@ -1,7 +1,6 @@
 //! The `@verifySSN` operator: finds plausible US social security numbers.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::regex::Regex;
 
 #[derive(Debug)]
@@ -11,8 +10,7 @@ pub struct VerifySSN {
 }
 
 impl VerifySSN {
-    pub fn new(param: RunTimeString) -> Self {
-        let param = Param::new(param);
+    pub fn new(param: Param) -> Self {
         let re = Regex::with_options(&param.literal, false, true);
         VerifySSN { param, re }
     }
@@ -122,7 +120,7 @@ mod tests {
 
     #[test]
     fn ssn() {
-        let op = VerifySSN::new(RunTimeString::from_text("x"));
+        let op = VerifySSN::new(Param::from_text("x"));
         assert!(op.verify(b"078-05-1120"));
         assert!(!op.verify(b"123-45-6789"));
         assert!(!op.verify(b"111-11-1111"));

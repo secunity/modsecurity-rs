@@ -2,7 +2,6 @@
 //! whose check digits are valid.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::regex::Regex;
 
 const BAD_CPF: [&[u8; 11]; 11] = [
@@ -26,8 +25,7 @@ pub struct VerifyCPF {
 }
 
 impl VerifyCPF {
-    pub fn new(param: RunTimeString) -> Self {
-        let param = Param::new(param);
+    pub fn new(param: Param) -> Self {
         let re = Regex::with_options(&param.literal, false, true);
         VerifyCPF { param, re }
     }
@@ -131,7 +129,7 @@ mod tests {
 
     #[test]
     fn cpf() {
-        let op = VerifyCPF::new(RunTimeString::from_text("x"));
+        let op = VerifyCPF::new(Param::from_text("x"));
         assert!(op.verify(b"529.982.247-25"));
         assert!(!op.verify(b"529.982.247-26"));
         assert!(!op.verify(b"111.111.111-11"));

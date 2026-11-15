@@ -1,7 +1,6 @@
 //! The `@validateHash` operator, which always matches.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 /// Not implemented by libmodsecurity either: always matches.
 /// Reference: https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual#validateHash
@@ -11,8 +10,8 @@ pub struct ValidateHash {
 }
 
 impl ValidateHash {
-    pub fn new(param: RunTimeString) -> Self {
-        ValidateHash { param: Param::new(param) }
+    pub fn new(param: Param) -> Self {
+        ValidateHash { param }
     }
 }
 

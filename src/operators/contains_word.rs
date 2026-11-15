@@ -2,7 +2,6 @@
 //! input as a whole word, not next to an ASCII letter.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::string::{find, find_from};
 
 #[derive(Debug)]
@@ -11,8 +10,8 @@ pub struct ContainsWord {
 }
 
 impl ContainsWord {
-    pub fn new(param: RunTimeString) -> Self {
-        ContainsWord { param: Param::new(param) }
+    pub fn new(param: Param) -> Self {
+        ContainsWord { param }
     }
 
     /// Whether `a[pos]` can border a word: true when it is not an ASCII

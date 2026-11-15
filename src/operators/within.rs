@@ -2,7 +2,6 @@
 //! (an empty input always matches).
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::string::find;
 
 #[derive(Debug)]
@@ -11,8 +10,8 @@ pub struct Within {
 }
 
 impl Within {
-    pub fn new(param: RunTimeString) -> Self {
-        Within { param: Param::expanded_in_message(param) }
+    pub fn new(param: Param) -> Self {
+        Within { param: param.expanded_in_message() }
     }
 }
 

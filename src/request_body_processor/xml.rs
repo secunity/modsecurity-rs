@@ -324,7 +324,6 @@ mod tests {
     use crate::request_body_processor::multipart::test_support::{log, new_rules, run};
     use crate::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
     use crate::rules_set_properties::ParseXmlIntoArgs;
-    use crate::run_time_string::RunTimeString;
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::variable_value::VariableValue;
     use crate::variables::{VariableSelector, new_variable};
@@ -473,11 +472,12 @@ mod tests {
         let mut rules = new_rules();
         rules.properties.sec_xml_external_entity = Some(true);
         let dtd_path = format!("{}SoapEnvelope.dtd", DATA);
-        let mut dtd = ValidateDTD::new(RunTimeString::from_text(&dtd_path));
+        let mut dtd = ValidateDTD::new(crate::operators::operator::Param::from_text(&dtd_path));
         dtd.init("x.conf").unwrap();
-        let mut bad_dtd = ValidateDTD::new(RunTimeString::from_text(&format!("{}SoapEnvelope-bad.dtd", DATA)));
+        let mut bad_dtd =
+            ValidateDTD::new(crate::operators::operator::Param::from_text(&format!("{}SoapEnvelope-bad.dtd", DATA)));
         bad_dtd.init("x.conf").unwrap();
-        let mut missing = ValidateDTD::new(RunTimeString::from_text("missing.dtd"));
+        let mut missing = ValidateDTD::new(crate::operators::operator::Param::from_text("missing.dtd"));
         assert!(missing.init("x.conf").unwrap_err().starts_with("XML: File not found: missing.dtd. Looking at:"));
 
         let mut t = xml(&ms, &rules, envelope);
@@ -498,7 +498,7 @@ mod tests {
         let soap = br#"<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><x/></soap:Body></soap:Envelope>"#;
         let xsd_path = format!("{}SoapEnvelope.xsd", DATA);
-        let mut xsd = ValidateSchema::new(RunTimeString::from_text(&xsd_path));
+        let mut xsd = ValidateSchema::new(crate::operators::operator::Param::from_text(&xsd_path));
         xsd.init("x.conf").unwrap();
         let mut t = xml(&ms, &rules, soap);
         assert!(!validate(&xsd, &mut t), "{:?}", log(&rules));
@@ -510,7 +510,7 @@ mod tests {
         )));
 
         let bad_xsd_path = format!("{}SoapEnvelope-bad.xsd", DATA);
-        let mut bad_xsd = ValidateSchema::new(RunTimeString::from_text(&bad_xsd_path));
+        let mut bad_xsd = ValidateSchema::new(crate::operators::operator::Param::from_text(&bad_xsd_path));
         bad_xsd.init("x.conf").unwrap();
         let mut t = xml(&ms, &rules, soap);
         assert!(validate(&bad_xsd, &mut t));
@@ -537,7 +537,8 @@ mod tests {
         let ms = ModSecurity::new();
         let mut rules = new_rules();
         rules.properties.sec_xml_external_entity = Some(false);
-        let mut dtd = ValidateDTD::new(RunTimeString::from_text(&format!("{}SoapEnvelope.dtd", DATA)));
+        let mut dtd =
+            ValidateDTD::new(crate::operators::operator::Param::from_text(&format!("{}SoapEnvelope.dtd", DATA)));
         dtd.init("x.conf").unwrap();
         let mut t = xml(&ms, &rules, body);
         // the DTD cannot be loaded either: the loader is libxml2-wide

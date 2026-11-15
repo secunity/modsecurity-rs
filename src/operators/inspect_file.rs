@@ -8,7 +8,6 @@
 
 use crate::engine::lua::Lua;
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::system::find_resource;
 
 #[derive(Debug)]
@@ -20,8 +19,8 @@ pub struct InspectFile {
 }
 
 impl InspectFile {
-    pub fn new(param: RunTimeString) -> Self {
-        InspectFile { param: Param::new(param), file: String::new(), is_script: false, lua: Lua::new() }
+    pub fn new(param: Param) -> Self {
+        InspectFile { param, file: String::new(), is_script: false, lua: Lua::new() }
     }
 
     /// Runs `self.file` with `arg` (posix_spawn of the C++ code: the path is
@@ -122,7 +121,7 @@ mod tests {
     /// The operator with its program set (init() also asks the Lua engine
     /// whether the file is a script).
     fn op(file: &str) -> InspectFile {
-        let mut o = InspectFile::new(RunTimeString::from_text(file));
+        let mut o = InspectFile::new(Param::from_text(file));
         o.file = file.to_string();
         o
     }
@@ -151,7 +150,7 @@ mod tests {
 
     #[test]
     fn missing_file() {
-        let mut o = InspectFile::new(RunTimeString::from_text("/nonexistent/prog"));
+        let mut o = InspectFile::new(Param::from_text("/nonexistent/prog"));
         let e = o.init("/etc/x.conf").unwrap_err();
         assert!(e.starts_with("Failed to open file: /nonexistent/prog. Looking at: "), "{}", e);
     }

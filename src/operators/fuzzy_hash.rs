@@ -7,7 +7,6 @@
 //! matches, like the C++ build without ssdeep.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 #[derive(Debug)]
 pub struct FuzzyHash {
@@ -20,9 +19,9 @@ pub struct FuzzyHash {
 }
 
 impl FuzzyHash {
-    pub fn new(param: RunTimeString) -> Self {
+    pub fn new(param: Param) -> Self {
         FuzzyHash {
-            param: Param::new(param),
+            param,
             #[cfg(feature = "ssdeep")]
             threshold: 0,
             #[cfg(feature = "ssdeep")]
@@ -116,9 +115,9 @@ mod tests {
 
     #[test]
     fn param_errors() {
-        let mut op = FuzzyHash::new(RunTimeString::from_text("nospace"));
+        let mut op = FuzzyHash::new(Param::from_text("nospace"));
         assert_eq!(op.init("").unwrap_err(), "Please use @fuzzyHash with filename and value");
-        let mut op = FuzzyHash::new(RunTimeString::from_text("file x"));
+        let mut op = FuzzyHash::new(Param::from_text("file x"));
         assert_eq!(op.init("").unwrap_err(), "Expecting a digit, got: x");
     }
 
@@ -126,10 +125,10 @@ mod tests {
     fn matches_similar_data() {
         let root = env!("CARGO_MANIFEST_DIR");
         let body = std::fs::read(format!("{}/modsecurity.conf-recommended", root)).unwrap();
-        let mut op = FuzzyHash::new(RunTimeString::from_text(&format!("{}/test/test-cases/data/ssdeep.txt 1", root)));
+        let mut op = FuzzyHash::new(Param::from_text(&format!("{}/test/test-cases/data/ssdeep.txt 1", root)));
         op.init("").unwrap();
         assert!(eval(&op, &body));
-        let mut op = FuzzyHash::new(RunTimeString::from_text(&format!("{}/test/test-cases/data/ssdeep.txt 100", root)));
+        let mut op = FuzzyHash::new(Param::from_text(&format!("{}/test/test-cases/data/ssdeep.txt 100", root)));
         op.init("").unwrap();
         assert!(!eval(&op, &body));
     }

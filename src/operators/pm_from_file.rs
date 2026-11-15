@@ -4,7 +4,6 @@ use std::io::Read;
 
 use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::operators::pm::Pm;
-use crate::run_time_string::RunTimeString;
 use crate::utils::https_client::HttpsClient;
 use crate::utils::string::{is_space, split};
 use crate::utils::system::find_resource;
@@ -17,12 +16,12 @@ pub struct PmFromFile {
 }
 
 impl PmFromFile {
-    pub fn new(param: RunTimeString) -> Self {
+    pub fn new(param: Param) -> Self {
         Self::with_name("PmFromFile", param)
     }
 
     /// An operator named `name` in messages (`PmFromF` for `@pmf`).
-    pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
+    pub fn with_name(name: &'static str, param: Param) -> Self {
         PmFromFile { pm: Pm::with_name(name, param) }
     }
 
@@ -112,7 +111,7 @@ mod tests {
 
     #[test]
     fn missing_file() {
-        let mut op = PmFromFile::new(RunTimeString::from_text("/nonexistent/x.txt"));
+        let mut op = PmFromFile::new(Param::from_text("/nonexistent/x.txt"));
         let e = op.init("/etc/modsec.conf").unwrap_err();
         assert!(e.starts_with("Failed to open file: '/nonexistent/x.txt'. Looking at: "), "{}", e);
     }

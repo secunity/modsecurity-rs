@@ -3,7 +3,6 @@
 //! true) when the document is missing, not well formed or not valid.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 #[cfg(feature = "libxml2")]
 use crate::transaction::Transaction;
 
@@ -20,9 +19,9 @@ pub struct ValidateSchema {
 }
 
 impl ValidateSchema {
-    pub fn new(param: RunTimeString) -> Self {
+    pub fn new(param: Param) -> Self {
         ValidateSchema {
-            param: Param::new(param),
+            param,
             #[cfg(feature = "libxml2")]
             resource: String::new(),
             #[cfg(feature = "libxml2")]

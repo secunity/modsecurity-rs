@@ -9,36 +9,40 @@ use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
 
-/// The parameter of an operator (`@op parameter`), which may hold macros
-/// (`%{TX.x}`) expanded for each transaction.
+/// The parameter of an operator (`@op parameter`), as the operator keeps
+/// it: the text without its macros, and whether it has any. When it does
+/// (`%{TX.x}`), the operator gets the parameter expanded for each
+/// transaction from its [`MatchContext`].
 #[derive(Debug, Default)]
 pub struct Param {
     /// The parameter expanded without a transaction (macros left out):
     /// what operators compile or load when the rules are read.
     pub literal: Vec<u8>,
-    pub string: RunTimeString,
+    has_macros: bool,
     /// Whether the match message shows the parameter expanded for the
     /// transaction or the literal.
     expanded_in_message: bool,
 }
 
 impl Param {
-    pub fn new(string: RunTimeString) -> Self {
-        Param { literal: string.evaluate_static(), string, expanded_in_message: false }
+    /// A parameter whose text without macros is `literal`.
+    pub fn new(literal: Vec<u8>, has_macros: bool) -> Self {
+        Param { literal, has_macros, expanded_in_message: false }
     }
 
-    /// A parameter that the match message shows with its macros expanded.
-    pub fn expanded_in_message(string: RunTimeString) -> Self {
-        Param { expanded_in_message: true, ..Self::new(string) }
+    /// A parameter without macros.
+    pub fn from_text(text: &str) -> Self {
+        Param::new(text.as_bytes().to_vec(), false)
     }
 
-    /// The parameter expanded for `t`, borrowed when it has no macro.
-    pub fn value(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
-        self.string.evaluate_cow(Some(t))
+    /// The same parameter, shown in match messages with its macros
+    /// expanded.
+    pub fn expanded_in_message(self) -> Self {
+        Param { expanded_in_message: true, ..self }
     }
 
     pub fn contains_macro(&self) -> bool {
-        self.string.contains_macro()
+        self.has_macros
     }
 
     /// The literal as text, for operators whose parameter is a file name
@@ -59,11 +63,18 @@ pub struct MatchContext<'c, 't, 'm> {
     t: &'c mut Transaction<'t>,
     rule: &'c RuleWithActions,
     rm: &'c mut RuleMessage<'m>,
+    /// The operator's parameter with its macros, when it has one.
+    param: Option<&'c RunTimeString>,
 }
 
 impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
     pub fn new(t: &'c mut Transaction<'t>, rule: &'c RuleWithActions, rm: &'c mut RuleMessage<'m>) -> Self {
-        MatchContext { t, rule, rm }
+        MatchContext { t, rule, rm, param: None }
+    }
+
+    /// The context of an operator whose parameter is `param`.
+    pub fn with_param(self, param: Option<&'c RunTimeString>) -> Self {
+        MatchContext { param, ..self }
     }
 
     /// Whether the debug log takes messages of `level`.
@@ -79,7 +90,10 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
     /// `param` with its macros expanded for this transaction, borrowed
     /// when it has none.
     pub fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]> {
-        param.value(self.t)
+        match self.param {
+            Some(string) if param.has_macros => Cow::Owned(string.evaluate(Some(self.t))),
+            _ => Cow::Borrowed(&param.literal),
+        }
     }
 
     /// Whether the rule has the `capture` action.
@@ -183,18 +197,8 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
         self.evaluate(cx, input) != negated
     }
 
-    /// The parameter as the match message shows it: expanded for `t` or
-    /// the literal, depending on the operator.
-    fn message_param(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
-        match self.param() {
-            Some(param) if param.expanded_in_message => param.value(t),
-            Some(param) => Cow::Borrowed(&param.literal),
-            None => Cow::Borrowed(b""),
-        }
-    }
-
     /// The text logged for a match of `value` in the variable `key`;
-    /// `param` is [`Operator::message_param`] at the time of the match.
+    /// `param` is [`RuleOperator::message_param`] at the time of the match.
     fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
         let mut ret = Vec::new();
         ret.extend_from_slice(b"Matched \"Operator `");
@@ -210,17 +214,20 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
     }
 }
 
-/// The operator of a rule: the operator and whether the rule negates it
-/// (`!@op`).
+/// The operator of a rule: the operator, its parameter with its macros,
+/// and whether the rule negates it (`!@op`).
 #[derive(Debug)]
 pub struct RuleOperator {
     pub op: Box<dyn Operator>,
+    /// The parameter as written, for operators that take one.
+    pub param: Option<RunTimeString>,
     pub negated: bool,
 }
 
 impl RuleOperator {
-    pub fn new(op: Box<dyn Operator>) -> Self {
-        RuleOperator { op, negated: false }
+    pub fn new(op: Box<dyn Operator>, param: RunTimeString) -> Self {
+        let param = op.param().is_some().then_some(param);
+        RuleOperator { op, param, negated: false }
     }
 
     pub fn evaluate(
@@ -230,21 +237,31 @@ impl RuleOperator {
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
-        self.op.evaluate_negatable(self.negated, &mut MatchContext::new(t, rule, rm), input)
+        let mut cx = MatchContext::new(t, rule, rm).with_param(self.param.as_ref());
+        self.op.evaluate_negatable(self.negated, &mut cx, input)
+    }
+
+    /// The parameter as the match message shows it: expanded for `t` or
+    /// the literal, depending on the operator.
+    pub fn message_param(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
+        match (self.op.param(), &self.param) {
+            (Some(param), Some(string)) if param.expanded_in_message => string.evaluate_cow(Some(t)),
+            (Some(param), _) => Cow::Borrowed(&param.literal),
+            (None, _) => Cow::Borrowed(b""),
+        }
     }
 }
 
 /// The operator named `op` (case
 /// insensitive, without the `@`) with a literal parameter.
 pub fn instantiate(op: &str, param_str: &str) -> Option<Box<dyn Operator>> {
-    let mut param = RunTimeString::new();
-    param.append_text(param_str);
-    instantiate_with_param(op, param)
+    instantiate_with_param(op, &RunTimeString::from_text(param_str))
 }
 
 /// Like [`instantiate`] but with an already parsed (possibly macro bearing)
 /// parameter, as built by the configuration parser.
-pub fn instantiate_with_param(op: &str, param: RunTimeString) -> Option<Box<dyn Operator>> {
+pub fn instantiate_with_param(op: &str, param: &RunTimeString) -> Option<Box<dyn Operator>> {
+    let param = Param::new(param.evaluate_static(), param.contains_macro());
     use crate::operators::*;
     let op_ = op.to_ascii_lowercase();
     let b: Box<dyn Operator> = match op_.as_str() {

@@ -5,7 +5,6 @@
 //! comparison operators (`@eq`, `@ge`, `@gt`, `@le`, `@lt`).
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 /// `::isspace` in the C locale.
 fn is_c_space(c: u8) -> bool {
@@ -72,8 +71,8 @@ pub struct Eq {
 }
 
 impl Eq {
-    pub fn new(param: RunTimeString) -> Self {
-        Eq { param: Param::new(param) }
+    pub fn new(param: Param) -> Self {
+        Eq { param }
     }
 }
 

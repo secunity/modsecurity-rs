@@ -2,7 +2,6 @@
 //! groups of every match, numbered consecutively in `TX`.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::regex::{Regex, RegexResult, SMatchCapture};
 
 /// Whether patterns are multi-line: `$` only matches at the very end of
@@ -17,8 +16,8 @@ pub struct RxGlobal {
 }
 
 impl RxGlobal {
-    pub fn new(param: RunTimeString) -> Self {
-        RxGlobal { param: Param::expanded_in_message(param), re: None }
+    pub fn new(param: Param) -> Self {
+        RxGlobal { param: param.expanded_in_message(), re: None }
     }
 
     fn contains_macro(&self) -> bool {
@@ -126,11 +125,11 @@ mod tests {
 
     #[test]
     fn empty_input_and_captures() {
-        let mut op = RxGlobal::new(RunTimeString::from_text("a(b)?c"));
+        let mut op = RxGlobal::new(Param::from_text("a(b)?c"));
         op.init("").unwrap();
         assert!(!eval(&op, b""));
         assert!(eval(&op, b"xac"));
-        let mut bad = RxGlobal::new(RunTimeString::from_text("("));
+        let mut bad = RxGlobal::new(Param::from_text("("));
         assert_eq!(bad.init("").unwrap_err(), "Invalid regular expression: (");
     }
 }

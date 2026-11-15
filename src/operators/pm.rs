@@ -2,7 +2,6 @@
 //! phrases (case insensitive).
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 #[cfg(not(feature = "pm-aho-corasick"))]
 use crate::utils::acmp::{Acmp, Acmpt};
 use crate::utils::string::valid_hex;
@@ -156,14 +155,14 @@ pub struct Pm {
 }
 
 impl Pm {
-    pub fn new(param: RunTimeString) -> Self {
+    pub fn new(param: Param) -> Self {
         Self::with_name("Pm", param)
     }
 
     /// An operator named `name` in messages: used by `@pmFromFile` /
     /// `@pmf`.
-    pub fn with_name(name: &'static str, param: RunTimeString) -> Self {
-        Pm { name, param: Param::new(param), p: Matcher::new() }
+    pub fn with_name(name: &'static str, param: Param) -> Self {
+        Pm { name, param, p: Matcher::new() }
     }
 
     /// Makes the matcher ready for searching once all patterns were added.
@@ -282,7 +281,7 @@ mod tests {
 
     #[test]
     fn pm_matches() {
-        let mut op = Pm::new(RunTimeString::from_text("foo bar"));
+        let mut op = Pm::new(Param::from_text("foo bar"));
         op.init("").unwrap();
         assert!(eval(&op, b"xxBARxx"));
         assert!(!eval(&op, b"baz"));

@@ -2,7 +2,6 @@
 //! matches.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 /// Not implemented by libmodsecurity either: always matches.
 /// Reference: https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual#gsblookup
@@ -12,8 +11,8 @@ pub struct GsbLookup {
 }
 
 impl GsbLookup {
-    pub fn new(param: RunTimeString) -> Self {
-        GsbLookup { param: Param::new(param) }
+    pub fn new(param: Param) -> Self {
+        GsbLookup { param }
     }
 }
 

@@ -3,7 +3,6 @@
 
 use crate::operators::eq::atoll;
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 #[derive(Debug)]
 pub struct Lt {
@@ -11,8 +10,8 @@ pub struct Lt {
 }
 
 impl Lt {
-    pub fn new(param: RunTimeString) -> Self {
-        Lt { param: Param::expanded_in_message(param) }
+    pub fn new(param: Param) -> Self {
+        Lt { param: param.expanded_in_message() }
     }
 }
 

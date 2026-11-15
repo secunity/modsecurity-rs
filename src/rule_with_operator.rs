@@ -154,7 +154,7 @@ impl RuleWithOperator {
 
         // Only needed for the debug log (C++ builds it unconditionally).
         let vars_str = || variables_to_string(&self.variables);
-        if let Some(s) = self.operator.op.param().map(|p| &p.string) {
+        if let Some(s) = &self.operator.param {
             if t.debug_enabled(4) {
                 let mut eparam = s.evaluate(Some(t));
                 if s.contains_macro() {
@@ -228,7 +228,8 @@ impl RuleWithOperator {
                     let ret = self.execute_operator_at(rule, t, key, value_after_trans, rm);
                     if ret {
                         let operator = self.operator.op.as_ref();
-                        rm.matched = Some(Matched { operator, param: operator.message_param(t), value: v.clone() });
+                        let param = self.operator.message_param(t);
+                        rm.matched = Some(Matched { operator, param, value: v.clone() });
                         for i in v.origin() {
                             rm.reference.extend_from_slice(i.to_text().as_bytes());
                         }

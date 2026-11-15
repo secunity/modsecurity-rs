@@ -3,7 +3,6 @@
 //! Luhn check.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::regex::{Regex, Subject};
 
 #[derive(Debug)]
@@ -13,8 +12,8 @@ pub struct VerifyCC {
 }
 
 impl VerifyCC {
-    pub fn new(param: RunTimeString) -> Self {
-        VerifyCC { param: Param::new(param), re: None }
+    pub fn new(param: Param) -> Self {
+        VerifyCC { param, re: None }
     }
 
     /// Luhn Mod-10 Method (ISO 2894/ANSI 4.13). Only the
@@ -123,11 +122,11 @@ mod tests {
 
     #[test]
     fn verify_cc() {
-        let mut op = VerifyCC::new(RunTimeString::from_text("\\d{13,16}"));
+        let mut op = VerifyCC::new(Param::from_text("\\d{13,16}"));
         op.init("").unwrap();
         assert!(eval(&op, b"cc: 4111111111111111 x"));
         assert!(!eval(&op, b"cc: 4111111111112 x"));
-        let mut bad = VerifyCC::new(RunTimeString::from_text("(("));
+        let mut bad = VerifyCC::new(Param::from_text("(("));
         assert!(bad.init("").is_err());
     }
 }

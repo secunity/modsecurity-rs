@@ -1,7 +1,6 @@
 //! The `@streq` operator: matches when the input equals the parameter.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 #[derive(Debug)]
 pub struct StrEq {
@@ -9,8 +8,8 @@ pub struct StrEq {
 }
 
 impl StrEq {
-    pub fn new(param: RunTimeString) -> Self {
-        StrEq { param: Param::new(param) }
+    pub fn new(param: Param) -> Self {
+        StrEq { param }
     }
 }
 

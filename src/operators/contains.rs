@@ -2,7 +2,6 @@
 //! the input.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::string::find;
 
 #[derive(Debug)]
@@ -11,8 +10,8 @@ pub struct Contains {
 }
 
 impl Contains {
-    pub fn new(param: RunTimeString) -> Self {
-        Contains { param: Param::new(param) }
+    pub fn new(param: Param) -> Self {
+        Contains { param }
     }
 }
 

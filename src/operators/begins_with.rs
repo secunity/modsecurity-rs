@@ -2,7 +2,6 @@
 //! parameter.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 #[derive(Debug)]
 pub struct BeginsWith {
@@ -10,8 +9,8 @@ pub struct BeginsWith {
 }
 
 impl BeginsWith {
-    pub fn new(param: RunTimeString) -> Self {
-        BeginsWith { param: Param::new(param) }
+    pub fn new(param: Param) -> Self {
+        BeginsWith { param }
     }
 }
 

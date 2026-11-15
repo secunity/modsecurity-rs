@@ -2,7 +2,6 @@
 
 use crate::operators::ip_match::IpMatch;
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::system::find_resource;
 
 /// `@ipMatchFromFile`: like `@ipMatch`, with the entries read from a local
@@ -13,7 +12,7 @@ pub struct IpMatchFromFile {
 }
 
 impl IpMatchFromFile {
-    pub fn new(param: RunTimeString) -> Self {
+    pub fn new(param: Param) -> Self {
         IpMatchFromFile { ip_match: IpMatch::with_name("IpMatchFromFile", param) }
     }
 }
@@ -54,13 +53,13 @@ mod tests {
     #[test]
     fn from_file() {
         let config = format!("{}/test/test-cases/regression/x.json", env!("CARGO_MANIFEST_DIR"));
-        let mut op = IpMatchFromFile::new(RunTimeString::from_text("../data/ipMatchFromFile.txt"));
+        let mut op = IpMatchFromFile::new(Param::from_text("../data/ipMatchFromFile.txt"));
         op.init(&config).unwrap();
         assert!(eval(&op, b"200.249.12.31"));
         assert!(eval(&op, b"::1"));
         assert!(!eval(&op, b"200.249.12.32"));
 
-        let mut op = IpMatchFromFile::new(RunTimeString::from_text("file-not-found.txt"));
+        let mut op = IpMatchFromFile::new(Param::from_text("file-not-found.txt"));
         assert_eq!(
             op.init("operator-ipMatchFromFile.json").unwrap_err(),
             "Looking at: 'file-not-found.txt', 'file-not-found.txt', \

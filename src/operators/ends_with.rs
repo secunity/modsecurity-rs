@@ -2,7 +2,6 @@
 //! parameter.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 
 #[derive(Debug)]
 pub struct EndsWith {
@@ -10,8 +9,8 @@ pub struct EndsWith {
 }
 
 impl EndsWith {
-    pub fn new(param: RunTimeString) -> Self {
-        EndsWith { param: Param::expanded_in_message(param) }
+    pub fn new(param: Param) -> Self {
+        EndsWith { param: param.expanded_in_message() }
     }
 }
 

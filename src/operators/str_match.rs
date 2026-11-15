@@ -2,7 +2,6 @@
 //! the input.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-use crate::run_time_string::RunTimeString;
 use crate::utils::string::find;
 
 #[derive(Debug)]
@@ -11,8 +10,8 @@ pub struct StrMatch {
 }
 
 impl StrMatch {
-    pub fn new(param: RunTimeString) -> Self {
-        StrMatch { param: Param::expanded_in_message(param) }
+    pub fn new(param: Param) -> Self {
+        StrMatch { param: param.expanded_in_message() }
     }
 }
 
