@@ -41,7 +41,7 @@ impl Operator for FuzzyHash {
 
     #[cfg(feature = "ssdeep")]
     fn init(&mut self, param2: &str, resources: &dyn Resources) -> Result<(), String> {
-        use crate::eq::stoi;
+        use modsecurity_compat::cnum::stoi;
         use std::io::Read;
 
         let param = self.param.literal.clone();

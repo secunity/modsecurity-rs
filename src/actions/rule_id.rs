@@ -24,31 +24,7 @@ impl RuleId {
 /// Formats `d` as C++ `std::ostringstream << std::setprecision(40)` does,
 /// i.e. `%.40g`.
 fn format_g40(d: f64) -> String {
-    format_g(d, 40)
-}
-
-/// C's `%.<precision>g`: the shortest of fixed and scientific notation for
-/// `precision` significant digits, without trailing zeros. (Rust's `{:e}`
-/// and `{:.N}` round exactly, as glibc does.)
-fn format_g(d: f64, precision: usize) -> String {
-    if !d.is_finite() {
-        let s = if d.is_nan() { "nan" } else { "inf" };
-        return if d.is_sign_negative() { format!("-{s}") } else { s.to_string() };
-    }
-    let p = precision.max(1);
-    // The exponent of `d` rounded to `p` significant digits.
-    let scientific = format!("{:.*e}", p - 1, d);
-    let (mantissa, exponent) = scientific.split_once('e').expect("{:e} has an exponent");
-    let exponent: i32 = exponent.parse().expect("{:e} exponent");
-    let trim = |s: &str| -> String {
-        if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s.to_string() }
-    };
-    if exponent < -4 || exponent >= p as i32 {
-        let sign = if exponent < 0 { '-' } else { '+' };
-        format!("{}e{}{:02}", trim(mantissa), sign, exponent.unsigned_abs())
-    } else {
-        trim(&format!("{:.*}", (p as i32 - 1 - exponent) as usize, d))
-    }
+    modsecurity_compat::cnum::format_g(d, 40)
 }
 
 impl Action for RuleId {
@@ -95,46 +71,5 @@ mod tests {
         assert_eq!(format_g40(1.0), "1");
         assert_eq!(format_g40(0.1), "0.1000000000000000055511151231257827021182");
         assert_eq!(format_g40(1e23), "99999999999999991611392");
-        assert_eq!(format_g(1e-5, 6), "1e-05");
-        assert_eq!(format_g(123456789.0, 6), "1.23457e+08");
-        assert_eq!(format_g(-0.0, 40), "-0");
-    }
-
-    /// `format_g` is `snprintf("%.Ng")` (compared on random doubles).
-    #[test]
-    fn format_matches_snprintf() {
-        use rand::{Rng, SeedableRng};
-        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
-        let mut values: Vec<f64> = vec![
-            0.0,
-            -0.0,
-            1.0,
-            0.5,
-            9.5,
-            99.5,
-            1e15,
-            1e16,
-            1e17,
-            1e22,
-            1e23,
-            1e-4,
-            1e-5,
-            f64::MAX,
-            f64::MIN_POSITIVE,
-            5e-324,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-        ];
-        for _ in 0..20000 {
-            values.push(f64::from_bits(rng.random::<u64>()));
-            values.push(rng.random_range(0..10_000_000u64) as f64);
-            values.push(rng.random::<f64>() * 10f64.powi(rng.random_range(-12..24)));
-        }
-        for d in values.into_iter().filter(|d| !d.is_nan()) {
-            for p in [1usize, 2, 6, 17, 40] {
-                let c = modsecurity_native::testing::snprintf_g(d, p);
-                assert_eq!(format_g(d, p), c, "{d:e} at precision {p}");
-            }
-        }
     }
 }

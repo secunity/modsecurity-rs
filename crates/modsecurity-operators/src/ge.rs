@@ -1,8 +1,8 @@
 //! The `@ge` operator: matches when the input, read as an integer, is
 //! greater than or equal to the parameter.
 
-use crate::eq::atoll;
 use crate::{Context, Operator, Param};
+use modsecurity_compat::cnum::atoll;
 
 #[derive(Debug)]
 pub struct Ge {

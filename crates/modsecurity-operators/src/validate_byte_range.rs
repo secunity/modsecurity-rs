@@ -1,8 +1,8 @@
 //! The `@validateByteRange` operator: matches when the input holds a byte
 //! outside the allowed values and ranges.
 
-use crate::eq::stoi;
 use crate::{Context, Operator, Param, Resources};
+use modsecurity_compat::cnum::stoi;
 
 #[derive(Debug)]
 pub struct ValidateByteRange {

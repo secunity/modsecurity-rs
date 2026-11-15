@@ -1,8 +1,8 @@
 //! The `@le` operator: matches when the input, read as an integer, is
 //! less than or equal to the parameter.
 
-use crate::eq::atoll;
 use crate::{Context, Operator, Param};
+use modsecurity_compat::cnum::atoll;
 
 #[derive(Debug)]
 pub struct Le {

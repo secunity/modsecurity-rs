@@ -11,12 +11,15 @@
 //!   libstdc++'s `std::unordered_multimap` (the order of `ARGS` & co.);
 //! - [`json`]: a JSON reader and writer that accept and produce what yajl
 //!   does;
-//! - [`chars`]: the byte classes and string helpers the others share.
+//! - [`chars`]: the byte classes and string helpers the others share;
+//! - [`cnum`]: the number conversions of C and C++ (`strtoll`, `atoi`,
+//!   `std::stoi`, `std::stod`, `%g`).
 
 #![forbid(unsafe_code)]
 
 pub mod acmp;
 pub mod chars;
+pub mod cnum;
 pub mod json;
 pub mod msc_tree;
 pub mod unordered_multimap;

@@ -738,36 +738,6 @@ fn parse_v6(src: &[u8]) -> Option<[u8; 16]> {
     std::str::from_utf8(c_str(src)).ok()?.parse::<Ipv6Addr>().ok().map(|a| a.octets())
 }
 
-/// Parses an integer as glibc's `atoi` does (`(int) strtol(s, NULL, 10)`).
-fn c_atoi(s: &[u8]) -> i32 {
-    let mut i = 0;
-    while i < s.len() && matches!(s[i], b' ' | b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r') {
-        i += 1;
-    }
-    let mut neg = false;
-    if i < s.len() && (s[i] == b'+' || s[i] == b'-') {
-        neg = s[i] == b'-';
-        i += 1;
-    }
-    let mut v: i64 = 0;
-    let mut overflow = false;
-    while i < s.len() && s[i].is_ascii_digit() {
-        match v.checked_mul(10).and_then(|x| x.checked_add(i64::from(s[i] - b'0'))) {
-            Some(x) => v = x,
-            None => overflow = true,
-        }
-        i += 1;
-    }
-    let v = if overflow {
-        if neg { i64::MIN } else { i64::MAX }
-    } else if neg {
-        -v
-    } else {
-        v
-    };
-    v as i32
-}
-
 /// The CIDR of `ip_strv4` (32 without one), 0 when invalid.
 pub fn is_netmask_v4(ip_strv4: &[u8]) -> u8 {
     let Some(p) = ip_strv4.iter().position(|&c| c == b'/') else {
@@ -777,7 +747,7 @@ pub fn is_netmask_v4(ip_strv4: &[u8]) -> u8 {
     if mask_str.contains(&b'.') {
         return 0;
     }
-    let cidr = c_atoi(mask_str);
+    let cidr = crate::cnum::atoi(mask_str);
     if cidr == 32 {
         return 32;
     }
@@ -796,7 +766,7 @@ pub fn is_netmask_v6(ip_strv6: &[u8]) -> u8 {
     if mask_str.contains(&b':') {
         return 0;
     }
-    let cidr = c_atoi(mask_str);
+    let cidr = crate::cnum::atoi(mask_str);
     if !(0..=128).contains(&cidr) {
         return 0;
     }
