@@ -580,7 +580,7 @@ impl Builder<'_, '_> {
                 return Ok(data::status::Status::new(s).map(other));
             }
             "ver" => {
-                if !value.and_then(unquote).is_some_and(|q| !q.is_empty()) {
+                if value.and_then(unquote).is_none_or(|q| q.is_empty()) {
                     return invalid(self);
                 }
                 other(actions::ver::Ver::new(s))
