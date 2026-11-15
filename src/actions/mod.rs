@@ -31,6 +31,6 @@ pub mod severity;
 pub mod skip;
 pub mod skip_after;
 pub mod tag;
-pub mod transformations;
+pub mod transformation;
 pub mod ver;
 pub mod xmlns;

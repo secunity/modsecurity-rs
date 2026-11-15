@@ -4,7 +4,7 @@
 //! Actions share no base data: an action keeps its name (as written in the
 //! rule) and whatever it parsed from its payload.
 
-use crate::actions::transformations::transformation::Transformation;
+use crate::actions::transformation::Transformation;
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::transaction::Transaction;

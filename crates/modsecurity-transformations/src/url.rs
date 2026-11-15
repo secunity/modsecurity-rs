@@ -1,6 +1,6 @@
 //! URL (percent) decoding.
 
-use crate::utils::string::{hex2dec, valid_hex, x2c};
+use crate::chars::{hex2dec, valid_hex, x2c};
 
 /// Decodes `val` in place, turning `+` into a space; returns whether the
 /// value changed and the number of invalid `%` encodings.

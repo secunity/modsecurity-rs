@@ -461,6 +461,7 @@ the owner):
 |---|---|---|
 | `modsecurity` | `.` | the engine and its Rust API (rlib); `#![forbid(unsafe_code)]` |
 | `modsecurity-native` | `crates/modsecurity-native` | the C libraries behind safe APIs: PCRE2, libxml2, LMDB, ssdeep, Lua, libc calls |
+| `modsecurity-transformations` | `crates/modsecurity-transformations` | the `t:` transformations as pure functions, and the decoders shared with the engine |
 | `modsecurity-capi` | `crates/modsecurity-capi` | the `msc_*` C API: `libmodsecurity.so.3` and `libmodsecurity.a` |
 
 The engine stays at the root, so the test suites, the test data and the
@@ -499,3 +500,25 @@ shows no difference beyond noise (best throughput `upstream` 4182 → 4175
 tx/s, `corpus_pl1` 3613 → 3569, `corpus_pl4` 2252 → 2249; medians
 +3.3%, +2.7%, +1.1%), so the PCRE2 calls crossing a crate boundary cost
 nothing measurable.
+
+### The transformations crate
+
+`modsecurity-transformations` holds the 38 transformations as functions on
+bytes: `Transformation` (an enum) with `apply(value, &Context)`. Nothing in
+it knows rules or transactions; the one outside input, the unicode map of
+`t:urlDecodeUni`, comes in the `Context`. The engine's action
+(`actions::transformation::Transformation`: the name as written plus the
+kind) builds the context from the transaction.
+
+- The two name lookups live together: `from_name` (what a rule writes
+  after `t:`, any case; the parser's table, which moved here) and
+  `from_name_prefix` (the C++ factory's case-sensitive prefix match, still
+  used by Lua and `process_content_offset`). They differ on purpose
+  (`cmdLine` vs `cmd_line`, prefixes, unknown names), so they stay two.
+- The decoders the engine uses elsewhere moved with them and are
+  re-exported under their old paths: `base64`, `url` (`utils::decode`) and
+  the byte helpers `chars` (part of `utils::string`).
+- `[profile.release] lto = "thin"`: without it the split measured 1-2% of
+  throughput (calls into the crate are not inlined); with it the build is
+  at parity or ahead, and rule loading is about 6% faster. A from-scratch
+  release build of the C library takes about 20 s either way.

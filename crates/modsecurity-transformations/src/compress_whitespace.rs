@@ -1,7 +1,7 @@
 //! The `t:compressWhitespace` transformation: replaces each run of
 //! whitespace with a single space.
 
-use crate::utils::string::is_space;
+use crate::chars::is_space;
 
 /// Transforms `value` in place; returns whether it changed.
 pub fn transform(value: &mut Vec<u8>) -> bool {

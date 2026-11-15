@@ -134,27 +134,8 @@ pub struct ConfigSet {
     pub value: BTreeSet<String>,
 }
 
-/// A Unicode map: code point -> mapped byte (-1 when unmapped).
-#[derive(Debug, Clone)]
-pub struct UnicodeMapHolder {
-    pub data: Vec<i32>,
-}
-
-impl Default for UnicodeMapHolder {
-    fn default() -> Self {
-        UnicodeMapHolder { data: vec![-1; 65536] }
-    }
-}
-
-impl UnicodeMapHolder {
-    pub fn at(&self, index: usize) -> i32 {
-        self.data[index]
-    }
-
-    pub fn change(&mut self, i: usize, a: i32) {
-        self.data[i] = a;
-    }
-}
+/// The map of `SecUnicodeMapFile` (used by `t:urlDecodeUni`).
+pub use modsecurity_transformations::UnicodeMap as UnicodeMapHolder;
 
 /// `SecUnicodeMapFile`: the code page and its map, when set.
 #[derive(Debug, Clone, Default)]

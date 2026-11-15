@@ -1,7 +1,7 @@
 //! The `t:hexEncode` transformation: encodes every byte as two lowercase
 //! hex digits.
 
-use crate::utils::string::string_to_hex;
+use crate::chars::string_to_hex;
 
 /// Transforms `value` in place; returns whether it changed.
 pub fn transform(value: &mut Vec<u8>) -> bool {

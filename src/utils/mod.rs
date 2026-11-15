@@ -4,8 +4,6 @@
 // Unused when `@pm` uses the aho-corasick crate instead.
 #[cfg_attr(feature = "pm-aho-corasick", allow(dead_code))]
 pub mod acmp;
-pub mod base64;
-pub mod decode;
 pub mod geo_lookup;
 pub mod https_client;
 pub mod ip_tree;
@@ -24,3 +22,5 @@ pub mod unordered_multimap;
 #[cfg(feature = "libxml2")]
 pub use modsecurity_native::libxml2;
 pub use modsecurity_native::regex;
+// Decoders shared with the transformations.
+pub use modsecurity_transformations::{base64, url as decode};

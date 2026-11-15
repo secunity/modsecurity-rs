@@ -2,22 +2,12 @@
 //! IIS-style `%uHHHH` sequences, through the `SecUnicodeMapFile` map when
 //! one is configured.
 
-use crate::rules_set_properties::UnicodeMapHolder;
-use crate::transaction::Transaction;
-use crate::utils::string::{valid_hex, x2c};
+use crate::UnicodeMap;
+use crate::chars::{valid_hex, x2c};
 
-/// The configured unicode map (`SecUnicodeMapFile`), if any. Without a
-/// transaction no map is used.
-fn unicode_map<'a>(t: Option<&'a Transaction<'_>>) -> Option<&'a UnicodeMapHolder> {
-    let t = t?;
-    let config = &t.rules.properties.unicode_map_table;
-    if config.set && config.unicode_code_page > 0.0 { config.unicode_map_table.as_deref() } else { None }
-}
-
-fn inplace(input: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
+fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
     let mut changed = false;
     let input_len = input.len();
-    let map = unicode_map(t);
     let mut d = 0usize;
     let mut i = 0usize;
     // Declared outside the loop as in C++ (only ever assigned while a map is
@@ -141,8 +131,8 @@ fn inplace(input: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
 }
 
 /// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
-    inplace(value, t)
+pub fn transform(value: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
+    inplace(value, map)
 }
 
 #[cfg(test)]
@@ -156,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn decodes_without_transaction() {
+    fn decodes_without_a_map() {
         assert_eq!(run(b"%41+%u0042%uff21"), (b"A BA".to_vec(), true));
         assert_eq!(run(b"%u00"), (b"%u00".to_vec(), false));
         assert_eq!(run(b"%uzzzz"), (b"%uzzzz".to_vec(), false));
@@ -166,31 +156,16 @@ mod tests {
 
     #[test]
     fn uses_the_unicode_map() {
-        use crate::modsecurity::ModSecurity;
-        use crate::rules_set::RulesSet;
-        use std::sync::Arc;
-
-        let ms = ModSecurity::new();
-        let mut rules = RulesSet::new();
-        let mut table = UnicodeMapHolder::default();
+        let mut table = UnicodeMap::default();
         table.change(0x0391, i32::from(b'A'));
-        let config = &mut rules.properties.unicode_map_table;
-        config.set = true;
-        config.unicode_code_page = 20127.0;
-        config.unicode_map_table = Some(Arc::new(table));
-        {
-            let t = Transaction::new(&ms, &rules, None);
-            let mut v = b"%u0391%u00e9%uff21".to_vec();
-            assert!(inplace(&mut v, Some(&t)));
-            // mapped, unmapped (lower byte), unmapped full width (+0x20)
-            assert_eq!(v, b"A\xe9A");
-        }
+        let mut v = b"%u0391%u00e9%uff21".to_vec();
+        assert!(inplace(&mut v, Some(&table)));
+        // mapped, unmapped (lower byte), unmapped full width (+0x20)
+        assert_eq!(v, b"A\xe9A");
 
-        // Without a code page the map is ignored.
-        rules.properties.unicode_map_table.unicode_code_page = 0.0;
-        let t = Transaction::new(&ms, &rules, None);
+        // Without a map.
         let mut v = b"%u0391".to_vec();
-        assert!(inplace(&mut v, Some(&t)));
+        assert!(inplace(&mut v, None));
         assert_eq!(v, b"\x91");
     }
 }

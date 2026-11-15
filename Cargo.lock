@@ -746,6 +746,7 @@ dependencies = [
  "md-5",
  "mlua",
  "modsecurity-native",
+ "modsecurity-transformations",
  "nix",
  "pest",
  "pest_derive",
@@ -791,6 +792,14 @@ dependencies = [
  "modsecurity",
  "nginx-sys",
  "ngx",
+]
+
+[[package]]
+name = "modsecurity-transformations"
+version = "3.0.17"
+dependencies = [
+ "md-5",
+ "sha1",
 ]
 
 [[package]]

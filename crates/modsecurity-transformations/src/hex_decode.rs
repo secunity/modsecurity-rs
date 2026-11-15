@@ -1,6 +1,6 @@
 //! The `t:hexDecode` transformation: decodes a hex-encoded value.
 
-use crate::utils::string::x2c;
+use crate::chars::x2c;
 
 /// Decodes pairs of hex digits in place (no validation: invalid digits give
 /// garbage bytes, and a trailing odd character is dropped).

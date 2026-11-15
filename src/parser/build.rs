@@ -14,7 +14,7 @@
 //! same helpers), so that the properties and rules built are the same.
 
 use crate::actions::action::{InertAction, Kind};
-use crate::actions::transformations::transformation::{Transformation, TransformationKind as TK};
+use crate::actions::transformation::{Transformation, TransformationKind as TK};
 use crate::actions::{self, ctl, data, disruptive};
 use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
 use crate::modsecurity::Phases;
@@ -591,7 +591,7 @@ impl Builder<'_, '_> {
                 }
                 return Ok(actions::xmlns::XmlNS::new(s).map(other));
             }
-            "t" => match value.and_then(transformation) {
+            "t" => match value.and_then(TK::from_name) {
                 Some(kind) => T(Transformation::new(kind, s)),
                 None => return invalid(self),
             },
@@ -1165,48 +1165,6 @@ fn macro_action(name: &str, z: RunTimeString) -> ParsedAction {
         _ => RuleAction::Tag(actions::tag::Tag::with_rts(z)),
     };
     ParsedAction::Action(a)
-}
-
-fn transformation(name: &str) -> Option<TK> {
-    Some(match name.to_ascii_lowercase().as_str() {
-        "parityzero7bit" => TK::ParityZero7bit,
-        "parityodd7bit" => TK::ParityOdd7bit,
-        "parityeven7bit" => TK::ParityEven7bit,
-        "sqlhexdecode" => TK::SqlHexDecode,
-        "base64encode" => TK::Base64Encode,
-        "base64decode" => TK::Base64Decode,
-        "base64decodeext" => TK::Base64DecodeExt,
-        "cmdline" => TK::CmdLine,
-        "sha1" => TK::Sha1,
-        "md5" => TK::Md5,
-        "escapeseqdecode" => TK::EscapeSeqDecode,
-        "hexencode" => TK::HexEncode,
-        "hexdecode" => TK::HexDecode,
-        "lowercase" => TK::LowerCase,
-        "uppercase" => TK::UpperCase,
-        "urldecodeuni" => TK::UrlDecodeUni,
-        "urldecode" => TK::UrlDecode,
-        "urlencode" => TK::UrlEncode,
-        "none" => TK::None,
-        "compresswhitespace" => TK::CompressWhitespace,
-        "removewhitespace" => TK::RemoveWhitespace,
-        "replacenulls" => TK::ReplaceNulls,
-        "removenulls" => TK::RemoveNulls,
-        "htmlentitydecode" => TK::HtmlEntityDecode,
-        "jsdecode" => TK::JsDecode,
-        "cssdecode" => TK::CssDecode,
-        "trim" => TK::Trim,
-        "trimleft" => TK::TrimLeft,
-        "trimright" => TK::TrimRight,
-        "normalisepathwin" | "normalizepathwin" => TK::NormalisePathWin,
-        "normalisepath" | "normalizepath" => TK::NormalisePath,
-        "length" => TK::Length,
-        "utf8tounicode" => TK::Utf8ToUnicode,
-        "removecommentschar" => TK::RemoveCommentsChar,
-        "removecomments" => TK::RemoveComments,
-        "replacecomments" => TK::ReplaceComments,
-        _ => return None,
-    })
 }
 
 /// `\"` -> `"`, reading the backslashes as the grammar does: `\\` is two

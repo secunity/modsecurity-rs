@@ -19,24 +19,13 @@ use crate::utils::string::string_to_hex;
 pub struct DigestImpl<D: Digest>(PhantomData<D>);
 
 impl<D: Digest> DigestImpl<D> {
-    /// The raw digest bytes of `input`.
-    pub fn digest(input: &[u8]) -> Vec<u8> {
-        D::digest(input).to_vec()
-    }
-
-    /// Replaces `value` with its raw digest bytes.
-    pub fn digest_replace(value: &mut Vec<u8>) -> bool {
-        *value = Self::digest(value);
-        true
-    }
-
     /// The lowercase hexadecimal digest of `input`.
     pub fn hexdigest(input: &[u8]) -> String {
         string_to_hex(&D::digest(input))
     }
 }
 
-/// SHA-1 digests: provides `digest`, `digest_replace` and `hexdigest`.
+/// SHA-1 digests (`hexdigest`).
 pub type Sha1 = DigestImpl<::sha1::Sha1>;
 
 #[cfg(test)]
@@ -46,9 +35,5 @@ mod tests {
     #[test]
     fn sha1_digests() {
         assert_eq!(Sha1::hexdigest(b"abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
-        assert_eq!(Sha1::digest(b"").len(), 20);
-        let mut v = b"abc".to_vec();
-        assert!(Sha1::digest_replace(&mut v));
-        assert_eq!(string_to_hex(&v), "a9993e364706816aba3e25717850c26c9cd0d89d");
     }
 }

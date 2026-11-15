@@ -1,7 +1,7 @@
 //! The `t:urlEncode` transformation: URL-encodes the value (a space
 //! becomes `+`).
 
-use crate::utils::string::c2x;
+use crate::chars::c2x;
 
 fn url_enc(value: &mut Vec<u8>) -> bool {
     let mut ret = Vec::with_capacity(value.len() * 3 + 1);

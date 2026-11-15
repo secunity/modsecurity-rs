@@ -1,7 +1,7 @@
 //! The `t:sqlHexDecode` transformation: decodes SQL hex literals
 //! (`0xHHHH...`).
 
-use crate::utils::string::{valid_hex, x2c};
+use crate::chars::{valid_hex, x2c};
 
 #[inline]
 fn mytolower(ch: u8) -> u8 {

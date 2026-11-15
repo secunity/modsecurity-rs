@@ -227,7 +227,7 @@ impl ModSecurity {
     /// opened containers (yajl does not check them and rejects the last
     /// one).
     pub fn process_content_offset(content: &[u8], match_string: &str) -> Result<Vec<u8>, String> {
-        use crate::actions::transformations::transformation::Transformation;
+        use crate::actions::transformation::Transformation;
         use crate::utils::json::JsonGen;
         use crate::utils::regex::Regex;
 

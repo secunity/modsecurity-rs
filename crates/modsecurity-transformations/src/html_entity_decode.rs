@@ -1,7 +1,7 @@
 //! The `t:htmlEntityDecode` transformation: decodes numeric and named HTML
 //! entities.
 
-use crate::utils::string::NBSP;
+use crate::chars::NBSP;
 
 /// Named-entity table for t:htmlEntityDecode: `(name, character)`.
 ///

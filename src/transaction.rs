@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::actions::disruptive::allow::AllowType;
-use crate::actions::transformations::transformation::Transformation;
+use crate::actions::transformation::Transformation;
 use crate::anchored_set_variable::AnchoredSetVariable;
 use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::anchored_variable::AnchoredVariable;

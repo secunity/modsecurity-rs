@@ -1,0 +1,12 @@
+[package]
+name = "modsecurity-transformations"
+version = "3.0.17"
+edition = "2024"
+description = "The SecLang transformations (t:lowercase, t:urlDecodeUni, ...) as functions on bytes"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+# t:md5 and t:sha1.
+md-5 = "0.11"
+sha1 = "0.11"

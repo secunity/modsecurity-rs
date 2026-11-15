@@ -1,7 +1,7 @@
 //! The `t:escapeSeqDecode` transformation: decodes ANSI C escape
 //! sequences (`\n`, `\x41`, `\101`, ...).
 
-use crate::utils::string::{isodigit, x2c};
+use crate::chars::{isodigit, x2c};
 
 /// The value of a short buffer of valid digits in `base`, as
 /// `strtol(buf, NULL, base)` computes it.

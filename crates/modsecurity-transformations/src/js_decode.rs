@@ -1,6 +1,6 @@
 //! The `t:jsDecode` transformation: decodes JavaScript escape sequences.
 
-use crate::utils::string::{isodigit, valid_hex, x2c};
+use crate::chars::{isodigit, valid_hex, x2c};
 
 fn inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();

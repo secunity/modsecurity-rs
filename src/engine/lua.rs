@@ -72,7 +72,7 @@ mod with_lua {
     use std::cell::RefCell;
 
     use super::Transaction;
-    use crate::actions::transformations::transformation;
+    use crate::actions::transformation;
     use crate::utils::string::{to_hex_if_needed, toupper_str};
     use crate::variables::variable::{string_match_resolve, string_match_resolve_multi};
 

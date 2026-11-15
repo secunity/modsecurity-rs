@@ -20,7 +20,7 @@ use crate::actions::phase::Phase;
 use crate::actions::set_var::SetVar;
 use crate::actions::severity::Severity;
 use crate::actions::tag::Tag;
-use crate::actions::transformations::transformation::Transformation;
+use crate::actions::transformation::Transformation;
 use crate::modsecurity::Phases;
 use crate::rule_message::RuleMessage;
 use crate::rule_script::RuleScript;

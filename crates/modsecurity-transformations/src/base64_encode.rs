@@ -1,6 +1,6 @@
 //! The `t:base64Encode` transformation: encodes the value as base64.
 
-use crate::utils::base64::Base64;
+use crate::base64::Base64;
 
 /// Transforms `value` in place; returns whether it changed.
 pub fn transform(value: &mut Vec<u8>) -> bool {

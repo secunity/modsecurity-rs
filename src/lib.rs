@@ -107,7 +107,7 @@ pub(crate) mod variables;
 #[doc(hidden)]
 pub mod internal {
     pub use crate::actions::capture::Capture;
-    pub use crate::actions::transformations::transformation::Transformation;
+    pub use crate::actions::transformation::Transformation;
     pub use crate::operators::libinjection_adapter::{
         InjectionResult, clear_libinjection_overrides_for_testing, set_libinjection_sqli_override_for_testing,
         set_libinjection_xss_override_for_testing,

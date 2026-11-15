@@ -1,7 +1,7 @@
 //! The `t:trim`, `t:trimLeft` and `t:trimRight` transformations: remove
 //! whitespace from the ends of the value.
 
-use crate::utils::string::is_space;
+use crate::chars::is_space;
 
 /// Removes leading whitespace; returns whether any was removed.
 pub fn ltrim(s: &mut Vec<u8>) -> bool {

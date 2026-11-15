@@ -4,6 +4,7 @@ members = [
     ".",
     "others/libinjection",
     "crates/modsecurity-native",
+    "crates/modsecurity-transformations",
     "crates/modsecurity-capi",
     "connectors/nginx",
     "examples/axum",
@@ -13,7 +14,13 @@ members = [
 # build it with `cargo build --release -p modsecurity-nginx`. The axum
 # example is skipped too (it pulls in axum and tokio): `cargo test -p
 # modsecurity-axum-example`.
-default-members = [".", "others/libinjection", "crates/modsecurity-native", "crates/modsecurity-capi"]
+default-members = [
+    ".",
+    "others/libinjection",
+    "crates/modsecurity-native",
+    "crates/modsecurity-transformations",
+    "crates/modsecurity-capi",
+]
 
 [workspace.package]
 version = "0.2.0"
@@ -84,6 +91,8 @@ tower = ["http", "dep:bytes", "dep:http-body", "dep:http-body-util", "dep:tower-
 # The C libraries (PCRE2, libxml2, LMDB, ssdeep, Lua, libc calls) behind
 # safe APIs: all the unsafe code.
 modsecurity-native = { path = "crates/modsecurity-native" }
+# The transformations (t:...) and the decoders shared with them.
+modsecurity-transformations = { path = "crates/modsecurity-transformations" }
 # libc constants (errno values, address families).
 libc = "0.2"
 # Byte-string helpers: request data is arbitrary bytes, not UTF-8.
@@ -128,6 +137,12 @@ tower-service = { version = "0.3.3", optional = true }
 [dev-dependencies]
 # The C functions the tests compare with (inet_pton, snprintf, strftime).
 modsecurity-native = { path = "crates/modsecurity-native", features = ["testing"] }
+
+[profile.release]
+# The engine is several crates: without LTO, calls between them (the
+# transformations, the decoders) are not inlined, which measured 1-2% of
+# throughput. Thin LTO removes that cost for little build time.
+lto = "thin"
 
 [profile.dev]
 opt-level = 1
