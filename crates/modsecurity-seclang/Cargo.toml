@@ -1,0 +1,14 @@
+[package]
+name = "modsecurity-seclang"
+version = "3.0.17"
+edition = "2024"
+description = "The SecLang configuration syntax: a pest grammar and the syntax tree it produces"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+# The grammar (`src/seclang.pest`). Without `std`: pest's stack-overflow
+# guard probes the stack on every rule call (~10% of the parse), and this
+# grammar has no recursive rules.
+pest = { version = "2.9", default-features = false, features = ["memchr"] }
+pest_derive = { version = "2.9", default-features = false }

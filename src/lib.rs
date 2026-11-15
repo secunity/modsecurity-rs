@@ -51,10 +51,6 @@ macro_rules! ms_dbg_opt {
 
 pub(crate) use {ms_dbg_a, ms_dbg_opt};
 
-// The code `pest_derive` generates without pest's `std` feature (see
-// `Cargo.toml`) names `::alloc`.
-extern crate alloc;
-
 pub use crate::debug_log::DebugLog;
 pub use crate::intervention::Intervention;
 pub use crate::modsecurity::{

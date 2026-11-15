@@ -458,10 +458,9 @@ dependencies = [
  "md-5",
  "mlua",
  "modsecurity-native",
+ "modsecurity-seclang",
  "modsecurity-transformations",
  "nix",
- "pest",
- "pest_derive",
  "rand 0.9.5",
  "rustix",
  "sha1",
@@ -484,6 +483,14 @@ dependencies = [
  "lmdb-master-sys",
  "mlua",
  "pcre2-sys",
+]
+
+[[package]]
+name = "modsecurity-seclang"
+version = "3.0.17"
+dependencies = [
+ "pest",
+ "pest_derive",
 ]
 
 [[package]]

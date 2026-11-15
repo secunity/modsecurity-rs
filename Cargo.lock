@@ -746,10 +746,9 @@ dependencies = [
  "md-5",
  "mlua",
  "modsecurity-native",
+ "modsecurity-seclang",
  "modsecurity-transformations",
  "nix",
- "pest",
- "pest_derive",
  "prefix-trie",
  "rand 0.9.5",
  "rustix",
@@ -792,6 +791,14 @@ dependencies = [
  "modsecurity",
  "nginx-sys",
  "ngx",
+]
+
+[[package]]
+name = "modsecurity-seclang"
+version = "3.0.17"
+dependencies = [
+ "pest",
+ "pest_derive",
 ]
 
 [[package]]

@@ -5,6 +5,7 @@ members = [
     "others/libinjection",
     "crates/modsecurity-native",
     "crates/modsecurity-transformations",
+    "crates/modsecurity-seclang",
     "crates/modsecurity-capi",
     "connectors/nginx",
     "examples/axum",
@@ -19,6 +20,7 @@ default-members = [
     "others/libinjection",
     "crates/modsecurity-native",
     "crates/modsecurity-transformations",
+    "crates/modsecurity-seclang",
     "crates/modsecurity-capi",
 ]
 
@@ -118,11 +120,8 @@ ipnet = { version = "2", optional = true }
 rustix = { version = "1.1.6", features = ["system", "fs", "process", "time"] }
 dns-lookup = "4.0.2"
 nix = { version = "0.31.3", default-features = false, features = ["net"] }
-# The SecLang grammar (`src/parser/seclang.pest`). Without `std`: pest's
-# stack-overflow guard probes the stack on every rule call (~10% of the
-# parse), and this grammar has no recursive rules.
-pest = { version = "2.9", default-features = false, features = ["memchr"] }
-pest_derive = { version = "2.9", default-features = false }
+# The SecLang grammar and syntax tree.
+modsecurity-seclang = { path = "crates/modsecurity-seclang" }
 # The `http` and `tower` features: the request/response types of the Rust
 # HTTP ecosystem (hyper, axum, tonic, ...) and its middleware interface
 # (`Service`/`Layer`), so that the engine embeds in those servers without

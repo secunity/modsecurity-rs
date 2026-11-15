@@ -1,10 +1,11 @@
 //! `parser`: reading SecLang configurations.
 //!
-//! `seclang.pest` is the grammar, `syntax.rs` reads it into a syntax tree and
-//! `build.rs` applies the directives to a `Driver`.
+//! The `modsecurity-seclang` crate reads the text into a syntax tree
+//! (`syntax`), and `build.rs` applies its directives to a `Driver`.
 
 mod build;
 pub mod driver;
-pub mod syntax;
 #[cfg(test)]
 mod tests;
+
+pub use modsecurity_seclang as syntax;

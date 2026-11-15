@@ -1,21 +1,39 @@
-//! The SecLang syntax tree, read with the `pest` grammar in `seclang.pest`.
+//! The SecLang configuration syntax: the `pest` grammar in `seclang.pest`
+//! and the syntax tree it produces.
 //!
-//! [`parse_statement`] reads one directive (with the blank lines and
-//! comments before it) from a configuration text and returns it as a
-//! [`Directive`] that borrows the text. What the names in it mean is decided
-//! by `build.rs`.
+//! [`parse_file`] reads a whole configuration, [`parse_statement`] one
+//! directive (with the blank lines and comments before it); both return
+//! [`Statement`]s whose [`Directive`]s borrow the text. This crate knows
+//! the shape of the language, not what its names mean: which variables,
+//! operators and actions exist is decided by whoever reads the tree (the
+//! ModSecurity engine; a linter or a formatter could be another).
 //!
 //! Configuration files are bytes. They are given to the grammar as text with
 //! one `char` per byte (Latin-1), so that any byte is accepted where the
 //! grammar accepts "any character"; [`bytes`] turns a piece of that text back
 //! into the original bytes.
+//!
+//! ```
+//! use modsecurity_seclang::{Directive, Source, parse_file};
+//!
+//! let source = Source::new(b"SecRule ARGS \"@rx attack\" \"id:1,deny\"\n");
+//! let mut statements = parse_file(source.text()).unwrap();
+//! let (statement, _end) = statements.next().unwrap();
+//! assert!(matches!(statement.unwrap().directive, Directive::Rule { .. }));
+//! ```
+
+#![forbid(unsafe_code)]
+
+// The code `pest_derive` generates without pest's `std` feature names
+// `::alloc`.
+extern crate alloc;
 
 use pest::Parser;
 use pest::iterators::Pair;
 use pest_derive::Parser;
 
 #[derive(Parser)]
-#[grammar = "parser/seclang.pest"]
+#[grammar = "seclang.pest"]
 struct SecLang;
 
 /// A configuration text, one `char` per byte.

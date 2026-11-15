@@ -462,6 +462,7 @@ the owner):
 | `modsecurity` | `.` | the engine and its Rust API (rlib); `#![forbid(unsafe_code)]` |
 | `modsecurity-native` | `crates/modsecurity-native` | the C libraries behind safe APIs: PCRE2, libxml2, LMDB, ssdeep, Lua, libc calls |
 | `modsecurity-transformations` | `crates/modsecurity-transformations` | the `t:` transformations as pure functions, and the decoders shared with the engine |
+| `modsecurity-seclang` | `crates/modsecurity-seclang` | the SecLang grammar (`seclang.pest`) and its syntax tree |
 | `modsecurity-capi` | `crates/modsecurity-capi` | the `msc_*` C API: `libmodsecurity.so.3` and `libmodsecurity.a` |
 
 The engine stays at the root, so the test suites, the test data and the
@@ -522,3 +523,12 @@ kind) builds the context from the transaction.
   throughput (calls into the crate are not inlined); with it the build is
   at parity or ahead, and rule loading is about 6% faster. A from-scratch
   release build of the C library takes about 20 s either way.
+
+### The SecLang syntax crate
+
+`modsecurity-seclang` is the grammar and the syntax tree (`Statement`,
+`Directive`, ...) that used to be `parser::syntax`; it depends only on
+`pest`. It knows the shape of the language, not its names: the engine's
+`parser::build` still decides which variables, operators and actions exist,
+so the crate also suits tools that only read configurations. The engine
+refers to it as `parser::syntax`.
