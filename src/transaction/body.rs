@@ -98,3 +98,32 @@ impl Transaction<'_> {
         }
     }
 }
+
+#[cfg(feature = "libxml2")]
+impl crate::request_body_processor::xml::Context for Transaction<'_> {
+    fn debug_enabled(&self, level: i32) -> bool {
+        Transaction::debug_enabled(self, level)
+    }
+
+    fn debug(&self, level: i32, message: &str) {
+        Transaction::debug(self, level, message)
+    }
+
+    fn external_entities(&self) -> bool {
+        self.rules.properties.sec_xml_external_entity == Some(true)
+    }
+
+    fn args_mode(&self) -> crate::request_body_processor::xml::IntoArgs {
+        use crate::request_body_processor::xml::IntoArgs;
+        use crate::rules_set_properties::ParseXmlIntoArgs;
+        match self.sec_xml_parse_xml_into_args {
+            Some(ParseXmlIntoArgs::On) => IntoArgs::On,
+            Some(ParseXmlIntoArgs::OnlyArgs) => IntoArgs::OnlyArgs,
+            Some(ParseXmlIntoArgs::Off) | None => IntoArgs::Off,
+        }
+    }
+
+    fn add_argument(&mut self, name: &[u8], value: &[u8]) -> bool {
+        Transaction::add_argument(self, "XML", name, value, 0)
+    }
+}

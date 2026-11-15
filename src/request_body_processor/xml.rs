@@ -15,12 +15,59 @@ pub fn init_parser() {
 }
 
 #[cfg(feature = "libxml2")]
-pub use with_libxml2::Xml;
+pub use with_libxml2::{Context, IntoArgs, Xml};
 
 #[cfg(feature = "libxml2")]
 mod with_libxml2 {
-    use crate::rules_set_properties::{ParseXmlIntoArgs, config_xml_parse_xml_into_args_string};
-    use crate::transaction::Transaction;
+    /// Writes to the debug log through a [`Context`]: the message is only
+    /// formatted when the debug level is high enough.
+    macro_rules! xml_dbg {
+        ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
+            if $cx.debug_enabled($lvl) {
+                $cx.debug($lvl, &format!($($arg)*));
+            }
+        }};
+    }
+
+    /// `SecParseXmlIntoArgs`: whether the leaf elements become arguments,
+    /// and whether the document is still built.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum IntoArgs {
+        Off,
+        On,
+        OnlyArgs,
+    }
+
+    impl IntoArgs {
+        /// The setting as the debug log shows it.
+        fn as_str(self) -> &'static str {
+            match self {
+                IntoArgs::On => "True",
+                IntoArgs::Off => "False",
+                IntoArgs::OnlyArgs => "OnlyArgs",
+            }
+        }
+    }
+
+    /// What the XML processor needs from the transaction it parses for.
+    pub trait Context {
+        /// Whether the debug log takes messages of `level`.
+        fn debug_enabled(&self, level: i32) -> bool;
+
+        /// Writes `message` to the debug log.
+        fn debug(&self, level: i32, message: &str);
+
+        /// `SecXmlExternalEntity`: whether external entities are loaded.
+        fn external_entities(&self) -> bool;
+
+        /// `SecParseXmlIntoArgs` for this transaction.
+        fn args_mode(&self) -> IntoArgs;
+
+        /// Adds the argument `name` = `value` (a leaf element); `false`
+        /// when the arguments limit was reached and parsing has to stop.
+        fn add_argument(&mut self, name: &[u8], value: &[u8]) -> bool;
+    }
+
     use crate::utils::libxml2::{self, Document, PushParser, SaxHandler, SaxParser};
 
     /// An open element while parsing XML into args.
@@ -78,10 +125,10 @@ mod with_libxml2 {
         /// Closes the element `name`; a leaf element becomes an argument.
         /// Returns `false` when parsing has to stop because the number of
         /// arguments reached the limit.
-        fn on_end_element(&mut self, t: &mut Transaction<'_>, name: &[u8]) -> bool {
+        fn on_end_element(&mut self, cx: &mut dyn Context, name: &[u8]) -> bool {
             let mut keep_parsing = true;
             if self.nodes.last().is_some_and(|nd| !nd.has_child) {
-                keep_parsing = t.add_argument("XML", &self.currpath, &self.currval, 0);
+                keep_parsing = cx.add_argument(&self.currpath, &self.currval);
             }
             if !self.currpath.is_empty() {
                 // set an offset to store whether this is the first item, in
@@ -113,12 +160,12 @@ mod with_libxml2 {
 
     /// The SAX handler of the parser into ARGS: the parser state and the
     /// transaction the arguments go to.
-    struct ArgsHandler<'a, 't> {
+    struct ArgsHandler<'a> {
         nodes: &'a mut XmlNodes,
-        t: &'a mut Transaction<'t>,
+        cx: &'a mut dyn Context,
     }
 
-    impl SaxHandler for ArgsHandler<'_, '_> {
+    impl SaxHandler for ArgsHandler<'_> {
         /// An element starts.
         fn start_element(&mut self, name: &[u8]) {
             self.nodes.on_start_element(name);
@@ -126,7 +173,7 @@ mod with_libxml2 {
 
         /// An element ends; `false` stops the parser.
         fn end_element(&mut self, name: &[u8]) -> bool {
-            self.nodes.on_end_element(self.t, name)
+            self.nodes.on_end_element(self.cx, name)
         }
 
         /// Text of the current element.
@@ -171,26 +218,21 @@ mod with_libxml2 {
             self.well_formed
         }
 
-        fn parse_into_args(t: &Transaction<'_>) -> bool {
-            matches!(t.sec_xml_parse_xml_into_args, Some(ParseXmlIntoArgs::On) | Some(ParseXmlIntoArgs::OnlyArgs))
+        fn parse_into_args(cx: &dyn Context) -> bool {
+            matches!(cx.args_mode(), IntoArgs::On | IntoArgs::OnlyArgs)
         }
 
-        fn only_args(t: &Transaction<'_>) -> bool {
-            t.sec_xml_parse_xml_into_args == Some(ParseXmlIntoArgs::OnlyArgs)
+        fn only_args(cx: &dyn Context) -> bool {
+            cx.args_mode() == IntoArgs::OnlyArgs
         }
 
         /// Prepares the processor for a body: sets the external entity
         /// policy and, when parsing into `ARGS`, the SAX parser state.
-        pub fn init(&mut self, t: &mut Transaction<'_>) -> bool {
-            libxml2::allow_external_entities(t.rules.properties.sec_xml_external_entity == Some(true));
+        pub fn init(&mut self, cx: &mut dyn Context) -> bool {
+            libxml2::allow_external_entities(cx.external_entities());
 
-            if Self::parse_into_args(t) {
-                crate::ms_dbg_a!(
-                    t,
-                    9,
-                    "XML: SecParseXmlIntoArgs is set to {}",
-                    config_xml_parse_xml_into_args_string(t.sec_xml_parse_xml_into_args)
-                );
+            if Self::parse_into_args(cx) {
+                xml_dbg!(cx, 9, "XML: SecParseXmlIntoArgs is set to {}", cx.args_mode().as_str());
                 // set the parser state struct
                 self.xml_parser_state = Some(XmlNodes::new());
             }
@@ -201,7 +243,7 @@ mod with_libxml2 {
         /// Runs `f` with the SAX handler for the parser state and `t`.
         fn with_handler<R>(
             nodes: &mut Option<XmlNodes>,
-            t: &mut Transaction<'_>,
+            cx: &mut dyn Context,
             f: impl FnOnce(&mut dyn SaxHandler) -> R,
         ) -> R {
             /// The handler without a parser state (not reached: the parser
@@ -215,34 +257,34 @@ mod with_libxml2 {
                 fn characters(&mut self, _: &[u8]) {}
             }
             match nodes {
-                Some(nodes) => f(&mut ArgsHandler { nodes, t }),
+                Some(nodes) => f(&mut ArgsHandler { nodes, cx }),
                 None => f(&mut Ignore),
             }
         }
 
         /// Feeds a chunk of the body to the parsers (the first chunk creates
         /// them).
-        pub fn process_chunk(&mut self, t: &mut Transaction<'_>, buf: &[u8]) -> Result<(), String> {
+        pub fn process_chunk(&mut self, cx: &mut dyn Context, buf: &[u8]) -> Result<(), String> {
             // We want to initialise our parsing context here, to enable us
             // to pass it the first chunk of data so that it can attempt to
             // auto-detect the encoding.
             if self.parsing_ctx.is_none() && self.parsing_ctx_arg.is_none() {
                 // First invocation.
 
-                crate::ms_dbg_a!(t, 4, "XML: Initialising parser.");
+                xml_dbg!(cx, 4, "XML: Initialising parser.");
 
                 // NOTE When Sax interface is used libxml will not create the
                 // document object, but we need it.
 
-                if !Self::only_args(t) {
+                if !Self::only_args(cx) {
                     let Some(parser) = PushParser::new(buf) else {
-                        crate::ms_dbg_a!(t, 4, "XML: Failed to create parsing context.");
+                        xml_dbg!(cx, 4, "XML: Failed to create parsing context.");
                         return Err("XML: Failed to create parsing context.".to_string());
                     };
                     self.parsing_ctx = Some(parser);
                 }
 
-                if Self::parse_into_args(t) {
+                if Self::parse_into_args(cx) {
                     let Some(parser) = SaxParser::new(buf) else {
                         return Err("XML: Failed to create parsing context for ARGS.".to_string());
                     };
@@ -254,21 +296,21 @@ mod with_libxml2 {
 
             // Not a first invocation.
             if let Some(parser) = &self.parsing_ctx
-                && !Self::only_args(t)
+                && !Self::only_args(cx)
             {
                 parser.parse_chunk(buf);
                 if parser.well_formed() != 1 {
-                    crate::ms_dbg_a!(t, 4, "XML: Failed to parse document.");
+                    xml_dbg!(cx, 4, "XML: Failed to parse document.");
                     return Err("XML: Failed to parse document.".to_string());
                 }
             }
 
             if let Some(parser) = &self.parsing_ctx_arg
-                && Self::parse_into_args(t)
+                && Self::parse_into_args(cx)
             {
-                Self::with_handler(&mut self.xml_parser_state, t, |h| parser.parse_chunk(buf, h));
+                Self::with_handler(&mut self.xml_parser_state, cx, |h| parser.parse_chunk(buf, h));
                 if parser.well_formed() != 1 {
-                    crate::ms_dbg_a!(t, 4, "XML: Failed to parse document for ARGS.");
+                    xml_dbg!(cx, 4, "XML: Failed to parse document for ARGS.");
                     return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
             }
@@ -277,13 +319,13 @@ mod with_libxml2 {
         }
 
         /// Ends the body: finishes the parsers and keeps the document.
-        pub fn complete(&mut self, t: &mut Transaction<'_>) -> Result<(), String> {
+        pub fn complete(&mut self, cx: &mut dyn Context) -> Result<(), String> {
             // Only if we have a context, meaning we've done some work.
             if self.parsing_ctx.is_none() && self.parsing_ctx_arg.is_none() {
                 return Ok(());
             }
             if self.parsing_ctx.is_some()
-                && !Self::only_args(t)
+                && !Self::only_args(cx)
                 && let Some(parser) = self.parsing_ctx.take()
             {
                 // This is how we signal the end of parsing to libxml; the
@@ -291,19 +333,19 @@ mod with_libxml2 {
                 let (well_formed, doc) = parser.finish();
                 self.well_formed = well_formed as u32;
                 self.doc = doc;
-                crate::ms_dbg_a!(t, 4, "XML: Parsing complete (well_formed {}).", self.well_formed);
+                xml_dbg!(cx, 4, "XML: Parsing complete (well_formed {}).", self.well_formed);
 
                 if self.well_formed != 1 {
-                    crate::ms_dbg_a!(t, 4, "XML: Failed to parse document.");
+                    xml_dbg!(cx, 4, "XML: Failed to parse document.");
                     return Err("XML: Failed to parse document.".to_string());
                 }
             }
             if self.parsing_ctx_arg.is_some()
-                && Self::parse_into_args(t)
+                && Self::parse_into_args(cx)
                 && let Some(parser) = self.parsing_ctx_arg.take()
             {
                 // This is how we signal the end of parsing to libxml.
-                let rc = Self::with_handler(&mut self.xml_parser_state, t, |h| parser.finish(h));
+                let rc = Self::with_handler(&mut self.xml_parser_state, cx, |h| parser.finish(h));
                 if rc != 0 {
                     return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
