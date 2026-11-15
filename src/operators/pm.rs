@@ -1,11 +1,8 @@
 //! The `@pm` operator: matches when the input contains one of a set of
 //! phrases (case insensitive).
 
-use crate::operators::operator::{Operator, Param, log_offset};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 #[cfg(not(feature = "pm-aho-corasick"))]
 use crate::utils::acmp::{Acmp, Acmpt};
 use crate::utils::string::valid_hex;
@@ -177,22 +174,16 @@ impl Pm {
     /// Searches `input` for the first phrase; a match is logged with its
     /// offset, added to the matched values and, with `capture`, stored in
     /// `TX.0`. Shared by the `@pm` family.
-    pub(crate) fn evaluate_pm(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    pub(crate) fn evaluate_pm(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         let rc = self.p.find(input);
 
         if let Some((offset, m)) = rc {
-            log_offset(rm, (offset + 1).saturating_sub(m.len()), m.len());
-            t.matched.push(m.to_vec());
+            cx.offset((offset + 1).saturating_sub(m.len()), m.len());
+            cx.matched(m.to_vec());
 
-            if rule.has_capture_action() {
-                t.collections.tx.set(b"0", m.to_vec());
-                crate::ms_dbg_a!(t, 7, "Added pm match TX.0: {}", String::from_utf8_lossy(m));
+            if cx.captures() {
+                cx.set_capture(b"0", m.to_vec());
+                crate::op_dbg!(cx, 7, "Added pm match TX.0: {}", String::from_utf8_lossy(m));
             }
         }
 
@@ -221,14 +212,8 @@ impl Operator for Pm {
         Ok(())
     }
 
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        self.evaluate_pm(t, rule, input, rm)
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        self.evaluate_pm(cx, input)
     }
 }
 

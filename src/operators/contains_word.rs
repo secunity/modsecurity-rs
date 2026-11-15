@@ -1,11 +1,8 @@
 //! The `@containsWord` operator: matches when the parameter occurs in the
 //! input as a whole word, not next to an ASCII letter.
 
-use crate::operators::operator::{Operator, Param, log_offset};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::string::{find, find_from};
 
 #[derive(Debug)]
@@ -38,14 +35,8 @@ impl Operator for ContainsWord {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        let param_target = self.param.value(t);
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        let param_target = cx.param(&self.param);
 
         if param_target.is_empty() {
             return true;
@@ -60,15 +51,15 @@ impl Operator for ContainsWord {
         let mut pos = find(input, &param_target);
         while let Some(p) = pos {
             if p == 0 && Self::acceptable_char(input, param_target.len()) {
-                log_offset(rm, 0, param_target.len());
+                cx.offset(0, param_target.len());
                 return true;
             }
             if p + param_target.len() == input.len() && Self::acceptable_char(input, p.wrapping_sub(1)) {
-                log_offset(rm, p, param_target.len());
+                cx.offset(p, param_target.len());
                 return true;
             }
             if Self::acceptable_char(input, p.wrapping_sub(1)) && Self::acceptable_char(input, p + param_target.len()) {
-                log_offset(rm, p, param_target.len());
+                cx.offset(p, param_target.len());
                 return true;
             }
             pos = find_from(input, &param_target, p + 1);

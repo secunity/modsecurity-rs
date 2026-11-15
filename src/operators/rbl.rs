@@ -6,9 +6,7 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 
@@ -241,14 +239,8 @@ impl Operator for Rbl {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        ip_str: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        let host = self.map_ip_to_address(ip_str, Some(&*t));
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, ip_str: &[u8]) -> bool {
+        let host = self.map_ip_to_address(ip_str, Some(cx.transaction_ref()));
         let ip_s = String::from_utf8_lossy(ip_str).into_owned();
 
         if host.is_empty() {
@@ -257,21 +249,21 @@ impl Operator for Rbl {
 
         match resolve(&host) {
             Resolved::Failed => {
-                crate::ms_dbg_a!(t, 5, "RBL lookup of {} failed.", ip_s);
+                crate::op_dbg!(cx, 5, "RBL lookup of {} failed.", ip_s);
                 return false;
             }
             Resolved::OtherFamily(family) => {
-                crate::ms_dbg_a!(t, 7, "Unsupported address family: {}", family);
+                crate::op_dbg!(cx, 7, "Unsupported address family: {}", family);
                 return false;
             }
             Resolved::V4(sin_addr) => {
-                Self::further_info(sin_addr, &ip_s, Some(&*t), self.provider);
+                Self::further_info(sin_addr, &ip_s, Some(cx.transaction_ref()), self.provider);
             }
         }
 
-        if rule.has_capture_action() {
-            t.collections.tx.set(b"0", ip_str.to_vec());
-            crate::ms_dbg_a!(t, 7, "Added RXL match TX.0: {}", ip_s);
+        if cx.captures() {
+            cx.set_capture(b"0", ip_str.to_vec());
+            crate::op_dbg!(cx, 7, "Added RXL match TX.0: {}", ip_s);
         }
 
         true

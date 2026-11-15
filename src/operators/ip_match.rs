@@ -1,11 +1,8 @@
 //! The `@ipMatch` operator: matches when the input is an IP address in one
 //! of the listed addresses or networks.
 
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::ip_tree::IpTree;
 
 #[derive(Debug)]
@@ -41,13 +38,7 @@ impl Operator for IpMatch {
         if self.tree.add_from_buffer(&self.param.literal) { Ok(()) } else { Err(String::new()) }
     }
 
-    fn evaluate(
-        &self,
-        _t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, _cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         self.tree.contains(input)
     }
 }

@@ -1,9 +1,6 @@
 //! The `@unconditionalMatch` operator: always matches.
 
-use crate::operators::operator::Operator;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::operators::operator::{MatchContext, Operator};
 
 /// Always matches.
 #[derive(Debug)]
@@ -25,13 +22,7 @@ impl Operator for UnconditionalMatch {
     fn name(&self) -> &'static str {
         "UnconditionalMatch"
     }
-    fn evaluate(
-        &self,
-        _t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        _input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, _cx: &mut MatchContext<'_, '_, '_>, _input: &[u8]) -> bool {
         true
     }
 }

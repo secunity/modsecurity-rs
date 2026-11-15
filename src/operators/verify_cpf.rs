@@ -1,11 +1,8 @@
 //! The `@verifyCPF` operator: finds Brazilian CPF numbers (taxpayer IDs)
 //! whose check digits are valid.
 
-use crate::operators::operator::{Operator, Param, log_offset};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
 
 const BAD_CPF: [&[u8; 11]; 11] = [
@@ -102,13 +99,7 @@ impl Operator for VerifyCPF {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         if self.param.literal.is_empty() {
             return false;
         }
@@ -119,10 +110,10 @@ impl Operator for VerifyCPF {
             let matches = self.re.search_all(&input[i..]);
             for m in &matches {
                 if self.verify(m.str()) {
-                    log_offset(rm, m.offset(), m.str().len());
-                    if rule.has_capture_action() {
-                        t.collections.tx.set(b"0", m.str().to_vec());
-                        crate::ms_dbg_a!(t, 7, "Added VerifyCPF match TX.0: {}", String::from_utf8_lossy(m.str()));
+                    cx.offset(m.offset(), m.str().len());
+                    if cx.captures() {
+                        cx.set_capture(b"0", m.str().to_vec());
+                        crate::op_dbg!(cx, 7, "Added VerifyCPF match TX.0: {}", String::from_utf8_lossy(m.str()));
                     }
                     return true;
                 }

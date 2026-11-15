@@ -2,11 +2,8 @@
 //! less than or equal to the parameter.
 
 use crate::operators::eq::atoll;
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct Le {
@@ -27,14 +24,8 @@ impl Operator for Le {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        let p = self.param.value(t);
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        let p = cx.param(&self.param);
         atoll(input) <= atoll(&p)
     }
 }

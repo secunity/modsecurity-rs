@@ -2,11 +2,8 @@
 //! outside the allowed values and ranges.
 
 use crate::operators::eq::stoi;
-use crate::operators::operator::{Operator, Param, log_offset};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct ValidateByteRange {
@@ -85,17 +82,11 @@ impl Operator for ValidateByteRange {
         Ok(())
     }
 
-    fn evaluate(
-        &self,
-        _t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         let mut count = 0usize;
         for (i, &x) in input.iter().enumerate() {
             if self.table[usize::from(x >> 3)] & (1 << (x & 0x7)) == 0 {
-                log_offset(rm, i, 1);
+                cx.offset(i, 1);
                 count += 1;
             }
         }

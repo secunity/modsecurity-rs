@@ -7,7 +7,6 @@ use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
-use crate::utils::regex::{Regex, RegexResult};
 use crate::utils::string::{limit_to, to_hex_if_needed};
 
 /// The parameter of an operator (`@op parameter`), which may hold macros
@@ -49,6 +48,114 @@ impl Param {
     }
 }
 
+/// What an operator may do while it evaluates a value: read its parameter
+/// for this transaction, record what it matched, and write to the debug
+/// log. Operators see the transaction only through this.
+///
+/// (The few operators that are part of the engine rather than matchers,
+/// such as `@geoLookup` or `@inspectFile`, reach the transaction with
+/// [`MatchContext::transaction`].)
+pub struct MatchContext<'c, 't, 'm> {
+    t: &'c mut Transaction<'t>,
+    rule: &'c RuleWithActions,
+    rm: &'c mut RuleMessage<'m>,
+}
+
+impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
+    pub fn new(t: &'c mut Transaction<'t>, rule: &'c RuleWithActions, rm: &'c mut RuleMessage<'m>) -> Self {
+        MatchContext { t, rule, rm }
+    }
+
+    /// Whether the debug log takes messages of `level`.
+    pub fn debug_enabled(&self, level: i32) -> bool {
+        self.t.debug_enabled(level)
+    }
+
+    /// Writes `message` to the debug log (see [`op_dbg`](crate::op_dbg)).
+    pub fn debug(&self, level: i32, message: &str) {
+        self.t.debug(level, message);
+    }
+
+    /// `param` with its macros expanded for this transaction, borrowed
+    /// when it has none.
+    pub fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]> {
+        param.value(self.t)
+    }
+
+    /// Whether the rule has the `capture` action.
+    pub fn captures(&self) -> bool {
+        self.rule.has_capture_action()
+    }
+
+    /// Stores a captured value as `TX:<group>` (`TX:0` ... `TX:9`); for
+    /// rules that capture ([`Self::captures`]).
+    pub fn set_capture(&mut self, group: &[u8], value: Vec<u8>) {
+        self.t.collections.tx.set(group, value);
+    }
+
+    /// Records text the operator matched (what `capture` and the logs
+    /// refer to).
+    pub fn matched(&mut self, value: Vec<u8>) {
+        self.t.matched.push(value);
+    }
+
+    /// Records the position of a match in the input (`o<offset>,<length>`
+    /// in the reference of the rule message).
+    pub fn offset(&mut self, offset: usize, len: usize) {
+        self.rm.reference.extend_from_slice(format!("o{},{}", offset, len).as_bytes());
+    }
+
+    /// `SecPcreMatchLimit` (0 when not set).
+    pub fn pcre_match_limit(&self) -> u64 {
+        self.t.rules.properties.pcre_match_limit.map_or(0, u64::from)
+    }
+
+    /// Reports a regular expression that failed to compile: logs it and
+    /// sets `MSC_PCRE_ERROR` and `TX.MSC_PCRE_ERROR`.
+    pub fn regex_compile_error(&mut self, pattern: &str) {
+        let t = &mut *self.t;
+        crate::ms_dbg_a!(t, 1, "Error with regular expression: \"{}\"", pattern);
+        let off = t.vars.offset;
+        t.vars.msc_pcre_error.set(b"1", off);
+        t.collections.tx.set(b"MSC_PCRE_ERROR", b"1".to_vec());
+        crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
+    }
+
+    /// Reports a failed regular expression search by `op_name`: sets
+    /// `MSC_PCRE_ERROR` (and `MSC_PCRE_LIMITS_EXCEEDED` when the match
+    /// limit was hit), in TX too, and logs the error.
+    pub fn regex_search_error(&mut self, pattern: &str, match_limit: bool, op_name: &str) {
+        let t = &mut *self.t;
+        let off = t.vars.offset;
+        t.vars.msc_pcre_error.set(b"1", off);
+        t.collections.tx.set(b"MSC_PCRE_ERROR", b"1".to_vec());
+        crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
+        if match_limit {
+            t.vars.msc_pcre_limits_exceeded.set(b"1", off);
+            t.collections.tx.set(b"MSC_PCRE_LIMITS_EXCEEDED", b"1".to_vec());
+            crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_LIMITS_EXCEEDED to 1");
+        }
+        crate::ms_dbg_a!(
+            t,
+            1,
+            "{}: regex error '{}' for pattern '{}'",
+            op_name,
+            if match_limit { "MATCH_LIMIT" } else { "OTHER" },
+            pattern
+        );
+    }
+
+    /// The transaction, for the operators that are part of the engine.
+    pub fn transaction(&mut self) -> &mut Transaction<'t> {
+        self.t
+    }
+
+    /// [`Self::transaction`], to read from.
+    pub fn transaction_ref(&self) -> &Transaction<'t> {
+        self.t
+    }
+}
+
 /// A SecRule operator (`@rx`, `@pm`, ...).
 pub trait Operator: Send + Sync + std::fmt::Debug {
     /// The operator name shown in match messages and the debug log (e.g.
@@ -67,21 +174,13 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
     }
 
     /// Whether `input` matches (before the negation of `!@op`).
-    fn evaluate(&self, t: &mut Transaction<'_>, rule: &RuleWithActions, input: &[u8], rm: &mut RuleMessage<'_>)
-    -> bool;
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool;
 
     /// The result of the rule's operator: [`Operator::evaluate`] with the
     /// negation of `!@op` applied. Operators whose failures must not match
     /// even when negated override this.
-    fn evaluate_negatable(
-        &self,
-        negated: bool,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        self.evaluate(t, rule, input, rm) != negated
+    fn evaluate_negatable(&self, negated: bool, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        self.evaluate(cx, input) != negated
     }
 
     /// The parameter as the match message shows it: expanded for `t` or
@@ -131,49 +230,8 @@ impl RuleOperator {
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
-        self.op.evaluate_negatable(self.negated, t, rule, input, rm)
+        self.op.evaluate_negatable(self.negated, &mut MatchContext::new(t, rule, rm), input)
     }
-}
-
-/// Appends the position of a match in the input (`o<offset>,<length>`)
-/// to the reference of the rule message.
-pub fn log_offset(rm: &mut RuleMessage<'_>, offset: usize, len: usize) {
-    rm.reference.extend_from_slice(format!("o{},{}", offset, len).as_bytes());
-}
-
-/// Reports a regular expression that failed to compile: logs it and sets
-/// `MSC_PCRE_ERROR` and `TX.MSC_PCRE_ERROR`. Shared by `@rx` and
-/// `@rxGlobal`.
-pub fn report_regex_compile_error(t: &mut Transaction<'_>, re: &Regex) {
-    crate::ms_dbg_a!(t, 1, "Error with regular expression: \"{}\"", re.pattern);
-    let off = t.vars.offset;
-    t.vars.msc_pcre_error.set(b"1", off);
-    t.collections.tx.set(b"MSC_PCRE_ERROR", b"1".to_vec());
-    crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
-}
-
-/// Reports a failed regular expression search by `op_name`: sets
-/// `MSC_PCRE_ERROR` (and `MSC_PCRE_LIMITS_EXCEEDED` when the match limit
-/// was hit), in TX too, and logs the error.
-pub fn report_regex_search_error(t: &mut Transaction<'_>, re: &Regex, result: RegexResult, op_name: &str) {
-    let off = t.vars.offset;
-    t.vars.msc_pcre_error.set(b"1", off);
-    t.collections.tx.set(b"MSC_PCRE_ERROR", b"1".to_vec());
-    crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
-    let match_limit = result == RegexResult::ErrorMatchLimit;
-    if match_limit {
-        t.vars.msc_pcre_limits_exceeded.set(b"1", off);
-        t.collections.tx.set(b"MSC_PCRE_LIMITS_EXCEEDED", b"1".to_vec());
-        crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_LIMITS_EXCEEDED to 1");
-    }
-    crate::ms_dbg_a!(
-        t,
-        1,
-        "{}: regex error '{}' for pattern '{}'",
-        op_name,
-        if match_limit { "MATCH_LIMIT" } else { "OTHER" },
-        re.pattern
-    );
 }
 
 /// The operator named `op` (case
@@ -258,6 +316,6 @@ pub(crate) mod test_support {
     pub fn eval_in(op: &dyn Operator, t: &mut Transaction<'_>, input: &[u8]) -> bool {
         let rule = RuleWithActions::new(None, None, "", 0, RuleWithActionsKind::Unconditional);
         let mut rm = RuleMessage::new(&rule);
-        op.evaluate(t, &rule, input, &mut rm)
+        op.evaluate(&mut super::MatchContext::new(t, &rule, &mut rm), input)
     }
 }

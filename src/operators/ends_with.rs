@@ -1,11 +1,8 @@
 //! The `@endsWith` operator: matches when the input ends with the
 //! parameter.
 
-use crate::operators::operator::{Operator, Param, log_offset};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct EndsWith {
@@ -26,20 +23,14 @@ impl Operator for EndsWith {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         let mut ret = false;
-        let p = self.param.value(t);
+        let p = cx.param(&self.param);
 
         if input.len() >= p.len() {
             ret = input.ends_with(&p);
             if ret {
-                log_offset(rm, input.len() - p.len(), p.len());
+                cx.offset(input.len() - p.len(), p.len());
             }
         }
 

@@ -5,10 +5,7 @@ use crate::operators::libinjection_adapter::run_libinjection_xss;
 use crate::operators::libinjection_utils::{
     InjectionResult, is_malicious_libinjection_result, libinjection_result_to_string, loggable_input,
 };
-use crate::operators::operator::Operator;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::operators::operator::{MatchContext, Operator};
 
 #[derive(Debug)]
 pub struct DetectXSS;
@@ -33,38 +30,32 @@ impl Operator for DetectXSS {
     fn resolve_match_message(&self, _param: &[u8], _key: &[u8], _value: &[u8]) -> Vec<u8> {
         b"detected XSS using libinjection.".to_vec()
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         let xss_result = run_libinjection_xss(input);
 
         match xss_result {
             InjectionResult::True => {
-                crate::ms_dbg_a!(t, 5, "detected XSS using libinjection.");
-                if rule.has_capture_action() {
-                    t.collections.tx.set(b"0", input.to_vec());
-                    crate::ms_dbg_a!(t, 7, "Added DetectXSS match TX.0: {}", String::from_utf8_lossy(input));
+                crate::op_dbg!(cx, 5, "detected XSS using libinjection.");
+                if cx.captures() {
+                    cx.set_capture(b"0", input.to_vec());
+                    crate::op_dbg!(cx, 7, "Added DetectXSS match TX.0: {}", String::from_utf8_lossy(input));
                 }
             }
             InjectionResult::Error => {
-                crate::ms_dbg_a!(
-                    t,
+                crate::op_dbg!(
+                    cx,
                     4,
                     "libinjection parser error during XSS analysis ({}); treating as match (fail-safe). Input: {}",
                     libinjection_result_to_string(xss_result),
                     loggable_input(input)
                 );
-                if rule.has_capture_action() {
-                    t.collections.tx.set(b"0", input.to_vec());
-                    crate::ms_dbg_a!(t, 7, "Added DetectXSS error input TX.0: {}", String::from_utf8_lossy(input));
+                if cx.captures() {
+                    cx.set_capture(b"0", input.to_vec());
+                    crate::op_dbg!(cx, 7, "Added DetectXSS error input TX.0: {}", String::from_utf8_lossy(input));
                 }
             }
             InjectionResult::False => {
-                crate::ms_dbg_a!(t, 9, "libinjection was not able to find any XSS in: {}", loggable_input(input));
+                crate::op_dbg!(cx, 9, "libinjection was not able to find any XSS in: {}", loggable_input(input));
             }
         }
 

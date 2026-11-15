@@ -7,11 +7,8 @@
 //! start with `1` (and is longer than one byte).
 
 use crate::engine::lua::Lua;
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::system::find_resource;
 
 #[derive(Debug)]
@@ -99,16 +96,10 @@ impl Operator for InspectFile {
         Ok(())
     }
 
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         if self.is_script {
             // Lua scripts need a transaction to run against.
-            return self.lua.run(t, input);
+            return self.lua.run(cx.transaction(), input);
         }
 
         let Some(res) = self.run_program(input) else {

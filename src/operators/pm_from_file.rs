@@ -2,12 +2,9 @@
 
 use std::io::Read;
 
-use crate::operators::operator::{Operator, Param};
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::operators::pm::Pm;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::https_client::HttpsClient;
 use crate::utils::string::{is_space, split};
 use crate::utils::system::find_resource;
@@ -96,14 +93,8 @@ impl Operator for PmFromFile {
         Ok(())
     }
 
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        self.pm.evaluate_pm(t, rule, input, rm)
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        self.pm.evaluate_pm(cx, input)
     }
 }
 

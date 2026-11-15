@@ -6,11 +6,8 @@
 //! library). Without it the operator fails to initialise and never
 //! matches, like the C++ build without ssdeep.
 
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct FuzzyHash {
@@ -87,22 +84,16 @@ impl Operator for FuzzyHash {
     }
 
     #[cfg(feature = "ssdeep")]
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         let Some(result) = modsecurity_native::ssdeep::hash(input) else {
-            crate::ms_dbg_a!(t, 4, "Problems generating fuzzy hash");
+            crate::op_dbg!(cx, 4, "Problems generating fuzzy hash");
             return false;
         };
 
         for chunk in &self.chunks {
             let i = modsecurity_native::ssdeep::compare(chunk, &result);
             if i >= self.threshold {
-                crate::ms_dbg_a!(t, 4, "Fuzzy hash: matched with score: {}.", i);
+                crate::op_dbg!(cx, 4, "Fuzzy hash: matched with score: {}.", i);
                 return true;
             }
         }
@@ -112,13 +103,7 @@ impl Operator for FuzzyHash {
     }
 
     #[cfg(not(feature = "ssdeep"))]
-    fn evaluate(
-        &self,
-        _t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        _input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, _cx: &mut MatchContext<'_, '_, '_>, _input: &[u8]) -> bool {
         // No match.
         false
     }

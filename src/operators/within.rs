@@ -1,11 +1,8 @@
 //! The `@within` operator: matches when the input occurs in the parameter
 //! (an empty input always matches).
 
-use crate::operators::operator::{Operator, Param, log_offset};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::string::find;
 
 #[derive(Debug)]
@@ -27,14 +24,8 @@ impl Operator for Within {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        let param_target = self.param.value(t);
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        let param_target = cx.param(&self.param);
 
         if input.is_empty() {
             return true;
@@ -42,7 +33,7 @@ impl Operator for Within {
 
         let pos = find(&param_target, input);
         if let Some(pos) = pos {
-            log_offset(rm, pos, input.len());
+            cx.offset(pos, input.len());
         }
 
         pos.is_some()

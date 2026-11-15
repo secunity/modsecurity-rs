@@ -1,11 +1,8 @@
 //! The `@strmatch` operator: matches when the parameter occurs anywhere in
 //! the input.
 
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::string::find;
 
 #[derive(Debug)]
@@ -27,14 +24,8 @@ impl Operator for StrMatch {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        let p = self.param.value(t);
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        let p = cx.param(&self.param);
         find(input, &p).is_some()
     }
 }

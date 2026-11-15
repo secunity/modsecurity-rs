@@ -2411,7 +2411,11 @@ mod regression_dump {
             };
             o.init("x.json").unwrap();
             let mut rm = crate::rule_message::RuleMessage::new(&rule);
-            println!("OP {} -> {}", name, o.evaluate(t, &rule, b"", &mut rm));
+            println!(
+                "OP {} -> {}",
+                name,
+                o.evaluate(&mut crate::operators::operator::MatchContext::new(t, &rule, &mut rm), b"")
+            );
         }
     }
 

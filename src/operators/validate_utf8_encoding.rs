@@ -1,10 +1,7 @@
 //! The `@validateUtf8Encoding` operator: matches when the input is not
 //! valid UTF-8.
 
-use crate::operators::operator::{Operator, log_offset};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::operators::operator::{MatchContext, Operator};
 
 pub const UNICODE_ERROR_CHARACTERS_MISSING: i32 = -1;
 pub const UNICODE_ERROR_INVALID_ENCODING: i32 = -2;
@@ -108,21 +105,15 @@ impl Operator for ValidateUtf8Encoding {
     fn name(&self) -> &'static str {
         "ValidateUtf8Encoding"
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         let mut i = 0usize;
         while i < input.len() {
             let rc = Self::detect_utf8_character(&input[i..]);
 
             let msg = match rc {
                 UNICODE_ERROR_CHARACTERS_MISSING => {
-                    crate::ms_dbg_a!(
-                        t,
+                    crate::op_dbg!(
+                        cx,
                         8,
                         "Invalid UTF-8 encoding: not enough bytes in character at {}. [offset \"{}\"]",
                         String::from_utf8_lossy(input),
@@ -140,8 +131,8 @@ impl Operator for ValidateUtf8Encoding {
             };
 
             if let Some(msg) = msg {
-                crate::ms_dbg_a!(t, 8, "{}{}. [offset \"{}\"]", msg, String::from_utf8_lossy(input), i);
-                log_offset(rm, i, input.len());
+                crate::op_dbg!(cx, 8, "{}{}. [offset \"{}\"]", msg, String::from_utf8_lossy(input), i);
+                cx.offset(i, input.len());
 
                 return true;
             }

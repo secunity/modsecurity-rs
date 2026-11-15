@@ -1,11 +1,8 @@
 //! The `@ipMatchFromFile` (`@ipMatchF`) operator.
 
 use crate::operators::ip_match::IpMatch;
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::system::find_resource;
 
 /// `@ipMatchFromFile`: like `@ipMatch`, with the entries read from a local
@@ -44,14 +41,8 @@ impl Operator for IpMatchFromFile {
         }
     }
 
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        self.ip_match.evaluate(t, rule, input, rm)
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        self.ip_match.evaluate(cx, input)
     }
 }
 

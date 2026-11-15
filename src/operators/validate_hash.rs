@@ -1,10 +1,7 @@
 //! The `@validateHash` operator, which always matches.
 
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 
 /// Not implemented by libmodsecurity either: always matches.
 /// Reference: https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual#validateHash
@@ -27,13 +24,7 @@ impl Operator for ValidateHash {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        _t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        _input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, _cx: &mut MatchContext<'_, '_, '_>, _input: &[u8]) -> bool {
         true
     }
 }

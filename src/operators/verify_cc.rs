@@ -2,11 +2,8 @@
 //! offset of the input (as in C++), and a match counts when it passes the
 //! Luhn check.
 
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::regex::{Regex, Subject};
 
 #[derive(Debug)]
@@ -74,7 +71,7 @@ impl Operator for VerifyCC {
         Ok(())
     }
 
-    fn evaluate(&self, t: &mut Transaction<'_>, rule: &RuleWithActions, i: &[u8], _rm: &mut RuleMessage<'_>) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, i: &[u8]) -> bool {
         // Without a successful init() the C++ code would dereference a null
         // pattern.
         let Some(re) = self.re.as_ref() else {
@@ -89,12 +86,12 @@ impl Operator for VerifyCC {
             }
             let m = &i[start..end];
             if Self::luhn_verify(m) {
-                if rule.has_capture_action() {
-                    t.collections.tx.set(b"0", m.to_vec());
-                    crate::ms_dbg_a!(t, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
+                if cx.captures() {
+                    cx.set_capture(b"0", m.to_vec());
+                    crate::op_dbg!(cx, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
                 }
-                crate::ms_dbg_a!(
-                    t,
+                crate::op_dbg!(
+                    cx,
                     9,
                     "CC# match \"{}\" at {}. [offset {}]",
                     String::from_utf8_lossy(&self.param.literal),

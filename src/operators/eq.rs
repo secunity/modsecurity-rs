@@ -4,11 +4,8 @@
 //! Also hosts the C number parsing helpers shared by the numeric
 //! comparison operators (`@eq`, `@ge`, `@gt`, `@le`, `@lt`).
 
-use crate::operators::operator::{Operator, Param};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 
 /// `::isspace` in the C locale.
 fn is_c_space(c: u8) -> bool {
@@ -88,14 +85,8 @@ impl Operator for Eq {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        _rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        let pt = self.param.value(t);
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        let pt = cx.param(&self.param);
         // A failing std::stoi counts as 0.
         let p = stoi(&pt).unwrap_or(0);
         let i = stoi(input).unwrap_or(0);

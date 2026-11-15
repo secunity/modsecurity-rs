@@ -49,7 +49,17 @@ macro_rules! ms_dbg_opt {
     }};
 }
 
-pub(crate) use {ms_dbg_a, ms_dbg_opt};
+/// Writes to the debug log from an operator (through its `MatchContext`):
+/// the message is only formatted when the debug level is high enough.
+macro_rules! op_dbg {
+    ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
+        if $cx.debug_enabled($lvl) {
+            $cx.debug($lvl, &format!($($arg)*));
+        }
+    }};
+}
+
+pub(crate) use {ms_dbg_a, ms_dbg_opt, op_dbg};
 
 pub use crate::debug_log::DebugLog;
 pub use crate::intervention::Intervention;
@@ -115,6 +125,17 @@ pub mod internal {
     pub use crate::utils::string::to_hex_if_needed;
 
     use crate::{DebugLog, RuleMessage, RulesSet, Transaction};
+
+    /// Whether `op` matches `input`, evaluated alone for `rule` in `t`.
+    pub fn evaluate_operator(
+        op: &dyn Operator,
+        t: &mut Transaction<'_>,
+        rule: &RuleWithActions,
+        input: &[u8],
+        rm: &mut RuleMessage<'_>,
+    ) -> bool {
+        op.evaluate(&mut crate::operators::operator::MatchContext::new(t, rule, rm), input)
+    }
 
     /// A rule message for `rule`, to evaluate an operator alone.
     pub fn new_rule_message(rule: &RuleWithActions) -> RuleMessage<'_> {

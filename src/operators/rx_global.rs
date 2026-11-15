@@ -1,11 +1,8 @@
 //! The `@rxGlobal` operator: like `@rx`, but with `capture` it stores the
 //! groups of every match, numbered consecutively in `TX`.
 
-use crate::operators::operator::{Operator, Param, log_offset, report_regex_compile_error, report_regex_search_error};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::operators::operator::{MatchContext, Operator, Param};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::regex::{Regex, RegexResult, SMatchCapture};
 
 /// Whether patterns are multi-line: `$` only matches at the very end of
@@ -33,20 +30,14 @@ impl RxGlobal {
     /// Whether `input` matches; `None` when the regular expression failed
     /// (it does not compile, or it hit the match limits), which is neither
     /// a match nor a mismatch.
-    fn try_match(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> Option<bool> {
+    fn try_match(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> Option<bool> {
         if self.param.literal.is_empty() && !self.contains_macro() {
             return Some(true);
         }
 
         let re_owned;
         let re: &Regex = if self.contains_macro() {
-            let eparam = self.param.value(t);
+            let eparam = cx.param(&self.param);
             re_owned = Regex::with_options(&eparam, false, MULTI_LINE);
             &re_owned
         } else if let Some(re) = self.re.as_ref() {
@@ -58,39 +49,39 @@ impl RxGlobal {
         };
 
         if re.has_error() {
-            report_regex_compile_error(t, re);
+            cx.regex_compile_error(&re.pattern);
             return None;
         }
 
         // (`utils::regex` guards against dangling empty-slice pointers.)
         let subject: &[u8] = input;
         let mut captures: Vec<SMatchCapture> = Vec::new();
-        let match_limit = t.rules.properties.pcre_match_limit.map_or(0, u64::from);
+        let match_limit = cx.pcre_match_limit();
         let regex_result = re.search_global(subject, &mut captures, match_limit);
 
         if regex_result != RegexResult::Ok {
-            report_regex_search_error(t, re, regex_result, "rxGlobal");
+            cx.regex_search_error(&re.pattern, regex_result == RegexResult::ErrorMatchLimit, "rxGlobal");
             return None;
         }
 
-        if rule.has_capture_action() {
+        if cx.captures() {
             for capture in &captures {
                 let capture_substring = &input[capture.offset..capture.offset + capture.length];
                 let key = capture.group.to_string();
-                t.collections.tx.set(key.as_bytes(), capture_substring.to_vec());
-                crate::ms_dbg_a!(
-                    t,
+                cx.set_capture(key.as_bytes(), capture_substring.to_vec());
+                crate::op_dbg!(
+                    cx,
                     7,
                     "Added regex subexpression TX.{}: {}",
                     capture.group,
                     String::from_utf8_lossy(capture_substring)
                 );
-                t.matched.push(capture_substring.to_vec());
+                cx.matched(capture_substring.to_vec());
             }
         }
 
         for capture in &captures {
-            log_offset(rm, capture.offset, capture.length);
+            cx.offset(capture.offset, capture.length);
         }
 
         Some(!captures.is_empty())
@@ -118,26 +109,13 @@ impl Operator for RxGlobal {
         Ok(())
     }
 
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        self.try_match(t, rule, input, rm).unwrap_or(false)
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        self.try_match(cx, input).unwrap_or(false)
     }
 
     /// A failed regular expression does not match, negated or not (#3123).
-    fn evaluate_negatable(
-        &self,
-        negated: bool,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
-        self.try_match(t, rule, input, rm).is_some_and(|matched| matched != negated)
+    fn evaluate_negatable(&self, negated: bool, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        self.try_match(cx, input).is_some_and(|matched| matched != negated)
     }
 }
 

@@ -548,3 +548,18 @@ The release profile is now `lto = "fat"` with `codegen-units = 1`. Thin
 LTO left this split about 1% slower (an A/A control put the noise floor at
 0.5%); whole-program optimization makes crate boundaries free and is about
 2% faster than before any split. A release build takes about 30 s.
+
+## Operators see a `MatchContext`, not the transaction
+
+`Operator::evaluate` took the transaction, the rule and the rule message.
+It now takes a `MatchContext` and the input. The context offers what a
+matcher needs and nothing else: the parameter expanded for the
+transaction, whether the rule captures, `set_capture`, `matched`,
+`offset`, the PCRE match limit and error reports, and the debug log
+(`op_dbg!`). 33 of the 38 operators use only that. The five that are part
+of the engine rather than matchers (`@geoLookup`, `@inspectFile`, `@rbl`,
+`@validateDTD`, `@validateSchema`) reach the transaction through
+`MatchContext::transaction`, which marks them. This is the step before
+moving the matchers to their own crate: the context becomes that crate's
+trait.
+

@@ -1,10 +1,7 @@
 //! The `@validateUrlEncoding` operator: matches when the input holds an
 //! invalid `%xx` escape.
 
-use crate::operators::operator::{Operator, log_offset};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::operators::operator::{MatchContext, Operator};
 
 #[derive(Debug)]
 pub struct ValidateUrlEncoding;
@@ -64,13 +61,7 @@ impl Operator for ValidateUrlEncoding {
     fn name(&self) -> &'static str {
         "ValidateUrlEncoding"
     }
-    fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        _rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         let mut offset = 0;
 
         if input.is_empty() {
@@ -82,30 +73,30 @@ impl Operator for ValidateUrlEncoding {
         match rc {
             1 => {
                 // Encoding is valid.
-                crate::ms_dbg_a!(t, 7, "Valid URL Encoding at '{}'", input_s);
+                crate::op_dbg!(cx, 7, "Valid URL Encoding at '{}'", input_s);
 
                 false
             }
             -2 => {
-                crate::ms_dbg_a!(t, 7, "Invalid URL Encoding: Non-hexadecimal digits used at '{}'", input_s);
-                log_offset(rm, offset, input.len());
+                crate::op_dbg!(cx, 7, "Invalid URL Encoding: Non-hexadecimal digits used at '{}'", input_s);
+                cx.offset(offset, input.len());
 
                 true // Invalid match.
             }
             -3 => {
-                crate::ms_dbg_a!(
-                    t,
+                crate::op_dbg!(
+                    cx,
                     7,
                     "Invalid URL Encoding: Not enough characters at the end of input at '{}'",
                     input_s
                 );
-                log_offset(rm, offset, input.len());
+                cx.offset(offset, input.len());
 
                 true // Invalid match.
             }
             _ => {
-                crate::ms_dbg_a!(t, 7, "Invalid URL Encoding: Internal Error (rc = {}) at '{}'", rc, input_s);
-                log_offset(rm, offset, input.len());
+                crate::op_dbg!(cx, 7, "Invalid URL Encoding: Internal Error (rc = {}) at '{}'", rc, input_s);
+                cx.offset(offset, input.len());
 
                 true
             }
