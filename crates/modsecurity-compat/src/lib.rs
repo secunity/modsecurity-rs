@@ -10,11 +10,13 @@
 //! - [`unordered_multimap`]: a multimap that iterates in the order of
 //!   libstdc++'s `std::unordered_multimap` (the order of `ARGS` & co.);
 //! - [`json`]: a JSON reader and writer that accept and produce what yajl
-//!   does.
+//!   does;
+//! - [`chars`]: the byte classes and string helpers the others share.
 
 #![forbid(unsafe_code)]
 
 pub mod acmp;
+pub mod chars;
 pub mod json;
 pub mod msc_tree;
 pub mod unordered_multimap;

@@ -464,6 +464,7 @@ the owner):
 | `modsecurity-transformations` | `crates/modsecurity-transformations` | the `t:` transformations as pure functions, and the decoders shared with the engine |
 | `modsecurity-seclang` | `crates/modsecurity-seclang` | the SecLang grammar (`seclang.pest`) and its syntax tree |
 | `modsecurity-compat` | `crates/modsecurity-compat` | what reproduces C++ behavior: ACMP, the crit-bit IP tree, the libstdc++-ordered multimap, the yajl-compatible JSON |
+| `modsecurity-operators` | `crates/modsecurity-operators` | the 33 operators that only match, against the `Context` and `Resources` traits |
 | `modsecurity-capi` | `crates/modsecurity-capi` | the `msc_*` C API: `libmodsecurity.so.3` and `libmodsecurity.a` |
 
 The engine stays at the root, so the test suites, the test data and the
@@ -562,4 +563,23 @@ of the engine rather than matchers (`@geoLookup`, `@inspectFile`, `@rbl`,
 `MatchContext::transaction`, which marks them. This is the step before
 moving the matchers to their own crate: the context becomes that crate's
 trait.
+
+### The operators crate
+
+`modsecurity-operators` holds the 33 operators that only match. Its
+`Context` trait is what `MatchContext` offered (the engine implements it
+for `MatchContext`), and `Operator::init` gets a `Resources` for the files
+and URLs a parameter names (`@pmFromFile`, `@ipMatchFromFile`,
+`@fuzzyHash`); the engine supplies its resource lookup and HTTPS client.
+An operator's `Param` is plain data (the text without macros, and whether
+it has any); the engine's `RuleOperator` keeps the macro string and the
+context expands it.
+
+The engine keeps its own `Operator` trait, which takes the `MatchContext`:
+the five operators that need the transaction implement it directly
+(`@geoLookup`, `@inspectFile`, `@rbl`, `@validateDTD`, `@validateSchema`),
+and a `Matcher` wrapper runs the crate's operators behind it. The crate's
+tests run against a recording context, without a transaction. The byte and
+string helpers both sides use (`find`, `limit_to`, `to_hex_if_needed`,
+`split`, the hex digits) are in `modsecurity_compat::chars`.
 

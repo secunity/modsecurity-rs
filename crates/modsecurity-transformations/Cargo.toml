@@ -7,6 +7,8 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
+# The byte helpers (hex digits, C locale classes).
+modsecurity-compat = { path = "../modsecurity-compat" }
 # t:md5 and t:sha1.
 md-5 = "0.11"
 sha1 = "0.11"

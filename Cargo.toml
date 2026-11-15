@@ -7,6 +7,7 @@ members = [
     "crates/modsecurity-transformations",
     "crates/modsecurity-seclang",
     "crates/modsecurity-compat",
+    "crates/modsecurity-operators",
     "crates/modsecurity-capi",
     "connectors/nginx",
     "examples/axum",
@@ -23,6 +24,7 @@ default-members = [
     "crates/modsecurity-transformations",
     "crates/modsecurity-seclang",
     "crates/modsecurity-compat",
+    "crates/modsecurity-operators",
     "crates/modsecurity-capi",
 ]
 
@@ -68,15 +70,15 @@ libxml2 = ["modsecurity-native/libxml2"]
 lua = ["dep:mlua", "modsecurity-native/lua"]
 maxmind = ["dep:maxminddb"]
 lmdb = ["modsecurity-native/lmdb"]
-ssdeep = ["modsecurity-native/ssdeep"]
+ssdeep = ["modsecurity-native/ssdeep", "modsecurity-operators/ssdeep"]
 curl = ["dep:curl"]
 # Mirrors the MODSEC_REGEX_DOLLAR_ENDONLY build option.
-regex-dollar-endonly = []
+regex-dollar-endonly = ["modsecurity-operators/regex-dollar-endonly"]
 # Not a C++ option (off by default): match @pm/@pmFromFile/@pmf phrases with
 # the aho-corasick crate instead of the port of the C++ ACMP parser, fixing
 # ACMP's missed and misreported matches. Changes detection results and
 # TX:0/log contents compared with C++ (see src/operators/pm.rs).
-pm-aho-corasick = ["dep:aho-corasick"]
+pm-aho-corasick = ["modsecurity-operators/pm-aho-corasick"]
 # Not a C++ option (off by default): store @ipMatch/@ipMatchFromFile/@ipMatchF
 # networks in a prefix trie (prefix-trie + ipnet crates) instead of the port of
 # the C++ crit-bit tree, fixing its missed matches when a list holds several
@@ -116,13 +118,14 @@ rand = "0.9"
 # Local time and strftime-style formatting (audit log timestamps and
 # directories, TIME* variables); replaces libc localtime_r/strftime.
 jiff = "0.2"
-aho-corasick = { version = "1", optional = true }
 rustix = { version = "1.1.6", features = ["system", "fs", "process", "time"] }
 dns-lookup = "4.0.2"
 nix = { version = "0.31.3", default-features = false, features = ["net"] }
 # ACMP, the crit-bit IP tree, the libstdc++-ordered multimap and the
 # yajl-compatible JSON: what reproduces C++ behavior.
 modsecurity-compat = { path = "crates/modsecurity-compat" }
+# The operators that only match (@rx, @pm, ...).
+modsecurity-operators = { path = "crates/modsecurity-operators" }
 # The SecLang grammar and syntax tree.
 modsecurity-seclang = { path = "crates/modsecurity-seclang" }
 # The `http` and `tower` features: the request/response types of the Rust

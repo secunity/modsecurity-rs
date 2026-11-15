@@ -1,0 +1,67 @@
+//! The `@ipMatchFromFile` (`@ipMatchF`) operator.
+
+use crate::ip_match::IpMatch;
+use crate::{Context, Operator, Param, Resources};
+
+/// `@ipMatchFromFile`: like `@ipMatch`, with the entries read from a local
+/// file or an `https://` resource.
+#[derive(Debug)]
+pub struct IpMatchFromFile {
+    pub ip_match: IpMatch,
+}
+
+impl IpMatchFromFile {
+    pub fn new(param: Param) -> Self {
+        IpMatchFromFile { ip_match: IpMatch::with_name("IpMatchFromFile", param) }
+    }
+}
+
+impl Operator for IpMatchFromFile {
+    fn name(&self) -> &'static str {
+        self.ip_match.name()
+    }
+
+    fn param(&self) -> Option<&Param> {
+        self.ip_match.param()
+    }
+
+    fn init(&mut self, file: &str, resources: &dyn Resources) -> Result<(), String> {
+        let param = self.ip_match.param.literal_lossy();
+
+        if param.starts_with("https://") {
+            let content = resources.download(&param)?;
+            self.ip_match.tree.add_from_content(&content)
+        } else {
+            let lookup = resources.find(&param, file);
+            let Some(resf) = lookup.path else {
+                return Err(lookup.looked_at);
+            };
+            self.ip_match.tree.add_from_file(&resf)
+        }
+    }
+
+    fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
+        self.ip_match.evaluate(cx, input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::eval;
+
+    #[test]
+    fn from_file() {
+        let config = format!("{}/test/test-cases/regression/x.json", concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let mut op = IpMatchFromFile::new(Param::from_text("../data/ipMatchFromFile.txt"));
+        op.init(&config, &crate::test_support::LocalFiles).unwrap();
+        assert!(eval(&op, b"200.249.12.31"));
+        assert!(eval(&op, b"::1"));
+        assert!(!eval(&op, b"200.249.12.32"));
+
+        // A missing file fails with the places the resources looked at.
+        let mut op = IpMatchFromFile::new(Param::from_text("file-not-found.txt"));
+        let error = op.init("operator-ipMatchFromFile.json", &crate::test_support::LocalFiles).unwrap_err();
+        assert!(error.starts_with("Looking at: 'file-not-found.txt'"), "{error}");
+    }
+}

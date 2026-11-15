@@ -354,7 +354,7 @@ fn whole_collection_followed_by_text() {
     let rules = "SecRule TX \"foo\" \"id:1,phase:2,pass,msg:'%{tx}x'\"\n";
     assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
     let dump = format!("{:#?}", d.rules_set_phases);
-    assert!(dump.contains("op: Rx"), "{dump}");
+    assert!(dump.contains("Rx {"), "{dump}");
     assert!(!dump.contains("dynamic"), "{dump}");
     assert_eq!(dump.matches("full_name: \"TX\"").count(), 2, "{dump}");
 }

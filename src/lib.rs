@@ -114,15 +114,15 @@ pub(crate) mod variables;
 pub mod internal {
     pub use crate::actions::capture::Capture;
     pub use crate::actions::transformation::Transformation;
-    pub use crate::operators::libinjection_adapter::{
-        InjectionResult, clear_libinjection_overrides_for_testing, set_libinjection_sqli_override_for_testing,
-        set_libinjection_xss_override_for_testing,
-    };
     pub use crate::operators::operator::{Operator, instantiate as instantiate_operator};
     pub use crate::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
     pub use crate::utils::json::{JsonValue, parse_tree};
     pub use crate::utils::regex::Regex;
     pub use crate::utils::string::to_hex_if_needed;
+    pub use modsecurity_operators::libinjection_adapter::{
+        InjectionResult, clear_libinjection_overrides_for_testing, set_libinjection_sqli_override_for_testing,
+        set_libinjection_xss_override_for_testing,
+    };
 
     use crate::{DebugLog, RuleMessage, RulesSet, Transaction};
 

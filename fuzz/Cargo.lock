@@ -459,6 +459,7 @@ dependencies = [
  "mlua",
  "modsecurity-compat",
  "modsecurity-native",
+ "modsecurity-operators",
  "modsecurity-seclang",
  "modsecurity-transformations",
  "nix",
@@ -491,6 +492,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "modsecurity-operators"
+version = "3.0.17"
+dependencies = [
+ "libinjection",
+ "modsecurity-compat",
+ "modsecurity-native",
+]
+
+[[package]]
 name = "modsecurity-seclang"
 version = "3.0.17"
 dependencies = [
@@ -503,6 +513,7 @@ name = "modsecurity-transformations"
 version = "3.0.17"
 dependencies = [
  "md-5",
+ "modsecurity-compat",
  "sha1",
 ]
 

@@ -20,7 +20,6 @@
 #![forbid(unsafe_code)]
 
 pub mod base64;
-pub mod chars;
 pub mod url;
 
 mod base64_decode;
@@ -49,6 +48,7 @@ mod url_decode_uni;
 mod url_encode;
 mod utf8_to_unicode;
 
+pub use modsecurity_compat::chars;
 use sha1::Digest;
 
 /// A unicode map (`SecUnicodeMapFile`): the byte each of the 65536 code

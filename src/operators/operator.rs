@@ -3,54 +3,13 @@
 
 use std::borrow::Cow;
 
+pub use modsecurity_operators::Param;
+use modsecurity_operators::{Context, ResourceLookup, Resources};
+
 use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
-use crate::utils::string::{limit_to, to_hex_if_needed};
-
-/// The parameter of an operator (`@op parameter`), as the operator keeps
-/// it: the text without its macros, and whether it has any. When it does
-/// (`%{TX.x}`), the operator gets the parameter expanded for each
-/// transaction from its [`MatchContext`].
-#[derive(Debug, Default)]
-pub struct Param {
-    /// The parameter expanded without a transaction (macros left out):
-    /// what operators compile or load when the rules are read.
-    pub literal: Vec<u8>,
-    has_macros: bool,
-    /// Whether the match message shows the parameter expanded for the
-    /// transaction or the literal.
-    expanded_in_message: bool,
-}
-
-impl Param {
-    /// A parameter whose text without macros is `literal`.
-    pub fn new(literal: Vec<u8>, has_macros: bool) -> Self {
-        Param { literal, has_macros, expanded_in_message: false }
-    }
-
-    /// A parameter without macros.
-    pub fn from_text(text: &str) -> Self {
-        Param::new(text.as_bytes().to_vec(), false)
-    }
-
-    /// The same parameter, shown in match messages with its macros
-    /// expanded.
-    pub fn expanded_in_message(self) -> Self {
-        Param { expanded_in_message: true, ..self }
-    }
-
-    pub fn contains_macro(&self) -> bool {
-        self.has_macros
-    }
-
-    /// The literal as text, for operators whose parameter is a file name
-    /// or similar.
-    pub fn literal_lossy(&self) -> String {
-        String::from_utf8_lossy(&self.literal).into_owned()
-    }
-}
 
 /// What an operator may do while it evaluates a value: read its parameter
 /// for this transaction, record what it matched, and write to the debug
@@ -91,7 +50,7 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
     /// when it has none.
     pub fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]> {
         match self.param {
-            Some(string) if param.has_macros => Cow::Owned(string.evaluate(Some(self.t))),
+            Some(string) if param.contains_macro() => Cow::Owned(string.evaluate(Some(self.t))),
             _ => Cow::Borrowed(&param.literal),
         }
     }
@@ -200,17 +159,7 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
     /// The text logged for a match of `value` in the variable `key`;
     /// `param` is [`RuleOperator::message_param`] at the time of the match.
     fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
-        let mut ret = Vec::new();
-        ret.extend_from_slice(b"Matched \"Operator `");
-        ret.extend_from_slice(self.name().as_bytes());
-        ret.extend_from_slice(b"' with parameter `");
-        ret.extend_from_slice(&limit_to(200, param));
-        ret.extend_from_slice(b"' against variable `");
-        ret.extend_from_slice(to_hex_if_needed(key, false).as_bytes());
-        ret.extend_from_slice(b"' (Value: `");
-        ret.extend_from_slice(&limit_to(100, to_hex_if_needed(value, false).as_bytes()));
-        ret.extend_from_slice(b"' )");
-        ret
+        modsecurity_operators::match_message(self.name(), param, key, value)
     }
 }
 
@@ -245,7 +194,7 @@ impl RuleOperator {
     /// the literal, depending on the operator.
     pub fn message_param(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
         match (self.op.param(), &self.param) {
-            (Some(param), Some(string)) if param.expanded_in_message => string.evaluate_cow(Some(t)),
+            (Some(param), Some(string)) if param.is_expanded_in_message() => string.evaluate_cow(Some(t)),
             (Some(param), _) => Cow::Borrowed(&param.literal),
             (None, _) => Cow::Borrowed(b""),
         }
@@ -261,54 +210,99 @@ pub fn instantiate(op: &str, param_str: &str) -> Option<Box<dyn Operator>> {
 /// Like [`instantiate`] but with an already parsed (possibly macro bearing)
 /// parameter, as built by the configuration parser.
 pub fn instantiate_with_param(op: &str, param: &RunTimeString) -> Option<Box<dyn Operator>> {
-    let param = Param::new(param.evaluate_static(), param.contains_macro());
     use crate::operators::*;
-    let op_ = op.to_ascii_lowercase();
-    let b: Box<dyn Operator> = match op_.as_str() {
-        "beginswith" => Box::new(begins_with::BeginsWith::new(param)),
-        "contains" => Box::new(contains::Contains::new(param)),
-        "containsword" => Box::new(contains_word::ContainsWord::new(param)),
-        "detectsqli" => Box::new(detect_sqli::DetectSQLi::new()),
-        "detectxss" => Box::new(detect_xss::DetectXSS::new()),
-        "endswith" => Box::new(ends_with::EndsWith::new(param)),
-        "eq" => Box::new(eq::Eq::new(param)),
-        "fuzzyhash" => Box::new(fuzzy_hash::FuzzyHash::new(param)),
+    let param = Param::new(param.evaluate_static(), param.contains_macro());
+    let b: Box<dyn Operator> = match op.to_ascii_lowercase().as_str() {
+        // The operators that are part of the engine.
         "geolookup" => Box::new(geo_lookup::GeoLookup::new()),
-        "ge" => Box::new(ge::Ge::new(param)),
-        "gsblookup" => Box::new(gsblookup::GsbLookup::new(param)),
-        "gt" => Box::new(gt::Gt::new(param)),
         "inspectfile" => Box::new(inspect_file::InspectFile::new(param)),
-        // `@ipMatchF` and `@pmf` are aliases (C++ `IpMatchF`, `PmF`).
-        "ipmatchf" => Box::new(ip_match_from_file::IpMatchFromFile::new(param)),
-        "ipmatchfromfile" => Box::new(ip_match_from_file::IpMatchFromFile::new(param)),
-        "ipmatch" => Box::new(ip_match::IpMatch::new(param)),
-        "le" => Box::new(le::Le::new(param)),
-        "lt" => Box::new(lt::Lt::new(param)),
-        "nomatch" => Box::new(no_match::NoMatch::new()),
-        "pmfromfile" => Box::new(pm_from_file::PmFromFile::new(param)),
-        "pmf" => Box::new(pm_from_file::PmFromFile::with_name("PmFromF", param)),
-        "pm" => Box::new(pm::Pm::new(param)),
         "rbl" => Box::new(rbl::Rbl::new(param)),
-        "rsub" => Box::new(rsub::Rsub::new(param)),
-        "rx" => Box::new(rx::Rx::new(param)),
-        "rxglobal" => Box::new(rx_global::RxGlobal::new(param)),
-        "streq" => Box::new(str_eq::StrEq::new(param)),
-        "strmatch" => Box::new(str_match::StrMatch::new(param)),
-        "validatebyterange" => Box::new(validate_byte_range::ValidateByteRange::new(param)),
         "validatedtd" => Box::new(validate_dtd::ValidateDTD::new(param)),
-        "validatehash" => Box::new(validate_hash::ValidateHash::new(param)),
         "validateschema" => Box::new(validate_schema::ValidateSchema::new(param)),
-        "validateurlencoding" => Box::new(validate_url_encoding::ValidateUrlEncoding::new()),
-        "validateutf8encoding" => Box::new(validate_utf8_encoding::ValidateUtf8Encoding::new()),
-        "verifycc" => Box::new(verify_cc::VerifyCC::new(param)),
-        "verifycpf" => Box::new(verify_cpf::VerifyCPF::new(param)),
-        "verifyssn" => Box::new(verify_ssn::VerifySSN::new(param)),
-        "verifysvnr" => Box::new(verify_svnr::VerifySVNR::new(param)),
-        "within" => Box::new(within::Within::new(param)),
-        "unconditionalmatch" => Box::new(unconditional_match::UnconditionalMatch::new()),
-        _ => return None,
+        // The matchers.
+        name => Box::new(Matcher(modsecurity_operators::instantiate(name, param)?)),
     };
     Some(b)
+}
+
+/// An operator of the `modsecurity-operators` crate, as an operator of the
+/// engine: it sees the [`MatchContext`] through that crate's `Context`.
+#[derive(Debug)]
+struct Matcher(Box<dyn modsecurity_operators::Operator>);
+
+impl Operator for Matcher {
+    fn name(&self) -> &'static str {
+        self.0.name()
+    }
+
+    fn param(&self) -> Option<&Param> {
+        self.0.param()
+    }
+
+    fn init(&mut self, file: &str) -> Result<(), String> {
+        self.0.init(file, &EngineResources)
+    }
+
+    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        self.0.evaluate(cx, input)
+    }
+
+    fn evaluate_negatable(&self, negated: bool, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        self.0.evaluate_negatable(negated, cx, input)
+    }
+
+    fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
+        self.0.resolve_match_message(param, key, value)
+    }
+}
+
+/// How the matchers get files and URLs: the engine's resource lookup and
+/// its HTTPS client.
+struct EngineResources;
+
+impl Resources for EngineResources {
+    fn find(&self, resource: &str, config: &str) -> ResourceLookup {
+        let lookup = crate::utils::system::find_resource(resource, config);
+        ResourceLookup { path: lookup.path, looked_at: lookup.looked_at }
+    }
+
+    fn download(&self, url: &str) -> Result<Vec<u8>, String> {
+        let mut client = crate::utils::https_client::HttpsClient::new();
+        if client.download(url) { Ok(std::mem::take(&mut client.content)) } else { Err(client.error) }
+    }
+}
+
+impl Context for MatchContext<'_, '_, '_> {
+    fn debug_enabled(&self, level: i32) -> bool {
+        MatchContext::debug_enabled(self, level)
+    }
+    fn debug(&self, level: i32, message: &str) {
+        MatchContext::debug(self, level, message)
+    }
+    fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]> {
+        MatchContext::param(self, param)
+    }
+    fn captures(&self) -> bool {
+        MatchContext::captures(self)
+    }
+    fn set_capture(&mut self, group: &[u8], value: Vec<u8>) {
+        MatchContext::set_capture(self, group, value)
+    }
+    fn matched(&mut self, value: Vec<u8>) {
+        MatchContext::matched(self, value)
+    }
+    fn offset(&mut self, offset: usize, len: usize) {
+        MatchContext::offset(self, offset, len)
+    }
+    fn pcre_match_limit(&self) -> u64 {
+        MatchContext::pcre_match_limit(self)
+    }
+    fn regex_compile_error(&mut self, pattern: &str) {
+        MatchContext::regex_compile_error(self, pattern)
+    }
+    fn regex_search_error(&mut self, pattern: &str, match_limit: bool, op_name: &str) {
+        MatchContext::regex_search_error(self, pattern, match_limit, op_name)
+    }
 }
 
 /// Evaluating operators in tests, with a fresh transaction and an empty rule.
