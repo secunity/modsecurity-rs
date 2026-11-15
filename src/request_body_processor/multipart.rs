@@ -18,7 +18,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::rules_set_properties::config_boolean_string;
-use crate::transaction::Transaction;
 use crate::utils::string::{chomp, is_space, lossy};
 
 pub const MULTIPART_BUF_SIZE: usize = 4096;
@@ -66,6 +65,114 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 // MultipartPartTmpFile
 // ---------------------------------------------------------------------------
 
+/// Writes to the debug log through a [`Context`]: the message is only
+/// formatted when the debug level is high enough.
+macro_rules! mp_dbg {
+    ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
+        if $cx.debug_enabled($lvl) {
+            $cx.debug($lvl, &format!($($arg)*));
+        }
+    }};
+}
+
+/// [`mp_dbg`] where the context is optional.
+macro_rules! mp_dbg_opt {
+    ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
+        if let Some(cx) = $cx {
+            mp_dbg!(cx, $lvl, $($arg)*);
+        }
+    }};
+}
+
+/// The single valued variables the parser sets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flag {
+    MultipartBoundaryQuoted,
+    MultipartBoundaryWhiteSpace,
+    MultipartCrlfLfLines,
+    MultipartDataAfter,
+    MultipartDataBefore,
+    MultipartDuplicatePartHeader,
+    MultipartHeaderFolding,
+    MultipartInvalidHeaderFolding,
+    MultipartInvalidPart,
+    MultipartInvalidQuoting,
+    MultipartLfLine,
+    MultipartMissingSemicolon,
+    MultipartStrictError,
+    MultipartUnmatchedBoundary,
+    FilesCombinedSize,
+}
+
+/// The multi valued variables the parser adds entries to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Entries {
+    Args,
+    ArgsPost,
+    Files,
+    FilesNames,
+    FilesSizes,
+    FilesTmpContent,
+    FilesTmpNames,
+    MultipartFileName,
+    MultipartFileNameCharset,
+    MultipartFileNameLanguage,
+    MultipartName,
+    MultipartPartHeaders,
+}
+
+/// The upload settings of the configuration.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Uploads {
+    /// `SecUploadKeepFiles`.
+    pub keep_files: Option<bool>,
+    /// `SecTmpSaveUploadedFiles`.
+    pub tmp_save_files: Option<bool>,
+    /// `SecUploadFileLimit` (0 when not set).
+    pub file_limit: u32,
+    /// `SecUploadFileMode` (0 when not set).
+    pub file_mode: u32,
+}
+
+/// What the multipart parser needs from the transaction it parses for: the
+/// variables it reports, the upload settings and the debug log.
+pub trait Context {
+    /// Whether the debug log takes messages of `level`.
+    fn debug_enabled(&self, level: i32) -> bool;
+
+    /// Writes `message` to the debug log.
+    fn debug(&self, level: i32, message: &str);
+
+    /// The offset of the request body in the transaction (the base of the
+    /// offsets of the variables).
+    fn offset(&self) -> usize;
+
+    /// Sets the variable `flag`; its origin is at `offset`.
+    fn set(&mut self, flag: Flag, value: &[u8], offset: usize);
+
+    /// [`Self::set`] with an origin of `len` bytes.
+    fn set_with_len(&mut self, flag: Flag, value: &[u8], offset: usize, len: usize);
+
+    /// Adds `key` = `value` to the variable `entries`; its origin is at
+    /// `offset`.
+    fn add(&mut self, entries: Entries, key: &[u8], value: &[u8], offset: usize);
+
+    /// [`Self::add`] with an origin of `len` bytes.
+    fn add_with_len(&mut self, entries: Entries, key: &[u8], value: &[u8], offset: usize, len: usize);
+
+    /// The upload settings.
+    fn uploads(&self) -> Uploads;
+
+    /// The path of a temporary file for an uploaded part, up to its
+    /// `-file-XXXXXX` suffix: the upload directory, the current time and
+    /// the transaction id.
+    fn upload_file_prefix(&self) -> String;
+
+    /// Hands over a temporary file: the transaction keeps it (and decides
+    /// about its deletion) until it is done.
+    fn keep_tmp_file(&mut self, file: Arc<MultipartPartTmpFile>);
+}
+
 /// A temporary file holding the content of an uploaded file part. It is
 /// shared between the part being built and the transaction
 /// (`Transaction::multipart_part_tmp_files`), which keeps it (and the file
@@ -85,20 +192,15 @@ pub struct MultipartPartTmpFile {
 
 impl MultipartPartTmpFile {
     /// Creates and opens the file in `SecUploadDir`, named after the current
-    /// time and the transaction id.
-    fn open(t: &Transaction<'_>) -> Self {
-        let tstr = crate::utils::system::strftime_local(crate::utils::system::now(), "/%Y%m%d-%H%M%S");
-
-        let mut path = t.rules.properties.upload_directory.clone().unwrap_or_default();
-        path.push_str(&tstr);
-        path.push('-');
-        path.push_str(&t.id);
+    /// time and the transaction id ([`Context::upload_file_prefix`]).
+    fn open(cx: &dyn Context) -> Self {
+        let mut path = cx.upload_file_prefix();
         path.push_str("-file-XXXXXX");
 
         let (path, mut file) = crate::utils::system::mkstemp(&path);
-        crate::ms_dbg_a!(t, 4, "MultipartPartTmpFile: Create filename= {}", path);
+        mp_dbg!(cx, 4, "MultipartPartTmpFile: Create filename= {}", path);
 
-        let mode = t.rules.properties.upload_file_mode.unwrap_or(0);
+        let mode = cx.uploads().file_mode;
         if mode != 0
             && let Some(f) = &file
         {
@@ -161,7 +263,7 @@ impl MultipartPartTmpFile {
     /// transaction may call this when it is done with its temporary files;
     /// otherwise the deletion happens (without the debug messages) when the
     /// last reference is dropped.
-    pub fn release(&self, t: Option<&Transaction<'_>>) {
+    pub fn release(&self, cx: Option<&dyn Context>) {
         if self.released.swap(true, Ordering::Relaxed) {
             return;
         }
@@ -174,8 +276,8 @@ impl MultipartPartTmpFile {
         match std::fs::remove_file(&self.tmp_file_name) {
             Err(e) => {
                 let errno = e.raw_os_error().unwrap_or(0);
-                crate::ms_dbg_opt!(
-                    t,
+                mp_dbg_opt!(
+                    cx,
                     1,
                     "Multipart: Failed to delete file (part) \"{}\" because {}({})",
                     self.tmp_file_name,
@@ -184,7 +286,7 @@ impl MultipartPartTmpFile {
                 );
             }
             Ok(()) => {
-                crate::ms_dbg_opt!(t, 4, "Multipart: file deleted successfully (part) \"{}\"", self.tmp_file_name);
+                mp_dbg_opt!(cx, 4, "Multipart: file deleted successfully (part) \"{}\"", self.tmp_file_name);
             }
         }
     }
@@ -462,7 +564,7 @@ impl Multipart {
 
     /// Sets `MULTIPART_INVALID_QUOTING` when `data`, a value not enclosed in
     /// double quotes, contains a single quote.
-    fn validate_quotes(&mut self, t: &Transaction<'_>, data: &[u8], quote: u8) {
+    fn validate_quotes(&mut self, cx: &dyn Context, data: &[u8], quote: u8) {
         // if the value was enclosed in double quotes, then we don't care
         // about a single quote character within the name.
         if quote == b'"' {
@@ -470,13 +572,7 @@ impl Multipart {
         }
         for &c in data {
             if c == b'\'' {
-                crate::ms_dbg_a!(
-                    t,
-                    9,
-                    "Multipart: Invalid quoting detected: {} length {} bytes",
-                    lossy(data),
-                    data.len()
-                );
+                mp_dbg!(cx, 9, "Multipart: Invalid quoting detected: {} length {} bytes", lossy(data), data.len());
                 self.flag_invalid_quoting = 1;
             }
         }
@@ -486,12 +582,7 @@ impl Multipart {
     /// is the header value (a C string), `offset` where it starts. The error
     /// is the (negative) code of the C++ function, which the error message
     /// shows.
-    fn parse_content_disposition(
-        &mut self,
-        t: &mut Transaction<'_>,
-        c_d_value: &[u8],
-        offset: usize,
-    ) -> Result<(), i32> {
+    fn parse_content_disposition(&mut self, cx: &mut dyn Context, c_d_value: &[u8], offset: usize) -> Result<(), i32> {
         let cd = c_str(c_d_value);
         let at = |i: usize| c_at(cd, i);
 
@@ -576,12 +667,7 @@ impl Multipart {
                 }
                 mpp.filename_charset = cd[start_of_charset..p].to_vec();
                 mpp.filename_charset_offset = offset.wrapping_add(p - mpp.filename_charset.len());
-                crate::ms_dbg_a!(
-                    t,
-                    4,
-                    "Multipart: Content-Disposition filename* charset: {}.",
-                    lossy(&mpp.filename_charset)
-                );
+                mp_dbg!(cx, 4, "Multipart: Content-Disposition filename* charset: {}.", lossy(&mpp.filename_charset));
                 p += 1;
                 // Read beyond the charset and the optional language
                 let start_of_language = p;
@@ -594,12 +680,7 @@ impl Multipart {
                 }
                 mpp.filename_language = cd[start_of_language..p].to_vec();
                 mpp.filename_language_offset = offset.wrapping_add(p - mpp.filename_language.len());
-                crate::ms_dbg_a!(
-                    t,
-                    4,
-                    "Multipart: Content-Disposition filename* language: {}.",
-                    lossy(&mpp.filename_language)
-                );
+                mp_dbg!(cx, 4, "Multipart: Content-Disposition filename* language: {}.", lossy(&mpp.filename_language));
                 p += 1;
 
                 // Now read what should be the actual filename
@@ -681,15 +762,15 @@ impl Multipart {
             // evaluate part
             let value_offset = offset.wrapping_add(p - value.len());
             if name == b"name" {
-                self.validate_quotes(t, &value, quote);
+                self.validate_quotes(cx, &value, quote);
 
-                t.vars.multipart_name.set(&value, &value, value_offset);
+                cx.add(Entries::MultipartName, &value, &value, value_offset);
 
                 let mpp = self.mpp.as_mut().expect("part being built");
                 if !mpp.name.is_empty() {
                     self.flag_duplicate_part_header = 1;
-                    crate::ms_dbg_a!(
-                        t,
+                    mp_dbg!(
+                        cx,
                         4,
                         "Multipart: Warning: Duplicate Content-Disposition name: {}. Previously: {}",
                         lossy(&value),
@@ -699,38 +780,28 @@ impl Multipart {
                 }
                 mpp.name = value.clone();
                 mpp.name_offset = value_offset;
-                crate::ms_dbg_a!(t, 9, "Multipart: Content-Disposition name: {}.", lossy(&value));
+                mp_dbg!(cx, 9, "Multipart: Content-Disposition name: {}.", lossy(&value));
             } else if name == b"filename" {
                 // here we set up the 'filename' only if it's not set up
                 // already (and not the filename_star)
                 if !self.mpp.as_ref().expect("part being built").filename.is_empty() {
                     self.flag_duplicate_part_header = 1;
-                    crate::ms_dbg_a!(
-                        t,
-                        4,
-                        "Multipart: Warning: Duplicate Content-Disposition filename: {}.",
-                        lossy(&value)
-                    );
+                    mp_dbg!(cx, 4, "Multipart: Warning: Duplicate Content-Disposition filename: {}.", lossy(&value));
                     return Err(-15);
                 } else {
-                    self.validate_quotes(t, &value, quote);
+                    self.validate_quotes(cx, &value, quote);
                     let mpp = self.mpp.as_mut().expect("part being built");
                     mpp.filename = value.clone();
                     mpp.filename_offset = value_offset;
 
-                    crate::ms_dbg_a!(t, 9, "Multipart: Content-Disposition filename: {}.", lossy(&value));
+                    mp_dbg!(cx, 9, "Multipart: Content-Disposition filename: {}.", lossy(&value));
                 }
             } else if name == b"filename*" {
                 // here we set up the 'filename_star' only if it's not set up
                 // already (and not the filename)
                 if !self.mpp.as_ref().expect("part being built").filename_star.is_empty() {
                     self.flag_duplicate_part_header = 1;
-                    crate::ms_dbg_a!(
-                        t,
-                        4,
-                        "Multipart: Warning: Duplicate Content-Disposition filename*: {}.",
-                        lossy(&value)
-                    );
+                    mp_dbg!(cx, 4, "Multipart: Warning: Duplicate Content-Disposition filename*: {}.", lossy(&value));
                     return Err(-15);
                 }
 
@@ -743,7 +814,7 @@ impl Multipart {
                 let mpp = self.mpp.as_mut().expect("part being built");
                 mpp.filename_star = decoded_value;
                 mpp.filename_star_offset = value_offset;
-                crate::ms_dbg_a!(t, 9, "Multipart: Content-Disposition filename*: {}.", lossy(&mpp.filename_star));
+                mp_dbg!(cx, 9, "Multipart: Content-Disposition filename*: {}.", lossy(&mpp.filename_star));
             } else {
                 return Err(-11);
             }
@@ -760,8 +831,8 @@ impl Multipart {
                     if at(p) != b';' {
                         p -= 1;
                         if at(p) == b'\'' || at(p) == b'"' {
-                            crate::ms_dbg_a!(
-                                t,
+                            mp_dbg!(
+                                cx,
                                 9,
                                 "Multipart: Invalid quoting detected: {} length {} bytes",
                                 lossy(&cd[p..]),
@@ -783,20 +854,26 @@ impl Multipart {
         // accordingly
         let mpp = self.mpp.as_ref().expect("part being built");
         if !mpp.filename_star.is_empty() {
-            t.vars.multipart_file_name.set(&mpp.name, &mpp.filename_star, mpp.filename_star_offset);
+            cx.add(Entries::MultipartFileName, &mpp.name, &mpp.filename_star, mpp.filename_star_offset);
 
             if !mpp.filename_charset.is_empty() {
-                t.vars.multipart_file_name_charset.set(&mpp.name, &mpp.filename_charset, mpp.filename_charset_offset);
+                cx.add(
+                    Entries::MultipartFileNameCharset,
+                    &mpp.name,
+                    &mpp.filename_charset,
+                    mpp.filename_charset_offset,
+                );
             }
             if !mpp.filename_language.is_empty() {
-                t.vars.multipart_file_name_language.set(
+                cx.add(
+                    Entries::MultipartFileNameLanguage,
                     &mpp.name,
                     &mpp.filename_language,
                     mpp.filename_language_offset,
                 );
             }
         } else if !mpp.filename.is_empty() {
-            t.vars.multipart_file_name.set(&mpp.name, &mpp.filename, mpp.filename_offset);
+            cx.add(Entries::MultipartFileName, &mpp.name, &mpp.filename, mpp.filename_offset);
         }
 
         Ok(())
@@ -805,7 +882,7 @@ impl Multipart {
     /// Adds the buffer to the data of the current part (its file or its
     /// value), holding back a trailing line break that may belong to the
     /// next boundary.
-    fn process_part_data(&mut self, t: &mut Transaction<'_>, offset: usize) -> bool {
+    fn process_part_data(&mut self, cx: &mut dyn Context, offset: usize) -> bool {
         let p = MULTIPART_BUF_SIZE - self.bufleft;
         let mut localreserve = [0u8; 2];
         let mut bytes_reserved: u8 = 0;
@@ -833,13 +910,13 @@ impl Multipart {
 
         let len = MULTIPART_BUF_SIZE - self.bufleft;
         let reserved = self.reserve[0] as usize;
-        let props = &t.rules.properties;
+        let props = cx.uploads();
         let mpp = self.mpp.as_mut().expect("part being built");
 
         // add data to the part we are building
         match mpp.type_ {
             PartType::File => {
-                let mut extract = props.upload_keep_files == Some(true) || props.tmp_save_uploaded_files == Some(true);
+                let mut extract = props.keep_files == Some(true) || props.tmp_save_files == Some(true);
 
                 // remember where we started
                 if mpp.length == 0 {
@@ -847,11 +924,11 @@ impl Multipart {
                 }
 
                 // check if the file limit has been reached
-                let limit = props.upload_file_limit.unwrap_or(0);
+                let limit = props.file_limit;
                 if extract && limit != 0 && self.nfiles as u32 >= limit {
                     if self.flag_file_limit_exceeded == 0 {
-                        crate::ms_dbg_a!(
-                            t,
+                        mp_dbg!(
+                            cx,
                             1,
                             "Multipart: Upload file limit exceeded {}. Use SecUploadFileLimit to change the limit.",
                             limit
@@ -871,25 +948,25 @@ impl Multipart {
                     // first create a temporary file if we don't have it
                     // already
                     if !mpp.tmp_file.as_ref().is_some_and(|f| f.is_valid()) {
-                        let tmp = Arc::new(MultipartPartTmpFile::open(t));
-                        t.multipart_part_tmp_files.push(Arc::clone(&tmp));
+                        let tmp = Arc::new(MultipartPartTmpFile::open(cx));
+                        cx.keep_tmp_file(Arc::clone(&tmp));
                         mpp.tmp_file = Some(Arc::clone(&tmp));
 
                         // do we have an opened file?
                         if !tmp.is_open() {
-                            crate::ms_dbg_a!(t, 1, "Multipart: Failed to create file: {}", tmp.filename());
+                            mp_dbg!(cx, 1, "Multipart: Failed to create file: {}", tmp.filename());
                             self.error = Some(format!("Multipart: Failed to create file: {}", tmp.filename()));
                             return false;
                         }
                         // keep track of the files count
                         self.nfiles += 1;
 
-                        crate::ms_dbg_a!(
-                            t,
+                        mp_dbg!(
+                            cx,
                             4,
                             "Multipart: Created temporary file {} (mode 0{:o}): {}",
                             self.nfiles,
-                            t.rules.properties.upload_file_mode.unwrap_or(0),
+                            cx.uploads().file_mode,
                             tmp.filename()
                         );
                     }
@@ -898,7 +975,7 @@ impl Multipart {
                     // write the reserve first
                     if reserved != 0 {
                         if !tmp.write(&self.reserve[1..1 + reserved]) {
-                            crate::ms_dbg_a!(t, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
+                            mp_dbg!(cx, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
                             self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.filename()));
                             return false;
                         }
@@ -912,7 +989,7 @@ impl Multipart {
 
                     // write data to the file
                     if !tmp.write(&self.buf[..len]) {
-                        crate::ms_dbg_a!(t, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
+                        mp_dbg!(cx, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
                         self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.filename()));
                         return false;
                     }
@@ -953,7 +1030,7 @@ impl Multipart {
                 d.extend_from_slice(&self.buf[..len]);
                 mpp.length = mpp.length.wrapping_add(d.len() as u32);
 
-                crate::ms_dbg_a!(t, 9, "Multipart: Added data to variable: {}", lossy(&d));
+                mp_dbg!(cx, 9, "Multipart: Added data to variable: {}", lossy(&d));
                 mpp.value_parts.push((d, self.buf_offset));
             }
         }
@@ -976,12 +1053,12 @@ impl Multipart {
     /// Handles a line of the headers of the current part. Like the C++ code
     /// (whose failures return 0, which its caller does not treat as fatal), a
     /// failure only records the error.
-    fn process_part_header(&mut self, t: &mut Transaction<'_>, offset: usize) {
+    fn process_part_header(&mut self, cx: &mut dyn Context, offset: usize) {
         // Check for nul bytes.
         let len = MULTIPART_BUF_SIZE - self.bufleft;
         let mut len_without_termination = len as isize - 1;
         if self.buf[..len].contains(&0) {
-            crate::ms_dbg_a!(t, 1, "Multipart: Nul byte in part headers.");
+            mp_dbg!(cx, 1, "Multipart: Nul byte in part headers.");
             self.error = Some("Multipart: Nul byte in part headers.".to_string());
             return;
         }
@@ -1016,19 +1093,13 @@ impl Multipart {
             }
 
             let Some((cd_offset, header_value)) = mpp.header(b"Content-Disposition").cloned() else {
-                crate::ms_dbg_a!(t, 1, "Multipart: Part missing Content-Disposition header.");
+                mp_dbg!(cx, 1, "Multipart: Part missing Content-Disposition header.");
                 self.error = Some("Multipart: Part missing Content-Disposition header.".to_string());
                 return;
             };
 
-            if let Err(rc) = self.parse_content_disposition(t, &header_value, cd_offset) {
-                crate::ms_dbg_a!(
-                    t,
-                    1,
-                    "Multipart: Invalid Content-Disposition header ({}): {}",
-                    rc,
-                    lossy(&header_value)
-                );
+            if let Err(rc) = self.parse_content_disposition(cx, &header_value, cd_offset) {
+                mp_dbg!(cx, 1, "Multipart: Invalid Content-Disposition header ({}): {}", rc, lossy(&header_value));
                 self.error =
                     Some(format!("Multipart: Invalid Content-Disposition header ({}): {}", rc, lossy(&header_value)));
                 return;
@@ -1036,7 +1107,7 @@ impl Multipart {
 
             let mpp = self.mpp.as_mut().expect("part being built");
             if mpp.name.is_empty() {
-                crate::ms_dbg_a!(t, 1, "Multipart: Content-Disposition header missing name field.");
+                mp_dbg!(cx, 1, "Multipart: Content-Disposition header missing name field.");
                 self.error = Some("Multipart: Content-Disposition header missing name field.".to_string());
                 return;
             }
@@ -1050,7 +1121,7 @@ impl Multipart {
                 // is present
                 let hv = c_str(&header_value);
                 if find(hv, b"filename=").is_none() && find(hv, b"filename*=").is_none() {
-                    crate::ms_dbg_a!(t, 1, "Multipart: Invalid Content-Disposition header (filename).");
+                    mp_dbg!(cx, 1, "Multipart: Invalid Content-Disposition header (filename).");
                     self.error = Some("Multipart: Invalid Content-Disposition header (filename).".to_string());
                     return;
                 }
@@ -1079,7 +1150,7 @@ impl Multipart {
             let mpp = self.mpp.as_mut().expect("part being built");
             if mpp.last_header_name.is_empty() {
                 // we are not building a header at this moment
-                crate::ms_dbg_a!(t, 1, "Multipart: Invalid part header (folding error).");
+                mp_dbg!(cx, 1, "Multipart: Invalid part header (folding error).");
                 self.error = Some("Multipart: Invalid part header (folding error).".to_string());
                 return;
             }
@@ -1107,8 +1178,8 @@ impl Multipart {
             let new_value = v;
             entry.1 = new_value.clone();
 
-            crate::ms_dbg_a!(
-                t,
+            mp_dbg!(
+                cx,
                 9,
                 "Multipart: Continued folder header \"{}\" with \"{}\"",
                 lossy(&last_header_name),
@@ -1116,7 +1187,7 @@ impl Multipart {
             );
 
             if new_value.len() > MULTIPART_BUF_SIZE {
-                crate::ms_dbg_a!(t, 1, "Multipart: Part header too long.");
+                mp_dbg!(cx, 1, "Multipart: Part header too long.");
                 self.error = Some("Multipart: Part header too long.".to_string());
                 return;
             }
@@ -1141,7 +1212,7 @@ impl Multipart {
                 i += 1;
             }
             if c_at(line, data) == 0 {
-                crate::ms_dbg_a!(t, 1, "Multipart: Invalid part header (colon missing): {}", lossy(line));
+                mp_dbg!(cx, 1, "Multipart: Invalid part header (colon missing): {}", lossy(line));
                 self.error = Some(format!("Multipart: Invalid part header (colon missing): {}", lossy(line)));
                 return;
             }
@@ -1149,14 +1220,14 @@ impl Multipart {
             // extract header name
             let header_name = line[..data].to_vec();
             if data == 0 {
-                crate::ms_dbg_a!(t, 1, "Multipart: Invalid part header (header name missing).");
+                mp_dbg!(cx, 1, "Multipart: Invalid part header (header name missing).");
                 self.error = Some("Multipart: Invalid part header (header name missing).".to_string());
                 return;
             }
 
             // check if multipart header contains any invalid characters
             if header_name.iter().any(|&ch| !(33..=126).contains(&ch)) {
-                crate::ms_dbg_a!(t, 1, "Multipart: Invalid part header (contains invalid character).");
+                mp_dbg!(cx, 1, "Multipart: Invalid part header (contains invalid character).");
                 self.error = Some("Multipart: Invalid part header (contains invalid character).".to_string());
                 return;
             }
@@ -1174,19 +1245,13 @@ impl Multipart {
             // error if the name already exists
             if mpp.header(&header_name).is_some() {
                 self.flag_duplicate_part_header = 1;
-                crate::ms_dbg_a!(t, 1, "Multipart: Duplicate part header: {}.", lossy(&header_name));
+                mp_dbg!(cx, 1, "Multipart: Duplicate part header: {}.", lossy(&header_name));
                 return;
             }
 
             mpp.last_header_name = header_name.clone();
 
-            crate::ms_dbg_a!(
-                t,
-                9,
-                "Multipart: Added part header \"{}\" \"{}\".",
-                lossy(&header_name),
-                lossy(&header_value)
-            );
+            mp_dbg!(cx, 9, "Multipart: Added part header \"{}\" \"{}\".", lossy(&header_name), lossy(&header_value));
             mpp.headers.push((header_name, (offset.wrapping_sub(len).wrapping_add(i), header_value)));
             if len_without_termination > 0 {
                 mpp.last_header_line = buf[..len_without_termination as usize].to_vec();
@@ -1198,14 +1263,14 @@ impl Multipart {
 
     /// Handles a boundary line: finishes the part being built, and starts a
     /// new one unless this is the last boundary.
-    fn process_boundary(&mut self, t: &mut Transaction<'_>, last_part: bool) {
+    fn process_boundary(&mut self, cx: &mut dyn Context, last_part: bool) {
         // if there was a part being built finish it
         if let Some(mut mpp) = self.mpp.take() {
             // record all the part header lines from the part into the
             // transaction collection
             for (off, line) in &mpp.header_lines {
-                t.vars.multipart_part_headers.set(&mpp.name, line, *off);
-                crate::ms_dbg_a!(t, 9, "Multipart: Added part header line:{}", lossy(line));
+                cx.add(Entries::MultipartPartHeaders, &mpp.name, line, *off);
+                mp_dbg!(cx, 9, "Multipart: Added part header line:{}", lossy(line));
             }
 
             // close the temp file
@@ -1234,8 +1299,8 @@ impl Multipart {
                 // variable accordingly
                 if mpp.type_ == PartType::File {
                     let fname = if !mpp.filename_star.is_empty() { &mpp.filename_star } else { &mpp.filename };
-                    crate::ms_dbg_a!(
-                        t,
+                    mp_dbg!(
+                        cx,
                         9,
                         "Multipart: Added file part to the list: name \"{}\" file name \"{}\" (offset {}, length {})",
                         lossy(&mpp.name),
@@ -1244,8 +1309,8 @@ impl Multipart {
                         mpp.length
                     );
                 } else {
-                    crate::ms_dbg_a!(
-                        t,
+                    mp_dbg!(
+                        cx,
                         9,
                         "Multipart: Added part to the list: name \"{}\" (offset {}, length {})",
                         lossy(&mpp.name),
@@ -1256,8 +1321,8 @@ impl Multipart {
                 self.parts.push(mpp);
             } else {
                 self.flag_invalid_part = 1;
-                crate::ms_dbg_a!(
-                    t,
+                mp_dbg!(
+                    cx,
                     3,
                     "Multipart: Skipping invalid part (part name missing): (offset {}, length {})",
                     mpp.offset,
@@ -1279,15 +1344,15 @@ impl Multipart {
 
     /// Sets `MULTIPART_LF_LINE` / `MULTIPART_CRLF_LF_LINES` and logs the
     /// line ending warnings.
-    fn set_line_ending_flags(&self, t: &mut Transaction<'_>) {
-        let off = t.vars.offset;
-        t.vars.multipart_lf_line.set(self.flag_lf_line.to_string().as_bytes(), off);
+    fn set_line_ending_flags(&self, cx: &mut dyn Context) {
+        let off = cx.offset();
+        cx.set(Flag::MultipartLfLine, self.flag_lf_line.to_string().as_bytes(), off);
         let mixed = self.flag_crlf_line != 0 && self.flag_lf_line != 0;
-        t.vars.multipart_crlf_lf_lines.set(if mixed { b"1" } else { b"0" }, off);
+        cx.set(Flag::MultipartCrlfLfLines, if mixed { b"1" } else { b"0" }, off);
         if mixed {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: mixed line endings used (CRLF/LF).");
+            mp_dbg!(cx, 4, "Multipart: Warning: mixed line endings used (CRLF/LF).");
         } else if self.flag_lf_line != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: incorrect line endings used (LF).");
+            mp_dbg!(cx, 4, "Multipart: Warning: incorrect line endings used (LF).");
         }
     }
 
@@ -1304,79 +1369,79 @@ impl Multipart {
     /// at the end of this method: the C++ `Transaction::processRequestBody`
     /// always destroyed the processor right after calling
     /// `multipart_complete`.
-    pub fn multipart_complete(&mut self, t: &mut Transaction<'_>) -> bool {
-        let ret = self.complete(t);
-        self.cleanup(Some(t));
+    pub fn multipart_complete(&mut self, cx: &mut dyn Context) -> bool {
+        let ret = self.complete(cx);
+        self.cleanup(Some(cx));
         ret
     }
 
-    fn complete(&mut self, t: &mut Transaction<'_>) -> bool {
-        fn flag(t: &mut Transaction<'_>, f: i32) -> (Vec<u8>, usize) {
-            (f.to_string().into_bytes(), t.vars.offset)
+    fn complete(&mut self, cx: &mut dyn Context) -> bool {
+        fn flag(cx: &mut dyn Context, f: i32) -> (Vec<u8>, usize) {
+            (f.to_string().into_bytes(), cx.offset())
         }
 
-        let (v, off) = flag(t, self.flag_unmatched_boundary);
-        t.vars.multipart_unmatched_boundary.set(&v, off);
+        let (v, off) = flag(cx, self.flag_unmatched_boundary);
+        cx.set(Flag::MultipartUnmatchedBoundary, &v, off);
 
-        let (v, off) = flag(t, self.flag_data_before);
-        t.vars.multipart_data_before.set(&v, off);
+        let (v, off) = flag(cx, self.flag_data_before);
+        cx.set(Flag::MultipartDataBefore, &v, off);
         if self.flag_data_before != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: seen data before first boundary.");
+            mp_dbg!(cx, 4, "Multipart: Warning: seen data before first boundary.");
         }
 
-        let (v, off) = flag(t, self.flag_data_after);
-        t.vars.multipart_data_after.set(&v, off);
+        let (v, off) = flag(cx, self.flag_data_after);
+        cx.set(Flag::MultipartDataAfter, &v, off);
         if self.flag_data_after != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: seen data after last boundary.");
+            mp_dbg!(cx, 4, "Multipart: Warning: seen data after last boundary.");
         }
 
-        let (v, off) = flag(t, self.flag_duplicate_part_header);
-        t.vars.multipart_duplicate_part_header.set(&v, off);
+        let (v, off) = flag(cx, self.flag_duplicate_part_header);
+        cx.set(Flag::MultipartDuplicatePartHeader, &v, off);
         if self.flag_duplicate_part_header != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: seen duplicate part header.");
+            mp_dbg!(cx, 4, "Multipart: Warning: seen duplicate part header.");
         }
 
-        let (v, off) = flag(t, self.flag_boundary_quoted);
-        t.vars.multipart_boundary_quoted.set(&v, off);
+        let (v, off) = flag(cx, self.flag_boundary_quoted);
+        cx.set(Flag::MultipartBoundaryQuoted, &v, off);
         if self.flag_boundary_quoted != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: boundary was quoted.");
+            mp_dbg!(cx, 4, "Multipart: Warning: boundary was quoted.");
         }
 
-        let (v, off) = flag(t, self.flag_boundary_whitespace);
-        t.vars.multipart_boundary_white_space.set(&v, off);
+        let (v, off) = flag(cx, self.flag_boundary_whitespace);
+        cx.set(Flag::MultipartBoundaryWhiteSpace, &v, off);
         if self.flag_boundary_whitespace != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: boundary whitespace in C-T header.");
+            mp_dbg!(cx, 4, "Multipart: Warning: boundary whitespace in C-T header.");
         }
 
-        let (v, off) = flag(t, self.flag_header_folding);
-        t.vars.multipart_header_folding.set(&v, off);
+        let (v, off) = flag(cx, self.flag_header_folding);
+        cx.set(Flag::MultipartHeaderFolding, &v, off);
         if self.flag_header_folding != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: header folding used.");
+            mp_dbg!(cx, 4, "Multipart: Warning: header folding used.");
         }
-        self.set_line_ending_flags(t);
+        self.set_line_ending_flags(cx);
 
-        let (v, off) = flag(t, self.flag_missing_semicolon);
-        t.vars.multipart_missing_semicolon.set(&v, off);
+        let (v, off) = flag(cx, self.flag_missing_semicolon);
+        cx.set(Flag::MultipartMissingSemicolon, &v, off);
         if self.flag_missing_semicolon != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: missing semicolon in C-T header.");
+            mp_dbg!(cx, 4, "Multipart: Warning: missing semicolon in C-T header.");
         }
 
-        let (v, off) = flag(t, self.flag_invalid_quoting);
-        t.vars.multipart_invalid_quoting.set(&v, off);
+        let (v, off) = flag(cx, self.flag_invalid_quoting);
+        cx.set(Flag::MultipartInvalidQuoting, &v, off);
         if self.flag_invalid_quoting != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: invalid quoting used.");
+            mp_dbg!(cx, 4, "Multipart: Warning: invalid quoting used.");
         }
 
-        let (v, off) = flag(t, self.flag_invalid_part);
-        t.vars.multipart_invalid_part.set(&v, off);
+        let (v, off) = flag(cx, self.flag_invalid_part);
+        cx.set(Flag::MultipartInvalidPart, &v, off);
         if self.flag_invalid_part != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: invalid part parsing.");
+            mp_dbg!(cx, 4, "Multipart: Warning: invalid part parsing.");
         }
 
-        let (v, off) = flag(t, self.flag_invalid_header_folding);
-        t.vars.multipart_invalid_header_folding.set(&v, off);
+        let (v, off) = flag(cx, self.flag_invalid_header_folding);
+        cx.set(Flag::MultipartInvalidHeaderFolding, &v, off);
         if self.flag_invalid_header_folding != 0 {
-            crate::ms_dbg_a!(t, 4, "Multipart: Warning: invalid header folding used.");
+            mp_dbg!(cx, 4, "Multipart: Warning: invalid header folding used.");
         }
 
         // Note: like the C++ code, MULTIPART_FILE_LIMIT_EXCEEDED is never
@@ -1394,8 +1459,8 @@ impl Multipart {
             || self.flag_invalid_part != 0
             || self.flag_invalid_header_folding != 0
             || self.flag_file_limit_exceeded != 0;
-        let off = t.vars.offset;
-        t.vars.multipart_strict_error.set(if strict { b"1" } else { b"0" }, off);
+        let off = cx.offset();
+        cx.set(Flag::MultipartStrictError, if strict { b"1" } else { b"0" }, off);
 
         if self.seen_data && !self.is_complete {
             if self.boundary_count > 0 {
@@ -1416,23 +1481,23 @@ impl Multipart {
                         // now to minimize refactoring
                         if self.crlf_state_buf_end == 2 && self.flag_lf_line != 1 {
                             self.flag_lf_line = 1;
-                            self.set_line_ending_flags(t);
-                            let (v, off) = flag(t, self.flag_lf_line);
-                            t.vars.multipart_strict_error.set(&v, off);
+                            self.set_line_ending_flags(cx);
+                            let (v, off) = flag(cx, self.flag_lf_line);
+                            cx.set(Flag::MultipartStrictError, &v, off);
                         }
                         if self.mpp_substate_part_data_read == 0 && self.flag_invalid_part != 1 {
                             // it looks like the final boundary, but it's
                             // where part data should begin
                             self.flag_invalid_part = 1;
-                            crate::ms_dbg_a!(t, 3, "Multipart: Invalid part (data contains final boundary)");
-                            let (v, off) = flag(t, self.flag_invalid_part);
-                            t.vars.multipart_strict_error.set(&v, off);
-                            t.vars.multipart_invalid_part.set(&v, off);
-                            crate::ms_dbg_a!(t, 4, "Multipart: Warning: invalid part parsing.");
+                            mp_dbg!(cx, 3, "Multipart: Invalid part (data contains final boundary)");
+                            let (v, off) = flag(cx, self.flag_invalid_part);
+                            cx.set(Flag::MultipartStrictError, &v, off);
+                            cx.set(Flag::MultipartInvalidPart, &v, off);
+                            mp_dbg!(cx, 4, "Multipart: Warning: invalid part parsing.");
                         }
 
                         // Looks like the final boundary - process it.
-                        self.process_boundary(t, true);
+                        self.process_boundary(cx, true);
 
                         // The payload is complete after all.
                         self.is_complete = true;
@@ -1440,12 +1505,12 @@ impl Multipart {
                 }
 
                 if !self.is_complete {
-                    crate::ms_dbg_a!(t, 1, "Multipart: Final boundary missing.");
+                    mp_dbg!(cx, 1, "Multipart: Final boundary missing.");
                     self.error = Some("Multipart: Final boundary missing.".to_string());
                     return false;
                 }
             } else {
-                crate::ms_dbg_a!(t, 1, "Multipart: No boundaries found in payload.");
+                mp_dbg!(cx, 1, "Multipart: No boundaries found in payload.");
                 self.error = Some("Multipart: No boundaries found in payload.".to_string());
                 return false;
             }
@@ -1458,53 +1523,55 @@ impl Multipart {
             if m.name.is_empty() {
                 continue;
             }
-            let offset = t.vars.offset + 1;
+            let offset = cx.offset() + 1;
 
             if m.type_ == PartType::File {
                 if let Some(f) = &m.tmp_file
                     && !f.filename().is_empty()
                 {
                     let n = f.filename().as_bytes();
-                    t.vars.files_tmp_names.set(n, n, m.filename_offset);
+                    cx.add(Entries::FilesTmpNames, n, n, m.filename_offset);
                 }
 
                 // filename* takes precedence over filename, so we set the
                 // variable accordingly
                 if !m.filename_star.is_empty() {
-                    t.vars.files.set(&m.name, &m.filename_star, m.filename_star_offset);
+                    cx.add(Entries::Files, &m.name, &m.filename_star, m.filename_star_offset);
                 } else if !m.filename.is_empty() {
-                    t.vars.files.set(&m.name, &m.filename, m.filename_offset);
+                    cx.add(Entries::Files, &m.name, &m.filename, m.filename_offset);
                 }
 
-                t.vars.files_names.set(&m.name, &m.name, m.name_offset);
+                cx.add(Entries::FilesNames, &m.name, &m.name, m.name_offset);
 
-                t.vars.files_sizes.set_with_len(
+                cx.add_with_len(
+                    Entries::FilesSizes,
                     &m.name,
                     m.tmp_file_size.0.to_string().as_bytes(),
                     m.tmp_file_size.1,
                     m.tmp_file_size.0,
                 );
 
-                t.vars.files_tmp_content.set(&m.name, &m.value, m.value_offset);
+                cx.add(Entries::FilesTmpContent, &m.name, &m.value, m.value_offset);
 
                 // int + size_t, stored back into an int
                 file_combined_size = (file_combined_size as usize).wrapping_add(m.tmp_file_size.0) as i32;
 
-                t.vars.files_combined_size.set_with_len(
+                cx.set_with_len(
+                    Flag::FilesCombinedSize,
                     file_combined_size.to_string().as_bytes(),
                     m.tmp_file_size.1,
                     m.tmp_file_size.0,
                 );
             } else {
-                crate::ms_dbg_a!(
-                    t,
+                mp_dbg!(
+                    cx,
                     4,
                     "Adding request argument (BODY): name \"{}\", value \"{}\"",
                     lossy(&m.name),
                     lossy(&m.value)
                 );
-                t.vars.args.set(&m.name, &m.value, offset.wrapping_add(m.value_offset));
-                t.vars.args_post.set(&m.name, &m.value, offset.wrapping_add(m.value_offset));
+                cx.add(Entries::Args, &m.name, &m.value, offset.wrapping_add(m.value_offset));
+                cx.add(Entries::ArgsPost, &m.name, &m.value, offset.wrapping_add(m.value_offset));
             }
         }
 
@@ -1512,8 +1579,8 @@ impl Multipart {
     }
 
     /// Validates the Content-Type header and extracts the boundary.
-    pub fn init(&mut self, t: &mut Transaction<'_>) -> bool {
-        self.upload_keep_files = t.rules.properties.upload_keep_files;
+    pub fn init(&mut self, cx: &mut dyn Context) -> bool {
+        self.upload_keep_files = cx.uploads().keep_files;
         self.bufleft = MULTIPART_BUF_SIZE;
         self.bufptr = 0;
         self.buf_contains_line = true;
@@ -1521,14 +1588,14 @@ impl Multipart {
 
         if self.header.is_empty() {
             self.flag_error = 1;
-            crate::ms_dbg_a!(t, 4, "Multipart: Content-Type header not available.");
+            mp_dbg!(cx, 4, "Multipart: Content-Type header not available.");
             self.error = Some("Multipart: Content-Type header not available.".to_string());
             return false;
         }
 
         if self.header.len() > 1024 {
             self.flag_error = 1;
-            crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (length).");
+            mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (length).");
             self.error = Some("Multipart: Invalid boundary in C-T (length).".to_string());
             return false;
         }
@@ -1538,7 +1605,7 @@ impl Multipart {
 
         if header.len() < 19 || !header[..19].eq_ignore_ascii_case(b"multipart/form-data") {
             self.flag_error = 1;
-            crate::ms_dbg_a!(t, 4, "Multipart: Invalid MIME type.");
+            mp_dbg!(cx, 4, "Multipart: Invalid MIME type.");
             self.error = Some("Multipart: Invalid MIME type.".to_string());
             return false;
         }
@@ -1547,7 +1614,7 @@ impl Multipart {
         // header.
         if Self::count_boundary_params(&header) > 1 {
             self.flag_error = 1;
-            crate::ms_dbg_a!(t, 4, "Multipart: Multiple boundary parameters in C-T.");
+            mp_dbg!(cx, 4, "Multipart: Multiple boundary parameters in C-T.");
             self.error = Some("Multipart: Multiple boundary parameters in C-T.".to_string());
             return false;
         }
@@ -1562,7 +1629,7 @@ impl Multipart {
                         seen_semicolon = true; // It is OK to have one semicolon.
                     } else {
                         self.flag_error = 1;
-                        crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (malformed).");
+                        mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (malformed).");
                         self.error = Some("Multipart: Invalid boundary in C-T (malformed).".to_string());
                         return false;
                     }
@@ -1576,7 +1643,7 @@ impl Multipart {
 
             let Some(eq) = header[boundary_tmp + 8..].iter().position(|&c| c == b'=') else {
                 self.flag_error = 1;
-                crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (malformed).");
+                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (malformed).");
                 self.error = Some("Multipart: Invalid boundary in C-T (malformed).".to_string());
                 return false;
             };
@@ -1592,7 +1659,7 @@ impl Multipart {
                     self.flag_boundary_whitespace = 1;
                 } else {
                     self.flag_error = 1;
-                    crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (parameter name).");
+                    mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (parameter name).");
                     self.error = Some("Multipart: Invalid boundary in C-T (parameter name).".to_string());
                     return false;
                 }
@@ -1621,7 +1688,7 @@ impl Multipart {
                 // Test for partial quoting.
                 if c_at(bv, 0) == b'"' || (len >= 2 && bv[len - 1] == b'"') {
                     self.flag_error = 1;
-                    crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (quote).");
+                    mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (quote).");
                     self.error = Some("Multipart: Invalid boundary in C-T (quote).".to_string());
                     return false;
                 }
@@ -1638,7 +1705,7 @@ impl Multipart {
             // boundary.
             if Self::count_boundary_params(&self.boundary) != 0 {
                 self.flag_error = 1;
-                crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (content).");
+                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (content).");
                 self.error = Some("Multipart: Invalid boundary in C-T (content).".to_string());
                 return false;
             }
@@ -1649,19 +1716,19 @@ impl Multipart {
             if !Self::boundary_characters_valid(&self.boundary)
                 && let Some(semicolon_after_boundary) = self.boundary.iter().position(|&c| c == b';')
             {
-                crate::ms_dbg_a!(t, 3, "Multipart: Invalid parameter after boundary in C-T (tolerated).");
+                mp_dbg!(cx, 3, "Multipart: Invalid parameter after boundary in C-T (tolerated).");
                 self.boundary.truncate(semicolon_after_boundary);
             }
             // Validate the characters used in the boundary.
             if !Self::boundary_characters_valid(&self.boundary) {
                 self.flag_error = 1;
-                crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (characters).");
+                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (characters).");
                 self.error = Some("Multipart: Invalid boundary in C-T (characters).".to_string());
                 return false;
             }
 
-            crate::ms_dbg_a!(
-                t,
+            mp_dbg!(
+                cx,
                 9,
                 "Multipart: Boundary{}: {}",
                 if self.flag_boundary_quoted != 0 { " (quoted)" } else { "" },
@@ -1670,7 +1737,7 @@ impl Multipart {
 
             if self.boundary.is_empty() {
                 self.flag_error = 1;
-                crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (empty).");
+                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (empty).");
                 self.error = Some("Multipart: Invalid boundary in C-T (empty).".to_string());
                 return false;
             }
@@ -1681,12 +1748,12 @@ impl Multipart {
             // Test for case-insensitive boundary. Allowed by the RFC but
             // highly unusual.
             if Self::count_boundary_params(&header) > 0 {
-                crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary in C-T (case sensitivity).");
+                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (case sensitivity).");
                 self.error = Some("Multipart: Invalid boundary in C-T (case sensitivity).".to_string());
                 return false;
             }
 
-            crate::ms_dbg_a!(t, 4, "Multipart: Boundary not found in C-T.");
+            mp_dbg!(cx, 4, "Multipart: Boundary not found in C-T.");
             self.error = Some("Multipart: Boundary not found in C-T.".to_string());
             return false;
         }
@@ -1696,7 +1763,7 @@ impl Multipart {
 
     /// Parses the body. Assumes that all data is in `data` (we are not
     /// processing chunks); `offset` is where the body starts.
-    pub fn process(&mut self, t: &mut Transaction<'_>, data: &[u8], offset: usize) -> bool {
+    pub fn process(&mut self, cx: &mut dyn Context, data: &[u8], offset: usize) -> bool {
         let mut inptr = 0usize;
         let mut inleft = data.len();
         let mut z: usize = 0;
@@ -1709,14 +1776,14 @@ impl Multipart {
         if self.is_complete {
             self.flag_data_before = 1;
 
-            crate::ms_dbg_a!(t, 4, "Multipart: Ignoring data after last boundary (received {} bytes)", data.len());
+            mp_dbg!(cx, 4, "Multipart: Ignoring data after last boundary (received {} bytes)", data.len());
 
             return true;
         }
 
         if self.bufleft == 0 {
             self.flag_error = 1;
-            crate::ms_dbg_a!(t, 4, "Multipart: Internal error in process_chunk: no space left in the buffer");
+            mp_dbg!(cx, 4, "Multipart: Internal error in process_chunk: no space left in the buffer");
             return false;
         }
 
@@ -1759,7 +1826,7 @@ impl Multipart {
                             // string matches our boundary, but it's where
                             // part data should begin
                             self.flag_invalid_part = 1;
-                            crate::ms_dbg_a!(t, 3, "Multipart: Invalid part (data contains boundary)");
+                            mp_dbg!(cx, 3, "Multipart: Invalid part (data contains boundary)");
                         } else {
                             let mut boundary_end = 2 + blen;
                             // if it match, AND there was a matched boundary
@@ -1784,7 +1851,7 @@ impl Multipart {
 
                                 if self.is_complete {
                                     self.flag_error = 1;
-                                    crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary (final duplicate).");
+                                    mp_dbg!(cx, 4, "Multipart: Invalid boundary (final duplicate).");
                                     self.error = Some("Multipart: Invalid boundary (final duplicate).".to_string());
                                     return false;
                                 }
@@ -1800,7 +1867,7 @@ impl Multipart {
                                     self.flag_crlf_line = 1;
                                 }
 
-                                self.process_boundary(t, is_final);
+                                self.process_boundary(cx, is_final);
 
                                 if is_final {
                                     self.is_complete = true;
@@ -1812,7 +1879,7 @@ impl Multipart {
                                 // error
                                 self.flag_error = 1;
                                 let line = lossy(c_str(&self.buf)).into_owned();
-                                crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary: {}", line);
+                                mp_dbg!(cx, 4, "Multipart: Invalid boundary: {}", line);
                                 self.error = Some(format!("Multipart: Invalid boundary: {}", line));
                                 return false;
                             }
@@ -1828,7 +1895,7 @@ impl Multipart {
                             && c_starts_with(&self.buf, 3, &self.boundary)
                         {
                             self.flag_error = 1;
-                            crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary (quotes).");
+                            mp_dbg!(cx, 4, "Multipart: Invalid boundary (quotes).");
                             self.error = Some("Multipart: Invalid boundary (quotes).".to_string());
                             return false;
                         }
@@ -1842,7 +1909,7 @@ impl Multipart {
                         if p != 2 && c_starts_with(&self.buf, p, &self.boundary) {
                             // Found whitespace in front of a boundary.
                             self.flag_error = 1;
-                            crate::ms_dbg_a!(t, 4, "Multipart: Invalid boundary (whitespace).");
+                            mp_dbg!(cx, 4, "Multipart: Invalid boundary (whitespace).");
                             self.error = Some("Multipart: Invalid boundary (whitespace).".to_string());
                             return false;
                         }
@@ -1867,18 +1934,13 @@ impl Multipart {
                 if !processed_as_boundary {
                     if self.mpp.is_none() {
                         self.flag_data_before = 1;
-                        crate::ms_dbg_a!(t, 4, "Multipart: Ignoring data before first boundary.");
+                        mp_dbg!(cx, 4, "Multipart: Ignoring data before first boundary.");
                     } else if self.mpp_state == 0 {
                         if self.bufleft == 0 || process_buffer {
                             // part header lines must be shorter than
                             // MULTIPART_BUF_SIZE bytes
                             self.flag_error = 1;
-                            crate::ms_dbg_a!(
-                                t,
-                                4,
-                                "Multipart: Part header line over {} bytes long",
-                                MULTIPART_BUF_SIZE
-                            );
+                            mp_dbg!(cx, 4, "Multipart: Part header line over {} bytes long", MULTIPART_BUF_SIZE);
                             self.error =
                                 Some(format!("Multipart: Part header line over {} bytes long", MULTIPART_BUF_SIZE));
                             return false;
@@ -1886,8 +1948,8 @@ impl Multipart {
 
                         // Like C++, a failing part header records its error
                         // but does not stop the processing.
-                        self.process_part_header(t, offset.wrapping_add(z));
-                    } else if !self.process_part_data(t, offset.wrapping_add(z)) {
+                        self.process_part_header(cx, offset.wrapping_add(z));
+                    } else if !self.process_part_data(cx, offset.wrapping_add(z)) {
                         self.flag_error = 1;
                         return false;
                     }
@@ -1922,7 +1984,7 @@ impl Multipart {
 
             if self.is_complete && inleft != 0 {
                 self.flag_data_after = 1;
-                crate::ms_dbg_a!(t, 4, "Multipart: Ignoring data after last boundary ({}bytes left)", inleft);
+                mp_dbg!(cx, 4, "Multipart: Ignoring data after last boundary ({}bytes left)", inleft);
                 return true;
             }
         }
@@ -1933,13 +1995,13 @@ impl Multipart {
     /// What the C++ destructor does: marks the temporary files of the parts
     /// for deletion (unless `SecUploadKeepFiles` is on); they stay on disk
     /// until the transaction is done with them.
-    fn cleanup(&mut self, t: Option<&Transaction<'_>>) {
+    fn cleanup(&mut self, cx: Option<&dyn Context>) {
         if self.cleaned_up {
             return;
         }
         self.cleaned_up = true;
-        crate::ms_dbg_opt!(
-            t,
+        mp_dbg_opt!(
+            cx,
             4,
             "Multipart: Cleanup started (keep files set to {})",
             config_boolean_string(self.upload_keep_files)
@@ -1952,7 +2014,7 @@ impl Multipart {
                 {
                     // only mark for deletion for now; the file should stay
                     // on disk until the transaction is complete
-                    crate::ms_dbg_opt!(t, 9, "Multipart: Marking temporary file for deletion: {}", f.filename());
+                    mp_dbg_opt!(cx, 9, "Multipart: Marking temporary file for deletion: {}", f.filename());
                     f.set_delete();
                 }
             }
