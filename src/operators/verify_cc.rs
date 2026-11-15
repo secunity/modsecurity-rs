@@ -7,7 +7,7 @@ use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
-use crate::utils::regex::Regex;
+use crate::utils::regex::{Regex, Subject};
 
 #[derive(Debug)]
 pub struct VerifyCC {
@@ -80,9 +80,10 @@ impl Operator for VerifyCC {
         let Some(re) = self.re.as_ref() else {
             return false;
         };
+        let subject = Subject::new(i);
         for offset in 0..i.len() {
             // If there was no match, then we are done.
-            let Some((start, end)) = re.find_at(i, offset) else { break };
+            let Some((start, end)) = re.find_at(&subject, offset) else { break };
             if start > end || end > i.len() {
                 continue;
             }

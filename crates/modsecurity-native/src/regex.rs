@@ -7,6 +7,7 @@
 //! confined to this module.
 
 use pcre2_sys::*;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ptr;
 
@@ -63,11 +64,48 @@ pub fn crlf_is_newline() -> bool {
     newline == PCRE2_NEWLINE_ANY || newline == PCRE2_NEWLINE_CRLF || newline == PCRE2_NEWLINE_ANYCRLF
 }
 
-/// An empty slice may carry a dangling (non-null, unreadable) pointer, but
-/// PCRE2 may read the subject pointer even for a zero length subject; use a
-/// pointer into a static instead.
-fn subject(s: &[u8]) -> &[u8] {
-    if s.is_empty() { &b"\0"[..0] } else { s }
+/// How far past the end of a subject PCRE2 may read. Its JIT code tests the
+/// byte at the end before comparing lengths (and scans in vector blocks),
+/// which C++ never notices: its subjects are `std::string`s, with a NUL
+/// after the end. The value read is never used (tested in
+/// `tests/guard_page.rs`).
+const READ_AHEAD: usize = 64;
+
+/// A page size every real one is a multiple of.
+const PAGE: usize = 4096;
+
+/// The subject PCRE2 gets for an empty one: an empty slice may carry a
+/// dangling (non-null, unreadable) pointer.
+static EMPTY: [u8; READ_AHEAD] = [0; READ_AHEAD];
+
+/// A subject PCRE2 can read up to [`READ_AHEAD`] bytes past: the bytes
+/// themselves when that much of their page follows them (reads within a
+/// mapped page cannot fault), a padded copy otherwise (about one subject
+/// in 64). Build it once for all the matches against the same bytes.
+pub struct Subject<'a> {
+    bytes: Cow<'a, [u8]>,
+    len: usize,
+}
+
+impl<'a> Subject<'a> {
+    pub fn new(s: &'a [u8]) -> Self {
+        if s.is_empty() {
+            return Subject { bytes: Cow::Borrowed(&EMPTY), len: 0 };
+        }
+        let end = s.as_ptr() as usize + s.len();
+        let room = (PAGE - end % PAGE) % PAGE;
+        if room >= READ_AHEAD {
+            return Subject { bytes: Cow::Borrowed(s), len: s.len() };
+        }
+        let mut padded = Vec::with_capacity(s.len() + READ_AHEAD);
+        padded.extend_from_slice(s);
+        padded.resize(s.len() + READ_AHEAD, 0);
+        Subject { bytes: Cow::Owned(padded), len: s.len() }
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self.bytes.as_ptr()
+    }
 }
 
 /// RAII owner of a `pcre2_match_data`.
@@ -225,23 +263,23 @@ impl Regex {
     /// exhaustion (or when JIT is unavailable), as the C++ code does.
     fn exec(
         &self,
-        s: &[u8],
+        s: &Subject<'_>,
         offset: usize,
         options: u32,
         md: &MatchData,
         ctx: *mut pcre2_match_context_8,
         use_jit: bool,
     ) -> i32 {
-        let s = subject(s);
         let mut rc = 0;
         if use_jit && self.pcje == 0 {
             // SAFETY: pc is valid (callers check has_error), `s` is readable
-            // for its length, md has room for all of this pattern's groups.
-            rc = unsafe { pcre2_jit_match_8(self.pc, s.as_ptr(), s.len(), offset, options, md.0, ctx) };
+            // for its length and READ_AHEAD bytes more, md has room for all
+            // of this pattern's groups.
+            rc = unsafe { pcre2_jit_match_8(self.pc, s.as_ptr(), s.len, offset, options, md.0, ctx) };
         }
         if !use_jit || self.pcje != 0 || rc == PCRE2_ERROR_JIT_STACKLIMIT {
             // SAFETY: as above.
-            rc = unsafe { pcre2_match_8(self.pc, s.as_ptr(), s.len(), offset, options | PCRE2_NO_JIT, md.0, ctx) };
+            rc = unsafe { pcre2_match_8(self.pc, s.as_ptr(), s.len, offset, options | PCRE2_NO_JIT, md.0, ctx) };
         }
         rc
     }
@@ -305,10 +343,11 @@ impl Regex {
         if self.has_error() {
             return ret;
         }
+        let subject = Subject::new(s);
         self.with_match_data(0, |md, _| {
             let mut offset = 0usize;
             loop {
-                let mut rc = self.exec(s, offset, 0, md, ptr::null_mut(), true);
+                let mut rc = self.exec(&subject, offset, 0, md, ptr::null_mut(), true);
                 let mut i = 0;
                 while i < rc {
                     let (start, end) = Self::ovec(md, i as usize);
@@ -340,8 +379,9 @@ impl Regex {
         if self.has_error() {
             return RegexResult::ErrorOther;
         }
+        let subject = Subject::new(s);
         self.with_match_data(match_limit, |md, ctx| {
-            let rc = self.exec(s, 0, 0, md, ctx, true);
+            let rc = self.exec(&subject, 0, 0, md, ctx, true);
             for i in 0..rc.max(0) {
                 let (start, end) = Self::ovec(md, i as usize);
                 if end > s.len() || start > end {
@@ -371,15 +411,15 @@ impl Regex {
         md: &MatchData,
         ctx: *mut pcre2_match_context_8,
     ) -> RegexResult {
+        let subject = Subject::new(s);
         let mut prev_match_zero_length = false;
         let mut start_offset = 0usize;
         while start_offset <= s.len() {
             let options = if prev_match_zero_length { PCRE2_NOTEMPTY_ATSTART | PCRE2_ANCHORED } else { 0 };
             // The C++ code uses pcre2_match (JIT is still used implicitly
             // unless the options require the interpreter).
-            let subj = subject(s);
-            // SAFETY: as in `exec` (`subj` is never a dangling pointer).
-            let rc = unsafe { pcre2_match_8(self.pc, subj.as_ptr(), s.len(), start_offset, options, md.0, ctx) };
+            // SAFETY: as in `exec`.
+            let rc = unsafe { pcre2_match_8(self.pc, subject.as_ptr(), s.len(), start_offset, options, md.0, ctx) };
             let r = Self::to_regex_result(rc);
             if r != RegexResult::Ok {
                 return r;
@@ -428,10 +468,11 @@ impl Regex {
         if self.has_error() {
             return 0;
         }
+        let subject = Subject::new(s);
         self.with_match_data(0, |md, _| {
             // The C++ code turns the return value into a boolean before
             // reading the ovector, so the "last group" is always group 0.
-            let rc = self.exec(s, 0, 0, md, ptr::null_mut(), false);
+            let rc = self.exec(&subject, 0, 0, md, ptr::null_mut(), false);
             let ret = (rc > 0) as i32;
             if ret > 0 {
                 // SAFETY: a successful match has at least one ovector pair.
@@ -448,8 +489,9 @@ impl Regex {
     }
 
     /// The bounds of the first match starting at or after `offset`, without
-    /// a match limit; `None` when there is none or matching failed.
-    pub fn find_at(&self, s: &[u8], offset: usize) -> Option<(usize, usize)> {
+    /// a match limit; `None` when there is none or matching failed. (It
+    /// takes a [`Subject`] because callers try many offsets of one.)
+    pub fn find_at(&self, s: &Subject<'_>, offset: usize) -> Option<(usize, usize)> {
         if self.has_error() {
             return None;
         }
@@ -464,7 +506,8 @@ impl Regex {
         if self.has_error() {
             return 0;
         }
-        self.with_match_data(0, |md, _| (self.exec(s, 0, 0, md, ptr::null_mut(), true) > 0) as i32)
+        let subject = Subject::new(s);
+        self.with_match_data(0, |md, _| (self.exec(&subject, 0, 0, md, ptr::null_mut(), true) > 0) as i32)
     }
 
     fn to_regex_result(rc: i32) -> RegexResult {
