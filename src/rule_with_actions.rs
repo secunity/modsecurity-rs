@@ -13,6 +13,7 @@
 use crate::actions::action::{Action, Kind};
 use crate::actions::block::Block;
 use crate::actions::capture::Capture;
+use crate::actions::context::ActionContext;
 use crate::actions::log_data::LogData;
 use crate::actions::msg::Msg;
 use crate::actions::multi_match::MultiMatch;
@@ -401,7 +402,7 @@ impl RuleWithActions {
         let mut contains_block = false;
         for a in &self.actions_set_var {
             crate::ms_dbg_a!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
-            a.evaluate(self, t, rm);
+            a.evaluate(&mut ActionContext::new(t, self, rm));
         }
 
         let rules = t.rules;
@@ -411,22 +412,22 @@ impl RuleWithActions {
                 contains_block = true;
             } else if a.name() == "setvar" {
                 crate::ms_dbg_a!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
-                a.evaluate(self, t, rm);
+                a.evaluate(&mut ActionContext::new(t, self, rm));
             }
         }
 
         if self.contains_multi_match_action && !self.chained_rule_parent {
             if let Some(s) = &self.severity {
-                s.evaluate(self, t, rm);
+                s.evaluate(&mut ActionContext::new(t, self, rm));
             }
             if let Some(l) = &self.log_data {
-                l.evaluate(self, t, rm);
+                l.evaluate(&mut ActionContext::new(t, self, rm));
             }
             if let Some(m) = &self.msg {
-                m.evaluate(self, t, rm);
+                m.evaluate(&mut ActionContext::new(t, self, rm));
             }
             for a in &self.actions_tag {
-                a.evaluate(self, t, rm);
+                a.evaluate(&mut ActionContext::new(t, self, rm));
             }
         }
         contains_block
@@ -457,7 +458,7 @@ impl RuleWithActions {
 
         for a in &self.actions_tag {
             crate::ms_dbg_a!(t, 4, "Running (non-disruptive) action: {}", a.name());
-            a.evaluate(self, t, rm);
+            a.evaluate(&mut ActionContext::new(t, self, rm));
         }
 
         for a in rules.properties.exceptions.action_pos_update_target_by_id.for_rule(self.rule_id) {
@@ -466,13 +467,13 @@ impl RuleWithActions {
         }
 
         if let Some(s) = &self.severity {
-            s.evaluate(self, t, rm);
+            s.evaluate(&mut ActionContext::new(t, self, rm));
         }
         if let Some(l) = &self.log_data {
-            l.evaluate(self, t, rm);
+            l.evaluate(&mut ActionContext::new(t, self, rm));
         }
         if let Some(m) = &self.msg {
-            m.evaluate(self, t, rm);
+            m.evaluate(&mut ActionContext::new(t, self, rm));
         }
         for a in &self.actions_runtime_pos {
             // Neither disruptive, nor a `block` once a disruptive action ran.
@@ -498,7 +499,7 @@ impl RuleWithActions {
     ) {
         if !a.is_disruptive() && a.name() != "block" {
             crate::ms_dbg_a!(t, 9, "Running action: {}", a.name());
-            a.evaluate(self, t, rm);
+            a.evaluate(&mut ActionContext::new(t, self, rm));
             return;
         }
 
@@ -509,7 +510,7 @@ impl RuleWithActions {
 
         if t.rule_engine_state() == Some(RuleEngine::Enabled) {
             crate::ms_dbg_a!(t, 4, "Running (disruptive)     action: {}.", a.name());
-            a.evaluate(self, t, rm);
+            a.evaluate(&mut ActionContext::new(t, self, rm));
             return;
         }
 

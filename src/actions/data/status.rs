@@ -1,9 +1,7 @@
 //! `status:N` — the HTTP status code used by the disruptive actions.
 
 use crate::actions::action::{Action, name_and_payload};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 use crate::utils::string::stoi;
 
 #[derive(Debug)]
@@ -28,7 +26,7 @@ impl Action for Status {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.outcome.intervention.status = self.status;
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.set_intervention_status(self.status);
     }
 }

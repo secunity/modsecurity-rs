@@ -69,9 +69,10 @@ Suggested steps:
 1. ~~Group the fields into named sub-structs inside `Transaction`, with no
    behavior change.~~ Done: `http`, `body`, `ctl`, `eval`, `outcome` (see
    `REFACTORING.md`).
-2. Give actions the same treatment operators got: an `ActionContext` that
-   offers what actions do (set a variable, set the intervention, change a
-   `ctl` setting, log).
+2. ~~Give actions the same treatment operators got: an `ActionContext` that
+   offers what actions do.~~ Done (`src/actions/context.rs`); `setvar`,
+   `exec` and `block` still reach the transaction through
+   `ActionContext::engine()`.
 3. Move the audit-log rendering (`to_json`, `to_old_audit_log_format`,
    about 300 lines in `transaction.rs`) into `audit_log`, reading from the
    transaction.

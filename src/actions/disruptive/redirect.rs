@@ -2,10 +2,8 @@
 //! already set), with macro expansion of the URL.
 
 use crate::actions::action::Action;
-use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, RuleMessage};
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct Redirect {
@@ -33,16 +31,15 @@ impl Action for Redirect {
         true
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        let url_expanded = self.string.evaluate(Some(t));
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        let url_expanded = cx.expand(&self.string);
         // if it was changed before, lets keep it.
-        if t.outcome.intervention.status == 200 || !(301..=307).contains(&t.outcome.intervention.status) {
-            t.outcome.intervention.status = Self::STATUS;
+        let status = cx.intervention_status();
+        if status == 200 || !(301..=307).contains(&status) {
+            cx.set_intervention_status(Self::STATUS);
         }
-        t.outcome.intervention.url = Some(url_expanded);
-        t.outcome.intervention.disruptive = true;
-        rm.is_disruptive = true;
-        t.outcome.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
+        cx.set_intervention_url(url_expanded);
+        cx.disrupt();
     }
 }
 
@@ -51,6 +48,8 @@ mod tests {
     use super::*;
     use crate::actions::block::test_support::*;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     #[test]
     fn redirect() {
@@ -62,17 +61,17 @@ mod tests {
         let a = Redirect::with_rts(rts("https://www.example.com/"));
         assert!(a.is_disruptive());
 
-        a.evaluate(&r, &mut t, &mut rm);
+        a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (302, true));
         assert_eq!(t.outcome.intervention.url.as_deref(), Some(&b"https://www.example.com/"[..]));
         assert!(rm.is_disruptive && t.outcome.intervention.log.is_some());
 
         // A 301..307 status set before is kept, others are replaced.
         t.outcome.intervention.status = 301;
-        a.evaluate(&r, &mut t, &mut rm);
+        a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.outcome.intervention.status, 301);
         t.outcome.intervention.status = 404;
-        a.evaluate(&r, &mut t, &mut rm);
+        a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.outcome.intervention.status, 302);
 
         // The URL is handed out as raw bytes (C++ copies them unchanged).

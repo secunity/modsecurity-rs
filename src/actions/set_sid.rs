@@ -1,10 +1,8 @@
 //! `setsid:'...'` — sets the session id (SESSION collection key and SESSIONID).
 
 use crate::actions::action::Action;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::string::lossy;
 
 #[derive(Debug)]
@@ -23,12 +21,10 @@ impl Action for SetSID {
         "setsid"
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        let col_name_expanded = self.string.evaluate(Some(t));
-        crate::ms_dbg_a!(t, 8, "Session ID initiated with value: '{}'.", lossy(&col_name_expanded));
-        let offset = t.vars.offset;
-        t.vars.session_id.set(&col_name_expanded, offset);
-        t.collections.session.key = col_name_expanded;
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        let col_name_expanded = cx.expand(&self.string);
+        crate::act_dbg!(cx, 8, "Session ID initiated with value: '{}'.", lossy(&col_name_expanded));
+        cx.set_session_id(col_name_expanded);
     }
 }
 
@@ -40,6 +36,8 @@ mod tests {
     use crate::actions::set_rsc::SetRSC;
     use crate::actions::set_uid::SetUID;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     /// setsid, setuid, setrsc, initcol.
     #[test]
@@ -50,19 +48,19 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
 
-        SetSID::with_rts(rts("s1")).evaluate(&r, &mut t, &mut rm);
+        SetSID::with_rts(rts("s1")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.collections.session.key, b"s1");
         assert!(has_log(&t, "Session ID initiated with value: 's1'."));
-        SetUID::with_rts(rts("u1")).evaluate(&r, &mut t, &mut rm);
+        SetUID::with_rts(rts("u1")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.collections.user.key, b"u1");
         assert!(has_log(&t, "User collection initiated with value: 'u1'."));
-        SetRSC::with_rts(rts("r1")).evaluate(&r, &mut t, &mut rm);
+        SetRSC::with_rts(rts("r1")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.collections.resource.key, b"r1");
         assert!(has_log(&t, "RESOURCE initiated with value: 'r1'."));
 
         for (col, field) in [("ip", 0), ("global", 1), ("resource", 2)] {
             let a = InitCol::with_rts(&format!("initcol:{}=", col), rts("k")).unwrap();
-            a.evaluate(&r, &mut t, &mut rm);
+            a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
             let c = &t.collections;
             let key = [&c.ip.key, &c.global.key, &c.resource.key][field];
             assert_eq!(key, b"k");

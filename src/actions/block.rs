@@ -4,9 +4,7 @@
 //! rule as containing a static block action).
 
 use crate::actions::action::{Action, name_of};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
 pub struct Block {
@@ -28,15 +26,16 @@ impl Action for Block {
         true
     }
 
-    fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        crate::ms_dbg_a!(t, 8, "Marking request as disruptive.");
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        crate::act_dbg!(cx, 8, "Marking request as disruptive.");
+        let (t, rule) = cx.engine();
         let rules = t.rules;
         if let Some(defaults) = rule.phase().map(|p| &rules.properties.default_actions[p.index()]) {
             for a in defaults {
                 if !a.is_disruptive() {
                     continue;
                 }
-                a.evaluate(rule, t, rm);
+                a.evaluate(cx);
             }
         }
     }
@@ -96,6 +95,7 @@ mod tests {
     use crate::actions::phase::Phase;
     use crate::modsecurity::{ModSecurity, Phases};
     use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     #[test]
     fn block_runs_default_disruptive_actions() {
@@ -111,7 +111,7 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
         rm.save_message = false;
-        Block::new("block").evaluate(&r, &mut t, &mut rm);
+        Block::new("block").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Marking request as disruptive."));
         assert!(has_log(&t, "Running action deny"));
         // Only the disruptive default action ran.
@@ -121,9 +121,9 @@ mod tests {
         assert!(rm.is_disruptive);
 
         // Nothing happens in a phase without default actions.
-        Pass::new("pass").evaluate(&r, &mut t, &mut rm);
+        Pass::new("pass").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         let r1 = rule(vec![RuleAction::Block(Block::new("block"))]);
-        Block::new("block").evaluate(&r1, &mut t, &mut rm);
+        Block::new("block").evaluate(&mut ActionContext::new(&mut t, &r1, &mut rm));
         assert_eq!(t.outcome.intervention.status, 200);
     }
 }

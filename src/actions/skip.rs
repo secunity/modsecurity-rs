@@ -1,9 +1,7 @@
 //! `skip:N` — skips the next N rules (or chains) when the rule matches.
 
 use crate::actions::action::{Action, name_and_payload};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 use crate::utils::string::stoi;
 
 #[derive(Debug)]
@@ -28,9 +26,9 @@ impl Action for Skip {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        crate::ms_dbg_a!(t, 5, "Skipping the next {} rules.", self.skip_next);
-        t.eval.skip_next = self.skip_next;
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        crate::act_dbg!(cx, 5, "Skipping the next {} rules.", self.skip_next);
+        cx.skip_next(self.skip_next);
     }
 }
 
@@ -40,6 +38,8 @@ mod tests {
     use crate::actions::block::test_support::*;
     use crate::actions::skip_after::SkipAfter;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     #[test]
     fn skip_and_skip_after() {
@@ -50,11 +50,11 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
         let s = Skip::new("skip:2").unwrap();
-        s.evaluate(&r, &mut t, &mut rm);
+        s.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.eval.skip_next, 2);
         assert!(has_log(&t, "Skipping the next 2 rules."));
 
-        SkipAfter::new("skipAfter:END_HOST_CHECK").evaluate(&r, &mut t, &mut rm);
+        SkipAfter::new("skipAfter:END_HOST_CHECK").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.eval.marker.as_deref(), Some("END_HOST_CHECK"));
         assert!(has_log(&t, "Setting skipAfter for: END_HOST_CHECK"));
     }

@@ -16,8 +16,7 @@
 //!         just the last one will be take into consideration.
 
 use crate::actions::action::Action;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 use crate::utils::string::lossy;
@@ -42,10 +41,10 @@ impl Action for Msg {
         "msg"
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        let msg = self.data(t);
-        crate::ms_dbg_a!(t, 9, "Saving msg: {}", lossy(&msg));
-        rm.message = msg;
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        let msg = cx.expand(&self.string);
+        crate::act_dbg!(cx, 9, "Saving msg: {}", lossy(&msg));
+        cx.set_message(msg);
     }
 }
 
@@ -60,6 +59,7 @@ mod tests {
     use crate::actions::no_log::NoLog;
     use crate::actions::tag::Tag;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
 
     /// msg, logdata, tag, log, nolog, auditlog, noauditlog.
     #[test]
@@ -73,24 +73,24 @@ mod tests {
         assert!(r.contains_tag("a/b", &t));
 
         let mut rm = RuleMessage::new(&r);
-        Msg::with_rts(rts("m1")).evaluate(&r, &mut t, &mut rm);
+        Msg::with_rts(rts("m1")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(rm.message, b"m1");
         assert!(has_log(&t, "Saving msg: m1"));
-        LogData::with_rts(rts("d1")).evaluate(&r, &mut t, &mut rm);
+        LogData::with_rts(rts("d1")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(rm.data, b"d1");
-        Tag::with_rts(rts("t1")).evaluate(&r, &mut t, &mut rm);
-        Tag::with_rts(rts("t2")).evaluate(&r, &mut t, &mut rm);
+        Tag::with_rts(rts("t1")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
+        Tag::with_rts(rts("t2")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(rm.tags, vec![b"t1".to_vec(), b"t2".to_vec()]);
         assert!(has_log(&t, "Rule tag: t2"));
 
-        NoLog::new("nolog").evaluate(&r, &mut t, &mut rm);
+        NoLog::new("nolog").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(!rm.save_message);
-        Log::new("log").evaluate(&r, &mut t, &mut rm);
+        Log::new("log").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(rm.save_message);
         assert!(has_log(&t, "Saving transaction to logs"));
-        NoAuditLog::new("noauditlog").evaluate(&r, &mut t, &mut rm);
+        NoAuditLog::new("noauditlog").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(rm.no_audit_log && !rm.save_message);
-        AuditLog::new("auditlog").evaluate(&r, &mut t, &mut rm);
+        AuditLog::new("auditlog").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(!rm.no_audit_log && rm.save_message);
     }
 }

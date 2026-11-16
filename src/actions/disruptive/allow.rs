@@ -2,9 +2,7 @@
 //! rules (from now on, for the current phase, or for the request phases).
 
 use crate::actions::action::{Action, name_and_payload};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 
 /// What an `allow` action lets through.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,14 +53,14 @@ impl Action for Allow {
         true
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        crate::ms_dbg_a!(
-            t,
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        crate::act_dbg!(
+            cx,
             4,
             "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: {}",
             Self::allow_type_to_name(self.allow_type)
         );
-        t.eval.allow_type = Some(self.allow_type);
+        cx.allow(self.allow_type);
     }
 }
 
@@ -71,6 +69,8 @@ mod tests {
     use super::*;
     use crate::actions::block::test_support::*;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     #[test]
     fn allow() {
@@ -86,7 +86,7 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
         let a = Allow::new("allow:phase").unwrap();
-        a.evaluate(&r, &mut t, &mut rm);
+        a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.eval.allow_type, Some(AllowType::Phase));
         assert!(has_log(&t, "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: Phase"));
     }

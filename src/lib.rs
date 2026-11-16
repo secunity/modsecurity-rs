@@ -59,7 +59,17 @@ macro_rules! op_dbg {
     }};
 }
 
-pub(crate) use {ms_dbg_a, ms_dbg_opt, op_dbg};
+/// Writes to the debug log from an action (through its `ActionContext`):
+/// the message is only formatted when the debug level is high enough.
+macro_rules! act_dbg {
+    ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
+        if $cx.debug_enabled($lvl) {
+            $cx.debug($lvl, &format!($($arg)*));
+        }
+    }};
+}
+
+pub(crate) use {act_dbg, ms_dbg_a, ms_dbg_opt, op_dbg};
 
 pub use crate::debug_log::DebugLog;
 pub use crate::intervention::Intervention;

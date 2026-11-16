@@ -2,10 +2,8 @@
 //! the transaction.
 
 use crate::actions::action::Action;
+use crate::actions::context::ActionContext;
 use crate::audit_log::AuditLogStatus;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct AuditEngine {
@@ -23,14 +21,14 @@ impl Action for AuditEngine {
         "ctl"
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         // C++ prints the numeric value of the enum.
-        crate::ms_dbg_a!(
-            t,
+        crate::act_dbg!(
+            cx,
             8,
             "Setting SecAuditEngine to {} as requested by a ctl:auditEngine action",
             self.status as i32
         );
-        t.ctl.audit_engine = Some(self.status);
+        cx.set_audit_engine(self.status);
     }
 }

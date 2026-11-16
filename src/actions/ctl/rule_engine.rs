@@ -2,10 +2,8 @@
 //! the transaction.
 
 use crate::actions::action::Action;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::rules_set_properties::{self, rule_engine_state_string};
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct RuleEngine {
@@ -23,14 +21,14 @@ impl Action for RuleEngine {
         "ctl"
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        crate::ms_dbg_a!(
-            t,
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        crate::act_dbg!(
+            cx,
             8,
             "Setting SecRuleEngine to {} as requested by a ctl:ruleEngine action",
             rule_engine_state_string(Some(self.state))
         );
-        t.ctl.rule_engine = Some(self.state);
+        cx.set_rule_engine(self.state);
     }
 }
 
@@ -47,13 +45,15 @@ mod tests {
     use crate::actions::ctl::request_body_processor_xml::RequestBodyProcessorXML;
     use crate::audit_log::{AuditLogStatus, PartsChange};
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
     use crate::rules_set_properties::ParseXmlIntoArgs as ParseXmlIntoArgsState;
     use crate::transaction::RequestBodyType;
+    use crate::transaction::Transaction;
 
     fn run(a: &dyn Action, t: &mut Transaction<'_>) {
         let r = rule(vec![]);
         let mut rm = RuleMessage::new(&r);
-        a.evaluate(&r, t, &mut rm);
+        a.evaluate(&mut ActionContext::new(t, &r, &mut rm));
     }
 
     /// The ctl actions that change transaction settings.

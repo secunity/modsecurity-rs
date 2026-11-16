@@ -3,9 +3,8 @@
 //! C++ sets the request body *type* here, not the processor; kept.)
 
 use crate::actions::action::{Action, name_of};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::{RequestBodyType, Transaction};
+use crate::actions::context::ActionContext;
+use crate::transaction::RequestBodyType;
 
 #[derive(Debug)]
 pub struct RequestBodyProcessorURLENCODED {
@@ -23,9 +22,7 @@ impl Action for RequestBodyProcessorURLENCODED {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.body.request_body_type = RequestBodyType::WWWFormUrlEncoded;
-        let offset = t.vars.offset;
-        t.vars.reqbody_processor.set(b"URLENCODED", offset);
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.set_request_body_type(RequestBodyType::WWWFormUrlEncoded, b"URLENCODED");
     }
 }

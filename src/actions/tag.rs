@@ -19,8 +19,7 @@
 //! ModSecurity 2.6.0 tag supports macro expansion.
 
 use crate::actions::action::Action;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 use crate::utils::string::lossy;
@@ -46,9 +45,9 @@ impl Action for Tag {
         "tag"
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        let tag = self.tag(t);
-        crate::ms_dbg_a!(t, 9, "Rule tag: {}", lossy(&tag));
-        rm.tags.push(tag);
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        let tag = cx.expand(&self.string);
+        crate::act_dbg!(cx, 9, "Rule tag: {}", lossy(&tag));
+        cx.add_tag(tag);
     }
 }

@@ -1,9 +1,7 @@
 //! `severity:N` or `severity:'CRITICAL'` — the severity of the rule match.
 
 use crate::actions::action::{Action, name_and_payload};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 use crate::utils::string::stoi;
 
 #[derive(Debug)]
@@ -39,17 +37,17 @@ impl Action for Severity {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        crate::ms_dbg_a!(
-            t,
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        crate::act_dbg!(
+            cx,
             9,
             "This rule severity is: {} current transaction is: {}",
             self.severity,
-            t.outcome.highest_severity_action
+            cx.highest_severity()
         );
-        rm.severity = self.severity;
-        if t.outcome.highest_severity_action > self.severity {
-            t.outcome.highest_severity_action = self.severity;
+        cx.set_severity(self.severity);
+        if cx.highest_severity() > self.severity {
+            cx.set_highest_severity(self.severity);
         }
     }
 }
@@ -59,6 +57,8 @@ mod tests {
     use super::*;
     use crate::actions::block::test_support::*;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     fn sev(p: &str) -> Result<i32, String> {
         Severity::new(&format!("severity:{}", p)).map(|s| s.severity)
@@ -82,12 +82,12 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
         let before = t.outcome.highest_severity_action;
-        s.evaluate(&r, &mut t, &mut rm);
+        s.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(rm.severity, 2);
         assert_eq!(t.outcome.highest_severity_action, 2.min(before));
         assert!(has_log(&t, &format!("This rule severity is: 2 current transaction is: {}", before)));
         let s5 = Severity::new("severity:5").unwrap();
-        s5.evaluate(&r, &mut t, &mut rm);
+        s5.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(rm.severity, 5);
         assert_eq!(t.outcome.highest_severity_action, 2.min(before));
     }

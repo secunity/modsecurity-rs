@@ -1,9 +1,8 @@
 //! `ctl:requestBodyProcessor=XML` — parses the request body as XML.
 
 use crate::actions::action::{Action, name_of};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::{RequestBodyType, Transaction};
+use crate::actions::context::ActionContext;
+use crate::transaction::RequestBodyType;
 
 #[derive(Debug)]
 pub struct RequestBodyProcessorXML {
@@ -21,9 +20,7 @@ impl Action for RequestBodyProcessorXML {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.body.request_body_processor = RequestBodyType::XMLRequestBody;
-        let offset = t.vars.offset;
-        t.vars.reqbody_processor.set(b"XML", offset);
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.set_request_body_processor(RequestBodyType::XMLRequestBody, b"XML");
     }
 }

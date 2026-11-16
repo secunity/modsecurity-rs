@@ -2,8 +2,7 @@
 //! match.
 
 use crate::actions::action::Action;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 
@@ -27,7 +26,7 @@ impl Action for LogData {
         "logdata"
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        rm.data = self.data(t);
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.set_log_data(cx.expand(&self.string));
     }
 }

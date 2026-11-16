@@ -631,3 +631,38 @@ their debug messages, by `Transaction::drop` before any field is
 dropped. The differential test is identical (582,671 debug log lines;
 outputs with and without the debug log), and the C library's symbols,
 SONAME and NEEDED are unchanged.
+
+## Actions see an `ActionContext`, not the transaction
+
+`Action::evaluate` takes one `&mut ActionContext` instead of the rule, the
+transaction and the rule message (`src/actions/context.rs`; the second
+step of splitting the transaction, see `PLAN.md`). The context offers what
+actions do, as typed operations:
+
+| Operations | Used by |
+|---|---|
+| `debug_enabled`, `debug` (the `act_dbg!` macro) | most actions |
+| `expand` (macros of the action's text) | `msg`, `logdata`, `tag`, `redirect`, `setenv`, `setsid`/`setuid`/`setrsc`, `initcol`, `expirevar` |
+| `set_save_message`, `set_no_audit_log`, `set_message`, `set_log_data`, `add_tag`, `set_severity` (the rule message) | `log`, `nolog`, `auditlog`, `noauditlog`, `msg`, `logdata`, `tag`, `severity` |
+| `intervention_status`, `set_intervention_status`, `set_intervention_url`, `disrupt`, `reset_intervention`, `highest_severity`, `set_highest_severity` | `deny`, `drop`, `redirect`, `pass`, `status`, `severity` |
+| `skip_next`, `skip_after`, `allow` | `skip`, `skipAfter`, `allow` |
+| one setter per `ctl:` setting, `set_request_body_processor` / `set_request_body_type` | the 13 `ctl:` actions |
+| `set_resource`, `set_session_id`, `set_user_id`, `init_collection`, `collection_key`, `expire`, `set_env` | `setrsc`, `setsid`, `setuid`, `initcol`, `expirevar`, `setenv` |
+
+Each operation is the statements the action ran itself before, in the
+same order; `disrupt` is the three statements `deny`, `drop` and
+`redirect` shared (disruptive intervention, disruptive rule message, the
+intervention's log line). `ctl:requestBodyProcessor=URLENCODED` keeps
+setting the body *type* where JSON and XML set the processor, as in C++.
+
+Three actions are part of the engine and reach the transaction with
+`ActionContext::engine()`: `setvar` (resolves and writes any variable),
+`exec` (runs Lua with the transaction) and `block` (runs the phase's
+default disruptive actions in the same context). Everything else is
+written against the context only, which is what lets those actions move
+to a crate later (step 2 of `PLAN.md`).
+
+The call sites were rewritten from the compiler's errors. The
+differential test is identical (582,671 debug log lines; outputs with
+and without the debug log), and so are the C library's symbols, SONAME
+and NEEDED.

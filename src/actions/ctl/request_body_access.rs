@@ -2,9 +2,7 @@
 //! the transaction.
 
 use crate::actions::action::{Action, name_of};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
 pub struct RequestBodyAccess {
@@ -24,7 +22,7 @@ impl Action for RequestBodyAccess {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.ctl.request_body_access = Some(self.request_body_access);
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.set_request_body_access(self.request_body_access);
     }
 }

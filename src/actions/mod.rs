@@ -6,6 +6,7 @@ pub mod audit_log;
 pub mod block;
 pub mod capture;
 pub mod chain;
+pub mod context;
 pub mod ctl;
 pub mod data;
 pub mod disruptive;

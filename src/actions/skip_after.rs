@@ -2,9 +2,7 @@
 //! `SecMarker` of that name.
 
 use crate::actions::action::{Action, name_and_payload};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
 pub struct SkipAfter {
@@ -24,8 +22,8 @@ impl Action for SkipAfter {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        crate::ms_dbg_a!(t, 5, "Setting skipAfter for: {}", self.skip_name);
-        t.add_marker(&self.skip_name);
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        crate::act_dbg!(cx, 5, "Setting skipAfter for: {}", self.skip_name);
+        cx.skip_after(&self.skip_name);
     }
 }

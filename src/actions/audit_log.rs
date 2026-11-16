@@ -1,9 +1,7 @@
 //! `auditlog` — marks the transaction for audit logging.
 
 use crate::actions::action::{Action, name_of};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
 pub struct AuditLog {
@@ -21,9 +19,9 @@ impl Action for AuditLog {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        rm.no_audit_log = false;
-        crate::ms_dbg_a!(t, 9, "Saving transaction to logs");
-        rm.save_message = true;
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.set_no_audit_log(false);
+        crate::act_dbg!(cx, 9, "Saving transaction to logs");
+        cx.set_save_message(true);
     }
 }

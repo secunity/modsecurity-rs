@@ -2,9 +2,7 @@
 //! for the rest of the transaction.
 
 use crate::actions::action::{Action, name_and_payload};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 use crate::utils::string::{split_str, stoi};
 
 #[derive(Debug)]
@@ -38,7 +36,7 @@ impl Action for RuleRemoveTargetById {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.ctl.rule_remove_target_by_id.push((self.id, self.target.clone()));
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.remove_target_by_id(self.id, self.target.clone());
     }
 }

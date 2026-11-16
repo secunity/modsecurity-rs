@@ -2,10 +2,8 @@
 //! name is `setsrc`; kept as is).
 
 use crate::actions::action::Action;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::string::lossy;
 
 #[derive(Debug)]
@@ -24,11 +22,9 @@ impl Action for SetRSC {
         "setsrc"
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        let col_name_expanded = self.string.evaluate(Some(t));
-        crate::ms_dbg_a!(t, 8, "RESOURCE initiated with value: '{}'.", lossy(&col_name_expanded));
-        let offset = t.vars.offset;
-        t.vars.resource.set(&col_name_expanded, offset);
-        t.collections.resource.key = col_name_expanded;
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        let col_name_expanded = cx.expand(&self.string);
+        crate::act_dbg!(cx, 8, "RESOURCE initiated with value: '{}'.", lossy(&col_name_expanded));
+        cx.set_resource(col_name_expanded);
     }
 }

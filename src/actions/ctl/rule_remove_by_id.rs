@@ -2,9 +2,7 @@
 //! for the rest of the transaction.
 
 use crate::actions::action::{Action, name_and_payload};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 use crate::utils::string::{parser_sanitizer, ssplit, stoi};
 
 #[derive(Debug)]
@@ -73,9 +71,8 @@ impl Action for RuleRemoveById {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.ctl.rule_remove_by_id.extend_from_slice(&self.ids);
-        t.ctl.rule_remove_by_id_range.extend_from_slice(&self.ranges);
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.remove_rules_by_id(&self.ids, &self.ranges);
     }
 }
 
@@ -87,6 +84,8 @@ mod tests {
     use crate::actions::ctl::rule_remove_target_by_id::RuleRemoveTargetById;
     use crate::actions::ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     #[test]
     fn invalid_payloads() {
@@ -120,7 +119,7 @@ mod tests {
             Box::new(RuleRemoveTargetByTag::new("ctl:ruleRemoveTargetByTag=CRS;REQUEST_HEADERS:x").unwrap()),
         ];
         for a in &actions {
-            a.evaluate(&r, &mut t, &mut rm);
+            a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         }
         assert_eq!(t.ctl.rule_remove_by_id, vec![1, 2, 3]);
         assert_eq!(t.ctl.rule_remove_by_id_range, vec![(10, 20)]);

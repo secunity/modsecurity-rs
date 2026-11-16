@@ -4,10 +4,9 @@
 //! Actions share no base data: an action keeps its name (as written in the
 //! rule) and whatever it parsed from its payload.
 
+use crate::actions::context::ActionContext;
 use crate::actions::transformation::Transformation;
-use crate::rule_message::RuleMessage;
 use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
 
 /// When an action runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,8 +77,9 @@ pub trait Action: Send + Sync + std::fmt::Debug {
     /// being built.
     fn configure(&self, _rule: &mut RuleWithActions) {}
 
-    /// Run time evaluation.
-    fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {}
+    /// Run time evaluation: what the action does to the transaction, the
+    /// rule message and the intervention, through `cx`.
+    fn evaluate(&self, _cx: &mut ActionContext<'_, '_, '_>) {}
 
     /// The `(prefix, href)` of an `xmlns` action, used by the `XML`
     /// variable.

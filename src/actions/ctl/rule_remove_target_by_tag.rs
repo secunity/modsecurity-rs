@@ -2,9 +2,7 @@
 //! rules carrying a tag for the rest of the transaction.
 
 use crate::actions::action::{Action, name_and_payload};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 use crate::utils::string::split_str;
 
 #[derive(Debug)]
@@ -34,7 +32,7 @@ impl Action for RuleRemoveTargetByTag {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.ctl.rule_remove_target_by_tag.push((self.tag.clone(), self.target.clone()));
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.remove_target_by_tag(self.tag.clone(), self.target.clone());
     }
 }

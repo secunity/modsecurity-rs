@@ -2,9 +2,7 @@
 //! default).
 
 use crate::actions::action::{Action, name_of};
-use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, RuleMessage};
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
 pub struct Deny {
@@ -26,14 +24,12 @@ impl Action for Deny {
         true
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        crate::ms_dbg_a!(t, 8, "Running action deny");
-        if t.outcome.intervention.status == 200 {
-            t.outcome.intervention.status = 403;
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        crate::act_dbg!(cx, 8, "Running action deny");
+        if cx.intervention_status() == 200 {
+            cx.set_intervention_status(403);
         }
-        t.outcome.intervention.disruptive = true;
-        rm.is_disruptive = true;
-        t.outcome.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
+        cx.disrupt();
     }
 }
 
@@ -45,6 +41,8 @@ mod tests {
     use crate::actions::disruptive::drop::Drop;
     use crate::actions::disruptive::pass::Pass;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     /// deny, drop, status, pass.
     #[test]
@@ -56,21 +54,21 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
 
-        Deny::new("deny").evaluate(&r, &mut t, &mut rm);
+        Deny::new("deny").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Running action deny"));
         assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (403, true));
         assert!(rm.is_disruptive);
         let log = t.outcome.intervention.log.clone().unwrap();
         assert!(log.contains("ModSecurity: Access denied with code %d (phase 1)."), "{}", log);
 
-        Pass::new("pass").evaluate(&r, &mut t, &mut rm);
+        Pass::new("pass").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Running action pass"));
         assert_eq!(t.outcome.intervention, crate::intervention::Intervention::default());
 
         // A status set before is kept.
         let s = Status::new("status:404").unwrap();
-        s.evaluate(&r, &mut t, &mut rm);
-        Drop::new("drop").evaluate(&r, &mut t, &mut rm);
+        s.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
+        Drop::new("drop").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Running action drop [executing deny instead of drop.]"));
         assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (404, true));
         assert!(t.outcome.intervention.log.is_some());

@@ -3,10 +3,8 @@
 //! variable of the TX or of a persistent collection.
 
 use crate::actions::action::Action;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
-use crate::transaction::Transaction;
 use crate::utils::string::{lossy, stoi};
 use crate::variables::variable::Variable;
 
@@ -44,7 +42,9 @@ impl Action for SetVar {
         "setvar"
     }
 
-    fn evaluate(&self, rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        // Part of the engine: resolves and writes any variable.
+        let (t, rule) = cx.engine();
         let resolved_pre = match &self.operation {
             SetVarOperation::Set(s) | SetVarOperation::Add(s) | SetVarOperation::Subtract(s) => {
                 s.evaluate_rule(Some(t), Some(rule))
@@ -106,6 +106,8 @@ mod tests {
     use super::*;
     use crate::actions::block::test_support::*;
     use crate::modsecurity::ModSecurity;
+    use crate::rule_message::RuleMessage;
+    use crate::transaction::Transaction;
 
     use SetVarOperation::{Add, Set, SetToOne, Subtract, Unset};
 
@@ -122,31 +124,31 @@ mod tests {
         let mut rm = RuleMessage::new(&r);
         let tx = |t: &Transaction<'_>, k: &str| t.collections.tx.get(k.as_bytes()).map(<[u8]>::to_vec);
 
-        setvar("foo", Set(rts("abc"))).evaluate(&r, &mut t, &mut rm);
+        setvar("foo", Set(rts("abc"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "foo"), Some(b"abc".to_vec()));
         assert!(has_log(&t, "Saving variable: TX:foo with value: abc"));
 
-        setvar("one", SetToOne).evaluate(&r, &mut t, &mut rm);
+        setvar("one", SetToOne).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "one"), Some(b"1".to_vec()));
 
-        setvar("score", Add(rts("5"))).evaluate(&r, &mut t, &mut rm);
+        setvar("score", Add(rts("5"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "score"), Some(b"5".to_vec()));
-        setvar("score", Add(rts("10"))).evaluate(&r, &mut t, &mut rm);
+        setvar("score", Add(rts("10"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "score"), Some(b"15".to_vec()));
-        setvar("score", Subtract(rts("20"))).evaluate(&r, &mut t, &mut rm);
+        setvar("score", Subtract(rts("20"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "score"), Some(b"-5".to_vec()));
         assert!(has_log(&t, "Saving variable: TX:score with value: -5"));
 
         // Non numeric operands count as 0 (C++ `stoi` failures).
-        setvar("score", Add(rts("x"))).evaluate(&r, &mut t, &mut rm);
+        setvar("score", Add(rts("x"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "score"), Some(b"-5".to_vec()));
-        setvar("foo", Add(rts("3"))).evaluate(&r, &mut t, &mut rm);
+        setvar("foo", Add(rts("3"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "foo"), Some(b"3".to_vec()));
         // Out of `int` range is a failure too.
-        setvar("big", Add(rts("99999999999"))).evaluate(&r, &mut t, &mut rm);
+        setvar("big", Add(rts("99999999999"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "big"), Some(b"0".to_vec()));
 
-        setvar("foo", Unset).evaluate(&r, &mut t, &mut rm);
+        setvar("foo", Unset).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "foo"), None);
         assert!(!has_log(&t, "Saving variable: TX:foo with value: "));
     }
@@ -169,7 +171,7 @@ mod tests {
         ] {
             t.collections.tx.set(b"score", previous.as_bytes().to_vec());
             let operation = if subtract { Subtract(rts(operand)) } else { Add(rts(operand)) };
-            setvar("score", operation).evaluate(&r, &mut t, &mut rm);
+            setvar("score", operation).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
             assert_eq!(t.collections.tx.get(b"score").unwrap(), expected.as_bytes());
         }
     }

@@ -2,10 +2,8 @@
 //! `SecParseXmlIntoArgs` for the transaction.
 
 use crate::actions::action::Action;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::actions::context::ActionContext;
 use crate::rules_set_properties::{self, config_xml_parse_xml_into_args_string};
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct ParseXmlIntoArgs {
@@ -23,13 +21,13 @@ impl Action for ParseXmlIntoArgs {
         "ctl"
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        crate::ms_dbg_a!(
-            t,
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        crate::act_dbg!(
+            cx,
             8,
             "Setting SecParseXmlIntoArgs to {} as requested by a ctl:parseXmlIntoArgs action",
             config_xml_parse_xml_into_args_string(Some(self.value))
         );
-        t.ctl.parse_xml_into_args = Some(self.value);
+        cx.set_parse_xml_into_args(self.value);
     }
 }

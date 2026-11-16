@@ -2,9 +2,7 @@
 //! the audit log.
 
 use crate::actions::action::{Action, name_of};
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
+use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
 pub struct NoAuditLog {
@@ -22,8 +20,8 @@ impl Action for NoAuditLog {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, _t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
-        rm.no_audit_log = true;
-        rm.save_message = false;
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.set_no_audit_log(true);
+        cx.set_save_message(false);
     }
 }

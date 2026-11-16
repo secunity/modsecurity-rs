@@ -2,10 +2,8 @@
 //! the transaction.
 
 use crate::actions::action::{Action, name_and_payload};
+use crate::actions::context::ActionContext;
 use crate::audit_log::PartsChange;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct AuditLogParts {
@@ -32,7 +30,7 @@ impl Action for AuditLogParts {
         &self.name
     }
 
-    fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.ctl.audit_log_modifier.push((self.change, self.parts.clone()));
+    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
+        cx.change_audit_log_parts(self.change, self.parts.clone());
     }
 }
