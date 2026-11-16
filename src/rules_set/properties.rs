@@ -7,6 +7,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use modsecurity_compat::cnum::strtoll;
+
 use crate::actions::rule_action::RuleAction;
 use crate::audit_log::{AuditLog, SetupError};
 use crate::debug_log::{DebugLog, DefaultDebugLog};
@@ -174,6 +176,8 @@ impl ConfigUnicodeMap {
         }
         let mut found = false;
         let mut processing = false;
+        // The C++ code reads the file as a C string: it ends at a NUL byte.
+        let buf = &buf[..buf.iter().position(|&c| c == 0).unwrap_or(buf.len())];
         for p in buf.split(|c| CODEPAGE_SEPARATORS.contains(c)).filter(|t| !t.is_empty()) {
             let codepage = crate::utils::string::atoi(p) as u32;
             if codepage as f64 == config_code_page {
@@ -182,13 +186,19 @@ impl ConfigUnicodeMap {
             let has_colon = p.contains(&b':');
             if found && has_colon {
                 processing = true;
-                let mut it = p.splitn(2, |&c| c == b':');
-                let ucode = it.next().unwrap_or_default();
-                let hmap = it.next().unwrap_or_default();
-                let code = strtol16(ucode);
-                let map = strtol16(hmap);
-                if (0..=65535).contains(&code) {
-                    table.change(code as usize, map as i32);
+                // `strtok_r(mapping, ":", &hmap)`: the code is what follows
+                // the leading colons, up to the next one; the map is the
+                // rest. Both are `(int) strtol(.., 16)`.
+                let start = p.iter().position(|&c| c != b':').unwrap_or(p.len());
+                let end = p[start..].iter().position(|&c| c == b':').map_or(p.len(), |n| start + n);
+                let (ucode, hmap) = (&p[start..end], p.get(end + 1..).unwrap_or_default());
+                // Only colons: C++ passes a null pointer to strtol here.
+                if !ucode.is_empty() {
+                    let code = strtoll(ucode, 16).value as i32;
+                    let map = strtoll(hmap, 16).value as i32;
+                    if (0..=65535).contains(&code) {
+                        table.change(code as usize, map);
+                    }
                 }
             }
             if processing && !has_colon {
@@ -198,16 +208,6 @@ impl ConfigUnicodeMap {
         driver.unicode_map_table.unicode_map_table = Some(Arc::new(table));
         Ok(())
     }
-}
-
-/// Parses a hexadecimal number as `strtol(s, nullptr, 16)` does (0 when
-/// there is none).
-fn strtol16(s: &[u8]) -> i64 {
-    let s = std::str::from_utf8(s).unwrap_or("");
-    let s = s.trim_start();
-    let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
-    let digits: String = s.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
-    i64::from_str_radix(&digits, 16).unwrap_or(0)
 }
 
 /// `SecParseXmlIntoArgs`: whether the XML body is also parsed into
@@ -458,6 +458,48 @@ mod tests {
         assert_eq!(parse_config_number::<u64>(" -1"), Ok(u64::MAX));
         assert_eq!(parse_octal_mode("0640"), Ok(0o640));
         assert_eq!(parse_octal_mode("08").unwrap_err(), "Invalid octal number");
+    }
+
+    /// The entries of a unicode map are read as C++ reads them:
+    /// `strtok_r(.., ":")` and `(int) strtol(.., 16)` (each case below was
+    /// compared with the C++ library).
+    #[test]
+    fn unicode_map_entries() {
+        let dir = std::env::temp_dir().join(format!("msrs-unicode-map-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("map.txt");
+        let table = |entries: &str| {
+            std::fs::write(&file, format!("9999 (test)\n{entries}\n\n")).unwrap();
+            let mut properties = RulesSetProperties::new();
+            ConfigUnicodeMap::load_config(file.to_str().unwrap(), 9999.0, &mut properties).unwrap();
+            properties.unicode_map_table.unicode_map_table.unwrap()
+        };
+        let at = |entries: &str, code: usize| table(entries).at(code);
+
+        assert_eq!(at("0041:42", 0x41), 0x42);
+        assert_eq!(at("0x41:0x42 +43:44", 0x41), 0x42);
+        assert_eq!(at("0x41:0x42 +43:44", 0x43), 0x44);
+        // A negative or overflowing code is out of range: no entry (they
+        // used to be read as code 0).
+        assert_eq!(at("-41:42", 0), -1);
+        assert_eq!(at("fffffffffffffffff:43", 0), -1);
+        // A negative map is stored as it is; an overflowing one is
+        // `(int) LONG_MAX`, -1, which reads as "not mapped" (both used to
+        // be 0).
+        assert_eq!(at("0041:-42", 0x41), -0x42);
+        assert_eq!(at("0041:fffffffffffffffff", 0x41), -1);
+        // Leading colons are skipped: `:42` is the code 0x42 without a map
+        // (it used to be code 0 mapped to 0x42).
+        assert_eq!(at(":42", 0x42), 0);
+        assert_eq!(at(":42", 0), -1);
+        // Text that is not a number is 0, as before.
+        assert_eq!(at("zz:42", 0), 0x42);
+        assert_eq!(at("41:", 0x41), 0);
+        // Only colons (C++ crashes): ignored.
+        assert_eq!(at("::: 0041:42", 0x41), 0x42);
+        // The file ends at a NUL byte, as a C string.
+        assert_eq!(at("0041:42\0 0043:44", 0x43), -1);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

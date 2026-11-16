@@ -61,3 +61,15 @@ pub fn c_inet_pton(af: c_int, src: &[u8]) -> Option<Vec<u8>> {
     let ok = unsafe { inet_pton(af, c.as_ptr(), dst.as_mut_ptr().cast()) > 0 };
     ok.then(|| dst[..if af == libc::AF_INET { 4 } else { 16 }].to_vec())
 }
+
+/// `strtol(s, NULL, base)` and whether it set `ERANGE`.
+pub fn c_strtol(s: &[u8], base: c_int) -> Option<(i64, bool)> {
+    let c = CString::new(s).ok()?;
+    // SAFETY: `c` is NUL terminated; a null end pointer is allowed; errno
+    // is this thread's.
+    unsafe {
+        *libc::__errno_location() = 0;
+        let v = libc::strtol(c.as_ptr(), std::ptr::null_mut(), base);
+        Some((v, *libc::__errno_location() == libc::ERANGE))
+    }
+}

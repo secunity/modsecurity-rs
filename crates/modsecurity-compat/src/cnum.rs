@@ -18,7 +18,8 @@ pub struct Integer {
 }
 
 /// Parses like `strtoll(s, NULL, base)`: leading white space, an optional
-/// sign, then digits of `base` (no `0x` prefix is skipped).
+/// sign, for base 16 an optional `0x` or `0X` (when a hexadecimal digit
+/// follows it), then digits of `base`.
 pub fn strtoll(s: &[u8], base: u32) -> Integer {
     let mut i = 0;
     while i < s.len() && is_space(s[i]) {
@@ -28,6 +29,13 @@ pub fn strtoll(s: &[u8], base: u32) -> Integer {
     if i < s.len() && (s[i] == b'+' || s[i] == b'-') {
         neg = s[i] == b'-';
         i += 1;
+    }
+    if base == 16
+        && s.get(i) == Some(&b'0')
+        && matches!(s.get(i + 1), Some(b'x' | b'X'))
+        && s.get(i + 2).is_some_and(u8::is_ascii_hexdigit)
+    {
+        i += 2;
     }
     let start = i;
     // Accumulate negatively so that i64::MIN is representable.
@@ -207,7 +215,28 @@ mod tests {
         assert_eq!(strtol_int(" 0750", 8), 0o750);
         assert_eq!(strtol_int("\"0750\"", 8), 0);
         assert_eq!(strtol_int("-ff", 16), -255);
-        assert_eq!(strtol_int("0x1f", 16), 0);
+        // The optional prefix of base 16, only before a digit.
+        assert_eq!(strtol_int("0x1f", 16), 31);
+        assert_eq!(strtol_int(" -0X1f", 16), -31);
+        assert_eq!(strtol_int("0xg", 16), 0);
+        assert_eq!(strtol_int("0x1f", 8), 0);
+    }
+
+    /// `strtoll` is glibc's `strtol` (compared on generated texts).
+    #[test]
+    fn strtoll_matches_libc() {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let alphabet = b"0123456789abcdefABCDEFxX+- \tgz:";
+        for _ in 0..300_000 {
+            let len = rng.random_range(0..24);
+            let text: Vec<u8> = (0..len).map(|_| alphabet[rng.random_range(0..alphabet.len())]).collect();
+            for base in [8u32, 10, 16] {
+                let (value, erange) = modsecurity_native::testing::c_strtol(&text, base as i32).unwrap();
+                let n = strtoll(&text, base);
+                assert_eq!((n.value, n.overflow), (value, erange), "{:?} base {base}", String::from_utf8_lossy(&text));
+            }
+        }
     }
 
     #[test]

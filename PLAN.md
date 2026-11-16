@@ -80,11 +80,6 @@ the gain is small next to the work.
 
 ## Open items
 
-- **`strtol16` is not `cnum::strtoll`.** The hexadecimal parser of the
-  unicode map file (`src/rules_set/properties.rs`) skips a `0x` prefix,
-  gives 0 on overflow and ignores a sign, where `cnum::strtoll` (and C's
-  `strtol`) differ on each. Folding it in changes what odd map files
-  give: compare with the C++ library first, as its own commit.
 - **PCRE2 reads one byte past the subject.** Fixed on our side (commit
   `9b84875`: a padded copy when the subject ends near a page boundary;
   `crates/modsecurity-native/tests/guard_page.rs` reproduces it). It may

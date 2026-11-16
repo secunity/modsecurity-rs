@@ -173,6 +173,15 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   inputs. One case goes beyond C++: `phase:` with a number beyond `int`
   crashes the C++ library (the exception is not caught); it is an
   "Unknown phase" error here (it used to give a rule that never runs).
+- **Unusual entries of a `SecUnicodeMapFile`** are read as C++ reads
+  them (`strtok_r(.., ":")`, then `(int) strtol(.., 16)` for the code and
+  the map). The Rust engine read a sign or an overflowing number as 0, so
+  `-41:42` and `fffffffffffffffff:43` mapped code point 0 (C++: out of
+  range, no entry) and `0041:-42` mapped to byte 0 (C++: to byte 0xBE);
+  `:42` was code 0 mapped to 0x42 (C++ skips the leading colon: code 0x42
+  without a map); and a NUL byte did not end the file. The shipped
+  `unicode.mapping` has no such entries. An entry made only of colons
+  crashes C++ and is ignored here.
 - **Each rule set has its own GeoIP database**: C++ keeps one database
   per process, set by the last `SecGeoLookupDb` loaded anywhere, so
   `@geoLookup` in one rule set used the database of another (and which one
