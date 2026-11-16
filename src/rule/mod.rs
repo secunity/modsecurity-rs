@@ -4,9 +4,16 @@
 //! (`SecMarker`) and `RuleWithActions` (everything else); `Rule` is the
 //! closed enum over them.
 
+pub mod marker;
+pub mod message;
+pub mod script;
+pub mod unconditional;
+pub mod with_actions;
+pub mod with_operator;
+
 use crate::modsecurity::Phases;
-use crate::rule_marker::RuleMarker;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::marker::RuleMarker;
+use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 // Rules always live behind an `Arc`, so the size difference between the

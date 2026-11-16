@@ -57,7 +57,7 @@ mod tests {
     use super::*;
     use crate::actions::block::test_support::*;
     use crate::modsecurity::ModSecurity;
-    use crate::rule_message::RuleMessage;
+    use crate::rule::message::RuleMessage;
     use crate::transaction::Transaction;
 
     fn sev(p: &str) -> Result<i32, String> {

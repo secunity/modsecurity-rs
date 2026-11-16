@@ -6,8 +6,8 @@ use std::borrow::Cow;
 pub use modsecurity_operators::Param;
 use modsecurity_operators::{Context, ResourceLookup, Resources};
 
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::message::RuleMessage;
+use crate::rule::with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 
@@ -327,8 +327,8 @@ impl Context for MatchContext<'_, '_, '_> {
 pub(crate) mod test_support {
     use super::Operator;
     use crate::modsecurity::ModSecurity;
-    use crate::rule_message::RuleMessage;
-    use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::message::RuleMessage;
+    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
     use crate::transaction::Transaction;
 

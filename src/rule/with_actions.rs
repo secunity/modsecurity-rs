@@ -20,9 +20,9 @@ use crate::actions::severity::Severity;
 use crate::actions::tag::Tag;
 use crate::actions::transformation::Transformation;
 use crate::modsecurity::Phases;
-use crate::rule_message::RuleMessage;
-use crate::rule_script::RuleScript;
-use crate::rule_with_operator::RuleWithOperator;
+use crate::rule::message::RuleMessage;
+use crate::rule::script::RuleScript;
+use crate::rule::with_operator::RuleWithOperator;
 use crate::rules_set::RulesSet;
 use crate::rules_set_properties::RuleEngine;
 use crate::transaction::Transaction;
@@ -294,7 +294,7 @@ impl RuleWithActions {
     pub fn evaluate_with_message<'a>(&'a self, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
         match &self.kind {
             RuleWithActionsKind::Operator(o) => o.evaluate(self, t, rm),
-            RuleWithActionsKind::Unconditional => crate::rule_unconditional::evaluate(self, t, rm),
+            RuleWithActionsKind::Unconditional => crate::rule::unconditional::evaluate(self, t, rm),
             RuleWithActionsKind::Script(s) => s.evaluate(self, t, rm),
         }
     }

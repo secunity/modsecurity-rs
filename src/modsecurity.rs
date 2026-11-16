@@ -6,7 +6,7 @@ use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 
 use crate::collection::Collection;
-use crate::rule_message::RuleMessage;
+use crate::rule::message::RuleMessage;
 use crate::transaction::Transaction;
 
 /// The Phases enumerator consists in mapping the different stages of a given

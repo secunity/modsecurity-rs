@@ -67,7 +67,7 @@ pub use crate::modsecurity::{
     INCLUDE_FULL_HIGHLIGHT_LOG_PROPERTY, MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL,
     MODSECURITY_VERSION, ModSecLogCb, ModSecurity, RULE_MESSAGE_LOG_PROPERTY, ServerLogEntry, TEXT_LOG_PROPERTY,
 };
-pub use crate::rule_message::{CLIENT_LOG_MESSAGE_INFO, ERROR_LOG_TAIL_LOG_MESSAGE_INFO, RuleMessage};
+pub use crate::rule::message::{CLIENT_LOG_MESSAGE_INFO, ERROR_LOG_TAIL_LOG_MESSAGE_INFO, RuleMessage};
 pub use crate::rules_set::{LoadError, RulesSet};
 pub use crate::transaction::Transaction;
 
@@ -90,12 +90,6 @@ pub(crate) mod operators;
 pub(crate) mod parser;
 pub(crate) mod request_body_processor;
 pub(crate) mod rule;
-pub(crate) mod rule_marker;
-pub(crate) mod rule_message;
-pub(crate) mod rule_script;
-pub(crate) mod rule_unconditional;
-pub(crate) mod rule_with_actions;
-pub(crate) mod rule_with_operator;
 pub(crate) mod rules_exceptions;
 pub(crate) mod rules_set;
 pub(crate) mod rules_set_phases;
@@ -117,7 +111,7 @@ pub mod internal {
     pub use crate::actions::rule_action::RuleAction;
     pub use crate::actions::transformation::Transformation;
     pub use crate::operators::operator::{Operator, instantiate as instantiate_operator};
-    pub use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+    pub use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     pub use crate::utils::json::{JsonValue, parse_tree};
     pub use crate::utils::regex::Regex;
     pub use crate::utils::string::to_hex_if_needed;

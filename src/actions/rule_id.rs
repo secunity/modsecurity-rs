@@ -1,7 +1,7 @@
 //! `id:N` — the rule id (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 
 #[derive(Debug)]
 pub struct RuleId {

@@ -5,7 +5,7 @@
 //! rule) and whatever it parsed from its payload.
 
 use crate::actions::context::ActionContext;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 
 /// When an action runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

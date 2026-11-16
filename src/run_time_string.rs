@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::variables::variable::Variable;
 

@@ -1,8 +1,8 @@
 //! A `SecRuleScript`: a rule that runs a Lua script.
 
 use crate::engine::lua::Lua;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::message::RuleMessage;
+use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]

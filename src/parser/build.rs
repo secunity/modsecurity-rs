@@ -25,9 +25,9 @@ use crate::parser::driver::Position;
 use crate::parser::syntax::{
     self, ActionKind, Directive, Modifier, Piece, Selector, SetVarOp, Target, UpdateBy, VarRef,
 };
-use crate::rule_script::RuleScript;
-use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
-use crate::rule_with_operator::RuleWithOperator;
+use crate::rule::script::RuleScript;
+use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
+use crate::rule::with_operator::RuleWithOperator;
 use crate::rules_set_properties::{
     BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
     parse_octal_mode,

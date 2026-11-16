@@ -9,7 +9,7 @@
 use crate::anchored_set_variable::AnchoredSetVariable;
 use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::anchored_variable::AnchoredVariable;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{Transaction, TransactionAnchoredVariables};
 use crate::utils::regex::Regex;

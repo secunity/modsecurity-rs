@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use crate::modsecurity::Phases;
 use crate::rule::Rule;
-use crate::rule_marker::RuleMarker;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::marker::RuleMarker;
+use crate::rule::with_actions::RuleWithActions;
 use crate::rules_set_phases::RulesSetPhases;
 use crate::rules_set_properties::RulesSetProperties;
 use crate::utils::system::is_file;

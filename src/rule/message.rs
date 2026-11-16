@@ -10,7 +10,7 @@
 use std::borrow::Cow;
 
 use crate::operators::operator::Operator;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
 use crate::variable_value::VariableValue;

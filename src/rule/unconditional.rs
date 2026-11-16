@@ -1,7 +1,7 @@
 //! The evaluation of a `SecAction`: a rule without an operator.
 
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::{LogPoint, RuleWithActions};
+use crate::rule::message::RuleMessage;
+use crate::rule::with_actions::{LogPoint, RuleWithActions};
 use crate::transaction::Transaction;
 
 /// Evaluates a `SecAction`: runs its actions and logs it. It always

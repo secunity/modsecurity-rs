@@ -391,7 +391,7 @@ mod regression_dump {
     fn xml_rules(t: &mut Transaction<'_>, lines: &[String]) {
         use crate::actions::xmlns::XmlNS;
         use crate::operators::operator::Operator;
-        use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+        use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
 
         for l in lines {
             let Some(rest) = l.strip_prefix("SecRule XML") else {
@@ -431,7 +431,7 @@ mod regression_dump {
                 _ => continue,
             };
             o.init("x.json").unwrap();
-            let mut rm = crate::rule_message::RuleMessage::new(&rule);
+            let mut rm = crate::rule::message::RuleMessage::new(&rule);
             println!(
                 "OP {} -> {}",
                 name,

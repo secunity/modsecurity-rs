@@ -4,7 +4,7 @@
 //! request body processor; namespaces come from the rule's `xmlns`
 //! actions).
 
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::variable_value::VariableValue;
 use crate::variables::variable::Variable;

@@ -354,8 +354,8 @@ impl AuditLog {
 mod tests {
     use super::*;
     use crate::modsecurity::ModSecurity;
-    use crate::rule_message::RuleMessage;
-    use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::message::RuleMessage;
+    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
     use crate::rules_set_properties::RuleEngine;
     use std::os::unix::fs::PermissionsExt;

@@ -59,7 +59,7 @@ mod tests {
     use crate::actions::no_log::NoLog;
     use crate::actions::tag::Tag;
     use crate::modsecurity::ModSecurity;
-    use crate::rule_message::RuleMessage;
+    use crate::rule::message::RuleMessage;
 
     /// msg, logdata, tag, log, nolog, auditlog, noauditlog.
     #[test]

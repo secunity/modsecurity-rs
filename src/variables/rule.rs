@@ -5,7 +5,7 @@
 //! (`m_chainedRuleParent`); here the ancestors of the rule being evaluated
 //! are on `Transaction::chained_rule_parents`.
 
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::utils::regex::regex_search;
 use crate::variable_origin::VariableOrigin;

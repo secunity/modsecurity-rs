@@ -187,7 +187,7 @@ mod tests {
     use super::variable::{KeyExclusion, Variable};
     use super::*;
     use crate::modsecurity::ModSecurity;
-    use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;
     use crate::transaction::Transaction;

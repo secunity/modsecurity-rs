@@ -41,8 +41,8 @@ use crate::request_body_processor::json::Json;
 use crate::request_body_processor::multipart::{Multipart, MultipartPartTmpFile};
 #[cfg(feature = "libxml2")]
 use crate::request_body_processor::xml::Xml;
-use crate::rule_message::RuleMessage;
-use crate::rule_with_actions::{RuleWithActions, TransformationResults};
+use crate::rule::message::RuleMessage;
+use crate::rule::with_actions::{RuleWithActions, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set_properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code};
 use crate::utils::decode::uri_decode;

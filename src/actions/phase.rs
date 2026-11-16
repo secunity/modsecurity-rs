@@ -3,7 +3,7 @@
 
 use crate::actions::action::{Action, Kind, name_and_payload};
 use crate::modsecurity::Phases;
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 use crate::utils::string::stoi;
 
 #[derive(Debug)]

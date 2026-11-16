@@ -41,7 +41,7 @@ mod tests {
     use crate::actions::disruptive::drop::Drop;
     use crate::actions::disruptive::pass::Pass;
     use crate::modsecurity::ModSecurity;
-    use crate::rule_message::RuleMessage;
+    use crate::rule::message::RuleMessage;
     use crate::transaction::Transaction;
 
     /// deny, drop, status, pass.

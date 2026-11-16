@@ -5,7 +5,7 @@ mod tests {
     use crate::modsecurity::ModSecurity;
     use crate::operators::operator::Operator;
     use crate::request_body_processor::multipart_tests::test_support::{log, new_rules, run};
-    use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set_properties::ParseXmlIntoArgs;
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::variable_value::VariableValue;

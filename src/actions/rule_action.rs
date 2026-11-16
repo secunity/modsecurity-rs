@@ -9,7 +9,7 @@
 use crate::actions::action::{Action, Kind};
 use crate::actions::context::ActionContext;
 use crate::actions::{self, ctl, data, disruptive};
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 
 /// Declares [`RuleAction`] with one variant per action type, the
 /// `From` conversions, and the dispatch of the [`Action`] operations.

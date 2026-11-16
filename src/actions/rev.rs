@@ -1,7 +1,7 @@
 //! `rev:'1.2'` — the rule revision (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 
 #[derive(Debug)]
 pub struct Rev {

@@ -44,7 +44,7 @@ impl Action for Block {
 pub(crate) mod test_support {
     pub use crate::actions::rule_action::RuleAction;
     use crate::debug_log::test_support::CaptureLog;
-    use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;
     use crate::transaction::Transaction;
@@ -90,7 +90,7 @@ mod tests {
     use crate::actions::log::Log;
     use crate::actions::phase::Phase;
     use crate::modsecurity::{ModSecurity, Phases};
-    use crate::rule_message::RuleMessage;
+    use crate::rule::message::RuleMessage;
     use crate::transaction::Transaction;
 
     #[test]

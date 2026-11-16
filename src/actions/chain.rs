@@ -2,7 +2,7 @@
 //! time).
 
 use crate::actions::action::{Action, Kind, name_of};
-use crate::rule_with_actions::RuleWithActions;
+use crate::rule::with_actions::RuleWithActions;
 
 #[derive(Debug)]
 pub struct Chain {

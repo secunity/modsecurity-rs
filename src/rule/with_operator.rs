@@ -2,8 +2,8 @@
 //! and passed to its operator.
 
 use crate::operators::operator::RuleOperator;
-use crate::rule_message::{Matched, RuleMessage};
-use crate::rule_with_actions::{LogPoint, RuleWithActions, TransformationPath};
+use crate::rule::message::{Matched, RuleMessage};
+use crate::rule::with_actions::{LogPoint, RuleWithActions, TransformationPath};
 use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
