@@ -52,22 +52,21 @@ runs Lua with the transaction); they reach it through
 `MatchContext::transaction()`. Likewise three actions (`setvar`, `exec`,
 `block`) use `ActionContext::engine()`.
 
-## What is left, in suggested order
+## What is left
 
-### 1. Actions in a crate (optional)
-
-The actions that use only `ActionContext` could move to a crate, as the
-operators did. What it would take: the macro strings of 11 actions
-(`RunTimeString`, which resolves engine variables) behind an opaque type
-the context expands; the parser applying the configuration actions (`id`,
-`phase`, `rev`, ...) itself instead of `configure(&mut RuleWithActions)`;
-and the engine enums they use (`Phases`, `Persistent`, `RequestBodyType`,
-`AuditLogStatus`, ...) in `modsecurity-types`. `setvar`, `exec` and
-`block` stay in the engine regardless. Most actions are a few lines, so
-the gain is small next to the work.
+Nothing is planned. The owner ended the restructuring here on 2026-11-16.
 
 ## Decided against
 
+- **Actions in a crate.** The actions that use only `ActionContext` could move to a crate, as the
+  operators did. What it would take: the macro strings of 11 actions
+  (`RunTimeString`, which resolves engine variables) behind an opaque type
+  the context expands; the parser applying the configuration actions (`id`,
+  `phase`, `rev`, ...) itself instead of `configure(&mut RuleWithActions)`;
+  and the engine enums they use (`Phases`, `Persistent`, `RequestBodyType`,
+  `AuditLogStatus`, ...) in `modsecurity-types`. `setvar`, `exec` and
+  `block` stay in the engine regardless. Most actions are a few lines, so
+  the gain is small next to the work.
 - **Typed errors everywhere.** 55 signatures return `Result<_, String>`.
   No caller looks inside those strings: every one is printed as it is
   (the parser's error message, the C API's error string), and the
