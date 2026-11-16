@@ -8,10 +8,10 @@ mod tests {
         let ms = ModSecurity::new();
         let mut rules = new_rules();
         if let Some(d) = depth {
-            rules.properties.request_body_json_depth_limit = Some(parse_config_number(d).unwrap());
+            rules.properties.settings.request_body_json_depth_limit = Some(parse_config_number(d).unwrap());
         }
         if let Some(l) = limit {
-            rules.properties.arguments_limit = Some(parse_config_number(l).unwrap());
+            rules.properties.settings.arguments_limit = Some(parse_config_number(l).unwrap());
         }
         let t =
             run(&ms, &rules, &[(b"Content-Type", b"application/json")], body, Some(RequestBodyType::JSONRequestBody));
@@ -104,7 +104,7 @@ mod tests {
     fn empty_bodies_and_depth_errors_keep_their_existing_state() {
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.request_body_json_depth_limit = Some(0);
+        rules.properties.settings.request_body_json_depth_limit = Some(0);
         let mut t = run(&ms, &rules, &[], b"[]", Some(RequestBodyType::JSONRequestBody));
         assert_eq!(t.vars.reqbody_error.value, b"1");
         t.http.request_body = b"x".to_vec();

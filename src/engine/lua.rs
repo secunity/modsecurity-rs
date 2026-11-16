@@ -782,7 +782,7 @@ mod tests {
     fn setvar_and_getvar() {
         let ms = ModSecurity::new();
         let (mut rules, log) = rules_with_log();
-        rules.properties.sec_web_app_id = Some("app".to_string());
+        rules.properties.settings.sec_web_app_id = Some("app".to_string());
         let mut t = Transaction::new(&ms, &rules, None);
         // The persistent collections may live on disk (LMDB).
         let ip_key = format!("lua-test-{}", std::process::id());

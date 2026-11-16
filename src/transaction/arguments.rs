@@ -32,7 +32,7 @@ impl ArgumentWriter<'_> {
                 ),
             );
         }
-        if let Some(limit) = self.rules.properties.arguments_limit
+        if let Some(limit) = self.rules.properties.settings.arguments_limit
             && self.vars.args.len() >= limit as usize
         {
             if log.enabled(4) {
@@ -63,6 +63,7 @@ impl ArgumentWriter<'_> {
         let separator = self
             .rules
             .properties
+            .settings
             .sec_argument_separator
             .as_ref()
             .and_then(|s| s.as_bytes().first().copied())
@@ -98,8 +99,8 @@ mod tests {
     fn form_decoding_preserves_bytes_offsets_and_limit_logging() {
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.sec_argument_separator = Some(";".into());
-        rules.properties.arguments_limit = Some(2);
+        rules.properties.settings.sec_argument_separator = Some(";".into());
+        rules.properties.settings.arguments_limit = Some(2);
         let mut t = Transaction::new(&ms, &rules, None);
         t.vars.offset = 77;
         assert!(t.extract_arguments("POST", b"a%00=%ff+;bare;bad=%Q0;", 10));

@@ -56,11 +56,6 @@ runs Lua with the transaction); they reach it through
 
 ### 1. C-shaped APIs
 
-- **The rule-set properties are about 30 `Option` fields**, each merged by
-  a hand-written `merge_value` line in `RulesSetProperties::merge_properties`
-  (`src/rules_set/properties.rs`). One settings struct declared by a macro
-  that also generates the merge; the field accesses can be rewritten from
-  the compiler's errors.
 - **55 signatures return `Result<_, String>`.** Typed errors per layer.
   The strings end up in the parser's error messages (and the regression
   tests compare them), so typed errors must render the same text. Worth

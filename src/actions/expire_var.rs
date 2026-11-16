@@ -92,7 +92,7 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
         t.collections.ip.key = b"1.2.3.4".to_vec();
-        let app = t.rules.properties.sec_web_app_id.clone().unwrap_or_default();
+        let app = t.rules.properties.settings.sec_web_app_id.clone().unwrap_or_default();
         t.collections.ip.set(b"foo", app.as_bytes(), b"v");
         assert!(t.collections.ip.get(b"foo", app.as_bytes()).is_some());
 

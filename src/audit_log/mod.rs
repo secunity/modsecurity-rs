@@ -395,7 +395,7 @@ mod tests {
 
     fn rules_with(configure: impl FnOnce(&mut AuditLog)) -> RulesSet {
         let mut rules = RulesSet::new();
-        rules.properties.sec_rule_engine = Some(RuleEngine::Enabled);
+        rules.properties.settings.sec_rule_engine = Some(RuleEngine::Enabled);
         let mut from = AuditLog::new();
         from.set_status(AuditLogStatus::On);
         from.set_parts("ABFHZ");

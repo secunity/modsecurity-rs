@@ -28,28 +28,28 @@ fn dump(d: &Driver) -> String {
     let _ = writeln!(
         s,
         "limits: {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
-        p.request_body_limit_action,
-        p.response_body_limit_action,
-        p.arguments_limit,
-        p.request_body_json_depth_limit,
-        p.request_body_limit,
-        p.request_body_no_files_limit,
-        p.response_body_limit,
-        p.pcre_match_limit,
-        p.upload_file_limit,
-        p.upload_file_mode
+        p.settings.request_body_limit_action,
+        p.settings.response_body_limit_action,
+        p.settings.arguments_limit,
+        p.settings.request_body_json_depth_limit,
+        p.settings.request_body_limit,
+        p.settings.request_body_no_files_limit,
+        p.settings.response_body_limit,
+        p.settings.pcre_match_limit,
+        p.settings.upload_file_limit,
+        p.settings.upload_file_mode
     );
     let _ = writeln!(
         s,
         "switches: {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
-        p.sec_request_body_access,
-        p.sec_response_body_access,
-        p.sec_xml_external_entity,
-        p.sec_xml_parse_xml_into_args,
-        p.tmp_save_uploaded_files,
-        p.upload_keep_files,
+        p.settings.sec_request_body_access,
+        p.settings.sec_response_body_access,
+        p.settings.sec_xml_external_entity,
+        p.settings.sec_xml_parse_xml_into_args,
+        p.settings.tmp_save_uploaded_files,
+        p.settings.upload_keep_files,
         p.remote_rules_action_on_failed,
-        p.sec_rule_engine,
+        p.settings.sec_rule_engine,
         p.debug_log.level()
     );
     let _ = writeln!(s, "debug_log file: {:?}", p.debug_log.file());
@@ -59,7 +59,11 @@ fn dump(d: &Driver) -> String {
     let _ = writeln!(
         s,
         "strings: {:?} {:?} {:?} {:?} {:?}",
-        p.httpbl_key, p.upload_directory, p.upload_tmp_directory, p.sec_argument_separator, p.sec_web_app_id
+        p.settings.httpbl_key,
+        p.settings.upload_directory,
+        p.settings.upload_tmp_directory,
+        p.settings.sec_argument_separator,
+        p.settings.sec_web_app_id
     );
     let _ = writeln!(s, "default actions: {:#?}", p.default_actions);
     let _ = writeln!(

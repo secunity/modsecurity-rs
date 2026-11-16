@@ -28,7 +28,7 @@ impl Operator for GeoLookup {
         // The rules outlive the transaction's borrow.
         let t = cx.transaction();
         let rules = t.rules;
-        match rules.properties.geo_db.as_deref() {
+        match rules.properties.settings.geo_db.as_deref() {
             Some(db) => db.lookup(input, Some(t)),
             None => GeoDb::not_loaded(t),
         }
@@ -62,13 +62,13 @@ mod tests {
     fn each_rule_set_has_its_own_database() {
         let mut with_db = RulesSet::new();
         with_db.load(&format!("SecGeoLookupDb {}\n{}", db(), RULE)).unwrap();
-        assert!(with_db.properties.geo_db.is_some());
+        assert!(with_db.properties.settings.geo_db.is_some());
         assert!(denied(&with_db));
 
         // C++ would use the database another rule set loaded.
         let mut without_db = RulesSet::new();
         without_db.load(RULE).unwrap();
-        assert!(without_db.properties.geo_db.is_none());
+        assert!(without_db.properties.settings.geo_db.is_none());
         assert!(!denied(&without_db));
 
         // Merged rule sets inherit it (nginx locations from their parents).
@@ -78,8 +78,8 @@ mod tests {
         child.load(RULE).unwrap();
         child.merge(&mut parent).unwrap();
         assert!(std::sync::Arc::ptr_eq(
-            child.properties.geo_db.as_ref().unwrap(),
-            parent.properties.geo_db.as_ref().unwrap()
+            child.properties.settings.geo_db.as_ref().unwrap(),
+            parent.properties.settings.geo_db.as_ref().unwrap()
         ));
         assert!(denied(&child));
     }

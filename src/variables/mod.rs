@@ -479,7 +479,7 @@ mod tests {
     fn persistent_collections_are_compartmentalised() {
         let ms = ModSecurity::new();
         let (mut rules, _log) = rules_with_log();
-        rules.properties.sec_web_app_id = Some("app".to_string());
+        rules.properties.settings.sec_web_app_id = Some("app".to_string());
         let mut t = Transaction::new(&ms, &rules, None);
         // The persistent collections may live on disk (LMDB): use keys
         // unique to this run.
@@ -610,7 +610,7 @@ mod tests {
     fn computed_variables() {
         let ms = ModSecurity::new();
         let (mut rules, _log) = rules_with_log();
-        rules.properties.sec_web_app_id = Some("bisteka".to_string());
+        rules.properties.settings.sec_web_app_id = Some("bisteka".to_string());
         let t = Transaction::new(&ms, &rules, None);
 
         assert_eq!(eval(&var("MODSEC_BUILD", sel_none()), &t, None), vec![("MODSEC_BUILD".into(), "030017100".into())]);

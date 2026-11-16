@@ -861,3 +861,13 @@ the `%d` placeholder". They are `bitflags` types now:
 `RuleMessage::log`. The bits are those of the C++ enumerations. The C API
 never passed these values, so it is unchanged.
 
+## Settings declared once
+
+`RulesSetProperties` had 23 `Option` fields for the single valued settings
+(`SecRuleEngine`, `SecRequestBodyLimit`, ...), and `merge_properties`
+merged each with a hand-written line: a new setting could be added without
+its merge. They are now `RulesSetProperties::settings`, a `Settings` struct
+declared by the `settings!` macro, which generates the fields and
+`merge_unset` from one list. `SecRemoteRulesFailAction` stays outside: it
+is not merged (as in C++).
+

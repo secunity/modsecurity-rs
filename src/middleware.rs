@@ -189,8 +189,8 @@ where
         return Ok(response);
     }
 
-    let inspected =
-        rules.properties.sec_response_body_access == Some(true) && t.rule_engine_state() != Some(RuleEngine::Disabled);
+    let inspected = rules.properties.settings.sec_response_body_access == Some(true)
+        && t.rule_engine_state() != Some(RuleEngine::Disabled);
     let response = if inspected {
         let (parts, body) = response.into_parts();
         let Ok(body) = body.collect().await.map(|b| b.to_bytes()) else {

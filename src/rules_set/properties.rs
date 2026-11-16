@@ -117,14 +117,6 @@ pub fn parse_octal_mode(a: &str) -> Result<u32, String> {
     parse_config_number(&v.to_string())
 }
 
-/// Merges an optional configuration value: a value set in `to` wins over
-/// the one of `from`.
-fn merge_value<T: Clone>(to: &mut Option<T>, from: &Option<T>) {
-    if to.is_none() {
-        to.clone_from(from);
-    }
-}
-
 /// A set of strings configured by directives (`SecResponseBodyMimeType`);
 /// `clear` records `SecResponseBodyMimeTypesClear`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -292,41 +284,90 @@ pub fn config_xml_parse_xml_into_args_string(i: Option<ParseXmlIntoArgs>) -> &'s
 /// driver and every rule set they are merged into.
 pub type DefaultActions = [Vec<Arc<RuleAction>>; NUMBER_OF_PHASES];
 
-pub struct RulesSetProperties {
-    pub audit_log: AuditLog,
-    pub request_body_limit_action: Option<BodyLimitAction>,
-    pub response_body_limit_action: Option<BodyLimitAction>,
-    pub sec_request_body_access: Option<bool>,
-    pub sec_response_body_access: Option<bool>,
-    pub sec_xml_external_entity: Option<bool>,
-    pub sec_xml_parse_xml_into_args: Option<ParseXmlIntoArgs>,
-    pub tmp_save_uploaded_files: Option<bool>,
-    pub upload_keep_files: Option<bool>,
-    pub arguments_limit: Option<u32>,
-    pub request_body_json_depth_limit: Option<u32>,
-    pub request_body_limit: Option<u64>,
-    pub request_body_no_files_limit: Option<u64>,
-    pub response_body_limit: Option<u64>,
-    pub pcre_match_limit: Option<u32>,
-    pub upload_file_limit: Option<u32>,
+/// Declares [`Settings`]: its fields and, from the same list, the merge of
+/// two of them, so that a setting cannot be added without being merged.
+macro_rules! settings {
+    ($($(#[$doc:meta])* $name:ident: $ty:ty,)*) => {
+        /// The settings a configuration gives a single value to. Each is
+        /// `None` until its directive sets it; when configurations are
+        /// merged, the value already set wins ([`Settings::merge_unset`]).
+        #[derive(Default)]
+        pub struct Settings {
+            $($(#[$doc])* pub $name: Option<$ty>,)*
+        }
+
+        impl Settings {
+            /// Takes from `from` the settings that are not set here.
+            pub fn merge_unset(&mut self, from: &Settings) {
+                $(if self.$name.is_none() {
+                    self.$name.clone_from(&from.$name);
+                })*
+            }
+        }
+    };
+}
+
+settings! {
+    /// `SecRuleEngine`.
+    sec_rule_engine: RuleEngine,
+    /// `SecRequestBodyAccess`.
+    sec_request_body_access: bool,
+    /// `SecResponseBodyAccess`.
+    sec_response_body_access: bool,
+    /// `SecXmlExternalEntity`.
+    sec_xml_external_entity: bool,
+    /// `SecParseXmlIntoArgs`.
+    sec_xml_parse_xml_into_args: ParseXmlIntoArgs,
+    /// `SecUploadKeepFiles`.
+    upload_keep_files: bool,
+    /// `SecTmpSaveUploadedFiles`.
+    tmp_save_uploaded_files: bool,
+    /// `SecArgumentsLimit`.
+    arguments_limit: u32,
+    /// `SecRequestBodyJsonDepthLimit`.
+    request_body_json_depth_limit: u32,
+    /// `SecRequestBodyLimit`.
+    request_body_limit: u64,
+    /// `SecRequestBodyNoFilesLimit`.
+    request_body_no_files_limit: u64,
+    /// `SecResponseBodyLimit`.
+    response_body_limit: u64,
+    /// `SecRequestBodyLimitAction`.
+    request_body_limit_action: BodyLimitAction,
+    /// `SecResponseBodyLimitAction`.
+    response_body_limit_action: BodyLimitAction,
+    /// `SecPcreMatchLimit`.
+    pcre_match_limit: u32,
+    /// `SecUploadFileLimit`.
+    upload_file_limit: u32,
     /// `SecUploadFileMode` (octal).
-    pub upload_file_mode: Option<u32>,
+    upload_file_mode: u32,
+    /// `SecUploadDir`.
+    upload_directory: String,
+    /// `SecTmpDir`.
+    upload_tmp_directory: String,
+    /// `SecArgumentSeparator`.
+    sec_argument_separator: String,
+    /// `SecWebAppId`.
+    sec_web_app_id: String,
+    /// `SecHttpBlKey`.
+    httpbl_key: String,
+    /// `SecGeoLookupDb`: shared with the rule sets this one is merged into.
+    geo_db: Arc<GeoDb>,
+}
+
+pub struct RulesSetProperties {
+    /// The single valued settings.
+    pub settings: Settings,
+    pub audit_log: AuditLog,
     pub debug_log: Box<dyn DebugLog>,
     pub remote_rules_action_on_failed: Option<OnFailedRemoteRulesAction>,
-    pub sec_rule_engine: Option<RuleEngine>,
     pub exceptions: RulesExceptions,
     pub components: Vec<String>,
     pub parser_error: String,
     pub response_body_type_to_be_inspected: ConfigSet,
-    pub httpbl_key: Option<String>,
-    pub upload_directory: Option<String>,
-    pub upload_tmp_directory: Option<String>,
-    pub sec_argument_separator: Option<String>,
-    pub sec_web_app_id: Option<String>,
     pub default_actions: DefaultActions,
     pub unicode_map_table: ConfigUnicodeMap,
-    /// `SecGeoLookupDb`: shared with the rule sets this one is merged into.
-    pub geo_db: Option<Arc<GeoDb>>,
 }
 
 impl Default for RulesSetProperties {
@@ -343,74 +384,30 @@ impl RulesSetProperties {
     /// Empty properties that write the debug log to `debug_log`.
     pub fn with_debug_log(debug_log: Box<dyn DebugLog>) -> Self {
         RulesSetProperties {
+            settings: Settings::default(),
             audit_log: AuditLog::new(),
-            request_body_limit_action: None,
-            response_body_limit_action: None,
-            sec_request_body_access: None,
-            sec_response_body_access: None,
-            sec_xml_external_entity: None,
-            sec_xml_parse_xml_into_args: None,
-            tmp_save_uploaded_files: None,
-            upload_keep_files: None,
-            arguments_limit: None,
-            request_body_json_depth_limit: None,
-            request_body_limit: None,
-            request_body_no_files_limit: None,
-            response_body_limit: None,
-            pcre_match_limit: None,
-            upload_file_limit: None,
-            upload_file_mode: None,
             debug_log,
             remote_rules_action_on_failed: None,
-            sec_rule_engine: None,
             exceptions: RulesExceptions::new(),
             components: Vec::new(),
             parser_error: String::new(),
             response_body_type_to_be_inspected: ConfigSet::default(),
-            httpbl_key: None,
-            upload_directory: None,
-            upload_tmp_directory: None,
-            sec_argument_separator: None,
-            sec_web_app_id: None,
             default_actions: Default::default(),
             unicode_map_table: ConfigUnicodeMap::default(),
-            geo_db: None,
         }
     }
 
     /// `SecWebAppId` (empty when not set).
     pub fn web_app_id(&self) -> &[u8] {
-        self.sec_web_app_id.as_deref().unwrap_or_default().as_bytes()
+        self.settings.sec_web_app_id.as_deref().unwrap_or_default().as_bytes()
     }
 
     /// Merges `from` into `to`: values set in `to` win, lists (exceptions,
     /// default actions, ...) are appended. A failure (audit log or debug log
     /// file) stops the merge of the remaining logging properties.
     pub fn merge_properties(from: &mut RulesSetProperties, to: &mut RulesSetProperties) -> Result<(), String> {
-        merge_value(&mut to.sec_rule_engine, &from.sec_rule_engine);
-        merge_value(&mut to.sec_request_body_access, &from.sec_request_body_access);
-        merge_value(&mut to.sec_response_body_access, &from.sec_response_body_access);
-        merge_value(&mut to.sec_xml_external_entity, &from.sec_xml_external_entity);
-        merge_value(&mut to.sec_xml_parse_xml_into_args, &from.sec_xml_parse_xml_into_args);
-        merge_value(&mut to.upload_keep_files, &from.upload_keep_files);
-        merge_value(&mut to.tmp_save_uploaded_files, &from.tmp_save_uploaded_files);
-        merge_value(&mut to.arguments_limit, &from.arguments_limit);
-        merge_value(&mut to.request_body_json_depth_limit, &from.request_body_json_depth_limit);
-        merge_value(&mut to.request_body_limit, &from.request_body_limit);
-        merge_value(&mut to.request_body_no_files_limit, &from.request_body_no_files_limit);
-        merge_value(&mut to.response_body_limit, &from.response_body_limit);
-        merge_value(&mut to.request_body_limit_action, &from.request_body_limit_action);
-        merge_value(&mut to.response_body_limit_action, &from.response_body_limit_action);
-        merge_value(&mut to.pcre_match_limit, &from.pcre_match_limit);
-        merge_value(&mut to.upload_file_limit, &from.upload_file_limit);
-        merge_value(&mut to.upload_file_mode, &from.upload_file_mode);
-        merge_value(&mut to.upload_directory, &from.upload_directory);
-        merge_value(&mut to.upload_tmp_directory, &from.upload_tmp_directory);
-        merge_value(&mut to.sec_argument_separator, &from.sec_argument_separator);
-        merge_value(&mut to.sec_web_app_id, &from.sec_web_app_id);
+        to.settings.merge_unset(&from.settings);
         to.unicode_map_table.merge(&from.unicode_map_table);
-        merge_value(&mut to.httpbl_key, &from.httpbl_key);
-        merge_value(&mut to.geo_db, &from.geo_db);
         to.exceptions.merge(&from.exceptions);
         to.components.extend(from.components.iter().cloned());
 
@@ -468,15 +465,28 @@ mod tests {
     fn merge_keeps_values_set_in_to() {
         let mut from = RulesSetProperties::new();
         let mut to = RulesSetProperties::new();
-        from.sec_rule_engine = Some(RuleEngine::Enabled);
-        from.request_body_limit = Some(10);
-        from.sec_web_app_id = Some("a".into());
-        to.request_body_limit = Some(20);
+        from.settings.sec_rule_engine = Some(RuleEngine::Enabled);
+        from.settings.request_body_limit = Some(10);
+        from.settings.sec_web_app_id = Some("a".into());
+        to.settings.request_body_limit = Some(20);
         RulesSetProperties::merge_properties(&mut from, &mut to).unwrap();
-        assert_eq!(to.sec_rule_engine, Some(RuleEngine::Enabled));
-        assert_eq!(to.request_body_limit, Some(20));
+        assert_eq!(to.settings.sec_rule_engine, Some(RuleEngine::Enabled));
+        assert_eq!(to.settings.request_body_limit, Some(20));
         assert_eq!(to.web_app_id(), b"a");
         assert_eq!(RulesSetProperties::new().web_app_id(), b"");
+
+        // Every setting is merged (they are declared once, with the merge).
+        let mut all = Settings::default();
+        all.merge_unset(&from.settings);
+        assert_eq!(all.sec_rule_engine, Some(RuleEngine::Enabled));
+        assert_eq!(all.request_body_limit, Some(10));
+        // `SecRemoteRulesFailAction` is not one of them: it is not merged,
+        // as in C++.
+        let mut from = RulesSetProperties::new();
+        from.remote_rules_action_on_failed = Some(OnFailedRemoteRulesAction::Warn);
+        let mut to = RulesSetProperties::new();
+        RulesSetProperties::merge_properties(&mut from, &mut to).unwrap();
+        assert!(to.remote_rules_action_on_failed.is_none());
     }
 
     #[test]

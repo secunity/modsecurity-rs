@@ -447,7 +447,7 @@ impl<'a> Transaction<'a> {
             ctl: CtlOverrides {
                 rule_engine: None,
                 request_body_access: None,
-                parse_xml_into_args: rules.properties.sec_xml_parse_xml_into_args,
+                parse_xml_into_args: rules.properties.settings.sec_xml_parse_xml_into_args,
                 audit_engine: None,
                 audit_log_modifier: Vec::new(),
                 rule_remove_by_id: Vec::new(),
@@ -760,7 +760,7 @@ impl<'a> Transaction<'a> {
         if (self.body.request_body_type == RequestBodyType::WWWFormUrlEncoded
             || self.body.request_body_processor == RequestBodyType::JSONRequestBody
             || self.body.request_body_processor == RequestBodyType::XMLRequestBody)
-            && let Some(limit) = props.request_body_no_files_limit
+            && let Some(limit) = props.settings.request_body_no_files_limit
             && self.http.request_body.len() as u64 > limit
         {
             self.vars.reqbody_error.set(b"1", 0);
@@ -820,7 +820,7 @@ impl<'a> Transaction<'a> {
             // done
         } else if self.body.request_body_processor == RequestBodyType::JSONRequestBody {
             if !request_body_no_files_limit_exceeded {
-                if let Some(depth) = self.rules.properties.request_body_json_depth_limit {
+                if let Some(depth) = self.rules.properties.settings.request_body_json_depth_limit {
                     self.body.json.set_max_depth(depth);
                 }
                 let mut arguments = ArgumentWriter {
@@ -854,7 +854,7 @@ impl<'a> Transaction<'a> {
                 m.multipart_complete(self);
                 error = m.error().map(str::to_owned);
             }
-            let limit = self.rules.properties.request_body_no_files_limit;
+            let limit = self.rules.properties.settings.request_body_no_files_limit;
             if let Some(error) = error {
                 set_error(self, "Multipart parsing error: ", &error, true);
             } else if let Some(limit) = limit
@@ -896,7 +896,7 @@ impl<'a> Transaction<'a> {
         }
 
         let props = &self.rules.properties;
-        if props.sec_request_body_access == Some(false) {
+        if props.settings.sec_request_body_access == Some(false) {
             if self.ctl.request_body_access != Some(true) {
                 crate::ms_dbg_a!(self, 4, "Request body processing is disabled");
                 return;
@@ -954,7 +954,7 @@ impl<'a> Transaction<'a> {
             9,
             "Adding request body: {} bytes. Limit set to: {}",
             s.len(),
-            self.rules.properties.request_body_limit.unwrap_or(0)
+            self.rules.properties.settings.request_body_limit.unwrap_or(0)
         );
         Ok(self.append_request_body(&s))
     }
@@ -970,23 +970,23 @@ impl<'a> Transaction<'a> {
             9,
             "Appending request body: {} bytes. Limit set to: {}",
             buf.len(),
-            props.request_body_limit.unwrap_or(0)
+            props.settings.request_body_limit.unwrap_or(0)
         );
 
-        if props.request_body_limit.unwrap_or(0) > 0
-            && props.request_body_limit.unwrap_or(0) < (buf.len() + current_size) as u64
+        if props.settings.request_body_limit.unwrap_or(0) > 0
+            && props.settings.request_body_limit.unwrap_or(0) < (buf.len() + current_size) as u64
         {
             let off = self.vars.offset;
             self.vars.inbound_data_error.set(b"1", off);
             crate::ms_dbg_a!(self, 5, "Request body is bigger than the maximum expected.");
-            if props.request_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
-                let space_left = (props.request_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
+            if props.settings.request_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
+                let space_left = (props.settings.request_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
                 let n = space_left.min(buf.len());
                 self.http.request_body.extend_from_slice(&buf[..n]);
                 crate::ms_dbg_a!(self, 5, "Request body limit is marked to process partial");
                 return false;
             } else {
-                if props.request_body_limit_action == Some(BodyLimitAction::Reject) {
+                if props.settings.request_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Request body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
                         self.outcome.intervention = Intervention {
@@ -1054,12 +1054,12 @@ impl<'a> Transaction<'a> {
         }
 
         let props = &self.rules.properties;
-        if props.sec_response_body_access != Some(true) {
+        if props.settings.sec_response_body_access != Some(true) {
             crate::ms_dbg_a!(
                 self,
                 4,
                 "Response body is disabled, returning... {}",
-                config_boolean_code(props.sec_response_body_access)
+                config_boolean_code(props.settings.sec_response_body_access)
             );
             return;
         }
@@ -1112,23 +1112,24 @@ impl<'a> Transaction<'a> {
             9,
             "Appending response body: {} bytes. Limit set to: {}",
             buf.len() + current_size,
-            props.response_body_limit.unwrap_or(0)
+            props.settings.response_body_limit.unwrap_or(0)
         );
 
-        if props.response_body_limit.unwrap_or(0) > 0
-            && props.response_body_limit.unwrap_or(0) < (buf.len() + current_size) as u64
+        if props.settings.response_body_limit.unwrap_or(0) > 0
+            && props.settings.response_body_limit.unwrap_or(0) < (buf.len() + current_size) as u64
         {
             let off = self.vars.offset;
             self.vars.outbound_data_error.set(b"1", off);
             crate::ms_dbg_a!(self, 5, "Response body is bigger than the maximum expected.");
-            if props.response_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
-                let space_left = (props.response_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
+            if props.settings.response_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
+                let space_left =
+                    (props.settings.response_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
                 let n = space_left.min(buf.len());
                 self.http.response_body.extend_from_slice(&buf[..n]);
                 crate::ms_dbg_a!(self, 5, "Response body limit is marked to process partial");
                 return false;
             } else {
-                if props.response_body_limit_action == Some(BodyLimitAction::Reject) {
+                if props.settings.response_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Response body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
                         self.outcome.intervention = Intervention {
@@ -1226,7 +1227,7 @@ impl<'a> Transaction<'a> {
     /// The rule engine state: this transaction's `ctl:ruleEngine`, else
     /// `SecRuleEngine`.
     pub(crate) fn rule_engine_state(&self) -> Option<RuleEngine> {
-        self.ctl.rule_engine.or(self.rules.properties.sec_rule_engine)
+        self.ctl.rule_engine.or(self.rules.properties.settings.sec_rule_engine)
     }
 
     /// Sets the response status (`RESPONSE_STATUS`).

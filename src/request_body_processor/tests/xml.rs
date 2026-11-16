@@ -76,7 +76,7 @@ mod tests {
         for mode in [Some(ParseXmlIntoArgs::On), Some(ParseXmlIntoArgs::OnlyArgs)] {
             let ms = ModSecurity::new();
             let mut rules = new_rules();
-            rules.properties.sec_xml_parse_xml_into_args = mode;
+            rules.properties.settings.sec_xml_parse_xml_into_args = mode;
             let t = xml(&ms, &rules, body);
             let mut l = Vec::new();
             t.vars.args.resolve(&mut l);
@@ -104,8 +104,8 @@ mod tests {
         // SecArgumentsLimit stops the SAX parser
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::On);
-        rules.properties.arguments_limit = Some(2);
+        rules.properties.settings.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::On);
+        rules.properties.settings.arguments_limit = Some(2);
         let t = xml(&ms, &rules, b"<a><b>1</b><b>2</b><b>3</b><b>4</b></a>");
         assert_eq!(t.vars.args.len(), 2);
         assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document for ARGS.");
@@ -122,7 +122,7 @@ mod tests {
         for mode in [Some(ParseXmlIntoArgs::On), Some(ParseXmlIntoArgs::OnlyArgs)] {
             let ms = ModSecurity::new();
             let mut rules = new_rules();
-            rules.properties.sec_xml_parse_xml_into_args = mode;
+            rules.properties.settings.sec_xml_parse_xml_into_args = mode;
             // (The SAX handler that parses into ARGS has no entity
             // callbacks, so the document fails there, as in C++.)
             let t = xml(&ms, &rules, body);
@@ -131,7 +131,7 @@ mod tests {
         // Abandoned: the transaction ends before the body is complete.
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::On);
+        rules.properties.settings.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::On);
         let mut t = Transaction::new(&ms, &rules, None);
         t.process_connection("200.249.12.31", 123, "200.249.12.31", 80);
         t.process_uri(b"/", b"POST", b"1.1");
@@ -163,7 +163,7 @@ mod tests {
 <Envelope><Body><getInput><id type="string">12123</id></getInput></Body></Envelope>"#;
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.sec_xml_external_entity = Some(true);
+        rules.properties.settings.sec_xml_external_entity = Some(true);
         let dtd_path = format!("{}SoapEnvelope.dtd", DATA);
         let mut dtd = dtd_op(&dtd_path);
         dtd.init("x.conf").unwrap();
@@ -228,7 +228,7 @@ mod tests {
         let body = br#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE author [<!ELEMENT book ANY><!ENTITY js SYSTEM "/etc/hostname">]><bookstore><book>&js;</book></bookstore>"#;
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.sec_xml_external_entity = Some(false);
+        rules.properties.settings.sec_xml_external_entity = Some(false);
         let mut dtd = dtd_op(&format!("{}SoapEnvelope.dtd", DATA));
         dtd.init("x.conf").unwrap();
         let mut t = xml(&ms, &rules, body);

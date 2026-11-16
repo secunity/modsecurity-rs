@@ -38,16 +38,16 @@ impl multipart::Context for Transaction<'_> {
     fn uploads(&self) -> Uploads {
         let props = &self.rules.properties;
         Uploads {
-            keep_files: props.upload_keep_files,
-            tmp_save_files: props.tmp_save_uploaded_files,
-            file_limit: props.upload_file_limit.unwrap_or(0),
-            file_mode: props.upload_file_mode.unwrap_or(0),
+            keep_files: props.settings.upload_keep_files,
+            tmp_save_files: props.settings.tmp_save_uploaded_files,
+            file_limit: props.settings.upload_file_limit.unwrap_or(0),
+            file_mode: props.settings.upload_file_mode.unwrap_or(0),
         }
     }
 
     fn upload_file_prefix(&self) -> String {
         let time = crate::utils::system::strftime_local(crate::utils::system::now(), "/%Y%m%d-%H%M%S");
-        let directory = self.rules.properties.upload_directory.as_deref().unwrap_or_default();
+        let directory = self.rules.properties.settings.upload_directory.as_deref().unwrap_or_default();
         format!("{}{}-{}", directory, time, self.id)
     }
 
@@ -110,7 +110,7 @@ impl crate::request_body_processor::xml::Context for Transaction<'_> {
     }
 
     fn external_entities(&self) -> bool {
-        self.rules.properties.sec_xml_external_entity == Some(true)
+        self.rules.properties.settings.sec_xml_external_entity == Some(true)
     }
 
     fn args_mode(&self) -> crate::request_body_processor::xml::IntoArgs {

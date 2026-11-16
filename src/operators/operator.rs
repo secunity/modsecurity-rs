@@ -80,7 +80,7 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
 
     /// `SecPcreMatchLimit` (0 when not set).
     pub fn pcre_match_limit(&self) -> u64 {
-        self.t.rules.properties.pcre_match_limit.map_or(0, u64::from)
+        self.t.rules.properties.settings.pcre_match_limit.map_or(0, u64::from)
     }
 
     /// Reports a regular expression that failed to compile: logs it and
@@ -120,7 +120,7 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
 
     /// `SecHttpBlKey` (empty when not set), for `@rbl`.
     pub fn httpbl_key(&self) -> &[u8] {
-        self.t.rules.properties.httpbl_key.as_deref().unwrap_or_default().as_bytes()
+        self.t.rules.properties.settings.httpbl_key.as_deref().unwrap_or_default().as_bytes()
     }
 
     /// The document the XML request body processor parsed and its

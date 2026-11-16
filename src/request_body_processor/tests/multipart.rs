@@ -231,15 +231,15 @@ y\r\n\
         std::fs::create_dir_all(&dir).unwrap();
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.tmp_save_uploaded_files = Some(true);
-        rules.properties.upload_directory = Some(dir.to_string_lossy().into_owned());
-        rules.properties.upload_file_mode = Some(0o600);
+        rules.properties.settings.tmp_save_uploaded_files = Some(true);
+        rules.properties.settings.upload_directory = Some(dir.to_string_lossy().into_owned());
+        rules.properties.settings.upload_file_mode = Some(0o600);
         let ct = ct("0000");
         let name;
         {
             let t = run(&ms, &rules, &[(b"Content-Type", &ct)], NORMAL, None);
             name = String::from_utf8(t.vars.files_tmp_names.iter().next().unwrap().0.to_vec()).unwrap();
-            assert!(name.starts_with(rules.properties.upload_directory.as_deref().unwrap()), "{}", name);
+            assert!(name.starts_with(rules.properties.settings.upload_directory.as_deref().unwrap()), "{}", name);
             assert!(name.contains("-file-"));
             assert_eq!(std::fs::read(&name).unwrap(), b"BINARYDATA");
             assert_eq!(t.vars.files_tmp_content.resolve_first(b"image").unwrap(), b"BINARYDATA");
@@ -254,7 +254,7 @@ y\r\n\
         assert!(!std::path::Path::new(&name).exists());
 
         // SecUploadKeepFiles On keeps them
-        rules.properties.upload_keep_files = Some(true);
+        rules.properties.settings.upload_keep_files = Some(true);
         let name;
         {
             let t = run(&ms, &rules, &[(b"Content-Type", &ct)], NORMAL, None);
@@ -270,9 +270,9 @@ y\r\n\
         std::fs::create_dir_all(&dir).unwrap();
         let ms = ModSecurity::new();
         let mut rules = new_rules();
-        rules.properties.tmp_save_uploaded_files = Some(true);
-        rules.properties.upload_directory = Some(dir.to_string_lossy().into_owned());
-        rules.properties.upload_file_limit = Some(1);
+        rules.properties.settings.tmp_save_uploaded_files = Some(true);
+        rules.properties.settings.upload_directory = Some(dir.to_string_lossy().into_owned());
+        rules.properties.settings.upload_file_limit = Some(1);
         let ct = ct("0000");
         let body = b"--0000\r\n\
 Content-Disposition: form-data; name=\"f1\"; filename=\"1.txt\"\r\n\r\none\r\n\
@@ -347,19 +347,21 @@ mod regression_dump {
             };
             match d.as_str() {
                 "secrequestbodyjsondepthlimit" => {
-                    p.request_body_json_depth_limit = Some(parse_config_number(&v).unwrap())
+                    p.settings.request_body_json_depth_limit = Some(parse_config_number(&v).unwrap())
                 }
-                "secargumentslimit" => p.arguments_limit = Some(parse_config_number(&v).unwrap()),
-                "secrequestbodynofileslimit" => p.request_body_no_files_limit = Some(parse_config_number(&v).unwrap()),
-                "secrequestbodylimit" => p.request_body_limit = Some(parse_config_number(&v).unwrap()),
-                "secuploadfilelimit" => p.upload_file_limit = Some(parse_config_number(&v).unwrap()),
-                "secuploadfilemode" => p.upload_file_mode = Some(parse_octal_mode(&v).unwrap()),
-                "secuploaddir" => p.upload_directory = Some(v.clone()),
-                "secuploadkeepfiles" => p.upload_keep_files = b(&v),
-                "sectmpsaveuploadedfiles" => p.tmp_save_uploaded_files = b(&v),
-                "secxmlexternalentity" => p.sec_xml_external_entity = b(&v),
+                "secargumentslimit" => p.settings.arguments_limit = Some(parse_config_number(&v).unwrap()),
+                "secrequestbodynofileslimit" => {
+                    p.settings.request_body_no_files_limit = Some(parse_config_number(&v).unwrap())
+                }
+                "secrequestbodylimit" => p.settings.request_body_limit = Some(parse_config_number(&v).unwrap()),
+                "secuploadfilelimit" => p.settings.upload_file_limit = Some(parse_config_number(&v).unwrap()),
+                "secuploadfilemode" => p.settings.upload_file_mode = Some(parse_octal_mode(&v).unwrap()),
+                "secuploaddir" => p.settings.upload_directory = Some(v.clone()),
+                "secuploadkeepfiles" => p.settings.upload_keep_files = b(&v),
+                "sectmpsaveuploadedfiles" => p.settings.tmp_save_uploaded_files = b(&v),
+                "secxmlexternalentity" => p.settings.sec_xml_external_entity = b(&v),
                 "secparsexmlintoargs" => {
-                    p.sec_xml_parse_xml_into_args = match v.to_ascii_lowercase().as_str() {
+                    p.settings.sec_xml_parse_xml_into_args = match v.to_ascii_lowercase().as_str() {
                         "on" => Some(ParseXmlIntoArgs::On),
                         "onlyargs" => Some(ParseXmlIntoArgs::OnlyArgs),
                         _ => Some(ParseXmlIntoArgs::Off),

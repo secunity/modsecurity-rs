@@ -770,7 +770,7 @@ impl Builder<'_, '_> {
         let p = &mut self.driver.properties;
         match dir {
             Effect::RuleEngine => {
-                p.sec_rule_engine = Some(if is("off") {
+                p.settings.sec_rule_engine = Some(if is("off") {
                     RuleEngine::Disabled
                 } else if is("on") {
                     RuleEngine::Enabled
@@ -778,8 +778,8 @@ impl Builder<'_, '_> {
                     RuleEngine::DetectionOnly
                 })
             }
-            Effect::RequestBodyAccess => p.sec_request_body_access = Some(is("on")),
-            Effect::ResponseBodyAccess => p.sec_response_body_access = Some(is("on")),
+            Effect::RequestBodyAccess => p.settings.sec_request_body_access = Some(is("on")),
+            Effect::ResponseBodyAccess => p.settings.sec_response_body_access = Some(is("on")),
             Effect::AuditEngine => p.audit_log.set_status(if is("relevantonly") {
                 AuditLogStatus::RelevantOnly
             } else if is("off") {
@@ -803,24 +803,24 @@ impl Builder<'_, '_> {
                         "SecUploadKeepFiles RelevantOnly is not currently supported. Accepted values are On or Off",
                     );
                 }
-                p.upload_keep_files = Some(is("on"));
+                p.settings.upload_keep_files = Some(is("on"));
             }
-            Effect::TmpSaveUploadedFiles => p.tmp_save_uploaded_files = Some(is("on")),
+            Effect::TmpSaveUploadedFiles => p.settings.tmp_save_uploaded_files = Some(is("on")),
             Effect::RequestBodyLimitAction => {
-                p.request_body_limit_action =
+                p.settings.request_body_limit_action =
                     Some(if is("processpartial") { BodyLimitAction::ProcessPartial } else { BodyLimitAction::Reject })
             }
             Effect::ResponseBodyLimitAction => {
-                p.response_body_limit_action =
+                p.settings.response_body_limit_action =
                     Some(if is("processpartial") { BodyLimitAction::ProcessPartial } else { BodyLimitAction::Reject })
             }
             Effect::RemoteRulesFailAction => {
                 p.remote_rules_action_on_failed =
                     Some(if is("abort") { OnFailedRemoteRulesAction::Abort } else { OnFailedRemoteRulesAction::Warn })
             }
-            Effect::XmlExternalEntity => p.sec_xml_external_entity = Some(is("on")),
+            Effect::XmlExternalEntity => p.settings.sec_xml_external_entity = Some(is("on")),
             Effect::ParseXmlIntoArgs => {
-                p.sec_xml_parse_xml_into_args = Some(if is("onlyargs") {
+                p.settings.sec_xml_parse_xml_into_args = Some(if is("onlyargs") {
                     ParseXmlIntoArgs::OnlyArgs
                 } else if is("off") {
                     ParseXmlIntoArgs::Off
@@ -869,14 +869,14 @@ impl Builder<'_, '_> {
             Effect::AuditLogRelevantStatus => p.audit_log.set_relevant_status(&s),
             Effect::AuditLogPrefix => p.audit_log.set_prefix(&s),
             Effect::UploadFileLimit => match parse_config_number(&s) {
-                Ok(n) => p.upload_file_limit = Some(n),
+                Ok(n) => p.settings.upload_file_limit = Some(n),
                 Err(e) => return self.fail(&format!("Failed to parse SecUploadFileLimit: {}", e)),
             },
             Effect::UploadFileMode => match parse_octal_mode(&s) {
-                Ok(n) => p.upload_file_mode = Some(n),
+                Ok(n) => p.settings.upload_file_mode = Some(n),
                 Err(e) => return self.fail(&format!("Failed to parse SecUploadFileMode: {}", e)),
             },
-            Effect::UploadDir => p.upload_directory = Some(s),
+            Effect::UploadDir => p.settings.upload_directory = Some(s),
             Effect::Marker => {
                 let marker = remove_brackets_if_needed(s);
                 let file = self.file_name();
@@ -886,10 +886,10 @@ impl Builder<'_, '_> {
                 if v.len() != 1 {
                     return self.fail("Argument separator should be set to a single character.");
                 }
-                p.sec_argument_separator = Some(s);
+                p.settings.sec_argument_separator = Some(s);
             }
             Effect::ComponentSignature => p.components.push(s),
-            Effect::WebAppId => p.sec_web_app_id = Some(s),
+            Effect::WebAppId => p.settings.sec_web_app_id = Some(s),
             Effect::RuleRemoveById => {
                 if let Err(error) = p.exceptions.load(&s) {
                     return self.fail(&format!("SecRuleRemoveById: failed to load:{}. {}", s, error));
@@ -913,28 +913,30 @@ impl Builder<'_, '_> {
                         .fail(&format!("Failed to load locate the GeoDB file from: {} {}", s, lookup.looked_at));
                 };
                 match crate::utils::geo_lookup::GeoDb::open(&file) {
-                    Ok(db) => self.driver.properties.geo_db = Some(std::sync::Arc::new(db)),
+                    Ok(db) => self.driver.properties.settings.geo_db = Some(std::sync::Arc::new(db)),
                     // A database opened before stays in use, as in C++.
-                    Err(_) if self.driver.properties.geo_db.is_some() => {}
+                    Err(_) if self.driver.properties.settings.geo_db.is_some() => {}
                     Err(err) => return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err)),
                 }
             }
-            Effect::ArgumentsLimit => p.arguments_limit = Some(atoi(&v) as i32 as u32),
-            Effect::RequestBodyJsonDepthLimit => p.request_body_json_depth_limit = Some(atoi(&v) as i32 as u32),
+            Effect::ArgumentsLimit => p.settings.arguments_limit = Some(atoi(&v) as i32 as u32),
+            Effect::RequestBodyJsonDepthLimit => {
+                p.settings.request_body_json_depth_limit = Some(atoi(&v) as i32 as u32)
+            }
             Effect::RequestBodyLimit => match parse_config_number(&s) {
-                Ok(n) => p.request_body_limit = Some(n),
+                Ok(n) => p.settings.request_body_limit = Some(n),
                 Err(e) => return self.fail(&format!("Failed to parse SecRequestBodyLimit: {}", e)),
             },
             Effect::RequestBodyNoFilesLimit => match parse_config_number(&s) {
-                Ok(n) => p.request_body_no_files_limit = Some(n),
+                Ok(n) => p.settings.request_body_no_files_limit = Some(n),
                 Err(e) => return self.fail(&format!("Failed to parse SecRequestsBodyNoFilesLimit: {}", e)),
             },
             Effect::ResponseBodyLimit => match parse_config_number(&s) {
-                Ok(n) => p.response_body_limit = Some(n),
+                Ok(n) => p.settings.response_body_limit = Some(n),
                 Err(e) => return self.fail(&format!("Failed to parse SecResponseBodyLimit: {}", e)),
             },
             Effect::PcreMatchLimit => match parse_config_number(&s) {
-                Ok(n) => p.pcre_match_limit = Some(n),
+                Ok(n) => p.settings.pcre_match_limit = Some(n),
                 Err(e) => return self.fail(&format!("Failed to parse SecPcreMatchLimit: {}", e)),
             },
             Effect::ResponseBodyMimeType => {
@@ -950,7 +952,7 @@ impl Builder<'_, '_> {
                     return self.fail("SecCookieFormat 1 is not yet supported.");
                 }
             }
-            Effect::HttpBlKey => p.httpbl_key = Some(s),
+            Effect::HttpBlKey => p.settings.httpbl_key = Some(s),
             Effect::UnicodeMapFile => return self.unicode_map_file(&s),
             Effect::Include => return self.include(token),
             Effect::RemoteRules => return self.remote_rules(&s),
