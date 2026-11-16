@@ -34,16 +34,20 @@ default-members = [
     "crates/modsecurity-capi",
 ]
 
+# What the crates of the engine share (`version.workspace = true`, ...).
+# The nginx connector and the vendored libinjection have their own
+# versions.
 [workspace.package]
-version = "0.2.0"
+version = "3.0.17"
 edition = "2024"
+license = "Apache-2.0"
 
 [package]
 name = "modsecurity"
-version = "3.0.17"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Rust port of libmodsecurity v3 (ModSecurity web application firewall engine)"
-license = "Apache-2.0"
+license.workspace = true
 
 [lib]
 name = "modsecurity"

@@ -7,6 +7,9 @@
 //! Transaction-owned `TX` variables use [`transaction::TransactionVariables`]
 //! instead: they need neither a storage backend nor shared mutation.
 
+// LMDB is called through the `modsecurity-native` crate.
+#![forbid(unsafe_code)]
+
 pub mod backend;
 pub mod collections;
 pub mod transaction;

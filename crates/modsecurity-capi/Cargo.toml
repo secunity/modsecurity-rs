@@ -1,9 +1,9 @@
 [package]
 name = "modsecurity-capi"
-version = "3.0.17"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "The libmodsecurity C API (msc_*) over the Rust engine: libmodsecurity.so.3 and libmodsecurity.a"
-license = "Apache-2.0"
+license.workspace = true
 build = "build.rs"
 publish = false
 

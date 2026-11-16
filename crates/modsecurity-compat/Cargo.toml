@@ -1,9 +1,9 @@
 [package]
 name = "modsecurity-compat"
-version = "3.0.17"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Data structures and parsers that reproduce the observable behavior of the C++ libmodsecurity: ACMP, the crit-bit IP tree, libstdc++'s unordered_multimap order, yajl's JSON"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [features]

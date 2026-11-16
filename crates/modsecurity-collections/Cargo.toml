@@ -1,9 +1,9 @@
 [package]
 name = "modsecurity-collections"
-version = "3.0.17"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "The ModSecurity collections: the persistent ones (IP, SESSION, USER, GLOBAL, RESOURCE) with their in-memory and LMDB backends, and a transaction's TX variables"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [features]

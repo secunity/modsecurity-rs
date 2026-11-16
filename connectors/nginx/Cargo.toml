@@ -1,9 +1,9 @@
 [package]
 name = "modsecurity-nginx"
 version = "1.0.4"
-edition = "2024"
+edition.workspace = true
 description = "Rust port of ModSecurity-nginx: the nginx connector for libmodsecurity"
-license = "Apache-2.0"
+license.workspace = true
 build = "build.rs"
 
 [lib]

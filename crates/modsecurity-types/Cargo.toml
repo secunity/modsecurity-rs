@@ -1,9 +1,9 @@
 [package]
 name = "modsecurity-types"
-version = "3.0.17"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "The values ModSecurity resolves variables to (VariableValue, VariableOrigin) and the key exclusions of a variable, shared by the engine and the collections"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [dependencies]

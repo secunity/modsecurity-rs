@@ -1,9 +1,9 @@
 [package]
 name = "modsecurity-native"
-version = "3.0.17"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Safe wrappers of the C libraries the ModSecurity engine uses (PCRE2, libxml2, LMDB, ssdeep, Lua, libc)"
-license = "Apache-2.0"
+license.workspace = true
 build = "build.rs"
 publish = false
 

@@ -1,9 +1,9 @@
 [package]
 name = "modsecurity-operators"
-version = "3.0.17"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "The SecLang operators that only match (@rx, @pm, @contains, ...), against a small context interface"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [features]

@@ -1,9 +1,9 @@
 [package]
 name = "modsecurity-axum-example"
 version = "0.0.0"
-edition = "2024"
+edition.workspace = true
 description = "An axum server protected by the ModSecurity tower middleware"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [dependencies]

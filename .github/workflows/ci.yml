@@ -1,0 +1,57 @@
+# The checks of AGENT.md that need nothing but this repository: formatting,
+# and clippy and the tests for the default, the minimal and the full
+# feature set. The differential test, the CRS suite, the fuzz targets and
+# the benchmarks need a C++ libmodsecurity build, nginx or a quiet machine,
+# and are run by hand (see AGENT.md).
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal --component rustfmt
+      - run: cargo fmt --all -- --check
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: ["", "--no-default-features", "--all-features"]
+    name: test ${{ matrix.features || '(default features)' }}
+    steps:
+      - uses: actions/checkout@v4
+      # The system libraries of the optional features: libxml2, ssdeep and
+      # curl. PCRE2 too (pcre2-sys builds its own copy without it). Lua and
+      # LMDB are vendored by their crates.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libpcre2-dev libxml2-dev libfuzzy-dev libcurl4-openssl-dev
+      - run: rustup toolchain install stable --profile minimal --component clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ matrix.features }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ matrix.features }}-
+      - run: cargo clippy --all-targets ${{ matrix.features }} -- -D warnings
+      - run: cargo test ${{ matrix.features }}

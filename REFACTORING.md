@@ -945,3 +945,22 @@ cases (`Matcher(Box<dyn modsecurity_operators::Operator>)`, `GeoLookup`,
 `InspectFile`), so there is one operator trait, in the crate. The two
 engine operators take the transaction directly, and
 `MatchContext::transaction` (the way around the context) is gone.
+
+## Workspace housekeeping
+
+- The crates of the engine take `version`, `edition` and `license` from
+  `[workspace.package]` (the nginx connector and the vendored libinjection
+  keep their own versions).
+- `modsecurity-collections` forbids `unsafe_code` like the other crates
+  without C calls; it was the one that did not say so.
+- `.github/workflows/ci.yml` runs `cargo fmt --check`, and clippy and the
+  tests for the default, `--no-default-features` and `--all-features`
+  builds. The differential test, the CRS suite, the fuzz targets and the
+  benchmarks stay manual (they need the C++ library, nginx or an idle
+  machine).
+
+Not done: `[workspace.lints]` for `unsafe_code`. Cargo applies a package's
+lints to all its targets, and the engine's regression runner
+(`test/regression/regression.rs`) sets an environment variable, which is
+`unsafe`; the `#![forbid(unsafe_code)]` attribute on each library says
+exactly what is meant.
