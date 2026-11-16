@@ -11,7 +11,7 @@ table and "How C++ constructs were expressed").
 
 | C++ | Rust |
 |---|---|
-| `headers/modsecurity/*.h` (public API) | `src/*.rs` (crate root): `modsecurity`, `transaction`, `rules_set/` (`mod`: `RulesSet`; `properties`, `phases`, `exceptions`), `rules`, `rule/` (`mod`: `Rule`; `with_actions`, `with_operator`, `unconditional`, `script`, `marker`, `message`), `intervention`, `variable_value`, `variable_origin`, `anchored_*` |
+| `headers/modsecurity/*.h` (public API) | `src/*.rs` (crate root): `modsecurity`, `transaction`, `rules_set/` (`mod`: `RulesSet`; `properties`, `phases`, `exceptions`), `rules`, `rule/` (`mod`: `Rule`; `with_actions`, `with_operator`, `unconditional`, `script`, `marker`, `message`), `intervention`; `variables/` (`anchored_*`; `variable_value`, `variable_origin` from the `modsecurity-types` crate) |
 | `headers/modsecurity/actions/action.h` | `src/actions/action.rs` |
 | `headers/modsecurity/collection/*.h` | `src/collection/{mod,collections}.rs` |
 | `headers/modsecurity/audit_log.h`, `debug_log.h` | `src/audit_log/mod.rs`, `src/debug_log.rs` |

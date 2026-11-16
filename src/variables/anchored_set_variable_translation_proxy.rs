@@ -6,12 +6,12 @@
 //! its source; here the source is passed in by the caller (both live in the
 //! same transaction).
 
-use crate::anchored_set_variable::AnchoredSetVariable;
 use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
-use crate::variable_origin::VariableOrigin;
-use crate::variable_value::VariableValue;
+use crate::variables::anchored_set_variable::AnchoredSetVariable;
 use crate::variables::variable::KeyExclusions;
+use crate::variables::variable_origin::VariableOrigin;
+use crate::variables::variable_value::VariableValue;
 
 /// Translates one value: a value of collection `name` whose key and value
 /// are `v`'s key, with the origins moved to point at the key.

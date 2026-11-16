@@ -6,17 +6,17 @@
 //! target is one struct: its name, its key exclusions and a [`Source`]
 //! saying where the values come from.
 
-use crate::anchored_set_variable::AnchoredSetVariable;
-use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
-use crate::anchored_variable::AnchoredVariable;
 use crate::rule::with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{Transaction, TransactionAnchoredVariables};
 use crate::utils::regex::Regex;
 use crate::utils::string::toupper_str;
-use crate::variable_value::VariableValue;
+use crate::variables::anchored_set_variable::AnchoredSetVariable;
+use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
+use crate::variables::anchored_variable::AnchoredVariable;
 use crate::variables::computed::Computed;
 use crate::variables::persistent::Persistent;
+use crate::variables::variable_value::VariableValue;
 use crate::variables::{VariableSelector, env, rule, xml};
 
 pub use modsecurity_types::key_exclusions::{KeyExclusion, KeyExclusions};
@@ -446,7 +446,7 @@ pub fn string_match_resolve_multi(
 fn single_anchored<'t>(
     t: &'t Transaction<'_>,
     variable: &str,
-) -> Option<&'t crate::anchored_variable::AnchoredVariable> {
+) -> Option<&'t crate::variables::anchored_variable::AnchoredVariable> {
     let v = crate::variables::names::SINGLE.iter().find(|v| v.lua && comp(variable, v.token))?;
     Some((v.get)(&t.vars))
 }

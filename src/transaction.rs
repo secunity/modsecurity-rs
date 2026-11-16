@@ -30,9 +30,6 @@ use std::sync::Arc;
 
 use crate::actions::disruptive::allow::AllowType;
 use crate::actions::transformation::Transformation;
-use crate::anchored_set_variable::AnchoredSetVariable;
-use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
-use crate::anchored_variable::AnchoredVariable;
 use crate::audit_log::{self, AuditLogStatus, PartsChange};
 use crate::collection::collections::Collections;
 use crate::intervention::Intervention;
@@ -47,8 +44,11 @@ use crate::rules_set::RulesSet;
 use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code};
 use crate::utils::decode::uri_decode;
 use crate::utils::string::{double_to_string, is_space, split, ssplit, tolower};
-use crate::variable_value::VariableValue;
+use crate::variables::anchored_set_variable::AnchoredSetVariable;
+use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
+use crate::variables::anchored_variable::AnchoredVariable;
 use crate::variables::variable::Variable;
+use crate::variables::variable_value::VariableValue;
 
 /// Types of request body that ModSecurity may give a special treatment for
 /// the data.

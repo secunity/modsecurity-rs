@@ -8,9 +8,9 @@
 use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::utils::regex::regex_search;
-use crate::variable_origin::VariableOrigin;
-use crate::variable_value::VariableValue;
 use crate::variables::variable::Selector;
+use crate::variables::variable_origin::VariableOrigin;
+use crate::variables::variable_value::VariableValue;
 
 /// The collection name of the `RULE` variable.
 pub const RULE: &str = "RULE";

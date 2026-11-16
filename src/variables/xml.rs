@@ -6,8 +6,8 @@
 
 use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
-use crate::variable_value::VariableValue;
 use crate::variables::variable::Variable;
+use crate::variables::variable_value::VariableValue;
 
 /// `XML:/xpath`: without libxml2 there is no document, so nothing is
 /// resolved.

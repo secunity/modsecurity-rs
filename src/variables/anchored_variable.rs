@@ -3,8 +3,8 @@
 //! The C++ class kept a back pointer to its transaction that was never
 //! used for anything but construction; it is not needed here.
 
-use crate::variable_origin::VariableOrigin;
-use crate::variable_value::VariableValue;
+use crate::variables::variable_origin::VariableOrigin;
+use crate::variables::variable_value::VariableValue;
 
 #[derive(Debug, Clone)]
 pub struct AnchoredVariable {

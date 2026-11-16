@@ -72,9 +72,6 @@ pub use crate::rules_set::{LoadError, RulesSet};
 pub use crate::transaction::Transaction;
 
 pub(crate) mod actions;
-pub(crate) mod anchored_set_variable;
-pub(crate) mod anchored_set_variable_translation_proxy;
-pub(crate) mod anchored_variable;
 pub(crate) mod audit_log;
 /// The collections (the `modsecurity-collections` crate).
 pub(crate) use modsecurity_collections as collection;
@@ -96,8 +93,6 @@ pub(crate) mod transaction;
 pub(crate) mod unique_id;
 pub(crate) mod utils;
 pub(crate) mod variables;
-/// The resolved values and their origin (the `modsecurity-types` crate).
-pub(crate) use modsecurity_types::{variable_origin, variable_value};
 
 /// Internals the test utilities of this repository (`test/`, `tools/`,
 /// `fuzz/`) drive directly. Not part of the API: they change without

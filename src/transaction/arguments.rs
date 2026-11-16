@@ -92,7 +92,7 @@ mod tests {
     use crate::modsecurity::ModSecurity;
     use crate::request_body_processor::multipart_tests::test_support::{log, new_rules};
     use crate::transaction::Transaction;
-    use crate::variable_origin::VariableOrigin;
+    use crate::variables::variable_origin::VariableOrigin;
 
     #[test]
     fn form_decoding_preserves_bytes_offsets_and_limit_logging() {

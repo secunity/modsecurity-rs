@@ -8,6 +8,9 @@
 //! the collections ([`persistent`], and `TX` in [`variable`]), [`rule`],
 //! [`env`], [`xml`] and the [`computed`] ones (`TIME*`, `DURATION`, ...).
 
+pub mod anchored_set_variable;
+pub mod anchored_set_variable_translation_proxy;
+pub mod anchored_variable;
 pub(crate) mod computed;
 pub mod env;
 pub(crate) mod names;
@@ -15,6 +18,9 @@ pub mod persistent;
 pub mod rule;
 pub mod variable;
 pub mod xml;
+
+/// The resolved values and their origin (the `modsecurity-types` crate).
+pub(crate) use modsecurity_types::{variable_origin, variable_value};
 
 use crate::utils::regex::Regex;
 use variable::{CollectionKey, Source, Variable, regex_name};
@@ -191,7 +197,7 @@ mod tests {
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;
     use crate::transaction::Transaction;
-    use crate::variable_value::VariableValue;
+    use crate::variables::variable_value::VariableValue;
 
     fn eval(v: &Variable, t: &Transaction<'_>, rule: Option<&RuleWithActions>) -> Vec<(String, String)> {
         let mut l: Vec<VariableValue> = Vec::new();

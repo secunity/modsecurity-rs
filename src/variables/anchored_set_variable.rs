@@ -6,13 +6,13 @@
 //! [`UnorderedMultimap`] reproduces that container's iteration order, which
 //! decides the order targets are evaluated in.
 
-use crate::anchored_set_variable_translation_proxy::translate;
 use crate::transaction::Transaction;
 use crate::utils::regex::Regex;
 use crate::utils::unordered_multimap::UnorderedMultimap;
-use crate::variable_origin::VariableOrigin;
-use crate::variable_value::{VariableValue, move_to_front_reversed};
+use crate::variables::anchored_set_variable_translation_proxy::translate;
 use crate::variables::variable::KeyExclusions;
+use crate::variables::variable_origin::VariableOrigin;
+use crate::variables::variable_value::{VariableValue, move_to_front_reversed};
 
 /// An entry: the value and, for collections with a `*_NAMES` translation
 /// proxy (`ARGS`, `ARGS_GET`, `ARGS_POST`), its key as a value of that

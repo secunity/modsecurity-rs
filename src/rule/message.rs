@@ -13,7 +13,7 @@ use crate::operators::operator::Operator;
 use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
-use crate::variable_value::VariableValue;
+use crate::variables::variable_value::VariableValue;
 
 /// A flag of [`RuleMessage::log`]: ends the line with the error log tail
 /// (the server name, the URI and the unique id).

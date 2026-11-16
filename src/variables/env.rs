@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use std::os::unix::ffi::OsStrExt;
 
 use crate::transaction::Transaction;
-use crate::variable_value::VariableValue;
 use crate::variables::variable::Variable;
+use crate::variables::variable_value::VariableValue;
 
 /// `ENV` (every variable) or `ENV:<name>`: the process environment plus
 /// what `setenv` set in the transaction.

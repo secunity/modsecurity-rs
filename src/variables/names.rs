@@ -10,10 +10,10 @@
 //! collection. The variables with logic of their own (the collections,
 //! `RULE`, `ENV`, `XML`, the computed ones) are not in these tables.
 
-use crate::anchored_set_variable::AnchoredSetVariable;
-use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
-use crate::anchored_variable::AnchoredVariable;
 use crate::transaction::TransactionAnchoredVariables as Vars;
+use crate::variables::anchored_set_variable::AnchoredSetVariable;
+use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
+use crate::variables::anchored_variable::AnchoredVariable;
 
 /// A single valued variable of the transaction.
 pub(crate) struct Single {

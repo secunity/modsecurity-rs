@@ -5,8 +5,8 @@
 use crate::modsecurity::{MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, MODSECURITY_TAG_NUM};
 use crate::transaction::Transaction;
 use crate::utils::system::{cpu_seconds, localtime, now, strftime_local};
-use crate::variable_value::VariableValue;
 use crate::variables::variable::Variable;
+use crate::variables::variable_value::VariableValue;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Computed {

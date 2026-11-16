@@ -8,7 +8,7 @@ mod tests {
     use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::properties::ParseXmlIntoArgs;
     use crate::transaction::{RequestBodyType, Transaction};
-    use crate::variable_value::VariableValue;
+    use crate::variables::variable_value::VariableValue;
     use crate::variables::{VariableSelector, new_variable};
 
     const DATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test/test-cases/data/");
