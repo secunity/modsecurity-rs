@@ -1,7 +1,6 @@
-//! `collection::backend` (mirrors `src/collection/backend/`).
+//! The storage backends of the persistent collections.
 
 pub mod collection_data;
 // The backend of the persistent collections in builds without LMDB.
-#[cfg_attr(feature = "lmdb", allow(dead_code))]
 pub mod in_memory_per_process;
 pub mod lmdb;

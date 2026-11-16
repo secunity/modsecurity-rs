@@ -742,3 +742,31 @@ an XML document parsed by a transaction stay in the engine and build
 the operators through `operators::operator::instantiate`; `@rbl`'s test
 runs against the crate's `TestContext` and now also checks the
 `SecHttpBlKey` prefix.
+
+## Collections in their own crate, on a shared-types crate
+
+Two crates below the engine (PLAN.md step 3):
+
+| Crate | Contents | Depends on |
+|---|---|---|
+| `modsecurity-types` | `VariableValue` (with `move_to_front_reversed`), `VariableOrigin`, `KeyExclusion` / `KeyExclusions` (from `variables/variable.rs`) | `modsecurity-native` (the regex exclusions) |
+| `modsecurity-collections` | all of `src/collection`: the `Collection` trait, `Persistent`, `compartment_key`, the in-memory and LMDB backends (`lmdb` feature), the per-transaction bindings (`Collections`) and the `TX` variables | `modsecurity-types`, `modsecurity-native` (regex, LMDB), `modsecurity-compat` (the multimap), `libc` (LMDB errno values, with `lmdb`) |
+
+The engine keeps its paths: `crate::variable_value`,
+`crate::variable_origin` and `crate::collection` are the crates'
+modules (`pub(crate) use`), and `variables::variable` re-exports the key
+exclusions, so the rest of the engine did not change. The files moved as
+they were, except:
+
+- methods the engine calls became `pub` (they were `pub(crate)`), and the
+  `allow(dead_code)` markers for items only the `lua` or `lmdb` builds
+  used are gone (public items of a library are not dead code);
+  `Persistent::from_name` is no longer behind the `lua` feature;
+- `Persistent::variable` (builds the engine's `COL`, `COL:key`, ...
+  targets) cannot be an inherent method of a type of another crate: it
+  is `variables::persistent::variable(collection, selector)`;
+- a test of the LMDB backend names its keys with the time from `std`
+  rather than the engine's `utils::system::now`.
+
+The persistent collection format (`CollectionData::serialize`) moved
+unchanged. The key exclusions got their first test.

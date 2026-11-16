@@ -458,11 +458,13 @@ dependencies = [
  "md-5",
  "mlua",
  "modsecurity-body",
+ "modsecurity-collections",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-operators",
  "modsecurity-seclang",
  "modsecurity-transformations",
+ "modsecurity-types",
  "nix",
  "rand 0.9.5",
  "rustix",
@@ -476,6 +478,16 @@ dependencies = [
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-transformations",
+]
+
+[[package]]
+name = "modsecurity-collections"
+version = "3.0.17"
+dependencies = [
+ "libc",
+ "modsecurity-compat",
+ "modsecurity-native",
+ "modsecurity-types",
 ]
 
 [[package]]
@@ -526,6 +538,13 @@ dependencies = [
  "md-5",
  "modsecurity-compat",
  "sha1",
+]
+
+[[package]]
+name = "modsecurity-types"
+version = "3.0.17"
+dependencies = [
+ "modsecurity-native",
 ]
 
 [[package]]

@@ -3,10 +3,10 @@
 //! Persistent backends belong to the engine. Each transaction binds a backend
 //! to its own selected record key, while owning its TX variables outright.
 
-use crate::collection::transaction::TransactionVariables;
-use crate::collection::{Collection, Persistent, compartment_key};
-use crate::variable_value::VariableValue;
-use crate::variables::variable::KeyExclusions;
+use crate::transaction::TransactionVariables;
+use crate::{Collection, Persistent, compartment_key};
+use modsecurity_types::KeyExclusions;
+use modsecurity_types::variable_value::VariableValue;
 
 /// A shared backend and the record selected by initcol/setsid/setuid/setrsc.
 /// Keeping them together prevents callers from accidentally mixing collections
@@ -21,7 +21,6 @@ impl<'a> CollectionBinding<'a> {
         Self { backend, key: Vec::new() }
     }
 
-    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
     pub fn get(&self, name: &[u8], app: &[u8]) -> Option<Vec<u8>> {
         self.backend.resolve_first(&compartment_key(name, &self.key, Some(app)))
     }
@@ -38,17 +37,11 @@ impl<'a> CollectionBinding<'a> {
         self.backend.set_expiry(&compartment_key(name, &self.key, Some(app)), seconds);
     }
 
-    pub(crate) fn resolve(&self, name: &[u8], app: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
+    pub fn resolve(&self, name: &[u8], app: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
         self.backend.resolve_multi_matches(&compartment_key(name, &self.key, Some(app)), out, exclusions);
     }
 
-    pub(crate) fn resolve_regex(
-        &self,
-        pattern: &[u8],
-        app: &[u8],
-        out: &mut Vec<VariableValue>,
-        exclusions: &KeyExclusions,
-    ) {
+    pub fn resolve_regex(&self, pattern: &[u8], app: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
         // Compile the compartment-prefixed expression on every evaluation,
         // preserving the backend's case-insensitive, multiline semantics.
         self.backend.resolve_regular_expression(&compartment_key(pattern, &self.key, Some(app)), out, exclusions);

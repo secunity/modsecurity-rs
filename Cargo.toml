@@ -8,6 +8,7 @@ members = [
     "crates/modsecurity-seclang",
     "crates/modsecurity-compat",
     "crates/modsecurity-types",
+    "crates/modsecurity-collections",
     "crates/modsecurity-operators",
     "crates/modsecurity-body",
     "crates/modsecurity-capi",
@@ -27,6 +28,7 @@ default-members = [
     "crates/modsecurity-seclang",
     "crates/modsecurity-compat",
     "crates/modsecurity-types",
+    "crates/modsecurity-collections",
     "crates/modsecurity-operators",
     "crates/modsecurity-body",
     "crates/modsecurity-capi",
@@ -73,7 +75,7 @@ default = ["libxml2", "lua", "maxmind", "lmdb", "ssdeep", "curl"]
 libxml2 = ["modsecurity-native/libxml2", "modsecurity-body/libxml2", "modsecurity-operators/libxml2"]
 lua = ["dep:mlua", "modsecurity-native/lua"]
 maxmind = ["dep:maxminddb"]
-lmdb = ["modsecurity-native/lmdb"]
+lmdb = ["modsecurity-native/lmdb", "modsecurity-collections/lmdb"]
 ssdeep = ["modsecurity-native/ssdeep", "modsecurity-operators/ssdeep"]
 curl = ["dep:curl"]
 # Mirrors the MODSEC_REGEX_DOLLAR_ENDONLY build option.
@@ -131,6 +133,8 @@ modsecurity-compat = { path = "crates/modsecurity-compat" }
 # VariableValue, VariableOrigin and the key exclusions, shared with the
 # collections.
 modsecurity-types = { path = "crates/modsecurity-types" }
+# The persistent collections and their backends, and the TX variables.
+modsecurity-collections = { path = "crates/modsecurity-collections" }
 # The request body processors (multipart, JSON, XML).
 modsecurity-body = { path = "crates/modsecurity-body" }
 # The operators that only match (@rx, @pm, ...).

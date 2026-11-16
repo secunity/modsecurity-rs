@@ -2,12 +2,12 @@
 
 use std::sync::RwLock;
 
-use crate::collection::Collection;
-use crate::collection::backend::collection_data::CollectionData;
-use crate::utils::regex::Regex;
-use crate::utils::unordered_multimap::UnorderedMultimap;
-use crate::variable_value::{VariableValue, move_to_front_reversed};
-use crate::variables::variable::KeyExclusions;
+use crate::Collection;
+use crate::backend::collection_data::CollectionData;
+use modsecurity_compat::unordered_multimap::UnorderedMultimap;
+use modsecurity_native::regex::Regex;
+use modsecurity_types::KeyExclusions;
+use modsecurity_types::variable_value::{VariableValue, move_to_front_reversed};
 
 /// Process local collection: a case insensitive multimap guarded by a
 /// reader/writer lock (the C++ code uses a `std::shared_mutex`).

@@ -136,11 +136,11 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
         }
 
         // Collections
-        "RESOURCE" => Some(Persistent::Resource.variable(selector)),
-        "IP" => Some(Persistent::Ip.variable(selector)),
-        "GLOBAL" => Some(Persistent::Global.variable(selector)),
-        "USER" => Some(Persistent::User.variable(selector)),
-        "SESSION" => Some(Persistent::Session.variable(selector)),
+        "RESOURCE" => Some(persistent::variable(Persistent::Resource, selector)),
+        "IP" => Some(persistent::variable(Persistent::Ip, selector)),
+        "GLOBAL" => Some(persistent::variable(Persistent::Global, selector)),
+        "USER" => Some(persistent::variable(Persistent::User, selector)),
+        "SESSION" => Some(persistent::variable(Persistent::Session, selector)),
         "TX" => {
             let (name, key) = match selector {
                 S::None => ("TX".to_string(), CollectionKey::All),

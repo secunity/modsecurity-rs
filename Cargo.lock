@@ -744,6 +744,7 @@ dependencies = [
  "md-5",
  "mlua",
  "modsecurity-body",
+ "modsecurity-collections",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-operators",
@@ -782,6 +783,16 @@ version = "3.0.17"
 dependencies = [
  "libc",
  "modsecurity",
+]
+
+[[package]]
+name = "modsecurity-collections"
+version = "3.0.17"
+dependencies = [
+ "libc",
+ "modsecurity-compat",
+ "modsecurity-native",
+ "modsecurity-types",
 ]
 
 [[package]]

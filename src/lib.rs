@@ -76,7 +76,8 @@ pub(crate) mod anchored_set_variable;
 pub(crate) mod anchored_set_variable_translation_proxy;
 pub(crate) mod anchored_variable;
 pub(crate) mod audit_log;
-pub(crate) mod collection;
+/// The collections (the `modsecurity-collections` crate).
+pub(crate) use modsecurity_collections as collection;
 pub(crate) mod debug_log;
 pub(crate) mod engine;
 #[cfg(feature = "http")]

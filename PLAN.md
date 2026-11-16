@@ -7,17 +7,19 @@ to-do list.
 
 ## Where things stand
 
-The engine began as one crate. It is now eight, and the engine itself has
+The engine began as one crate. It is now ten, and the engine itself has
 no `unsafe` code.
 
 | Crate | Path | Lines | Contents |
 |---|---|---|---|
-| `modsecurity` | `.` | 19,700 | the engine and its Rust API |
+| `modsecurity` | `.` | 18,100 | the engine and its Rust API |
 | `modsecurity-native` | `crates/modsecurity-native` | 1,800 | all the `unsafe`: PCRE2, libxml2, LMDB, ssdeep, Lua, libc calls |
 | `modsecurity-compat` | `crates/modsecurity-compat` | 3,500 | what reproduces C++ behavior: ACMP, the IP tree, the libstdc++-ordered multimap, yajl-style JSON, byte helpers (`chars`), number conversions (`cnum`), `strerror` |
 | `modsecurity-transformations` | `crates/modsecurity-transformations` | 2,600 | the `t:` functions |
 | `modsecurity-operators` | `crates/modsecurity-operators` | 3,600 | the 36 operators that only match |
 | `modsecurity-body` | `crates/modsecurity-body` | 2,600 | the multipart, JSON and XML body processors |
+| `modsecurity-types` | `crates/modsecurity-types` | 250 | `VariableValue`, `VariableOrigin`, the key exclusions |
+| `modsecurity-collections` | `crates/modsecurity-collections` | 1,100 | the persistent collections (in-memory and LMDB backends) and the `TX` variables |
 | `modsecurity-seclang` | `crates/modsecurity-seclang` | 400 | the grammar and the syntax tree |
 | `modsecurity-capi` | `crates/modsecurity-capi` | 750 | the `msc_*` C API: `libmodsecurity.so.3` |
 
@@ -25,8 +27,9 @@ Also in the workspace: `connectors/nginx`, `examples/axum`, and
 `others/libinjection`.
 
 Dependencies point one way: `native` and `compat` at the bottom,
-`transformations` on `compat`, `operators` and `body` on those, the engine
-on all of them, `capi` on the engine.
+`transformations` on `compat`, `operators` and `body` on those, `types`
+on `native` and `collections` on `types`, the engine on all of them,
+`capi` on the engine.
 
 ## How each extraction was done
 
@@ -88,10 +91,11 @@ that only use it could become a crate, as the operators did.
 
 ### 3. Collections
 
-`src/collection` (the trait, the in-memory and LMDB backends) depends on
-`VariableValue`, the key exclusions and `Regex`. It can become a crate
-once `VariableValue` and `VariableOrigin` sit in a small shared-types
-crate below it.
+~~`src/collection` can become a crate once `VariableValue` and
+`VariableOrigin` sit in a small shared-types crate below it.~~ Done:
+`modsecurity-types` and `modsecurity-collections` (see `REFACTORING.md`).
+The engine reaches them under their old paths (`crate::variable_value`,
+`crate::collection`).
 
 ### 4. One name table per family
 

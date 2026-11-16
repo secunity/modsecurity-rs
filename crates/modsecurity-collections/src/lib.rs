@@ -11,9 +11,9 @@ pub mod backend;
 pub mod collections;
 pub mod transaction;
 
-use crate::utils::regex::Regex;
-use crate::variable_value::VariableValue;
-use crate::variables::variable::KeyExclusions;
+use modsecurity_native::regex::Regex;
+use modsecurity_types::KeyExclusions;
+use modsecurity_types::variable_value::VariableValue;
 
 /// Builds the key of a value stored in one or two compartments:
 /// `compartment::key` or `compartment::compartment2::key`.
@@ -35,7 +35,6 @@ pub trait Collection: Send + Sync {
 
     fn set_expiry(&self, key: &[u8], expiry_seconds: i32);
 
-    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
     fn resolve_first(&self, var: &[u8]) -> Option<Vec<u8>>;
 
     fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions);
@@ -74,8 +73,7 @@ impl Persistent {
 
     /// Parses the canonical uppercase names. Callers retain their own
     /// case rules (Lua normalizes; initcol/expirevar accept lowercase only).
-    #[cfg(feature = "lua")]
-    pub(crate) fn from_name(name: &str) -> Option<Self> {
+    pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "GLOBAL" => Some(Self::Global),
             "IP" => Some(Self::Ip),

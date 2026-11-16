@@ -1,0 +1,21 @@
+[package]
+name = "modsecurity-collections"
+version = "3.0.17"
+edition = "2024"
+description = "The ModSecurity collections: the persistent ones (IP, SESSION, USER, GLOBAL, RESOURCE) with their in-memory and LMDB backends, and a transaction's TX variables"
+license = "Apache-2.0"
+publish = false
+
+[features]
+# The LMDB backend (the engine's feature of the same name).
+lmdb = ["modsecurity-native/lmdb", "dep:libc"]
+
+[dependencies]
+# VariableValue and the key exclusions the collections resolve with.
+modsecurity-types = { path = "../modsecurity-types" }
+# PCRE2 (regex lookups) and LMDB.
+modsecurity-native = { path = "../modsecurity-native" }
+# The libstdc++-ordered multimap of the in-memory and TX collections.
+modsecurity-compat = { path = "../modsecurity-compat" }
+# The errno values LMDB reports, for its error messages.
+libc = { version = "0.2", optional = true }

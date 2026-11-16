@@ -14,11 +14,11 @@ use std::os::raw::c_int;
 
 use modsecurity_native::lmdb::{self, Code, Environment, Txn};
 
-use crate::collection::Collection;
-use crate::collection::backend::collection_data::CollectionData;
-use crate::utils::regex::Regex;
-use crate::variable_value::{VariableValue, move_to_front_reversed};
-use crate::variables::variable::KeyExclusions;
+use crate::Collection;
+use crate::backend::collection_data::CollectionData;
+use modsecurity_native::regex::Regex;
+use modsecurity_types::KeyExclusions;
+use modsecurity_types::variable_value::{VariableValue, move_to_front_reversed};
 
 /// Whether LMDB failures are printed on stdout: no, as in the C++ build
 /// (where `LMDB_STDOUT_COUT` is undefined).
@@ -338,7 +338,11 @@ mod tests {
     #[test]
     fn store_resolve_expiry_regex() {
         provider_in_temp_dir();
-        let p = format!("t{}_{}", std::process::id(), crate::utils::system::now());
+        let p = format!(
+            "t{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+        );
         let k = |s: &str| format!("{}::{}", p, s).into_bytes();
         let c = Lmdb::new("IP");
 

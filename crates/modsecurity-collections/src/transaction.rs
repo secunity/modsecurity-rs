@@ -5,10 +5,10 @@
 //! The compatibility container and its initial reserve retain the observable
 //! ordering used by macro expansion and rule targets.
 
-use crate::utils::regex::Regex;
-use crate::utils::unordered_multimap::UnorderedMultimap;
-use crate::variable_value::{VariableValue, move_to_front_reversed};
-use crate::variables::variable::KeyExclusions;
+use modsecurity_compat::unordered_multimap::UnorderedMultimap;
+use modsecurity_native::regex::Regex;
+use modsecurity_types::KeyExclusions;
+use modsecurity_types::variable_value::{VariableValue, move_to_front_reversed};
 
 pub struct TransactionVariables {
     values: UnorderedMultimap<Vec<u8>>,
@@ -39,7 +39,7 @@ impl TransactionVariables {
         self.values.erase(key);
     }
 
-    pub(crate) fn resolve_multi_matches(&self, key: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
+    pub fn resolve_multi_matches(&self, key: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
         let start = out.len();
         if key.is_empty() {
             for (key, value) in self.values.iter() {
@@ -57,7 +57,7 @@ impl TransactionVariables {
         move_to_front_reversed(out, start);
     }
 
-    pub(crate) fn resolve_regex(&self, regex: &Regex, out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
+    pub fn resolve_regex(&self, regex: &Regex, out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
         let start = out.len();
         for (key, value) in self.values.iter() {
             if regex.search(key) > 0 && !exclusions.to_omit(key) {
@@ -71,9 +71,9 @@ impl TransactionVariables {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collection::Collection;
-    use crate::collection::backend::in_memory_per_process::InMemoryPerProcess;
-    use crate::variables::variable::KeyExclusion;
+    use crate::Collection;
+    use crate::backend::in_memory_per_process::InMemoryPerProcess;
+    use modsecurity_types::KeyExclusion;
 
     #[test]
     fn empty_binary_and_case_insensitive_values() {
