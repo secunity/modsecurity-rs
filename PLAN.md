@@ -1,7 +1,7 @@
 # Restructuring plan
 
 Where the crate split stands, what is left, and how each step has been
-done so far. Written on 2026-11-16 at commit `6acc4f9`. `REFACTORING.md`
+done so far. Updated on 2026-11-16 at commit `cf443a9`. `REFACTORING.md`
 has the details of every finished step; this file is the map and the
 to-do list.
 
@@ -54,99 +54,54 @@ runs Lua with the transaction); they reach it through
 
 ## What is left, in suggested order
 
-### 1. Split `Transaction`
+### 1. C-shaped APIs
 
-`src/transaction.rs` is still the hub: one struct with 59 fields that mixes
-four things. Nearly everything else in the engine takes `&mut Transaction`.
+- **Log properties are `i32` bit flags.**
+  `ModSecurity::set_server_log_cb_with_properties` takes the
+  `*_LOG_PROPERTY` constants and `RuleMessage::log` the
+  `*_LOG_MESSAGE_INFO` ones, plus a status code where -1 means "leave a
+  `%d`". `bitflags` types (`bitflags` is already in the lock file) and
+  `Option<i32>` for the code. Only the Rust API changes: the C API never
+  passes these values.
+- **The rule-set properties are about 30 `Option` fields**, each merged by
+  a hand-written `merge_value` line in `RulesSetProperties::merge_properties`
+  (`src/rules_set/properties.rs`). One settings struct declared by a macro
+  that also generates the merge; the field accesses can be rewritten from
+  the compiler's errors.
+- **55 signatures return `Result<_, String>`.** Typed errors per layer.
+  The strings end up in the parser's error messages (and the regression
+  tests compare them), so typed errors must render the same text. Worth
+  doing layer by layer, or not at all.
 
-- **Request data:** the variables (`vars`), the collections, the bodies,
-  addresses and URI.
-- **Rule-evaluation state:** `skip_next`, `marker`, `allow_type`,
-  `chained_rule_parents`, the `rule_remove_*` lists, `matched`,
-  `eval_scratch`.
-- **Body processing:** `xml`, `json`, `multipart_part_tmp_files`, the body
-  type fields.
-- **Logging and outcome:** `rules_messages`, the audit-log modifiers,
-  `intervention`, the log callback data.
+### 2. One `Rule` with a kind
 
-Suggested steps:
-1. ~~Group the fields into named sub-structs inside `Transaction`, with no
-   behavior change.~~ Done: `http`, `body`, `ctl`, `eval`, `outcome` (see
-   `REFACTORING.md`).
-2. ~~Give actions the same treatment operators got: an `ActionContext` that
-   offers what actions do.~~ Done (`src/actions/context.rs`); `setvar`,
-   `exec` and `block` still reach the transaction through
-   `ActionContext::engine()`.
-3. ~~Move the audit-log rendering into `audit_log`, reading from the
-   transaction.~~ Done (`src/audit_log/format.rs`). The differential test
-   now compares the audit logs with C++ too.
+`RuleWithActions` (`src/rule/with_actions.rs`) still carries "Rule" and
+"RuleWithActions" sections from the C++ class hierarchy, and `Rule` is an
+enum of `RuleMarker` and `RuleWithActions`. One `Rule` with a kind
+(marker, `SecRule`, `SecAction`, `SecRuleScript`) would match what the
+engine does with them. It changes types, not paths: a step of its own.
 
-### 2. Actions
+### 3. Actions in a crate (optional)
 
-~~`src/actions` is 53 small files behind `Box<dyn Action>`; a closed
-`enum Action` would remove the downcast hooks.~~ Done: `RuleAction` has
-one variant per action type and the hooks are gone (see
-`REFACTORING.md`). After the `ActionContext` of step 1, the actions
-that only use it could become a crate, as the operators did.
-
-### 3. Collections
-
-~~`src/collection` can become a crate once `VariableValue` and
-`VariableOrigin` sit in a small shared-types crate below it.~~ Done:
-`modsecurity-types` and `modsecurity-collections` (see `REFACTORING.md`).
-The engine reaches them as `crate::variables::variable_value` and
-`crate::collection`.
-
-### 4. One name table per family
-
-~~Each family should own a single registry that the parser consults.~~
-Done (see `REFACTORING.md`):
-
-- **Operators:** `modsecurity_operators::seclang_operator` (the grammar's
-  table) next to `instantiate` (C++ `Operator::instantiate`); they differ
-  on purpose (`@pmf`, `@noMatch`, the unsupported ones).
-- **Variables:** `src/variables/names.rs`, read by `new_variable` and by
-  Lua's lookups by name, with the C++ differences as columns.
-- **Transformations:** two lookups on purpose, both in the crate.
-- Actions have no second lookup: the parser's dispatch is the only one.
-
-### 5. Module layout of the engine
-
-~~The top level had 25 flat files that mirrored C++ headers.~~ Done: 10
-remain (`lib`, `instance`, `phases`, `transaction`, `intervention`,
-`debug_log`, `run_time_string`, `unique_id`, `http_support`,
-`middleware`); the rules are `rule/`, the rule set `rules_set/`, the
-anchored variables under `variables/` (see `REFACTORING.md`).
-
-Still open: `RuleWithActions` carries "Rule" and "RuleWithActions"
-sections from the C++ class hierarchy; it could be one `Rule` with a
-kind. That changes types, not paths, and is a step of its own.
-
-### 6. C-shaped APIs
-
-- ~~`Regex::search` returns an `i32` that callers compare with `<= 0`,
-  and constructors need `has_error()` checks.~~ Done: `Regex::compile`
-  returns a `Result`, `is_match` a `bool`, the searches
-  `Result<(), MatchError>` (see `REFACTORING.md`).
-- 55 signatures return `Result<_, String>`. Typed errors per layer.
-- Log properties are `i32` bit flags.
-- The rule-set properties are about 30 `Option` fields, each merged by a
-  hand-written line.
+The actions that use only `ActionContext` could move to a crate, as the
+operators did. What it would take: the macro strings of 11 actions
+(`RunTimeString`, which resolves engine variables) behind an opaque type
+the context expands; the parser applying the configuration actions (`id`,
+`phase`, `rev`, ...) itself instead of `configure(&mut RuleWithActions)`;
+and the engine enums they use (`Phases`, `Persistent`, `RequestBodyType`,
+`AuditLogStatus`, ...) in `modsecurity-types`. `setvar`, `exec` and
+`block` stay in the engine regardless. Most actions are a few lines, so
+the gain is small next to the work.
 
 ## Open items
 
-- ~~Three of the five engine-side operators could move to the operators
-  crate.~~ Done: `@rbl`, `@validateDTD` and `@validateSchema` are in
-  `modsecurity-operators` (`Context::httpbl_key`, `Context::xml_document`).
-  `@inspectFile` (Lua with the whole transaction) and `@geoLookup` (fills
-  `GEO` from the rule set's database) are engine features and stay.
 - **`atoi` / `stoi` in the engine wrap on overflow.**
   `utils::string::atoi` and `stoi` wrap where glibc saturates. They differ
   from C only for numbers of 19 or more digits. `compat::cnum` has the
   faithful versions. Switching is a behavior change: it needs its own
   commit, a regression test, and an entry in `MIGRATION.md`.
 - **Other number parsers not yet in `cnum`:** `strtol16`
-  (`rules_set_properties.rs`), `strtol_to_byte` and `strtol_digits` (the
+  (`src/rules_set/properties.rs`), `strtol_to_byte` and `strtol_digits` (the
   transformations crate). They are specialized; check each against
   `cnum::strtoll` before merging.
 - **CRS test 920390-1 is flaky.** The test backend resets the connection
@@ -179,7 +134,9 @@ The rules are in `AGENT.md`. These points cost time to find out:
   format beyond a few substrings in the regression suite.
 - **Instruction counts (callgrind) are the steadier benchmark here**, but
   builds of identical code from different worktrees differ by up to about
-  0.4% (`corpus_pl4`), so treat smaller differences as noise.
+  0.5% (`corpus_pl4`), so treat smaller differences as noise. A first
+  10-round wall-clock run beyond 3% was noise every time on 2026-11-16:
+  rerun that scenario alone with 20 rounds before concluding.
 - **The debug log is compared line by line** by the differential. When a
   step rewrites logging calls, keep the statements in order; the
   differential is the check that matters most for these refactors.
