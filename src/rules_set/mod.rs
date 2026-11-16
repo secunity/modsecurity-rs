@@ -1,11 +1,15 @@
 //! A loaded rule set: loading, merging and per-phase evaluation.
 
+pub mod exceptions;
+pub mod phases;
+pub mod properties;
+
 use crate::actions::disruptive::allow::AllowType;
 use crate::debug_log::DebugLog;
 use crate::modsecurity::Phases;
 use crate::parser::driver::Driver;
-use crate::rules_set_phases::RulesSetPhases;
-use crate::rules_set_properties::RulesSetProperties;
+use crate::rules_set::phases::RulesSetPhases;
+use crate::rules_set::properties::RulesSetProperties;
 use crate::transaction::Transaction;
 use crate::utils::https_client::HttpsClient;
 

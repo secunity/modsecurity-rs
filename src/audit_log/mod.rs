@@ -357,7 +357,7 @@ mod tests {
     use crate::rule::message::RuleMessage;
     use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
-    use crate::rules_set_properties::RuleEngine;
+    use crate::rules_set::properties::RuleEngine;
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
 

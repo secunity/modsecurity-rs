@@ -7,8 +7,8 @@ use crate::modsecurity::Phases;
 use crate::rule::Rule;
 use crate::rule::marker::RuleMarker;
 use crate::rule::with_actions::RuleWithActions;
-use crate::rules_set_phases::RulesSetPhases;
-use crate::rules_set_properties::RulesSetProperties;
+use crate::rules_set::phases::RulesSetPhases;
+use crate::rules_set::properties::RulesSetProperties;
 use crate::utils::system::is_file;
 
 /// A position in a configuration file, for error messages: the file (an

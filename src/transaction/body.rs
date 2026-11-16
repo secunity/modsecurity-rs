@@ -115,7 +115,7 @@ impl crate::request_body_processor::xml::Context for Transaction<'_> {
 
     fn args_mode(&self) -> crate::request_body_processor::xml::IntoArgs {
         use crate::request_body_processor::xml::IntoArgs;
-        use crate::rules_set_properties::ParseXmlIntoArgs;
+        use crate::rules_set::properties::ParseXmlIntoArgs;
         match self.ctl.parse_xml_into_args {
             Some(ParseXmlIntoArgs::On) => IntoArgs::On,
             Some(ParseXmlIntoArgs::OnlyArgs) => IntoArgs::OnlyArgs,

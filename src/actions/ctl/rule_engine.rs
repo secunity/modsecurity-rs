@@ -3,15 +3,15 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::rules_set_properties::{self, rule_engine_state_string};
+use crate::rules_set::properties::{self, rule_engine_state_string};
 
 #[derive(Debug)]
 pub struct RuleEngine {
-    state: rules_set_properties::RuleEngine,
+    state: properties::RuleEngine,
 }
 
 impl RuleEngine {
-    pub fn new(state: rules_set_properties::RuleEngine) -> Self {
+    pub fn new(state: properties::RuleEngine) -> Self {
         RuleEngine { state }
     }
 }
@@ -46,7 +46,7 @@ mod tests {
     use crate::audit_log::{AuditLogStatus, PartsChange};
     use crate::modsecurity::ModSecurity;
     use crate::rule::message::RuleMessage;
-    use crate::rules_set_properties::ParseXmlIntoArgs as ParseXmlIntoArgsState;
+    use crate::rules_set::properties::ParseXmlIntoArgs as ParseXmlIntoArgsState;
     use crate::transaction::RequestBodyType;
     use crate::transaction::Transaction;
 
@@ -63,10 +63,10 @@ mod tests {
         let rules = rules();
         let mut t = Transaction::new(&ms, &rules, None);
 
-        let engine = RuleEngine::new(rules_set_properties::RuleEngine::DetectionOnly);
+        let engine = RuleEngine::new(properties::RuleEngine::DetectionOnly);
         assert_eq!(engine.name(), "ctl");
         run(&engine, &mut t);
-        assert_eq!(t.ctl.rule_engine, Some(rules_set_properties::RuleEngine::DetectionOnly));
+        assert_eq!(t.ctl.rule_engine, Some(properties::RuleEngine::DetectionOnly));
         assert!(has_log(&t, "Setting SecRuleEngine to DetectionOnly as requested by a ctl:ruleEngine action"));
 
         run(&AuditEngine::new(AuditLogStatus::RelevantOnly), &mut t);

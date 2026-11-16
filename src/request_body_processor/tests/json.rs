@@ -1,7 +1,7 @@
 mod tests {
     use crate::modsecurity::ModSecurity;
     use crate::request_body_processor::multipart_tests::test_support::{log, new_rules, run};
-    use crate::rules_set_properties::parse_config_number;
+    use crate::rules_set::properties::parse_config_number;
     use crate::transaction::RequestBodyType;
 
     fn args(body: &[u8], depth: Option<&str>, limit: Option<&str>) -> (Vec<(String, String)>, String) {

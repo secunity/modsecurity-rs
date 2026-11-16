@@ -44,7 +44,7 @@ use crate::request_body_processor::xml::Xml;
 use crate::rule::message::RuleMessage;
 use crate::rule::with_actions::{RuleWithActions, TransformationResults};
 use crate::rules_set::RulesSet;
-use crate::rules_set_properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code};
+use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code};
 use crate::utils::decode::uri_decode;
 use crate::utils::string::{double_to_string, is_space, split, ssplit, tolower};
 use crate::variable_value::VariableValue;

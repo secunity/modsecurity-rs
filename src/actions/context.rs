@@ -6,7 +6,7 @@ use crate::collection::Persistent;
 use crate::intervention::Intervention;
 use crate::rule::message::{CLIENT_LOG_MESSAGE_INFO, RuleMessage};
 use crate::rule::with_actions::RuleWithActions;
-use crate::rules_set_properties::{ParseXmlIntoArgs, RuleEngine};
+use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{RequestBodyType, Transaction};
 

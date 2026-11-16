@@ -3,15 +3,15 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::rules_set_properties::{self, config_xml_parse_xml_into_args_string};
+use crate::rules_set::properties::{self, config_xml_parse_xml_into_args_string};
 
 #[derive(Debug)]
 pub struct ParseXmlIntoArgs {
-    value: rules_set_properties::ParseXmlIntoArgs,
+    value: properties::ParseXmlIntoArgs,
 }
 
 impl ParseXmlIntoArgs {
-    pub fn new(value: rules_set_properties::ParseXmlIntoArgs) -> Self {
+    pub fn new(value: properties::ParseXmlIntoArgs) -> Self {
         ParseXmlIntoArgs { value }
     }
 }

@@ -11,7 +11,7 @@ use crate::actions::rule_action::RuleAction;
 use crate::audit_log::AuditLog;
 use crate::debug_log::{DebugLog, DefaultDebugLog};
 use crate::modsecurity::NUMBER_OF_PHASES;
-use crate::rules_exceptions::RulesExceptions;
+use crate::rules_set::exceptions::RulesExceptions;
 use crate::utils::geo_lookup::GeoDb;
 
 /// Numeric configuration values (`ConfigInt`, `ConfigUnsignedInt`,

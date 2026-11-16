@@ -3,7 +3,7 @@
 //! logs, and the JSON format.
 
 use crate::audit_log::AuditLog as AL;
-use crate::rules_set_properties::rule_engine_state_string;
+use crate::rules_set::properties::rule_engine_state_string;
 use crate::transaction::Transaction;
 use crate::unique_id::UniqueId;
 use crate::utils::json::JsonGen;

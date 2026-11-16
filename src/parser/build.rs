@@ -28,7 +28,7 @@ use crate::parser::syntax::{
 use crate::rule::script::RuleScript;
 use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
 use crate::rule::with_operator::RuleWithOperator;
-use crate::rules_set_properties::{
+use crate::rules_set::properties::{
     BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
     parse_octal_mode,
 };
@@ -606,7 +606,7 @@ impl Builder<'_, '_> {
     /// `ctl:<option>=<value>`
     fn ctl(&mut self, text: &str, option: &str) -> Res<Result<ParsedAction, String>> {
         use crate::audit_log::AuditLogStatus;
-        use crate::rules_set_properties::{ParseXmlIntoArgs, RuleEngine};
+        use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
         let invalid = |b: &mut Self| b.fail(&format!("Expecting an action, got: {}", text));
         let Some((name, value)) = option.split_once('=') else {
             return invalid(self);

@@ -24,7 +24,7 @@ use crate::rule::message::RuleMessage;
 use crate::rule::script::RuleScript;
 use crate::rule::with_operator::RuleWithOperator;
 use crate::rules_set::RulesSet;
-use crate::rules_set_properties::RuleEngine;
+use crate::rules_set::properties::RuleEngine;
 use crate::transaction::Transaction;
 use crate::utils::string::limit_to;
 

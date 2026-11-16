@@ -53,7 +53,7 @@ use tower_service::Service;
 
 use crate::modsecurity::ModSecurity;
 use crate::rules_set::RulesSet;
-use crate::rules_set_properties::RuleEngine;
+use crate::rules_set::properties::RuleEngine;
 use crate::transaction::Transaction;
 
 /// The response body: buffered by the middleware (its own responses, and

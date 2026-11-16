@@ -4,7 +4,7 @@ pub(crate) mod test_support {
     pub use crate::debug_log::test_support::CaptureLog;
     use crate::modsecurity::ModSecurity;
     use crate::rules_set::RulesSet;
-    use crate::rules_set_properties::RulesSetProperties;
+    use crate::rules_set::properties::RulesSetProperties;
     use crate::transaction::{RequestBodyType, Transaction};
 
     /// A rule set with an in-memory debug log at level 9.
@@ -311,7 +311,7 @@ mod regression_dump {
     use super::test_support::{CaptureLog, log};
     use crate::modsecurity::ModSecurity;
     use crate::rules_set::RulesSet;
-    use crate::rules_set_properties::{ParseXmlIntoArgs, RulesSetProperties, parse_config_number, parse_octal_mode};
+    use crate::rules_set::properties::{ParseXmlIntoArgs, RulesSetProperties, parse_config_number, parse_octal_mode};
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::utils::json::{JsonValue, parse_tree};
 

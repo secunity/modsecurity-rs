@@ -62,7 +62,7 @@ mod tests {
     use super::*;
     use crate::modsecurity::ModSecurity;
     use crate::rules_set::RulesSet;
-    use crate::rules_set_properties::UnicodeMapHolder;
+    use crate::rules_set::properties::UnicodeMapHolder;
     use std::sync::Arc;
 
     #[test]
