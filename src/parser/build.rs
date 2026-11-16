@@ -860,9 +860,9 @@ impl Builder<'_, '_> {
         let s = String::from_utf8_lossy(&v).into_owned();
         let p = &mut self.driver.properties;
         match dir {
-            Effect::AuditLogDirMode => p.audit_log.set_storage_dir_mode(strtol_int(&s, 8)),
+            Effect::AuditLogDirMode => p.audit_log.set_storage_dir_mode(strtol_int(&s, 8) as u32),
             Effect::AuditLogStorageDir => p.audit_log.set_storage_dir(&s),
-            Effect::AuditLogFileMode => p.audit_log.set_file_mode(strtol_int(&s, 8)),
+            Effect::AuditLogFileMode => p.audit_log.set_file_mode(strtol_int(&s, 8) as u32),
             Effect::AuditLog2 => p.audit_log.set_file_path2(&s),
             Effect::AuditLogParts => p.audit_log.set_parts(&s),
             Effect::AuditLog => p.audit_log.set_file_path1(&s),

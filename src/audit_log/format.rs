@@ -2,7 +2,7 @@
 //! (sections `--<boundary>-A--` ... `Z`), its index line for concurrent
 //! logs, and the JSON format.
 
-use crate::audit_log::AuditLog as AL;
+use crate::audit_log::Parts;
 use crate::rule::message::LogParts;
 use crate::rules_set::properties::rule_engine_state_string;
 use crate::transaction::Transaction;
@@ -55,7 +55,7 @@ pub(crate) fn native_index_line(t: &Transaction<'_>, filename: &str, size: f64, 
 }
 
 /// The audit log entry in the native format, with the given parts.
-pub(crate) fn native(t: &Transaction<'_>, parts: i32, trailer: &str, prefix: &str) -> Vec<u8> {
+pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &str) -> Vec<u8> {
     let tstr = crate::utils::system::strftime_local(t.time_stamp, "[%d/%b/%Y:%H:%M:%S %z]");
     let p = prefix.as_bytes();
     let mut a: Vec<u8> = Vec::new();
@@ -78,7 +78,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: i32, trailer: &str, prefix: &st
         .as_bytes(),
     );
 
-    if parts & AL::B_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::B) {
         section(&mut a, "B");
         a.extend_from_slice(p);
         a.extend_from_slice(&dash_if_empty(Some(t.vars.request_method.evaluate())));
@@ -97,18 +97,18 @@ pub(crate) fn native(t: &Transaction<'_>, parts: i32, trailer: &str, prefix: &st
         }
         line(&mut a, p);
     }
-    if parts & AL::C_AUDIT_LOG_PART != 0 && !t.http.request_body.is_empty() {
+    if parts.contains(Parts::C) && !t.http.request_body.is_empty() {
         section(&mut a, "C");
         a.extend_from_slice(p);
         line(&mut a, &t.http.request_body);
         line(&mut a, p);
     }
-    if parts & AL::D_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::D) {
         section(&mut a, "D");
         line(&mut a, p);
         // TODO (C++): write audit_log D part.
     }
-    if parts & AL::E_AUDIT_LOG_PART != 0 && !t.http.response_body.is_empty() {
+    if parts.contains(Parts::E) && !t.http.response_body.is_empty() {
         let body = to_hex_if_needed(&t.http.response_body, false);
         section(&mut a, "E");
         if !body.is_empty() {
@@ -117,7 +117,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: i32, trailer: &str, prefix: &st
         }
         line(&mut a, p);
     }
-    if parts & AL::F_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::F) {
         section(&mut a, "F");
         a.extend_from_slice(p);
         line(&mut a, format!("HTTP/{} {}", t.http.http_version, t.http.http_code_returned).as_bytes());
@@ -131,12 +131,12 @@ pub(crate) fn native(t: &Transaction<'_>, parts: i32, trailer: &str, prefix: &st
         }
     }
     line(&mut a, p);
-    if parts & AL::G_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::G) {
         section(&mut a, "G");
         a.push(b'\n');
         // TODO (C++): write audit_log G part.
     }
-    if parts & AL::H_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::H) {
         section(&mut a, "H");
         // A status of -1 reads as "no code" (the `%d` placeholder), as the
         // C++ comparison with -1 does.
@@ -147,15 +147,15 @@ pub(crate) fn native(t: &Transaction<'_>, parts: i32, trailer: &str, prefix: &st
         }
         line(&mut a, p);
     }
-    if parts & AL::I_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::I) {
         section(&mut a, "I");
         line(&mut a, p);
     }
-    if parts & AL::J_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::J) {
         section(&mut a, "J");
         line(&mut a, p);
     }
-    if parts & AL::K_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::K) {
         section(&mut a, "K");
         line(&mut a, p);
     }
@@ -165,7 +165,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: i32, trailer: &str, prefix: &st
 }
 
 /// The audit log entry in the JSON format, with the given parts.
-pub(crate) fn json(t: &Transaction<'_>, parts: i32) -> Vec<u8> {
+pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
     let ts = asc_time(t.time_stamp);
     let unique_id = UniqueId::unique_id();
     let mut g = JsonGen::new();
@@ -192,11 +192,11 @@ pub(crate) fn json(t: &Transaction<'_>, parts: i32) -> Vec<u8> {
     g.add("http_version", t.http.http_version.as_bytes());
     g.add("hostname", t.http.request_host_name.as_bytes());
     g.add("uri", &t.http.uri);
-    if parts & AL::C_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::C) {
         // FIXME (C++): check for the binary content size.
         g.add("body", to_hex_if_needed(&t.http.request_body, false).as_bytes());
     }
-    if parts & AL::B_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::B) {
         g.string(b"headers");
         g.map_open();
         let mut l = Vec::new();
@@ -212,11 +212,11 @@ pub(crate) fn json(t: &Transaction<'_>, parts: i32) -> Vec<u8> {
     // response
     g.string(b"response");
     g.map_open();
-    if parts & AL::E_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::E) {
         g.add("body", &t.http.response_body);
     }
     g.add_num("http_code", t.http.http_code_returned as i64);
-    if parts & AL::F_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::F) {
         g.string(b"headers");
         g.map_open();
         let mut l = Vec::new();
@@ -230,7 +230,7 @@ pub(crate) fn json(t: &Transaction<'_>, parts: i32) -> Vec<u8> {
     g.map_close();
 
     // producer
-    if parts & AL::H_AUDIT_LOG_PART != 0 {
+    if parts.contains(Parts::H) {
         g.string(b"producer");
         g.map_open();
         g.add("modsecurity", t.ms.who_am_i().as_bytes());

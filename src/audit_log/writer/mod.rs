@@ -6,7 +6,7 @@ pub mod serial;
 
 use std::sync::Arc;
 
-use crate::audit_log::{AuditLog, AuditLogType, SetupError};
+use crate::audit_log::{AuditLog, AuditLogType, Parts, SetupError};
 use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFile;
 
@@ -41,7 +41,7 @@ impl Writer {
     }
 
     /// Saves the `parts` of `transaction`.
-    pub fn write(&self, audit: &AuditLog, transaction: &Transaction<'_>, parts: i32) -> Result<(), String> {
+    pub fn write(&self, audit: &AuditLog, transaction: &Transaction<'_>, parts: Parts) -> Result<(), String> {
         match self {
             Writer::Serial { log } => serial::write(log, audit, transaction, parts),
             Writer::Parallel { log, log2 } => {

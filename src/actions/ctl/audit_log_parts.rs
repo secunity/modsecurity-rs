@@ -3,13 +3,13 @@
 
 use crate::actions::action::{Action, name_and_payload};
 use crate::actions::context::ActionContext;
-use crate::audit_log::PartsChange;
+use crate::audit_log::{Parts, PartsChange};
 
 #[derive(Debug)]
 pub struct AuditLogParts {
     name: String,
     change: PartsChange,
-    parts: String,
+    parts: Parts,
 }
 
 impl AuditLogParts {
@@ -20,7 +20,7 @@ impl AuditLogParts {
         AuditLogParts {
             name: name.to_string(),
             change: if sign == "+" { PartsChange::Add } else { PartsChange::Remove },
-            parts: p.get(15..).unwrap_or("").to_string(),
+            parts: Parts::from_letters(p.get(15..).unwrap_or("")),
         }
     }
 }
@@ -31,6 +31,6 @@ impl Action for AuditLogParts {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        cx.change_audit_log_parts(self.change, self.parts.clone());
+        cx.change_audit_log_parts(self.change, self.parts);
     }
 }

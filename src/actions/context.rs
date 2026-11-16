@@ -1,7 +1,7 @@
 //! [`ActionContext`]: what an action may do when it runs.
 
 use crate::actions::disruptive::allow::AllowType;
-use crate::audit_log::{AuditLogStatus, PartsChange};
+use crate::audit_log::{AuditLogStatus, Parts, PartsChange};
 use crate::collection::Persistent;
 use crate::intervention::Intervention;
 use crate::rule::Rule;
@@ -148,7 +148,7 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
         self.t.ctl.audit_engine = Some(status);
     }
 
-    pub fn change_audit_log_parts(&mut self, change: PartsChange, parts: String) {
+    pub fn change_audit_log_parts(&mut self, change: PartsChange, parts: Parts) {
         self.t.ctl.audit_log_modifier.push((change, parts));
     }
 

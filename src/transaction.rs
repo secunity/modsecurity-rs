@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use crate::actions::disruptive::allow::AllowType;
 use crate::actions::transformation::Transformation;
-use crate::audit_log::{self, AuditLogStatus, PartsChange};
+use crate::audit_log::{AuditLogStatus, Parts, PartsChange};
 use crate::collection::collections::Collections;
 use crate::instance::ModSecurity;
 use crate::intervention::Intervention;
@@ -312,7 +312,7 @@ pub(crate) struct CtlOverrides {
     /// `ctl:auditEngine`.
     pub(crate) audit_engine: Option<AuditLogStatus>,
     /// `ctl:auditLogParts` changes, in rule order.
-    pub(crate) audit_log_modifier: Vec<(PartsChange, String)>,
+    pub(crate) audit_log_modifier: Vec<(PartsChange, Parts)>,
     pub(crate) rule_remove_by_id: Vec<i32>,
     pub(crate) rule_remove_by_id_range: Vec<(i32, i32)>,
     pub(crate) rule_remove_by_tag: Vec<String>,
@@ -1173,18 +1173,15 @@ impl<'a> Transaction<'a> {
 
         if !self.ctl.audit_log_modifier.is_empty() {
             crate::ms_dbg!(self, 4, "There was an audit log modifier for this transaction.");
-            crate::ms_dbg!(self, 7, "AuditLog parts before modification(s): {}.", parts);
+            crate::ms_dbg!(self, 7, "AuditLog parts before modification(s): {}.", parts.bits());
             for (op, p) in &self.ctl.audit_log_modifier {
-                parts = match op {
-                    PartsChange::Add => audit_log::AuditLog::add_parts(parts, p),
-                    PartsChange::Remove => audit_log::AuditLog::remove_parts(parts, p),
-                };
+                parts = op.apply(parts, *p);
             }
         }
         crate::ms_dbg!(self, 8, "Checking if this request is relevant to be part of the audit logs.");
-        let saved = audit.save_if_relevant(self, Some(parts));
+        let saved = audit.save_if_relevant(self, parts);
         if saved {
-            crate::ms_dbg!(self, 8, "Request was relevant to be saved. Parts: {}", parts);
+            crate::ms_dbg!(self, 8, "Request was relevant to be saved. Parts: {}", parts.bits());
         }
     }
 

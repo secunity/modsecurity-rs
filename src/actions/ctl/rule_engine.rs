@@ -43,7 +43,7 @@ mod tests {
     use crate::actions::ctl::request_body_processor_json::RequestBodyProcessorJSON;
     use crate::actions::ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED;
     use crate::actions::ctl::request_body_processor_xml::RequestBodyProcessorXML;
-    use crate::audit_log::{AuditLogStatus, PartsChange};
+    use crate::audit_log::{AuditLogStatus, Parts, PartsChange};
     use crate::instance::ModSecurity;
     use crate::rule::message::RuleMessage;
     use crate::rules_set::properties::ParseXmlIntoArgs as ParseXmlIntoArgsState;
@@ -89,7 +89,7 @@ mod tests {
         run(&AuditLogParts::new("ctl:auditLogParts=-HK"), &mut t);
         assert_eq!(
             t.ctl.audit_log_modifier,
-            vec![(PartsChange::Add, "E".to_string()), (PartsChange::Remove, "HK".to_string())]
+            vec![(PartsChange::Add, Parts::E), (PartsChange::Remove, Parts::H | Parts::K)]
         );
 
         run(&RequestBodyProcessorJSON::new("ctl:requestBodyProcessor=JSON"), &mut t);

@@ -5,7 +5,7 @@ use crate::audit_log::format;
 use std::sync::Arc;
 
 use crate::audit_log::writer::{Writer, generate_boundary};
-use crate::audit_log::{AuditLog, AuditLogFormat, SetupError};
+use crate::audit_log::{AuditLog, AuditLogFormat, Parts, SetupError};
 use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFile;
 
@@ -17,7 +17,7 @@ pub(super) fn write(
     log: &Arc<SharedFile>,
     audit: &AuditLog,
     transaction: &Transaction<'_>,
-    parts: i32,
+    parts: Parts,
 ) -> Result<(), String> {
     // As in C++, the format comes from the transaction's rule set.
     let msg = if transaction.rules.properties.audit_log.format == Some(AuditLogFormat::Json) {

@@ -12,7 +12,7 @@ use crate::utils::md5::Md5;
 use std::sync::Arc;
 
 use crate::audit_log::writer::{Writer, generate_boundary};
-use crate::audit_log::{AuditLog, AuditLogFormat, SetupError};
+use crate::audit_log::{AuditLog, AuditLogFormat, Parts, SetupError};
 use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFile;
 use crate::utils::system::{create_dir, strerror, strftime_local};
@@ -67,7 +67,7 @@ pub(super) fn open(audit: &AuditLog) -> Result<Writer, SetupError> {
     let log2 = open(&audit.path2)?;
 
     if !audit.storage_dir.is_empty() {
-        create_dir(&audit.storage_dir, audit.directory_permission() as u32)
+        create_dir(&audit.storage_dir, audit.directory_permission())
             .map_err(|message| message.map_or(SetupError::Unreported, SetupError::Reported))?;
     }
 
@@ -80,7 +80,7 @@ pub(super) fn write(
     index: Option<&Arc<SharedFile>>,
     audit: &AuditLog,
     transaction: &Transaction<'_>,
-    parts: i32,
+    parts: Parts,
 ) -> Result<(), String> {
     let ts = transaction.time_stamp;
     let mut file_name = log_file_path(
@@ -103,7 +103,7 @@ pub(super) fn write(
         return Err("Log path is not valid.".to_string());
     }
 
-    let dir_mode = audit.directory_permission() as u32;
+    let dir_mode = audit.directory_permission();
     // (Writing only needs to know that it failed.)
     create_dir(&format!("{}{}", log_path, log_file_path(ts, YEAR_MONTH_DAY_DIRECTORY)), dir_mode)
         .map_err(Option::unwrap_or_default)?;
@@ -114,13 +114,12 @@ pub(super) fn write(
     .map_err(Option::unwrap_or_default)?;
 
     // open(fileName, O_CREAT | O_WRONLY | O_APPEND, filePermission)
-    let mut file =
-        OpenOptions::new()
-            .create(true)
-            .append(true)
-            .mode(audit.file_permission() as u32)
-            .open(&file_name)
-            .map_err(|e| format!("Not able to open: {}. {}", file_name, strerror(e.raw_os_error().unwrap_or(0))))?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(audit.file_permission())
+        .open(&file_name)
+        .map_err(|e| format!("Not able to open: {}. {}", file_name, strerror(e.raw_os_error().unwrap_or(0))))?;
     // The C++ code reopens the file with an std::ofstream (append) and
     // ignores write errors.
     let _ = file.write_all(&log);

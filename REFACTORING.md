@@ -916,3 +916,21 @@ one of each, in `modsecurity-types` (`debug.rs`):
 The operators and body crates depend on `modsecurity-types` for it. The
 messages and their order are unchanged (the differential test compares
 the debug log line by line).
+
+## Typed audit log parts
+
+The parts of an audit log entry were `i32` bit masks
+(`AuditLog::A_AUDIT_LOG_PART` ... `Z_AUDIT_LOG_PART`, tested with
+`parts & X != 0`). They are `audit_log::Parts` now, a `bitflags` type with
+the same bit values (`Parts::A` ... `Parts::Z`, `Parts::DEFAULT`,
+`Parts::from_letters`); the debug log still shows a set as its number
+(`parts.bits()`).
+
+- `ctl:auditLogParts` reads its letters when the rule is loaded, and a
+  transaction keeps `(PartsChange, Parts)` instead of the text;
+  `PartsChange::apply` replaces `AuditLog::add_parts` / `remove_parts`.
+- `AuditLog::save_if_relevant` takes the parts. It took an `Option`, whose
+  `None` meant "the configured parts, or all of them when none are
+  configured" (C++ `m_parts` of -1); the one caller always passed them.
+- The file and directory modes are `u32`, converted where the directive
+  is read instead of where the files are created.

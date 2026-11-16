@@ -79,10 +79,10 @@ pub struct AuditLog {
     pub format: Option<AuditLogFormat>,
 
     /// `SecAuditLogParts`, when set.
-    parts: Option<i32>,
+    parts: Option<Parts>,
     /// `SecAuditLogFileMode` / `SecAuditLogDirMode`, when set.
-    file_permission: Option<i32>,
-    directory_permission: Option<i32>,
+    file_permission: Option<u32>,
+    directory_permission: Option<u32>,
 
     /// `SecAuditEngine` (off when not set).
     status: Option<AuditLogStatus>,
@@ -105,77 +105,98 @@ impl Default for AuditLog {
     }
 }
 
-/// The parts whose letter (either case) appears anywhere in `new_parts`.
-fn parts_in(new_parts: &str) -> i32 {
-    const LETTERS: [(u8, i32); 12] = [
-        (b'A', AuditLog::A_AUDIT_LOG_PART),
-        (b'B', AuditLog::B_AUDIT_LOG_PART),
-        (b'C', AuditLog::C_AUDIT_LOG_PART),
-        (b'D', AuditLog::D_AUDIT_LOG_PART),
-        (b'E', AuditLog::E_AUDIT_LOG_PART),
-        (b'F', AuditLog::F_AUDIT_LOG_PART),
-        (b'G', AuditLog::G_AUDIT_LOG_PART),
-        (b'H', AuditLog::H_AUDIT_LOG_PART),
-        (b'I', AuditLog::I_AUDIT_LOG_PART),
-        (b'J', AuditLog::J_AUDIT_LOG_PART),
-        (b'K', AuditLog::K_AUDIT_LOG_PART),
-        (b'Z', AuditLog::Z_AUDIT_LOG_PART),
-    ];
-    let b = new_parts.as_bytes();
-    LETTERS.iter().filter(|(c, _)| b.contains(c) || b.contains(&c.to_ascii_lowercase())).fold(0, |acc, (_, p)| acc | p)
+bitflags::bitflags! {
+    /// The parts of an audit log entry (`SecAuditLogParts`). The bits are
+    /// those of the C++ `AuditLog::AuditLogParts` enumeration: the debug
+    /// log shows a set of parts as that number.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Parts: i32 {
+        /// Audit log header (mandatory).
+        const A = 2;
+        /// Request headers.
+        const B = 4;
+        /// Request body (present only if the request body exists and ModSecurity
+        /// is configured to intercept it).
+        const C = 8;
+        /// Reserved for intermediary response headers; not implemented yet.
+        const D = 16;
+        /// Intermediary response body (present only if ModSecurity is configured
+        /// to intercept response bodies, and if the audit log engine is
+        /// configured to record it). Intermediary response body is the same as
+        /// the actual response body unless ModSecurity intercepts the
+        /// intermediary response body, in which case the actual response body
+        /// will contain the error message (either the Apache default error
+        /// message, or the ErrorDocument page).
+        const E = 32;
+        /// Final response headers (excluding the Date and Server headers, which
+        /// are always added by Apache in the late stage of content delivery).
+        const F = 64;
+        /// Reserved for the actual response body; not implemented yet.
+        const G = 128;
+        /// Audit log trailer.
+        const H = 256;
+        /// This part is a replacement for part C. It will log the same data as C
+        /// in all cases except when multipart/form-data encoding in used. In this
+        /// case, it will log a fake application/x-www-form-urlencoded body that
+        /// contains the information about parameters but not about the files.
+        /// This is handy if you don't want to have (often large) files stored in
+        /// your audit logs.
+        const I = 512;
+        /// This part contains information about the files uploaded using
+        /// multipart/form-data encoding.
+        const J = 1024;
+        /// This part contains a full list of every rule that matched (one per
+        /// line) in the order they were matched. The rules are fully qualified
+        /// and will thus show inherited actions and default operators.
+        const K = 2048;
+        /// Final boundary, signifies the end of the entry (mandatory).
+        const Z = 4096;
+    }
+}
+
+impl Parts {
+    /// The parts logged when `SecAuditLogParts` is not set.
+    pub const DEFAULT: Parts = Parts::A.union(Parts::B).union(Parts::C).union(Parts::F).union(Parts::H).union(Parts::Z);
+
+    /// The parts whose letter (either case) appears anywhere in `letters`;
+    /// other bytes are ignored.
+    pub fn from_letters(letters: &str) -> Parts {
+        const LETTERS: [(u8, Parts); 12] = [
+            (b'A', Parts::A),
+            (b'B', Parts::B),
+            (b'C', Parts::C),
+            (b'D', Parts::D),
+            (b'E', Parts::E),
+            (b'F', Parts::F),
+            (b'G', Parts::G),
+            (b'H', Parts::H),
+            (b'I', Parts::I),
+            (b'J', Parts::J),
+            (b'K', Parts::K),
+            (b'Z', Parts::Z),
+        ];
+        let b = letters.as_bytes();
+        LETTERS
+            .iter()
+            .filter(|(c, _)| b.contains(c) || b.contains(&c.to_ascii_lowercase()))
+            .fold(Parts::empty(), |acc, (_, p)| acc | *p)
+    }
+}
+
+impl PartsChange {
+    /// `parts` after this change of `changed` (`ctl:auditLogParts=+E`,
+    /// `=-FH`).
+    pub fn apply(self, parts: Parts, changed: Parts) -> Parts {
+        match self {
+            PartsChange::Add => parts | changed,
+            PartsChange::Remove => parts - changed,
+        }
+    }
 }
 
 impl AuditLog {
-    /// Audit log header (mandatory).
-    pub const A_AUDIT_LOG_PART: i32 = 2;
-    /// Request headers.
-    pub const B_AUDIT_LOG_PART: i32 = 4;
-    /// Request body (present only if the request body exists and ModSecurity
-    /// is configured to intercept it).
-    pub const C_AUDIT_LOG_PART: i32 = 8;
-    /// Reserved for intermediary response headers; not implemented yet.
-    pub const D_AUDIT_LOG_PART: i32 = 16;
-    /// Intermediary response body (present only if ModSecurity is configured
-    /// to intercept response bodies, and if the audit log engine is
-    /// configured to record it). Intermediary response body is the same as
-    /// the actual response body unless ModSecurity intercepts the
-    /// intermediary response body, in which case the actual response body
-    /// will contain the error message (either the Apache default error
-    /// message, or the ErrorDocument page).
-    pub const E_AUDIT_LOG_PART: i32 = 32;
-    /// Final response headers (excluding the Date and Server headers, which
-    /// are always added by Apache in the late stage of content delivery).
-    pub const F_AUDIT_LOG_PART: i32 = 64;
-    /// Reserved for the actual response body; not implemented yet.
-    pub const G_AUDIT_LOG_PART: i32 = 128;
-    /// Audit log trailer.
-    pub const H_AUDIT_LOG_PART: i32 = 256;
-    /// This part is a replacement for part C. It will log the same data as C
-    /// in all cases except when multipart/form-data encoding in used. In this
-    /// case, it will log a fake application/x-www-form-urlencoded body that
-    /// contains the information about parameters but not about the files.
-    /// This is handy if you don't want to have (often large) files stored in
-    /// your audit logs.
-    pub const I_AUDIT_LOG_PART: i32 = 512;
-    /// This part contains information about the files uploaded using
-    /// multipart/form-data encoding.
-    pub const J_AUDIT_LOG_PART: i32 = 1024;
-    /// This part contains a full list of every rule that matched (one per
-    /// line) in the order they were matched. The rules are fully qualified
-    /// and will thus show inherited actions and default operators.
-    pub const K_AUDIT_LOG_PART: i32 = 2048;
-    /// Final boundary, signifies the end of the entry (mandatory).
-    pub const Z_AUDIT_LOG_PART: i32 = 4096;
-
-    /// The parts logged when `SecAuditLogParts` is not set.
-    const DEFAULT_PARTS: i32 = Self::A_AUDIT_LOG_PART
-        | Self::B_AUDIT_LOG_PART
-        | Self::C_AUDIT_LOG_PART
-        | Self::F_AUDIT_LOG_PART
-        | Self::H_AUDIT_LOG_PART
-        | Self::Z_AUDIT_LOG_PART;
-    const DEFAULT_FILE_PERMISSION: i32 = 0o640;
-    const DEFAULT_DIRECTORY_PERMISSION: i32 = 0o750;
+    const DEFAULT_FILE_PERMISSION: u32 = 0o640;
+    const DEFAULT_DIRECTORY_PERMISSION: u32 = 0o750;
 
     pub fn new() -> Self {
         AuditLog {
@@ -195,11 +216,11 @@ impl AuditLog {
         }
     }
 
-    pub fn set_storage_dir_mode(&mut self, permission: i32) {
+    pub fn set_storage_dir_mode(&mut self, permission: u32) {
         self.directory_permission = Some(permission);
     }
 
-    pub fn set_file_mode(&mut self, permission: i32) {
+    pub fn set_file_mode(&mut self, permission: u32) {
         self.file_permission = Some(permission);
     }
 
@@ -231,21 +252,21 @@ impl AuditLog {
         self.format = Some(format);
     }
 
-    pub fn directory_permission(&self) -> i32 {
+    pub fn directory_permission(&self) -> u32 {
         self.directory_permission.unwrap_or(Self::DEFAULT_DIRECTORY_PERMISSION)
     }
 
-    pub fn file_permission(&self) -> i32 {
+    pub fn file_permission(&self) -> u32 {
         self.file_permission.unwrap_or(Self::DEFAULT_FILE_PERMISSION)
     }
 
     /// The parts to log: `SecAuditLogParts` or the default ones.
-    pub fn parts(&self) -> i32 {
-        self.parts.unwrap_or(Self::DEFAULT_PARTS)
+    pub fn parts(&self) -> Parts {
+        self.parts.unwrap_or(Parts::DEFAULT)
     }
 
     pub fn set_parts(&mut self, parts: &str) {
-        self.parts = Some(parts_in(parts));
+        self.parts = Some(Parts::from_letters(parts));
     }
 
     pub fn set_type(&mut self, audit_type: AuditLogType) {
@@ -269,12 +290,10 @@ impl AuditLog {
         Ok(())
     }
 
-    /// Writes the transaction to the audit log if the engine is on, or if it
-    /// is relevant. Without `parts` the configured ones are logged; sic: not
-    /// the default ones, so when `SecAuditLogParts` was never set that is
-    /// every part (C++ `m_parts` is -1 then). Returns `false` when nothing was
-    /// saved because the transaction is not relevant or writing failed.
-    pub fn save_if_relevant(&self, t: &Transaction<'_>, parts: Option<i32>) -> bool {
+    /// Writes the `parts` of the transaction to the audit log if the engine
+    /// is on, or if it is relevant. Returns `false` when nothing was saved
+    /// because the transaction is not relevant or writing failed.
+    pub fn save_if_relevant(&self, t: &Transaction<'_>, parts: Parts) -> bool {
         // A `ctl:auditEngine` of the transaction overrides the configuration.
         let status = t.ctl.audit_engine.or(self.status);
         let transaction_audit_log_status = match status {
@@ -301,7 +320,6 @@ impl AuditLog {
             return false;
         }
 
-        let parts = parts.or(self.parts).unwrap_or(-1);
         crate::ms_dbg!(t, 5, "Saving this request as part of the audit logs.");
         match &self.writer {
             None => {
@@ -320,14 +338,6 @@ impl AuditLog {
 
     pub fn is_relevant(&self, status: i32) -> bool {
         self.relevant.as_ref().is_some_and(|r| r.re.is_match(status.to_string().as_bytes()))
-    }
-
-    pub fn add_parts(parts: i32, new_parts: &str) -> i32 {
-        parts | parts_in(new_parts)
-    }
-
-    pub fn remove_parts(parts: i32, new_parts: &str) -> i32 {
-        parts & !parts_in(new_parts)
     }
 
     pub fn set_ctl_audit_engine_active(&mut self) {
@@ -377,11 +387,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
 
-    const ABFHZ: i32 = AuditLog::A_AUDIT_LOG_PART
-        | AuditLog::B_AUDIT_LOG_PART
-        | AuditLog::F_AUDIT_LOG_PART
-        | AuditLog::H_AUDIT_LOG_PART
-        | AuditLog::Z_AUDIT_LOG_PART;
+    const ABFHZ: Parts = Parts::A.union(Parts::B).union(Parts::F).union(Parts::H).union(Parts::Z);
 
     fn temp_dir(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("msrs-auditlog-{}-{}", name, std::process::id()));
@@ -454,18 +460,19 @@ mod tests {
     #[test]
     fn parts_parsing() {
         let mut a = AuditLog::new();
-        assert_eq!(a.parts(), ABFHZ | AuditLog::C_AUDIT_LOG_PART);
+        assert_eq!(a.parts(), ABFHZ | Parts::C);
+        assert_eq!(a.parts(), Parts::DEFAULT);
         a.set_parts("abfhz");
         assert_eq!(a.parts(), ABFHZ);
         a.set_parts("");
-        assert_eq!(a.parts(), 0);
+        assert_eq!(a.parts(), Parts::empty());
         // Every letter anywhere in the string counts, other bytes are ignored.
         a.set_parts("x-K+jIgEdCa");
-        assert_eq!(a.parts(), 2 | 8 | 16 | 32 | 128 | 512 | 1024 | 2048);
-        assert_eq!(AuditLog::add_parts(ABFHZ, "+E"), ABFHZ | AuditLog::E_AUDIT_LOG_PART);
-        assert_eq!(AuditLog::add_parts(0, "kz"), AuditLog::K_AUDIT_LOG_PART | AuditLog::Z_AUDIT_LOG_PART);
-        assert_eq!(AuditLog::remove_parts(ABFHZ, "-b"), ABFHZ & !AuditLog::B_AUDIT_LOG_PART);
-        assert_eq!(AuditLog::remove_parts(ABFHZ, "E"), ABFHZ);
+        assert_eq!(a.parts().bits(), 2 | 8 | 16 | 32 | 128 | 512 | 1024 | 2048);
+        assert_eq!(PartsChange::Add.apply(ABFHZ, Parts::from_letters("+E")), ABFHZ | Parts::E);
+        assert_eq!(PartsChange::Add.apply(Parts::empty(), Parts::from_letters("kz")), Parts::K | Parts::Z);
+        assert_eq!(PartsChange::Remove.apply(ABFHZ, Parts::from_letters("-b")), ABFHZ - Parts::B);
+        assert_eq!(PartsChange::Remove.apply(ABFHZ, Parts::from_letters("E")), ABFHZ);
     }
 
     #[test]
@@ -489,7 +496,7 @@ mod tests {
         assert_eq!(a.prefix, "pre");
         assert_eq!(a.file_permission(), 0o600);
         assert_eq!(a.directory_permission(), 0o750);
-        assert_eq!(a.parts(), AuditLog::A_AUDIT_LOG_PART | AuditLog::Z_AUDIT_LOG_PART);
+        assert_eq!(a.parts(), Parts::A | Parts::Z);
         assert_eq!(a.format, Some(AuditLogFormat::Json));
         assert!(a.writer.is_none());
         assert!(a.is_relevant(500));
@@ -498,7 +505,7 @@ mod tests {
         // Empty strings / unset values do not override.
         a.merge(&AuditLog::new()).unwrap();
         assert_eq!(a.path1, "p1");
-        assert_eq!(a.parts(), AuditLog::A_AUDIT_LOG_PART | AuditLog::Z_AUDIT_LOG_PART);
+        assert_eq!(a.parts(), Parts::A | Parts::Z);
 
         // A serial writer needs a file it can open.
         let mut from = AuditLog::new();

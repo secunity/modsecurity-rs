@@ -1,12 +1,12 @@
 //! The HTTPS audit log writer: posts every entry, as JSON, to the URL
 //! given by `SecAuditLog`.
 
-use crate::audit_log::AuditLog;
 use crate::audit_log::format;
+use crate::audit_log::{AuditLog, Parts};
 use crate::transaction::Transaction;
 use crate::utils::https_client::HttpsClient;
 
-pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32) -> Result<(), String> {
+pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: Parts) -> Result<(), String> {
     let mut http_client = HttpsClient::new();
     crate::ms_dbg!(transaction, 7, "Sending logs to: {}", audit.path1);
 
