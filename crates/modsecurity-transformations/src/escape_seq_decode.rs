@@ -1,13 +1,9 @@
 //! The `t:escapeSeqDecode` transformation: decodes ANSI C escape
 //! sequences (`\n`, `\x41`, `\101`, ...).
 
-use crate::chars::{isodigit, x2c};
+use modsecurity_compat::cnum::strtoll;
 
-/// The value of a short buffer of valid digits in `base`, as
-/// `strtol(buf, NULL, base)` computes it.
-fn strtol_digits(buf: &[u8], base: u32) -> i64 {
-    buf.iter().fold(0i64, |acc, &c| acc * i64::from(base) + i64::from((c as char).to_digit(base).unwrap_or(0)))
-}
+use crate::chars::{isodigit, x2c};
 
 fn ansi_c_sequences_decode_inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();
@@ -62,7 +58,7 @@ fn ansi_c_sequences_decode_inplace(input: &mut Vec<u8>) -> bool {
                     }
 
                     if j > 0 {
-                        c = strtol_digits(&buf[..j], 8);
+                        c = strtoll(&buf[..j], 8).value;
                         i += 1 + j;
                     }
                 }

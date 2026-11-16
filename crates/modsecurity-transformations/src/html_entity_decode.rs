@@ -1,6 +1,8 @@
 //! The `t:htmlEntityDecode` transformation: decodes numeric and named HTML
 //! entities.
 
+use modsecurity_compat::cnum::strtoll;
+
 use crate::chars::NBSP;
 
 /// Named-entity table for t:htmlEntityDecode: `(name, character)`.
@@ -85,24 +87,6 @@ fn lookup_named_entity(name: &[u8]) -> Option<u8> {
     NAMED_ENTITIES.iter().find(|(n, _)| n.len() == name.len() && n.eq_ignore_ascii_case(name)).map(|&(_, ch)| ch)
 }
 
-/// The byte that `(unsigned char)strtol(digits, nullptr, base)` gives for
-/// a non-empty run of valid digits: strtol saturates at LONG_MAX on
-/// overflow, and the result keeps its low byte.
-fn strtol_to_byte(digits: &[u8], base: u32) -> u8 {
-    let mut acc: i64 = 0;
-    for &c in digits {
-        let v = i64::from((c as char).to_digit(base).unwrap_or(0));
-        match acc.checked_mul(i64::from(base)).and_then(|a| a.checked_add(v)) {
-            Some(a) => acc = a,
-            None => {
-                acc = i64::MAX;
-                break;
-            }
-        }
-    }
-    acc as u8
-}
-
 fn inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();
     let mut d = 0usize;
@@ -152,7 +136,10 @@ fn inplace(input: &mut Vec<u8>) -> bool {
                     if j > k {
                         // Do we have at least one digit?
                         // Decode the entity.
-                        input[d] = strtol_to_byte(&input[k..j], base);
+                        // `(unsigned char) strtol(digits, nullptr, base)`:
+                        // the low byte of the value, which saturates at
+                        // LONG_MAX on overflow.
+                        input[d] = strtoll(&input[k..j], base).value as u8;
                         d += 1;
 
                         // Skip over the semicolon if it's there.

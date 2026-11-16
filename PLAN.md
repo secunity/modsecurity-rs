@@ -75,10 +75,11 @@ the gain is small next to the work.
 
 ## Open items
 
-- **Other number parsers not yet in `cnum`:** `strtol16`
-  (`src/rules_set/properties.rs`), `strtol_to_byte` and `strtol_digits` (the
-  transformations crate). They are specialized; check each against
-  `cnum::strtoll` before merging.
+- **`strtol16` is not `cnum::strtoll`.** The hexadecimal parser of the
+  unicode map file (`src/rules_set/properties.rs`) skips a `0x` prefix,
+  gives 0 on overflow and ignores a sign, where `cnum::strtoll` (and C's
+  `strtol`) differ on each. Folding it in changes what odd map files
+  give: compare with the C++ library first, as its own commit.
 - **CRS test 920390-1 is flaky.** The test backend resets the connection
   on its 64 KB POST and nginx answers 502. Run alone it failed 3 of 25
   times on `master` and 4 of 25 on a branch, so it is not caused by any
