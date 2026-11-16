@@ -401,11 +401,11 @@ mod regression_dump {
             let quoted: Vec<&str> = l.split('"').collect();
             let op = quoted.get(1).copied().unwrap_or("");
             let actions = quoted.get(3).copied().unwrap_or("");
-            let mut acts: Vec<crate::rule_with_actions::RuleAction> = Vec::new();
+            let mut acts: Vec<crate::actions::rule_action::RuleAction> = Vec::new();
             for a in actions.split(',') {
                 if a.starts_with("xmlns:") {
                     let x = XmlNS::new(a).unwrap();
-                    acts.push(crate::rule_with_actions::RuleAction::Other(Box::new(x)));
+                    acts.push(crate::actions::rule_action::RuleAction::from(x));
                 }
             }
             let rule = RuleWithActions::new(Some(acts), None, "x", 1, RuleWithActionsKind::Unconditional);

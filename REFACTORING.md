@@ -689,3 +689,28 @@ every part, Serial JSON, and Concurrent (index and entries), compared
 with C++ after normalizing dates, boundaries, storage paths and the
 entry md5. It was identical before the move and is identical after; the
 parent's and this build's logs are also identical to each other.
+
+## Actions are a closed enum
+
+`RuleAction` (`src/actions/rule_action.rs`) has one variant per action
+type, 49 in all; it replaces `Box<dyn Action>` / `Arc<dyn Action>` in
+rules, `SecDefaultAction` lists and `SecRuleUpdateActionById`, and the
+parser enum of the same name, whose `Other(Box<dyn Action>)` held
+everything without a slot of its own. A macro declares the variants and
+generates the `From` conversions (the parser's `other(x)` is
+`x.into()`), `Debug` (the action's own, so printed configurations are
+unchanged) and the dispatch of `name`, `kind`, `is_disruptive`,
+`configure` and `evaluate`, as a `match`.
+
+The `Action` trait stays as the interface each action type implements,
+without its three downcast hooks; their callers match instead:
+
+| Hook | Now |
+|---|---|
+| `as_transformation` | `RuleAction::Transformation(t)` (`as_transformation()`, `is_transformation_none()` on the enum) |
+| `is_block` | `matches!(a, RuleAction::Block(_))` |
+| `xml_namespace` | `RuleAction::XmlNs(x)`, through `RuleWithActions::xml_namespaces`, which replaces `actions_by_name` (its only caller looked for `xmlns`) and keeps its order and its test of the name as written |
+
+Rule evaluation order, the slots of `RuleWithActions` and every action's
+behavior are unchanged. The differential test is identical (debug log,
+outputs, audit logs), as are the C library's symbols, SONAME and NEEDED.

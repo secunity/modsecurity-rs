@@ -49,7 +49,7 @@ mod tests {
     fn deny_drop_pass() {
         let ms = ModSecurity::new();
         let rules = rules();
-        let r = rule(vec![RuleAction::Other(Box::new(Deny::new("deny")))]);
+        let r = rule(vec![RuleAction::from(Deny::new("deny"))]);
         assert!(r.has_disruptive_action());
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);

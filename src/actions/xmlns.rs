@@ -36,9 +36,12 @@ impl Action for XmlNS {
     fn name(&self) -> &str {
         &self.name
     }
+}
 
-    fn xml_namespace(&self) -> Option<(&str, &str)> {
-        Some((&self.scope, &self.href))
+impl XmlNS {
+    /// The `(prefix, href)` the `XML` variable registers.
+    pub fn namespace(&self) -> (&str, &str) {
+        (&self.scope, &self.href)
     }
 }
 

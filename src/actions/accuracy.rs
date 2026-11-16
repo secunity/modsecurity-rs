@@ -57,11 +57,11 @@ mod tests {
         }
         assert_eq!((a.name(), rev.name(), c.name()), ("accuracy", "rev", "chain"));
         let r = rule(vec![
-            RuleAction::Other(Box::new(a)),
-            RuleAction::Other(Box::new(m)),
-            RuleAction::Other(Box::new(rev)),
-            RuleAction::Other(Box::new(ver)),
-            RuleAction::Other(Box::new(c)),
+            RuleAction::from(a),
+            RuleAction::from(m),
+            RuleAction::from(rev),
+            RuleAction::from(ver),
+            RuleAction::from(c),
         ]);
         assert_eq!(r.accuracy, 8);
         assert_eq!(r.maturity, 9);

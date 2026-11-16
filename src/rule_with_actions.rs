@@ -11,13 +11,10 @@
 //! during evaluation (used by the `RULE` variable to walk up the chain).
 
 use crate::actions::action::{Action, Kind};
-use crate::actions::block::Block;
-use crate::actions::capture::Capture;
 use crate::actions::context::ActionContext;
 use crate::actions::log_data::LogData;
 use crate::actions::msg::Msg;
-use crate::actions::multi_match::MultiMatch;
-use crate::actions::phase::Phase;
+use crate::actions::rule_action::RuleAction;
 use crate::actions::set_var::SetVar;
 use crate::actions::severity::Severity;
 use crate::actions::tag::Tag;
@@ -46,87 +43,6 @@ pub enum TransformationPath {
     Full,
 }
 pub type TransformationResults = Vec<TransformationResult>;
-
-/// An action of a rule, as built by the parser. The actions a rule keeps in
-/// dedicated slots (sorted with `dynamic_cast` by the C++ constructor) keep
-/// their type; every other action is `Other`.
-#[derive(Debug)]
-pub enum RuleAction {
-    Phase(Phase),
-    Capture(Capture),
-    MultiMatch(MultiMatch),
-    Severity(Severity),
-    LogData(LogData),
-    Msg(Msg),
-    SetVar(SetVar),
-    Tag(Tag),
-    Block(Block),
-    Other(Box<dyn Action>),
-}
-
-/// Applies `$f` to the action held by a [`RuleAction`], whatever its type.
-macro_rules! with_action {
-    ($a:expr, $x:ident => $f:expr) => {
-        match $a {
-            RuleAction::Phase($x) => $f,
-            RuleAction::Capture($x) => $f,
-            RuleAction::MultiMatch($x) => $f,
-            RuleAction::Severity($x) => $f,
-            RuleAction::LogData($x) => $f,
-            RuleAction::Msg($x) => $f,
-            RuleAction::SetVar($x) => $f,
-            RuleAction::Tag($x) => $f,
-            RuleAction::Block($x) => $f,
-            RuleAction::Other($x) => $f,
-        }
-    };
-}
-
-impl RuleAction {
-    pub fn as_action(&self) -> &dyn Action {
-        with_action!(self, a => a.as_dyn())
-    }
-
-    pub fn as_action_mut(&mut self) -> &mut dyn Action {
-        with_action!(self, a => a.as_dyn_mut())
-    }
-
-    pub fn into_action(self) -> Box<dyn Action> {
-        with_action!(self, a => a.into_dyn())
-    }
-}
-
-/// Conversions to a trait object, for both the concrete actions and the
-/// boxed `Other` ones.
-trait AsDynAction {
-    fn as_dyn(&self) -> &dyn Action;
-    fn as_dyn_mut(&mut self) -> &mut dyn Action;
-    fn into_dyn(self) -> Box<dyn Action>;
-}
-
-impl<T: Action + 'static> AsDynAction for T {
-    fn as_dyn(&self) -> &dyn Action {
-        self
-    }
-    fn as_dyn_mut(&mut self) -> &mut dyn Action {
-        self
-    }
-    fn into_dyn(self) -> Box<dyn Action> {
-        Box::new(self)
-    }
-}
-
-impl AsDynAction for Box<dyn Action> {
-    fn as_dyn(&self) -> &dyn Action {
-        self.as_ref()
-    }
-    fn as_dyn_mut(&mut self) -> &mut dyn Action {
-        self.as_mut()
-    }
-    fn into_dyn(self) -> Box<dyn Action> {
-        self
-    }
-}
 
 /// Where [`RuleWithActions::perform_logging`] is called from (the C++
 /// `lastLog` / `chainedParentNull` flags).
@@ -169,11 +85,11 @@ pub struct RuleWithActions {
     pub chained_rule_child: Option<Box<RuleWithActions>>,
     pub chained_rule_parent: bool,
 
-    disruptive_action: Option<Box<dyn Action>>,
+    disruptive_action: Option<RuleAction>,
     log_data: Option<LogData>,
     msg: Option<Msg>,
     severity: Option<Severity>,
-    actions_runtime_pos: Vec<Box<dyn Action>>,
+    actions_runtime_pos: Vec<RuleAction>,
     actions_set_var: Vec<SetVar>,
     actions_tag: Vec<Tag>,
     transformations: Vec<Transformation>,
@@ -236,11 +152,11 @@ impl RuleWithActions {
                 RuleAction::Msg(a) => r.msg = Some(a),
                 RuleAction::SetVar(a) => r.actions_set_var.push(a),
                 RuleAction::Tag(a) => r.actions_tag.push(a),
-                RuleAction::Block(a) => {
-                    r.actions_runtime_pos.push(Box::new(a));
+                RuleAction::Block(_) => {
+                    r.actions_runtime_pos.push(a);
                     r.contains_static_block_action = true;
                 }
-                RuleAction::Other(a) => match a.kind() {
+                a => match a.kind() {
                     Kind::Configuration => {
                         a.configure(&mut r);
                     }
@@ -345,15 +261,15 @@ impl RuleWithActions {
         self.severity.as_ref().map(|s| s.severity).unwrap_or(0)
     }
 
-    pub fn disruptive_action(&self) -> Option<&dyn Action> {
-        self.disruptive_action.as_deref()
+    pub fn disruptive_action(&self) -> Option<&RuleAction> {
+        self.disruptive_action.as_ref()
     }
 
     pub fn transformations(&self) -> &[Transformation] {
         &self.transformations
     }
 
-    pub fn actions_runtime_pos(&self) -> &[Box<dyn Action>] {
+    pub fn actions_runtime_pos(&self) -> &[RuleAction] {
         &self.actions_runtime_pos
     }
 
@@ -451,7 +367,7 @@ impl RuleWithActions {
                     continue;
                 }
                 if !a.is_disruptive() {
-                    self.execute_action(t, contains_block, rm, a.as_ref(), true);
+                    self.execute_action(t, contains_block, rm, a, true);
                 }
             }
         }
@@ -462,7 +378,7 @@ impl RuleWithActions {
         }
 
         for a in rules.properties.exceptions.action_pos_update_target_by_id.for_rule(self.rule_id) {
-            self.execute_action(t, contains_block, rm, a.as_ref(), false);
+            self.execute_action(t, contains_block, rm, a, false);
             disruptive_already_executed = true;
         }
 
@@ -477,12 +393,12 @@ impl RuleWithActions {
         }
         for a in &self.actions_runtime_pos {
             // Neither disruptive, nor a `block` once a disruptive action ran.
-            if !(a.is_disruptive() || disruptive_already_executed && a.is_block()) {
-                self.execute_action(t, contains_block, rm, a.as_ref(), false);
+            if !(a.is_disruptive() || disruptive_already_executed && matches!(a, RuleAction::Block(_))) {
+                self.execute_action(t, contains_block, rm, a, false);
             }
         }
         if !disruptive_already_executed && let Some(d) = &self.disruptive_action {
-            self.execute_action(t, contains_block, rm, d.as_ref(), false);
+            self.execute_action(t, contains_block, rm, d, false);
         }
     }
 
@@ -494,7 +410,7 @@ impl RuleWithActions {
         t: &mut Transaction<'a>,
         contains_block: bool,
         rm: &mut RuleMessage<'a>,
-        a: &dyn Action,
+        a: &RuleAction,
         default_context: bool,
     ) {
         if !a.is_disruptive() && a.name() != "block" {
@@ -556,7 +472,7 @@ impl RuleWithActions {
 
         let pre = &rules.properties.exceptions.action_pre_update_target_by_id;
         for a in pre.for_rule(self.rule_id) {
-            if a.as_transformation().is_some_and(Transformation::is_none) {
+            if a.is_transformation_none() {
                 none += 1;
             }
         }
@@ -566,7 +482,7 @@ impl RuleWithActions {
             {
                 f(tr);
             }
-            if a.as_transformation().is_some_and(Transformation::is_none) {
+            if a.is_transformation_none() {
                 none -= 1;
             }
         }
@@ -647,32 +563,24 @@ impl RuleWithActions {
         self.msg.as_ref().is_some_and(|m| *m.string.evaluate_cow(Some(t)) == *name.as_bytes())
     }
 
-    /// The rule's actions and transformations named `name`, including the
-    /// ones added by `SecRuleUpdateActionById`.
-    pub fn actions_by_name<'s>(&'s self, name: &str, t: &'s Transaction<'_>) -> Vec<&'s dyn Action> {
-        let mut ret: Vec<&dyn Action> = Vec::new();
-        for z in &self.actions_runtime_pos {
-            if z.name() == name {
-                ret.push(z.as_ref());
-            }
-        }
-        for z in &self.transformations {
-            if z.name() == name {
-                ret.push(z);
-            }
-        }
+    /// The `(prefix, href)` of the rule's `xmlns` actions, including the
+    /// ones added by `SecRuleUpdateActionById`: the run time actions, then
+    /// the updates before and after the match. An action counts when its
+    /// name as written is `xmlns` (a transformation never is: its name
+    /// starts with `t:`).
+    pub fn xml_namespaces<'s>(&'s self, t: &'s Transaction<'_>) -> Vec<(&'s str, &'s str)> {
         let ex = &t.rules.properties.exceptions;
-        for z in ex.action_pre_update_target_by_id.for_rule(self.rule_id) {
-            if z.name() == name {
-                ret.push(z.as_ref());
-            }
-        }
-        for z in ex.action_pos_update_target_by_id.for_rule(self.rule_id) {
-            if z.name() == name {
-                ret.push(z.as_ref());
-            }
-        }
-        ret
+        let updates = ex.action_pre_update_target_by_id.for_rule(self.rule_id).iter().map(|a| a.as_ref());
+        let updates =
+            updates.chain(ex.action_pos_update_target_by_id.for_rule(self.rule_id).iter().map(|a| a.as_ref()));
+        self.actions_runtime_pos
+            .iter()
+            .chain(updates)
+            .filter_map(|a| match a {
+                RuleAction::XmlNs(x) if x.name() == "xmlns" => Some(x.namespace()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Saves the message for the audit log and sends it to the server log,

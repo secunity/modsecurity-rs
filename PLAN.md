@@ -44,9 +44,11 @@ because each one is verified on its own.
    the engine; the crate gets tests against a small fake context.
 
 Code that genuinely needs the engine stays there and says so. Five
-operators do (`@geoLookup`, `@inspectFile`, `@rbl`, `@validateDTD`,
-`@validateSchema`); they reach the transaction through
-`MatchContext::transaction()`.
+operators are still in the engine (`@geoLookup`, `@inspectFile`, `@rbl`,
+`@validateDTD`, `@validateSchema`) and reach the transaction through
+`MatchContext::transaction()`; only the first two really need it (see
+"Open items"). Likewise three actions (`setvar`, `exec`, `block`) use
+`ActionContext::engine()`.
 
 ## What is left, in suggested order
 
@@ -79,11 +81,10 @@ Suggested steps:
 
 ### 2. Actions
 
-`src/actions` is 53 small files behind `Box<dyn Action>`. The trait has
-hooks that are downcasts in disguise (`as_transformation`,
-`xml_namespace`, `is_block`), and `RuleWithActions` already sorts actions
-into typed slots (`SetVar`, `Tag`, `Msg`, ...). A closed `enum Action`
-would remove the hooks. After the `ActionContext` of step 1, the actions
+~~`src/actions` is 53 small files behind `Box<dyn Action>`; a closed
+`enum Action` would remove the downcast hooks.~~ Done: `RuleAction` has
+one variant per action type and the hooks are gone (see
+`REFACTORING.md`). After the `ActionContext` of step 1, the actions
 that only use it could become a crate, as the operators did.
 
 ### 3. Collections
@@ -131,6 +132,13 @@ The top level still has 25 flat files that mirror C++ headers.
 
 ## Open items
 
+- **Three of the five engine-side operators could move to the operators
+  crate.** `@rbl` uses the transaction only for `SecHttpBlKey` and the
+  debug log (one `Context` method); `@validateDTD` and `@validateSchema`
+  read the XML document the body processor parsed (one `Context` method
+  returning it and its well-formedness). `@inspectFile` (Lua with the
+  whole transaction) and `@geoLookup` (fills `GEO` from the rule set's
+  database) are engine features and stay.
 - **`atoi` / `stoi` in the engine wrap on overflow.**
   `utils::string::atoi` and `stoi` wrap where glibc saturates. They differ
   from C only for numbers of 19 or more digits. `compat::cnum` has the

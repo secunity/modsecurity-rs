@@ -14,6 +14,7 @@
 //! same helpers), so that the properties and rules built are the same.
 
 use crate::actions::action::{InertAction, Kind};
+use crate::actions::rule_action::RuleAction;
 use crate::actions::transformation::{Transformation, TransformationKind as TK};
 use crate::actions::{self, ctl, data, disruptive};
 use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
@@ -25,7 +26,7 @@ use crate::parser::syntax::{
     self, ActionKind, Directive, Modifier, Piece, Selector, SetVarOp, Target, UpdateBy, VarRef,
 };
 use crate::rule_script::RuleScript;
-use crate::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
+use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
 use crate::rule_with_operator::RuleWithOperator;
 use crate::rules_set_properties::{
     BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
@@ -673,15 +674,15 @@ impl Builder<'_, '_> {
     /// `SecDefaultAction`
     fn sec_default_action(&mut self, list: Vec<ParsedAction>) -> Res<()> {
         let mut has_disruptive = false;
-        let mut checked_actions: Vec<Box<dyn crate::actions::action::Action>> = Vec::new();
+        let mut checked_actions: Vec<RuleAction> = Vec::new();
         let mut defined_phase: Option<Phases> = None;
         let mut sec_rule_defined_phase: i32 = -1;
         for pa in list {
-            let a = pa.as_action();
-            if a.is_disruptive() && !a.is_block() {
+            let a = pa.into_action();
+            if a.is_disruptive() && !matches!(a, RuleAction::Block(_)) {
                 has_disruptive = true;
             }
-            if let ParsedAction::Action(RuleAction::Phase(phase)) = &pa {
+            if let RuleAction::Phase(phase) = &a {
                 defined_phase = phase.phase;
                 sec_rule_defined_phase = match phase.phase {
                     None => -1,
@@ -689,10 +690,10 @@ impl Builder<'_, '_> {
                     Some(p) => p as i32 - 1,
                 };
             } else if matches!(a.kind(), Kind::RunTimeOnlyIfMatch | Kind::RunTimeBeforeMatchAttempt) {
-                if a.as_transformation().is_some_and(Transformation::is_none) {
+                if a.is_transformation_none() {
                     return self.fail("The transformation none is not suitable to be part of the SecDefaultActions");
                 }
-                checked_actions.push(pa.into_action());
+                checked_actions.push(a);
             } else {
                 let msg = format!("The action '{}' is not suitable to be part of the SecDefaultActions", a.name());
                 return self.fail(&msg);
@@ -709,7 +710,7 @@ impl Builder<'_, '_> {
             );
             return self.fail(&msg);
         }
-        self.driver.properties.default_actions[index].extend(checked_actions.into_iter().map(std::sync::Arc::from));
+        self.driver.properties.default_actions[index].extend(checked_actions.into_iter().map(std::sync::Arc::new));
         Ok(())
     }
 
@@ -1055,24 +1056,17 @@ pub(crate) enum ParsedAction {
 }
 
 impl ParsedAction {
-    pub(crate) fn into_action(self) -> Box<dyn crate::actions::action::Action> {
+    pub(crate) fn into_action(self) -> RuleAction {
         match self {
-            ParsedAction::Action(a) => a.into_action(),
-            ParsedAction::Transformation(t) => Box::new(t),
-        }
-    }
-
-    pub(crate) fn as_action(&self) -> &dyn crate::actions::action::Action {
-        match self {
-            ParsedAction::Action(a) => a.as_action(),
-            ParsedAction::Transformation(t) => t,
+            ParsedAction::Action(a) => a,
+            ParsedAction::Transformation(t) => RuleAction::Transformation(t),
         }
     }
 }
 
-/// An action without a slot of its own in the rule.
-pub(crate) fn other(a: impl crate::actions::action::Action + 'static) -> ParsedAction {
-    ParsedAction::Action(RuleAction::Other(Box::new(a)))
+/// An action (not a transformation) as built by the grammar.
+pub(crate) fn other(a: impl Into<RuleAction>) -> ParsedAction {
+    ParsedAction::Action(a.into())
 }
 
 /// The actions and the transformations of a rule.
@@ -1154,14 +1148,14 @@ fn operator_name(name: &str) -> Option<Op> {
 /// The actions whose value is a string with macros.
 fn macro_action(name: &str, z: RunTimeString) -> ParsedAction {
     let a = match name.to_ascii_lowercase().as_str() {
-        "expirevar" => RuleAction::Other(Box::new(actions::expire_var::ExpireVar::with_rts(z))),
+        "expirevar" => actions::expire_var::ExpireVar::with_rts(z).into(),
         "logdata" => RuleAction::LogData(actions::log_data::LogData::with_rts(z)),
         "msg" => RuleAction::Msg(actions::msg::Msg::with_rts(z)),
-        "redirect" => RuleAction::Other(Box::new(disruptive::redirect::Redirect::with_rts(z))),
-        "setenv" => RuleAction::Other(Box::new(actions::set_env::SetENV::with_rts(z))),
-        "setrsc" => RuleAction::Other(Box::new(actions::set_rsc::SetRSC::with_rts(z))),
-        "setsid" => RuleAction::Other(Box::new(actions::set_sid::SetSID::with_rts(z))),
-        "setuid" => RuleAction::Other(Box::new(actions::set_uid::SetUID::with_rts(z))),
+        "redirect" => disruptive::redirect::Redirect::with_rts(z).into(),
+        "setenv" => actions::set_env::SetENV::with_rts(z).into(),
+        "setrsc" => actions::set_rsc::SetRSC::with_rts(z).into(),
+        "setsid" => actions::set_sid::SetSID::with_rts(z).into(),
+        "setuid" => actions::set_uid::SetUID::with_rts(z).into(),
         _ => RuleAction::Tag(actions::tag::Tag::with_rts(z)),
     };
     ParsedAction::Action(a)

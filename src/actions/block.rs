@@ -22,10 +22,6 @@ impl Action for Block {
         &self.name
     }
 
-    fn is_block(&self) -> bool {
-        true
-    }
-
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         crate::act_dbg!(cx, 8, "Marking request as disruptive.");
         let (t, rule) = cx.engine();
@@ -46,8 +42,8 @@ impl Action for Block {
 /// the dynamic-element hooks used by `setvar`.
 #[cfg(test)]
 pub(crate) mod test_support {
+    pub use crate::actions::rule_action::RuleAction;
     use crate::debug_log::test_support::CaptureLog;
-    pub use crate::rule_with_actions::RuleAction;
     use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;
@@ -102,8 +98,8 @@ mod tests {
         let ms = ModSecurity::new();
         let mut rules = rules();
         let defaults = &mut rules.properties.default_actions[Phases::RequestBody.index()];
-        defaults.push(Arc::new(Log::new("log")));
-        defaults.push(Arc::new(Deny::new("deny")));
+        defaults.push(Arc::new(Log::new("log").into()));
+        defaults.push(Arc::new(Deny::new("deny").into()));
         let phase = Phase::new("phase:2").unwrap();
         let r = rule(vec![RuleAction::Phase(phase), RuleAction::Block(Block::new("block"))]);
         assert!(r.has_block_action());

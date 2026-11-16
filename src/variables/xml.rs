@@ -40,10 +40,8 @@ pub(crate) fn evaluate_xpath(
     // The namespaces of the rule's `xmlns` actions.
     let mut namespaces: Vec<(String, String)> = Vec::new();
     if let Some(rule) = rule {
-        for x in rule.actions_by_name("xmlns", t) {
-            if let Some((prefix, href)) = x.xml_namespace() {
-                namespaces.push((prefix.to_string(), href.to_string()));
-            }
+        for (prefix, href) in rule.xml_namespaces(t) {
+            namespaces.push((prefix.to_string(), href.to_string()));
         }
     }
     let ns: Vec<(&[u8], &[u8])> = namespaces.iter().map(|(p, h)| (p.as_bytes(), h.as_bytes())).collect();

@@ -632,7 +632,7 @@ mod tests {
         parent.rev = "3".to_string();
         let sev = crate::actions::severity::Severity::new("severity:2").unwrap();
         let mut child = RuleWithActions::new(
-            Some(vec![crate::rule_with_actions::RuleAction::Severity(sev)]),
+            Some(vec![crate::actions::rule_action::RuleAction::Severity(sev)]),
             None,
             "f",
             2,

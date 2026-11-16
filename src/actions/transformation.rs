@@ -55,10 +55,6 @@ impl Action for Transformation {
     fn kind(&self) -> Kind {
         Kind::RunTimeBeforeMatchAttempt
     }
-
-    fn as_transformation(&self) -> Option<&Transformation> {
-        Some(self)
-    }
 }
 
 #[cfg(test)]

@@ -123,9 +123,10 @@ pub(crate) mod variables;
 #[doc(hidden)]
 pub mod internal {
     pub use crate::actions::capture::Capture;
+    pub use crate::actions::rule_action::RuleAction;
     pub use crate::actions::transformation::Transformation;
     pub use crate::operators::operator::{Operator, instantiate as instantiate_operator};
-    pub use crate::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
+    pub use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
     pub use crate::utils::json::{JsonValue, parse_tree};
     pub use crate::utils::regex::Regex;
     pub use crate::utils::string::to_hex_if_needed;

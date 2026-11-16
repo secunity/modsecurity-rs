@@ -48,7 +48,7 @@ mod tests {
 
     fn id(p: &str) -> Result<i64, String> {
         let a = RuleId::new(&format!("id:{}", p))?;
-        Ok(rule(vec![RuleAction::Other(Box::new(a))]).rule_id)
+        Ok(rule(vec![RuleAction::from(a)]).rule_id)
     }
 
     #[test]

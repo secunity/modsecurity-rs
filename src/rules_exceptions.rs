@@ -13,7 +13,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::actions::action::{Action, Kind};
+use crate::actions::action::Kind;
+use crate::actions::rule_action::RuleAction;
 use crate::utils::string::{parser_sanitizer, ssplit, stoi};
 use crate::variables::variable::Variable;
 
@@ -69,8 +70,8 @@ pub struct RulesExceptions {
     pub variable_update_target_by_tag: Vec<(Arc<String>, Arc<Variable>)>,
     pub variable_update_target_by_msg: Vec<(Arc<String>, Arc<Variable>)>,
     pub variable_update_target_by_id: IdMultimap<Arc<Variable>>,
-    pub action_pre_update_target_by_id: IdMultimap<Arc<dyn Action>>,
-    pub action_pos_update_target_by_id: IdMultimap<Arc<dyn Action>>,
+    pub action_pre_update_target_by_id: IdMultimap<Arc<RuleAction>>,
+    pub action_pos_update_target_by_id: IdMultimap<Arc<RuleAction>>,
     pub remove_rule_by_msg: Vec<String>,
     pub remove_rule_by_tag: Vec<String>,
     ranges: Vec<(i32, i32)>,
@@ -84,7 +85,7 @@ impl RulesExceptions {
 
     /// `SecRuleUpdateActionById`: adds the run time actions to the rule
     /// `id`, to run before or after the match according to their kind.
-    pub fn load_update_action_by_id(&mut self, id: f64, actions: Vec<Box<dyn Action>>) {
+    pub fn load_update_action_by_id(&mut self, id: f64, actions: Vec<RuleAction>) {
         for a in actions {
             match a.kind() {
                 Kind::Configuration => {
@@ -94,10 +95,10 @@ impl RulesExceptions {
                     );
                 }
                 Kind::RunTimeBeforeMatchAttempt => {
-                    self.action_pre_update_target_by_id.emplace(id, Arc::from(a));
+                    self.action_pre_update_target_by_id.emplace(id, Arc::new(a));
                 }
                 Kind::RunTimeOnlyIfMatch => {
-                    self.action_pos_update_target_by_id.emplace(id, Arc::from(a));
+                    self.action_pos_update_target_by_id.emplace(id, Arc::new(a));
                 }
             }
         }

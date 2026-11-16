@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::actions::action::Action;
+use crate::actions::rule_action::RuleAction;
 use crate::audit_log::AuditLog;
 use crate::debug_log::{DebugLog, DefaultDebugLog};
 use crate::modsecurity::NUMBER_OF_PHASES;
@@ -290,7 +290,7 @@ pub fn config_xml_parse_xml_into_args_string(i: Option<ParseXmlIntoArgs>) -> &'s
 
 /// Default actions (`SecDefaultAction`) per phase; shared between the
 /// driver and every rule set they are merged into.
-pub type DefaultActions = [Vec<Arc<dyn Action>>; NUMBER_OF_PHASES];
+pub type DefaultActions = [Vec<Arc<RuleAction>>; NUMBER_OF_PHASES];
 
 pub struct RulesSetProperties {
     pub audit_log: AuditLog,

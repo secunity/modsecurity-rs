@@ -5,7 +5,6 @@
 //! rule) and whatever it parsed from its payload.
 
 use crate::actions::context::ActionContext;
-use crate::actions::transformation::Transformation;
 use crate::rule_with_actions::RuleWithActions;
 
 /// When an action runs.
@@ -55,6 +54,10 @@ pub fn name_of(data: &str) -> String {
 /// validate the payload; an action is either applied to its rule once
 /// ([`Action::configure`]) or evaluated when the rule matches
 /// ([`Action::evaluate`]), depending on its [`Kind`].
+///
+/// Every action type is also a variant of
+/// [`RuleAction`](crate::actions::rule_action::RuleAction), the closed set
+/// rules store; code that needs a particular action matches on it.
 pub trait Action: Send + Sync + std::fmt::Debug {
     /// The action name, as written in the rule.
     fn name(&self) -> &str;
@@ -67,12 +70,6 @@ pub trait Action: Send + Sync + std::fmt::Debug {
         false
     }
 
-    /// Whether this is the `block` action, which rules treat apart from the
-    /// other actions.
-    fn is_block(&self) -> bool {
-        false
-    }
-
     /// [`Kind::Configuration`] actions are applied once, while the rule is
     /// being built.
     fn configure(&self, _rule: &mut RuleWithActions) {}
@@ -80,17 +77,6 @@ pub trait Action: Send + Sync + std::fmt::Debug {
     /// Run time evaluation: what the action does to the transaction, the
     /// rule message and the intervention, through `cx`.
     fn evaluate(&self, _cx: &mut ActionContext<'_, '_, '_>) {}
-
-    /// The `(prefix, href)` of an `xmlns` action, used by the `XML`
-    /// variable.
-    fn xml_namespace(&self) -> Option<(&str, &str)> {
-        None
-    }
-
-    /// The transformation, if this action is one.
-    fn as_transformation(&self) -> Option<&Transformation> {
-        None
-    }
 }
 
 /// An action that is accepted but has no behaviour of its own.

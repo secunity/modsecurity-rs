@@ -22,6 +22,7 @@ pub mod no_audit_log;
 pub mod no_log;
 pub mod phase;
 pub mod rev;
+pub mod rule_action;
 pub mod rule_id;
 pub mod set_env;
 pub mod set_rsc;

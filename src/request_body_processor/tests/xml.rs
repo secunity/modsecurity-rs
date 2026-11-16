@@ -1,12 +1,13 @@
 #[cfg(feature = "libxml2")]
 mod tests {
+    use crate::actions::rule_action::RuleAction;
     use crate::actions::xmlns::XmlNS;
     use crate::modsecurity::ModSecurity;
     use crate::operators::operator::Operator;
     use crate::operators::validate_dtd::ValidateDTD;
     use crate::operators::validate_schema::ValidateSchema;
     use crate::request_body_processor::multipart_tests::test_support::{log, new_rules, run};
-    use crate::rule_with_actions::{RuleAction, RuleWithActions, RuleWithActionsKind};
+    use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set_properties::ParseXmlIntoArgs;
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::variable_value::VariableValue;
@@ -22,7 +23,7 @@ mod tests {
         let mut acts: Vec<RuleAction> = Vec::new();
         if let Some((scope, href)) = ns {
             let x = XmlNS::new(&format!("xmlns:{}={}", scope, href)).unwrap();
-            acts.push(RuleAction::Other(Box::new(x)));
+            acts.push(RuleAction::from(x));
         }
         let rule = RuleWithActions::new(Some(acts), None, "f", 1, RuleWithActionsKind::Unconditional);
         let v = new_variable("XML", VariableSelector::DictElement(expr.to_string())).unwrap();
