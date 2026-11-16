@@ -425,12 +425,9 @@ mod regression_dump {
             }
             let (name, param) = op.split_once(' ').unwrap_or((op, ""));
             let mut o: Box<dyn Operator> = match name {
-                "@validateDTD" => Box::new(crate::operators::validate_dtd::ValidateDTD::new(
-                    crate::operators::operator::Param::from_text(param),
-                )),
-                "@validateSchema" => Box::new(crate::operators::validate_schema::ValidateSchema::new(
-                    crate::operators::operator::Param::from_text(param),
-                )),
+                "@validateDTD" | "@validateSchema" => {
+                    crate::operators::operator::instantiate(&name[1..], param).unwrap()
+                }
                 _ => continue,
             };
             o.init("x.json").unwrap();

@@ -6,7 +6,7 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 
-use crate::operators::operator::{MatchContext, Operator, Param};
+use crate::{Context, Operator, Param};
 
 /// The block list service, recognized from the parameter. It decides
 /// whether an access key is needed and how an answer is logged.
@@ -89,7 +89,7 @@ impl Rbl {
 
     /// The DNS name to query for `ip_str` (empty when the
     /// lookup cannot be done).
-    pub fn map_ip_to_address(&self, ip_str: &[u8], cx: &MatchContext<'_, '_, '_>) -> Vec<u8> {
+    pub fn map_ip_to_address(&self, ip_str: &[u8], cx: &dyn Context) -> Vec<u8> {
         let key: Vec<u8> = cx.httpbl_key().to_vec();
 
         let Some([h0, h1, h2, h3]) = scan_dotted_quad(ip_str) else {
@@ -129,7 +129,7 @@ impl Rbl {
 
     /// Logs an httpbl.org answer: days since last activity, threat score
     /// and visitor type.
-    fn further_info_httpbl(sin_addr: Ipv4Addr, ip_str: &str, cx: &MatchContext<'_, '_, '_>) {
+    fn further_info_httpbl(sin_addr: Ipv4Addr, ip_str: &str, cx: &dyn Context) {
         // inet_ntoa + sscanf("%d.%d.%d.%d")
         let [first, days, score, ty] = sin_addr.octets();
 
@@ -163,7 +163,7 @@ impl Rbl {
     }
 
     /// Logs the spamhaus.org list named by the answer.
-    fn further_info_spamhaus(high8bits: u32, ip_str: &str, cx: &MatchContext<'_, '_, '_>) {
+    fn further_info_spamhaus(high8bits: u32, ip_str: &str, cx: &dyn Context) {
         match high8bits {
             2 | 3 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (Static UBE sources).", ip_str),
             4..=7 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (Illegal 3rd party exploits).", ip_str),
@@ -175,7 +175,7 @@ impl Rbl {
     }
 
     /// Logs the uribl.com list named by the answer.
-    fn further_info_uribl(high8bits: u32, ip_str: &str, cx: &MatchContext<'_, '_, '_>) {
+    fn further_info_uribl(high8bits: u32, ip_str: &str, cx: &dyn Context) {
         match high8bits {
             2 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (BLACK).", ip_str),
             4 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (GREY).", ip_str),
@@ -187,7 +187,7 @@ impl Rbl {
     }
 
     /// Logs a successful lookup, with the details the provider gives.
-    fn further_info(sin_addr: Ipv4Addr, ip_str: &str, cx: &MatchContext<'_, '_, '_>, provider: RblProvider) {
+    fn further_info(sin_addr: Ipv4Addr, ip_str: &str, cx: &dyn Context, provider: RblProvider) {
         // `sin->sin_addr.s_addr >> 24`: s_addr is in network byte order,
         // read as a host integer (the last octet on little endian hosts).
         let high8bits = u32::from_ne_bytes(sin_addr.octets()) >> 24;
@@ -232,7 +232,7 @@ impl Operator for Rbl {
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
     }
-    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, ip_str: &[u8]) -> bool {
+    fn evaluate(&self, cx: &mut dyn Context, ip_str: &[u8]) -> bool {
         let host = self.map_ip_to_address(ip_str, cx);
         let ip_s = String::from_utf8_lossy(ip_str).into_owned();
 
@@ -276,21 +276,13 @@ mod tests {
         assert_eq!(scan_dotted_quad(b"1 .2.3.4"), None);
     }
 
-    /// `op.map_ip_to_address(ip)` in a transaction of rules whose
-    /// `SecHttpBlKey` is `key`.
+    /// `op.map_ip_to_address(ip)` with `SecHttpBlKey` set to `key`.
     fn map(op: &Rbl, ip: &[u8], key: Option<&str>) -> Vec<u8> {
-        use crate::modsecurity::ModSecurity;
-        use crate::rule_message::RuleMessage;
-        use crate::rule_with_actions::{RuleWithActions, RuleWithActionsKind};
-        use crate::rules_set::RulesSet;
-        use crate::transaction::Transaction;
-        let ms = ModSecurity::new();
-        let mut rules = RulesSet::new();
-        rules.properties.httpbl_key = key.map(str::to_string);
-        let mut t = Transaction::new(&ms, &rules, None);
-        let rule = RuleWithActions::new(None, None, "", 0, RuleWithActionsKind::Unconditional);
-        let mut rm = RuleMessage::new(&rule);
-        op.map_ip_to_address(ip, &MatchContext::new(&mut t, &rule, &mut rm))
+        let cx = crate::test_support::TestContext {
+            httpbl_key: key.unwrap_or_default().as_bytes().to_vec(),
+            ..Default::default()
+        };
+        op.map_ip_to_address(ip, &cx)
     }
 
     #[test]

@@ -505,6 +505,7 @@ dependencies = [
 name = "modsecurity-operators"
 version = "3.0.17"
 dependencies = [
+ "dns-lookup",
  "libinjection",
  "modsecurity-compat",
  "modsecurity-native",

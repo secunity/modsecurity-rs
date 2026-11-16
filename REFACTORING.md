@@ -714,3 +714,31 @@ without its three downcast hooks; their callers match instead:
 Rule evaluation order, the slots of `RuleWithActions` and every action's
 behavior are unchanged. The differential test is identical (debug log,
 outputs, audit logs), as are the C library's symbols, SONAME and NEEDED.
+
+## `@rbl`, `@validateDTD` and `@validateSchema` in the operators crate
+
+Three of the five operators left in the engine needed the transaction
+for one thing each, which the operators' `Context` now offers:
+
+| Operator | Needed | `Context` method |
+|---|---|---|
+| `@rbl` | `SecHttpBlKey` (the key of httpbl.org lookups) | `httpbl_key()` (empty when not set) |
+| `@validateDTD`, `@validateSchema` | the document the XML body processor parsed | `xml_document()` (the document and its well-formedness flag; with the `libxml2` feature) |
+
+They moved in two commits, as the other extractions: first the
+methods on the engine's `MatchContext` and the operators rewritten
+against them (`@rbl`'s logging helpers take the context instead of an
+optional transaction), then the files into `modsecurity-operators`, whose
+`Context` trait gained the two methods. The crate gains a `libxml2`
+feature (enabled by the engine's) and the `dns-lookup` dependency
+(`getaddrinfo`, as before). Their `init` finds the DTD or schema
+through `Resources::find`, which the engine implements with the same
+lookup as before.
+
+`@geoLookup` (fills the `GEO` collection from the rule set's database)
+and `@inspectFile` (runs Lua with the transaction) stay in the engine;
+the engine's `op_dbg!` macro, now unused, is gone. The tests that need
+an XML document parsed by a transaction stay in the engine and build
+the operators through `operators::operator::instantiate`; `@rbl`'s test
+runs against the crate's `TestContext` and now also checks the
+`SecHttpBlKey` prefix.

@@ -68,7 +68,7 @@ path = "test/suites.rs"
 default = ["libxml2", "lua", "maxmind", "lmdb", "ssdeep", "curl"]
 # Each feature mirrors one of the optional dependencies of the C++ build
 # (WITH_LIBXML2, WITH_LUA, WITH_MAXMIND, WITH_LMDB, WITH_SSDEEP, WITH_CURL).
-libxml2 = ["modsecurity-native/libxml2", "modsecurity-body/libxml2"]
+libxml2 = ["modsecurity-native/libxml2", "modsecurity-body/libxml2", "modsecurity-operators/libxml2"]
 lua = ["dep:mlua", "modsecurity-native/lua"]
 maxmind = ["dep:maxminddb"]
 lmdb = ["modsecurity-native/lmdb"]

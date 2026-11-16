@@ -16,7 +16,7 @@ no `unsafe` code.
 | `modsecurity-native` | `crates/modsecurity-native` | 1,800 | all the `unsafe`: PCRE2, libxml2, LMDB, ssdeep, Lua, libc calls |
 | `modsecurity-compat` | `crates/modsecurity-compat` | 3,500 | what reproduces C++ behavior: ACMP, the IP tree, the libstdc++-ordered multimap, yajl-style JSON, byte helpers (`chars`), number conversions (`cnum`), `strerror` |
 | `modsecurity-transformations` | `crates/modsecurity-transformations` | 2,600 | the `t:` functions |
-| `modsecurity-operators` | `crates/modsecurity-operators` | 3,100 | the 33 operators that only match |
+| `modsecurity-operators` | `crates/modsecurity-operators` | 3,600 | the 36 operators that only match |
 | `modsecurity-body` | `crates/modsecurity-body` | 2,600 | the multipart, JSON and XML body processors |
 | `modsecurity-seclang` | `crates/modsecurity-seclang` | 400 | the grammar and the syntax tree |
 | `modsecurity-capi` | `crates/modsecurity-capi` | 750 | the `msc_*` C API: `libmodsecurity.so.3` |
@@ -43,12 +43,11 @@ because each one is verified on its own.
    the engine implementing it. Tests that need a whole transaction stay in
    the engine; the crate gets tests against a small fake context.
 
-Code that genuinely needs the engine stays there and says so. Five
-operators are still in the engine (`@geoLookup`, `@inspectFile`, `@rbl`,
-`@validateDTD`, `@validateSchema`) and reach the transaction through
-`MatchContext::transaction()`; only the first two really need it (see
-"Open items"). Likewise three actions (`setvar`, `exec`, `block`) use
-`ActionContext::engine()`.
+Code that genuinely needs the engine stays there and says so. Two
+operators do (`@geoLookup` fills the `GEO` collection, `@inspectFile`
+runs Lua with the transaction); they reach it through
+`MatchContext::transaction()`. Likewise three actions (`setvar`, `exec`,
+`block`) use `ActionContext::engine()`.
 
 ## What is left, in suggested order
 
@@ -132,13 +131,11 @@ The top level still has 25 flat files that mirror C++ headers.
 
 ## Open items
 
-- **Three of the five engine-side operators could move to the operators
-  crate.** `@rbl` uses the transaction only for `SecHttpBlKey` and the
-  debug log (one `Context` method); `@validateDTD` and `@validateSchema`
-  read the XML document the body processor parsed (one `Context` method
-  returning it and its well-formedness). `@inspectFile` (Lua with the
-  whole transaction) and `@geoLookup` (fills `GEO` from the rule set's
-  database) are engine features and stay.
+- ~~Three of the five engine-side operators could move to the operators
+  crate.~~ Done: `@rbl`, `@validateDTD` and `@validateSchema` are in
+  `modsecurity-operators` (`Context::httpbl_key`, `Context::xml_document`).
+  `@inspectFile` (Lua with the whole transaction) and `@geoLookup` (fills
+  `GEO` from the rule set's database) are engine features and stay.
 - **`atoi` / `stoi` in the engine wrap on overflow.**
   `utils::string::atoi` and `stoi` wrap where glibc saturates. They differ
   from C only for numbers of 19 or more digits. `compat::cnum` has the

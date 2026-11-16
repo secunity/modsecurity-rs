@@ -41,7 +41,7 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
         self.t.debug_enabled(level)
     }
 
-    /// Writes `message` to the debug log (see [`op_dbg`](crate::op_dbg)).
+    /// Writes `message` to the debug log.
     pub fn debug(&self, level: i32, message: &str) {
         self.t.debug(level, message);
     }
@@ -229,9 +229,6 @@ pub fn instantiate_with_param(op: &str, param: &RunTimeString) -> Option<Box<dyn
         // The operators that are part of the engine.
         "geolookup" => Box::new(geo_lookup::GeoLookup::new()),
         "inspectfile" => Box::new(inspect_file::InspectFile::new(param)),
-        "rbl" => Box::new(rbl::Rbl::new(param)),
-        "validatedtd" => Box::new(validate_dtd::ValidateDTD::new(param)),
-        "validateschema" => Box::new(validate_schema::ValidateSchema::new(param)),
         // The matchers.
         name => Box::new(Matcher(modsecurity_operators::instantiate(name, param)?)),
     };
@@ -315,6 +312,13 @@ impl Context for MatchContext<'_, '_, '_> {
     }
     fn regex_search_error(&mut self, pattern: &str, match_limit: bool, op_name: &str) {
         MatchContext::regex_search_error(self, pattern, match_limit, op_name)
+    }
+    fn httpbl_key(&self) -> &[u8] {
+        MatchContext::httpbl_key(self)
+    }
+    #[cfg(feature = "libxml2")]
+    fn xml_document(&self) -> Option<(&crate::utils::libxml2::Document, u32)> {
+        MatchContext::xml_document(self)
     }
 }
 

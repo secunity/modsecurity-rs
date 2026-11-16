@@ -2,7 +2,7 @@
 //! the XML request body processor against an XML Schema. Matches (returns
 //! true) when the document is missing, not well formed or not valid.
 
-use crate::operators::operator::{MatchContext, Operator, Param};
+use crate::{Context, Operator, Param};
 
 #[derive(Debug)]
 pub struct ValidateSchema {
@@ -32,7 +32,7 @@ impl ValidateSchema {
 /// the message (formatted by the C++ code into a 1024 bytes buffer, hence
 /// at most 1023 bytes) prefixed by its level; `None` when it is empty.
 #[cfg(feature = "libxml2")]
-pub(crate) fn message(m: crate::utils::libxml2::Message<'_>) -> Option<String> {
+pub(crate) fn message(m: modsecurity_native::libxml2::Message<'_>) -> Option<String> {
     const PREFIX_WARNING: &str = "XML Warning: ";
     const PREFIX_ERROR: &str = "XML Error: ";
     let text = &m.text[..m.text.len().min(1023)];
@@ -53,9 +53,9 @@ impl Operator for ValidateSchema {
     }
 
     #[cfg(feature = "libxml2")]
-    fn init(&mut self, file: &str) -> Result<(), String> {
+    fn init(&mut self, file: &str, resources: &dyn crate::Resources) -> Result<(), String> {
         let param = self.param.literal_lossy();
-        let lookup = crate::utils::system::find_resource(&param, file);
+        let lookup = resources.find(&param, file);
         let Some(resource) = lookup.path else {
             return Err(format!("XML: File not found: {}. {}", param, lookup.looked_at));
         };
@@ -66,14 +66,14 @@ impl Operator for ValidateSchema {
     /// Without libxml2 the operator logs that it is not implemented and
     /// matches, as the base `Operator::evaluate` does in C++.
     #[cfg(not(feature = "libxml2"))]
-    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, _input: &[u8]) -> bool {
+    fn evaluate(&self, cx: &mut dyn Context, _input: &[u8]) -> bool {
         crate::op_dbg!(cx, 2, "Operator: {} is not implemented or malfunctioning.", self.name());
         true
     }
 
     #[cfg(feature = "libxml2")]
-    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, _input: &[u8]) -> bool {
-        use crate::utils::libxml2::SchemaError;
+    fn evaluate(&self, cx: &mut dyn Context, _input: &[u8]) -> bool {
+        use modsecurity_native::libxml2::SchemaError;
 
         let Some((doc, well_formed)) = cx.xml_document() else {
             crate::op_dbg!(cx, 4, "XML document tree could not be found for schema validation.");

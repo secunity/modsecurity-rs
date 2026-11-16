@@ -8,6 +8,9 @@ publish = false
 
 [features]
 # Enabled by the engine's features of the same names.
+# @validateDTD and @validateSchema (without it they log that they are not
+# implemented and match, as in C++).
+libxml2 = ["modsecurity-native/libxml2"]
 ssdeep = ["modsecurity-native/ssdeep"]
 regex-dollar-endonly = []
 pm-aho-corasick = ["dep:aho-corasick"]
@@ -20,3 +23,6 @@ modsecurity-compat = { path = "../modsecurity-compat" }
 # @detectSQLi and @detectXSS.
 libinjection = { path = "../../others/libinjection" }
 aho-corasick = { version = "1", optional = true }
+# @rbl: the DNS lookup of the block list, with the platform getaddrinfo as
+# in C++.
+dns-lookup = "4.0.2"

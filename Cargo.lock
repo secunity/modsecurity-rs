@@ -818,6 +818,7 @@ name = "modsecurity-operators"
 version = "3.0.17"
 dependencies = [
  "aho-corasick",
+ "dns-lookup",
  "libinjection",
  "modsecurity-compat",
  "modsecurity-native",

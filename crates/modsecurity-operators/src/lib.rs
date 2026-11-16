@@ -1,5 +1,5 @@
 //! The SecLang operators that only match: `@rx`, `@pm`, `@contains`,
-//! `@detectSQLi`, `@ipMatch`, ... (33 of them).
+//! `@detectSQLi`, `@ipMatch`, `@rbl`, `@validateSchema`, ... (36 of them).
 //!
 //! An [`Operator`] is built from its [`Param`] by [`instantiate`], prepared
 //! once with [`Operator::init`] (which may load files through
@@ -7,9 +7,9 @@
 //! while matching is the [`Context`] it is given: read its parameter for
 //! the transaction at hand, record captures and match positions, write to
 //! the debug log. Nothing here knows about rules or transactions; the
-//! ModSecurity engine implements [`Context`] and [`Resources`]. (The
-//! operators that are part of the engine rather than matchers, such as
-//! `@geoLookup`, live there.)
+//! ModSecurity engine implements [`Context`] and [`Resources`]. (`@geoLookup`
+//! and `@inspectFile` are part of the engine: they fill the `GEO`
+//! collection and run Lua with the transaction.)
 
 #![forbid(unsafe_code)]
 
@@ -47,6 +47,7 @@ pub mod lt;
 pub mod no_match;
 pub mod pm;
 pub mod pm_from_file;
+pub mod rbl;
 pub mod rsub;
 pub mod rx;
 pub mod rx_global;
@@ -54,7 +55,9 @@ pub mod str_eq;
 pub mod str_match;
 pub mod unconditional_match;
 pub mod validate_byte_range;
+pub mod validate_dtd;
 pub mod validate_hash;
+pub mod validate_schema;
 pub mod validate_url_encoding;
 pub mod validate_utf8_encoding;
 pub mod verify_cc;
@@ -145,6 +148,15 @@ pub trait Context {
     /// Reports a failed regular expression search by `op_name`
     /// (`match_limit`: it hit the match limit).
     fn regex_search_error(&mut self, pattern: &str, match_limit: bool, op_name: &str);
+
+    /// `SecHttpBlKey` (empty when not set), for `@rbl`.
+    fn httpbl_key(&self) -> &[u8];
+
+    /// The document the XML request body processor parsed and its
+    /// well-formedness flag (1 when well formed), for `@validateDTD` and
+    /// `@validateSchema`; `None` without a document.
+    #[cfg(feature = "libxml2")]
+    fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, u32)>;
 }
 
 /// Where a resource named in a configuration was found.
@@ -241,6 +253,7 @@ pub fn instantiate(name: &str, param: Param) -> Option<Box<dyn Operator>> {
         "pm" => Box::new(pm::Pm::new(param)),
         "pmf" => Box::new(pm_from_file::PmFromFile::with_name("PmFromF", param)),
         "pmfromfile" => Box::new(pm_from_file::PmFromFile::new(param)),
+        "rbl" => Box::new(rbl::Rbl::new(param)),
         "rsub" => Box::new(rsub::Rsub::new(param)),
         "rx" => Box::new(rx::Rx::new(param)),
         "rxglobal" => Box::new(rx_global::RxGlobal::new(param)),
@@ -248,7 +261,9 @@ pub fn instantiate(name: &str, param: Param) -> Option<Box<dyn Operator>> {
         "strmatch" => Box::new(str_match::StrMatch::new(param)),
         "unconditionalmatch" => Box::new(unconditional_match::UnconditionalMatch::new()),
         "validatebyterange" => Box::new(validate_byte_range::ValidateByteRange::new(param)),
+        "validatedtd" => Box::new(validate_dtd::ValidateDTD::new(param)),
         "validatehash" => Box::new(validate_hash::ValidateHash::new(param)),
+        "validateschema" => Box::new(validate_schema::ValidateSchema::new(param)),
         "validateurlencoding" => Box::new(validate_url_encoding::ValidateUrlEncoding::new()),
         "validateutf8encoding" => Box::new(validate_utf8_encoding::ValidateUtf8Encoding::new()),
         "verifycc" => Box::new(verify_cc::VerifyCC::new(param)),
@@ -272,6 +287,7 @@ pub(crate) mod test_support {
         pub captures: Vec<(Vec<u8>, Vec<u8>)>,
         pub matched: Vec<Vec<u8>>,
         pub offsets: Vec<(usize, usize)>,
+        pub httpbl_key: Vec<u8>,
     }
 
     impl Context for TestContext {
@@ -299,6 +315,13 @@ pub(crate) mod test_support {
         }
         fn regex_compile_error(&mut self, _pattern: &str) {}
         fn regex_search_error(&mut self, _pattern: &str, _match_limit: bool, _op_name: &str) {}
+        fn httpbl_key(&self) -> &[u8] {
+            &self.httpbl_key
+        }
+        #[cfg(feature = "libxml2")]
+        fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, u32)> {
+            None
+        }
     }
 
     /// Resources of the local file system: names as given, then relative to
