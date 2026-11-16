@@ -426,7 +426,7 @@ mod regression_dump {
                 }
             }
             let (name, param) = op.split_once(' ').unwrap_or((op, ""));
-            let mut o: Box<dyn Operator> = match name {
+            let mut o: Operator = match name {
                 "@validateDTD" | "@validateSchema" => {
                     crate::operators::operator::instantiate(&name[1..], param).unwrap()
                 }

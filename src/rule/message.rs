@@ -32,7 +32,7 @@ bitflags::bitflags! {
 /// matches are never logged, so the text is only built on demand.
 #[derive(Debug, Clone)]
 pub struct Matched<'r> {
-    pub(crate) operator: &'r dyn Operator,
+    pub(crate) operator: &'r Operator,
     /// The operator's parameter as shown in the message, at match time.
     pub(crate) param: Cow<'r, [u8]>,
     /// The variable that matched (before transformations).

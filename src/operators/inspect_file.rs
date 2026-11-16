@@ -7,7 +7,8 @@
 //! start with `1` (and is longer than one byte).
 
 use crate::engine::lua::Lua;
-use crate::operators::operator::{MatchContext, Operator, Param};
+use crate::operators::operator::Param;
+use crate::transaction::Transaction;
 use crate::utils::system::find_resource;
 
 #[derive(Debug)]
@@ -69,16 +70,14 @@ impl InspectFile {
     }
 }
 
-impl Operator for InspectFile {
-    fn name(&self) -> &'static str {
-        "InspectFile"
+impl InspectFile {
+    pub fn param(&self) -> &Param {
+        &self.param
     }
 
-    fn param(&self) -> Option<&Param> {
-        Some(&self.param)
-    }
-
-    fn init(&mut self, param2: &str) -> Result<(), String> {
+    /// Finds the program or script; `param2` is the configuration file of
+    /// the rule.
+    pub fn init(&mut self, param2: &str) -> Result<(), String> {
         let param = self.param.literal_lossy();
 
         let lookup = find_resource(&param, param2);
@@ -95,10 +94,12 @@ impl Operator for InspectFile {
         Ok(())
     }
 
-    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+    /// Whether the script or program reports a match for `input` (a file
+    /// name).
+    pub fn evaluate(&self, t: &mut Transaction<'_>, input: &[u8]) -> bool {
         if self.is_script {
             // Lua scripts need a transaction to run against.
-            return self.lua.run(cx.transaction(), input);
+            return self.lua.run(t, input);
         }
 
         let Some(res) = self.run_program(input) else {
@@ -116,14 +117,15 @@ impl Operator for InspectFile {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use crate::operators::operator::Operator;
     use crate::operators::operator::test_support::eval;
 
     /// The operator with its program set (init() also asks the Lua engine
     /// whether the file is a script).
-    fn op(file: &str) -> InspectFile {
+    fn op(file: &str) -> Operator {
         let mut o = InspectFile::new(Param::from_text(file));
         o.file = file.to_string();
-        o
+        Operator::InspectFile(o)
     }
 
     #[test]

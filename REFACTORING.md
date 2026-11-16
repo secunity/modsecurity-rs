@@ -934,3 +934,14 @@ the same bit values (`Parts::A` ... `Parts::Z`, `Parts::DEFAULT`,
   configured" (C++ `m_parts` of -1); the one caller always passed them.
 - The file and directory modes are `u32`, converted where the directive
   is read instead of where the files are created.
+
+## One `Operator` trait
+
+After the operators moved to their crate the engine still had its own
+`Operator` trait, implemented by `@geoLookup`, `@inspectFile` and a
+`Matcher` wrapper that forwarded every method to the crate's trait. The
+engine's `operators::operator::Operator` is now an enum of those three
+cases (`Matcher(Box<dyn modsecurity_operators::Operator>)`, `GeoLookup`,
+`InspectFile`), so there is one operator trait, in the crate. The two
+engine operators take the transaction directly, and
+`MatchContext::transaction` (the way around the context) is gone.

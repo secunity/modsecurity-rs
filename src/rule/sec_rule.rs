@@ -226,7 +226,7 @@ impl SecRule {
                 for (value_after_trans, path) in &values {
                     let ret = self.execute_operator_at(rule, t, key, value_after_trans, rm);
                     if ret {
-                        let operator = self.operator.op.as_ref();
+                        let operator = &self.operator.op;
                         let param = self.operator.message_param(t);
                         rm.matched = Some(Matched { operator, param, value: v.clone() });
                         for i in v.origin() {

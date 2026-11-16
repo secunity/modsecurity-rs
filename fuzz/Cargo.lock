@@ -479,6 +479,7 @@ dependencies = [
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-transformations",
+ "modsecurity-types",
 ]
 
 [[package]]
@@ -522,6 +523,7 @@ dependencies = [
  "libinjection",
  "modsecurity-compat",
  "modsecurity-native",
+ "modsecurity-types",
 ]
 
 [[package]]

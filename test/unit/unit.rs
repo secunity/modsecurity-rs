@@ -80,7 +80,7 @@ fn eval_operator(t: &UnitTest, transaction: &mut Transaction<'_>) -> (i64, Vec<u
     let actions = if t.capture != 0 { Some(vec![RuleAction::Capture(Capture::new("capture"))]) } else { None };
     let rule = Rule::new(actions, None, "dummy.conf", -1, RuleKind::SecAction);
     let mut rm = new_rule_message(&rule);
-    let matched = evaluate_operator(op.as_ref(), transaction, &rule, &t.input, &mut rm);
+    let matched = evaluate_operator(&op, transaction, &rule, &t.input, &mut rm);
     let mut output = Vec::new();
     if t.capture != 0
         && let Some(tx0) = tx_value(transaction, b"0")

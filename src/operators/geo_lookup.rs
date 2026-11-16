@@ -1,6 +1,6 @@
 //! `@geoLookup`.
 
-use crate::operators::operator::{MatchContext, Operator};
+use crate::transaction::Transaction;
 use crate::utils::geo_lookup::GeoDb;
 
 /// `@geoLookup`: fills the `GEO` collection from the database of the rule
@@ -8,25 +8,10 @@ use crate::utils::geo_lookup::GeoDb;
 #[derive(Debug)]
 pub struct GeoLookup;
 
-impl Default for GeoLookup {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl GeoLookup {
-    pub fn new() -> Self {
-        GeoLookup
-    }
-}
-
-impl Operator for GeoLookup {
-    fn name(&self) -> &'static str {
-        "GeoLookup"
-    }
-    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+    /// Looks `input` (an address) up; whether it was found.
+    pub fn evaluate(&self, t: &mut Transaction<'_>, input: &[u8]) -> bool {
         // The rules outlive the transaction's borrow.
-        let t = cx.transaction();
         let rules = t.rules;
         match rules.properties.settings.geo_db.as_deref() {
             Some(db) => db.lookup(input, Some(t)),

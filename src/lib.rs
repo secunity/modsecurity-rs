@@ -86,7 +86,7 @@ pub mod internal {
 
     /// Whether `op` matches `input`, evaluated alone for `rule` in `t`.
     pub fn evaluate_operator(
-        op: &dyn Operator,
+        op: &Operator,
         t: &mut Transaction<'_>,
         rule: &Rule,
         input: &[u8],

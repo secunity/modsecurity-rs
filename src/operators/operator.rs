@@ -1,23 +1,23 @@
-//! The [`Operator`] trait, operator parameters, helpers shared by the
-//! operators, and [`instantiate`], which builds an operator by name.
+//! [`Operator`], the operator of a rule ([`RuleOperator`]), what a
+//! matcher sees of the transaction ([`MatchContext`]), and [`instantiate`],
+//! which builds an operator by name.
 
 use std::borrow::Cow;
 
 pub use modsecurity_operators::Param;
 use modsecurity_operators::{Context, ResourceLookup, Resources};
 
+use crate::operators::geo_lookup::GeoLookup;
+use crate::operators::inspect_file::InspectFile;
 use crate::rule::Rule;
 use crate::rule::message::RuleMessage;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 
-/// What an operator may do while it evaluates a value: read its parameter
+/// What a matcher may do while it evaluates a value: read its parameter
 /// for this transaction, record what it matched, and write to the debug
-/// log. Operators see the transaction only through this.
-///
-/// (The few operators that are part of the engine rather than matchers,
-/// such as `@geoLookup` or `@inspectFile`, reach the transaction with
-/// [`MatchContext::transaction`].)
+/// log. Matchers see the transaction only through this. (`@geoLookup` and
+/// `@inspectFile` are given the transaction.)
 pub struct MatchContext<'c, 't, 'm> {
     t: &'c mut Transaction<'t>,
     rule: &'c Rule,
@@ -120,49 +120,75 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
     pub fn xml_document(&self) -> Option<(&crate::utils::libxml2::Document, u32)> {
         self.t.body.xml.as_ref().and_then(|x| Some((x.document()?, x.well_formed())))
     }
-
-    /// The transaction, for the operators that are part of the engine.
-    pub fn transaction(&mut self) -> &mut Transaction<'t> {
-        self.t
-    }
-
-    /// [`Self::transaction`], to read from.
-    pub fn transaction_ref(&self) -> &Transaction<'t> {
-        self.t
-    }
 }
 
-/// A SecRule operator (`@rx`, `@pm`, ...).
-pub trait Operator: Send + Sync + std::fmt::Debug {
+/// A SecRule operator (`@rx`, `@pm`, ...): one of the matchers of the
+/// `modsecurity-operators` crate, which see the [`MatchContext`] through
+/// that crate's `Context`, or one of the two operators that need the
+/// transaction itself.
+#[derive(Debug)]
+pub enum Operator {
+    Matcher(Box<dyn modsecurity_operators::Operator>),
+    GeoLookup(GeoLookup),
+    InspectFile(InspectFile),
+}
+
+impl Operator {
     /// The operator name shown in match messages and the debug log (e.g.
     /// `Rx`).
-    fn name(&self) -> &'static str;
+    pub fn name(&self) -> &'static str {
+        match self {
+            Operator::Matcher(op) => op.name(),
+            Operator::GeoLookup(_) => "GeoLookup",
+            Operator::InspectFile(_) => "InspectFile",
+        }
+    }
 
     /// The parameter, for operators that take one.
-    fn param(&self) -> Option<&Param> {
-        None
+    pub fn param(&self) -> Option<&Param> {
+        match self {
+            Operator::Matcher(op) => op.param(),
+            Operator::GeoLookup(_) => None,
+            Operator::InspectFile(op) => Some(op.param()),
+        }
     }
 
     /// Compiles or loads what the parameter names, when the rule is read;
     /// `file` is the configuration file of the rule.
-    fn init(&mut self, _file: &str) -> Result<(), String> {
-        Ok(())
+    pub fn init(&mut self, file: &str) -> Result<(), String> {
+        match self {
+            Operator::Matcher(op) => op.init(file, &EngineResources),
+            Operator::GeoLookup(_) => Ok(()),
+            Operator::InspectFile(op) => op.init(file),
+        }
     }
 
     /// Whether `input` matches (before the negation of `!@op`).
-    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool;
+    pub fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        match self {
+            Operator::Matcher(op) => op.evaluate(cx, input),
+            Operator::GeoLookup(op) => op.evaluate(cx.t, input),
+            Operator::InspectFile(op) => op.evaluate(cx.t, input),
+        }
+    }
 
     /// The result of the rule's operator: [`Operator::evaluate`] with the
-    /// negation of `!@op` applied. Operators whose failures must not match
-    /// even when negated override this.
-    fn evaluate_negatable(&self, negated: bool, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
-        self.evaluate(cx, input) != negated
+    /// negation of `!@op` applied (some matchers do not match on a failure
+    /// even when negated).
+    pub fn evaluate_negatable(&self, negated: bool, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
+        match self {
+            Operator::Matcher(op) => op.evaluate_negatable(negated, cx, input),
+            _ => self.evaluate(cx, input) != negated,
+        }
     }
 
     /// The text logged for a match of `value` in the variable `key`;
     /// `param` is `RuleOperator::message_param` at the time of the match.
-    fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
-        modsecurity_operators::match_message(self.name(), param, key, value)
+    pub fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
+        match self {
+            Operator::Matcher(op) => op.resolve_match_message(param, key, value),
+            _ => modsecurity_operators::match_message(self.name(), param, key, value),
+        }
     }
 }
 
@@ -170,14 +196,14 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
 /// and whether the rule negates it (`!@op`).
 #[derive(Debug)]
 pub struct RuleOperator {
-    pub op: Box<dyn Operator>,
+    pub op: Operator,
     /// The parameter as written, for operators that take one.
     pub param: Option<RunTimeString>,
     pub negated: bool,
 }
 
 impl RuleOperator {
-    pub fn new(op: Box<dyn Operator>, param: RunTimeString) -> Self {
+    pub fn new(op: Operator, param: RunTimeString) -> Self {
         let param = op.param().is_some().then_some(param);
         RuleOperator { op, param, negated: false }
     }
@@ -200,54 +226,19 @@ impl RuleOperator {
 
 /// The operator named `op` (case
 /// insensitive, without the `@`) with a literal parameter.
-pub fn instantiate(op: &str, param_str: &str) -> Option<Box<dyn Operator>> {
+pub fn instantiate(op: &str, param_str: &str) -> Option<Operator> {
     instantiate_with_param(op, &RunTimeString::from_text(param_str))
 }
 
 /// Like [`instantiate`] but with an already parsed (possibly macro bearing)
 /// parameter, as built by the configuration parser.
-pub fn instantiate_with_param(op: &str, param: &RunTimeString) -> Option<Box<dyn Operator>> {
-    use crate::operators::*;
+pub fn instantiate_with_param(op: &str, param: &RunTimeString) -> Option<Operator> {
     let param = Param::new(param.evaluate_static(), param.contains_macro());
-    let b: Box<dyn Operator> = match op.to_ascii_lowercase().as_str() {
-        // The operators that are part of the engine.
-        "geolookup" => Box::new(geo_lookup::GeoLookup::new()),
-        "inspectfile" => Box::new(inspect_file::InspectFile::new(param)),
-        // The matchers.
-        name => Box::new(Matcher(modsecurity_operators::instantiate(name, param)?)),
-    };
-    Some(b)
-}
-
-/// An operator of the `modsecurity-operators` crate, as an operator of the
-/// engine: it sees the [`MatchContext`] through that crate's `Context`.
-#[derive(Debug)]
-struct Matcher(Box<dyn modsecurity_operators::Operator>);
-
-impl Operator for Matcher {
-    fn name(&self) -> &'static str {
-        self.0.name()
-    }
-
-    fn param(&self) -> Option<&Param> {
-        self.0.param()
-    }
-
-    fn init(&mut self, file: &str) -> Result<(), String> {
-        self.0.init(file, &EngineResources)
-    }
-
-    fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
-        self.0.evaluate(cx, input)
-    }
-
-    fn evaluate_negatable(&self, negated: bool, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
-        self.0.evaluate_negatable(negated, cx, input)
-    }
-
-    fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
-        self.0.resolve_match_message(param, key, value)
-    }
+    Some(match op.to_ascii_lowercase().as_str() {
+        "geolookup" => Operator::GeoLookup(GeoLookup),
+        "inspectfile" => Operator::InspectFile(InspectFile::new(param)),
+        name => Operator::Matcher(modsecurity_operators::instantiate(name, param)?),
+    })
 }
 
 /// How the matchers get files and URLs: the engine's resource lookup and
@@ -321,7 +312,7 @@ pub(crate) mod test_support {
     use crate::transaction::Transaction;
 
     /// `op` applied to `input` in a new transaction.
-    pub fn eval(op: &dyn Operator, input: &[u8]) -> bool {
+    pub fn eval(op: &Operator, input: &[u8]) -> bool {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
         let mut t = Transaction::new(&ms, &rules, None);
@@ -329,7 +320,7 @@ pub(crate) mod test_support {
     }
 
     /// `op` applied to `input` in `t`, for a rule without actions.
-    pub fn eval_in(op: &dyn Operator, t: &mut Transaction<'_>, input: &[u8]) -> bool {
+    pub fn eval_in(op: &Operator, t: &mut Transaction<'_>, input: &[u8]) -> bool {
         let rule = Rule::new(None, None, "", 0, RuleKind::SecAction);
         let mut rm = RuleMessage::new(&rule);
         op.evaluate(&mut super::MatchContext::new(t, &rule, &mut rm), input)

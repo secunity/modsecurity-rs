@@ -142,17 +142,17 @@ mod tests {
         drop(t);
     }
 
-    fn validate(op: &dyn Operator, t: &mut Transaction<'_>) -> bool {
+    fn validate(op: &Operator, t: &mut Transaction<'_>) -> bool {
         crate::operators::operator::test_support::eval_in(op, t, b"")
     }
 
     /// `@validateDTD file`, as the engine builds it.
-    fn dtd_op(file: &str) -> Box<dyn Operator> {
+    fn dtd_op(file: &str) -> Operator {
         crate::operators::operator::instantiate("validateDTD", file).unwrap()
     }
 
     /// `@validateSchema file`, as the engine builds it.
-    fn schema_op(file: &str) -> Box<dyn Operator> {
+    fn schema_op(file: &str) -> Operator {
         crate::operators::operator::instantiate("validateSchema", file).unwrap()
     }
 
@@ -173,15 +173,15 @@ mod tests {
         assert!(missing.init("x.conf").unwrap_err().starts_with("XML: File not found: missing.dtd. Looking at:"));
 
         let mut t = xml(&ms, &rules, envelope);
-        assert!(!validate(&*dtd, &mut t));
-        assert!(validate(&*bad_dtd, &mut t));
+        assert!(!validate(&dtd, &mut t));
+        assert!(validate(&bad_dtd, &mut t));
         let l = log(&rules);
         assert!(l.contains(&format!("XML: Successfully validated payload against DTD: {}", dtd_path)));
         assert!(l.iter().any(|m| m.starts_with("XML: Failed to load DTD: ")));
 
         let invalid = String::from_utf8_lossy(envelope).replace("Body>", "xBody>");
         let mut t = xml(&ms, &rules, invalid.as_bytes());
-        assert!(validate(&*dtd, &mut t));
+        assert!(validate(&dtd, &mut t));
         let l = log(&rules);
         assert!(l.contains(&"XML Error: No declaration for element xBody\n".to_string()), "{:?}", l);
         assert!(l.contains(&"XML: DTD validation failed.".to_string()));
@@ -193,10 +193,10 @@ mod tests {
         let mut xsd = schema_op(&xsd_path);
         xsd.init("x.conf").unwrap();
         let mut t = xml(&ms, &rules, soap);
-        assert!(!validate(&*xsd, &mut t), "{:?}", log(&rules));
+        assert!(!validate(&xsd, &mut t), "{:?}", log(&rules));
         assert!(log(&rules).contains(&format!("XML: Successfully validated payload against Schema: {}", xsd_path)));
         let mut t = xml(&ms, &rules, String::from_utf8_lossy(soap).replace("Body>", "xBody>").as_bytes());
-        assert!(validate(&*xsd, &mut t));
+        assert!(validate(&xsd, &mut t));
         assert!(log(&rules).iter().any(|m| m.starts_with(
             "XML Error: Element '{http://schemas.xmlsoap.org/soap/envelope/}xBody': This element is not expected."
         )));
@@ -205,7 +205,7 @@ mod tests {
         let mut bad_xsd = schema_op(&bad_xsd_path);
         bad_xsd.init("x.conf").unwrap();
         let mut t = xml(&ms, &rules, soap);
-        assert!(validate(&*bad_xsd, &mut t));
+        assert!(validate(&bad_xsd, &mut t));
         assert!(log(&rules).contains(&format!(
             "XML: Failed to load Schema: {0}. XML Error: Failed to parse the XML resource '{0}'.\n",
             bad_xsd_path
@@ -213,13 +213,13 @@ mod tests {
 
         // not well formed / no document
         let mut t = xml(&ms, &rules, b"<a>");
-        assert!(validate(&*xsd, &mut t));
-        assert!(validate(&*dtd, &mut t));
+        assert!(validate(&xsd, &mut t));
+        assert!(validate(&dtd, &mut t));
         let l = log(&rules);
         assert!(l.contains(&"XML: Schema validation failed because content is not well formed.".to_string()));
         assert!(l.contains(&"XML: DTD validation failed because content is not well formed.".to_string()));
         let mut t = Transaction::new(&ms, &rules, None);
-        assert!(validate(&*xsd, &mut t));
+        assert!(validate(&xsd, &mut t));
         assert!(log(&rules).contains(&"XML document tree could not be found for schema validation.".to_string()));
     }
 
@@ -233,7 +233,7 @@ mod tests {
         dtd.init("x.conf").unwrap();
         let mut t = xml(&ms, &rules, body);
         // the DTD cannot be loaded either: the loader is libxml2-wide
-        assert!(validate(&*dtd, &mut t));
+        assert!(validate(&dtd, &mut t));
         assert!(log(&rules).iter().any(|m| m.starts_with("XML: Failed to load DTD: ")));
     }
 }
