@@ -95,14 +95,6 @@ impl AnchoredSetVariableTranslationProxy {
         fount.resolve_regular_expression_with_exclusions(r, l, ke, t);
         self.translate(l);
     }
-
-    #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
-    /// The first name of `fount`. As in C++, `key` is ignored.
-    pub fn resolve_first(&self, fount: &AnchoredSetVariable, _key: &[u8]) -> Option<Vec<u8>> {
-        let mut l = Vec::new();
-        self.resolve(fount, &mut l);
-        l.first().map(|v| v.value().to_vec())
-    }
 }
 
 #[cfg(test)]

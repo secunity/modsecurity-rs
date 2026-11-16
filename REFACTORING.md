@@ -770,3 +770,45 @@ they were, except:
 
 The persistent collection format (`CollectionData::serialize`) moved
 unchanged. The key exclusions got their first test.
+
+## One name table per family
+
+PLAN.md step 4. Each family's names now live in one place; where two
+lookups remain, they differ on purpose (as in C++) and sit side by side.
+
+**Operators.** The parser's `operator_name` table became
+`modsecurity_operators::seclang_operator`, next to `instantiate`: for each
+name of the grammar, the name to build it by, whether it takes a
+parameter, and the ones recognised but "not yet supported". The two stay
+distinct, as the C++ grammar and `Operator::instantiate` are: `@pmf` is
+`@pmFromFile` for the grammar but the `PmF` operator for `instantiate`,
+`@noMatch` is not a SecLang operator, `@validateHash` / `@gsbLookup` /
+`@rsub` are rejected by the grammar only. A crate test checks that every
+operator the grammar accepts can be built.
+
+**Variables.** `src/variables/names.rs` has the variables of the
+transaction once: `SINGLE` (token, the name SecLang shows, the field,
+whether SecLang and Lua know it), `SETS` (22 multi valued variables) and
+`NAMES` (the three `*_NAMES` proxies). `new_variable` and Lua's lookups
+by name (`string_match_resolve`, `string_match_resolve_multi`) read them
+instead of three hand-written lists (the multi valued variables were
+written out three times, the single ones twice). The differences of the
+C++ lookups are columns of the table or stated in the code:
+
+- Lua knows neither six `MULTIPART_*` flags nor `STATUS`; its `RESOURCE`
+  is `setrsc`'s single variable, SecLang's the persistent collection;
+- SecLang names `UNIQUE_ID` `UNIQUEID` and `REQBODY_PROCESSOR_ERROR_MSG`
+  `PROCESSOR_ERROR_MSG` (the C++ class names);
+- Lua compares `REQUEST_HEADERS_NAMES` / `RESPONSE_HEADERS_NAMES` with the
+  whole name, key included (so only the keyless form is found), and its
+  single-value lookup never finds the `ARGS*_NAMES` proxies (same
+  comparison); `AnchoredSetVariableTranslationProxy::resolve_first`, used
+  only by that unreachable branch, is gone.
+
+Before the old lookups were deleted, a test ran both old and new on
+every name of the tables and of the special variables (101 names), as
+written, lower case and mixed case, with no key, `:k`, `.k`, `:x` and
+`:`, for both Lua lookups (values and errors) and for `new_variable` with
+the four kinds of selector (variable name and values), in a transaction
+where every variable has a distinct value: identical. (A flag flipped in
+the table makes it fail.) A smaller test of the differences above stays.

@@ -10,15 +10,12 @@
 
 pub(crate) mod computed;
 pub mod env;
+pub(crate) mod names;
 pub mod persistent;
 pub mod rule;
 pub mod variable;
 pub mod xml;
 
-use crate::anchored_set_variable::AnchoredSetVariable;
-use crate::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
-use crate::anchored_variable::AnchoredVariable;
-use crate::transaction::TransactionAnchoredVariables as Vars;
 use crate::utils::regex::Regex;
 use variable::{CollectionKey, Source, Variable, regex_name};
 
@@ -61,39 +58,6 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
     use computed::Computed as C;
     use persistent::Persistent;
 
-    /// A single valued variable: the transaction field `$field`.
-    macro_rules! single {
-        ($n:literal, $field:ident) => {{
-            fn get(v: &Vars) -> &AnchoredVariable {
-                &v.$field
-            }
-            match selector {
-                S::None => Some(Variable::new($n, Source::Single(get))),
-                _ => None,
-            }
-        }};
-    }
-    /// A multi valued variable: the transaction field `$field`.
-    macro_rules! set {
-        ($n:literal, $field:ident) => {{
-            fn get(v: &Vars) -> &AnchoredSetVariable {
-                &v.$field
-            }
-            let (name, selector) = Variable::selected($n, selector)?;
-            Some(Variable::new(&name, Source::Set(get, selector)))
-        }};
-    }
-    /// The names of the multi valued variable `$fount`, through the proxy
-    /// `$field`.
-    macro_rules! names {
-        ($n:literal, $field:ident, $fount:ident) => {{
-            fn get(v: &Vars) -> (&AnchoredSetVariableTranslationProxy, &AnchoredSetVariable) {
-                (&v.$field, &v.$fount)
-            }
-            let (name, selector) = Variable::selected($n, selector)?;
-            Some(Variable::new(&name, Source::Names(get, selector)))
-        }};
-    }
     // A computed variable, named after the token text as written in the
     // rule (the `RUN_TIME_VAR_*` tokens).
     let computed = |selector: VariableSelector, c: C| match selector {
@@ -102,34 +66,22 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
     };
 
     let token = name.to_ascii_uppercase();
+    // The variables of the transaction (the shared table).
+    if let Some(v) = names::SETS.iter().find(|v| v.token == token) {
+        let (name, selector) = Variable::selected(v.token, selector)?;
+        return Some(Variable::new(&name, Source::Set(v.get, selector)));
+    }
+    if let Some(v) = names::NAMES.iter().find(|v| v.token == token) {
+        let (name, selector) = Variable::selected(v.token, selector)?;
+        return Some(Variable::new(&name, Source::Names(v.get, selector)));
+    }
+    if let Some(v) = names::SINGLE.iter().find(|v| v.seclang && v.token == token) {
+        return match selector {
+            S::None => Some(Variable::new(v.name, Source::Single(v.get))),
+            _ => None,
+        };
+    }
     match token.as_str() {
-        // Multi valued (C++ DEFINE_VARIABLE_DICT)
-        "ARGS" => set!("ARGS", args),
-        "ARGS_POST" => set!("ARGS_POST", args_post),
-        "ARGS_GET" => set!("ARGS_GET", args_get),
-        "FILES_SIZES" => set!("FILES_SIZES", files_sizes),
-        "FILES_NAMES" => set!("FILES_NAMES", files_names),
-        "FILES_TMP_CONTENT" => set!("FILES_TMP_CONTENT", files_tmp_content),
-        "MULTIPART_FILENAME" => set!("MULTIPART_FILENAME", multipart_file_name),
-        "MULTIPART_FILENAME_CHARSET" => set!("MULTIPART_FILENAME_CHARSET", multipart_file_name_charset),
-        "MULTIPART_FILENAME_LANGUAGE" => set!("MULTIPART_FILENAME_LANGUAGE", multipart_file_name_language),
-        "MULTIPART_NAME" => set!("MULTIPART_NAME", multipart_name),
-        "MATCHED_VARS_NAMES" => set!("MATCHED_VARS_NAMES", matched_vars_names),
-        "MATCHED_VARS" => set!("MATCHED_VARS", matched_vars),
-        "FILES" => set!("FILES", files),
-        "REQUEST_COOKIES" => set!("REQUEST_COOKIES", request_cookies),
-        "REQUEST_HEADERS" => set!("REQUEST_HEADERS", request_headers),
-        "RESPONSE_HEADERS" => set!("RESPONSE_HEADERS", response_headers),
-        "GEO" => set!("GEO", geo),
-        "REQUEST_COOKIES_NAMES" => set!("REQUEST_COOKIES_NAMES", request_cookies_names),
-        "MULTIPART_PART_HEADERS" => set!("MULTIPART_PART_HEADERS", multipart_part_headers),
-        "FILES_TMPNAMES" => set!("FILES_TMPNAMES", files_tmp_names),
-        "REQUEST_HEADERS_NAMES" => set!("REQUEST_HEADERS_NAMES", request_headers_names),
-        "RESPONSE_HEADERS_NAMES" => set!("RESPONSE_HEADERS_NAMES", response_headers_names),
-        "ARGS_NAMES" => names!("ARGS_NAMES", args_names, args),
-        "ARGS_GET_NAMES" => names!("ARGS_GET_NAMES", args_get_names, args_get),
-        "ARGS_POST_NAMES" => names!("ARGS_POST_NAMES", args_post_names, args_post),
-
         "RULE" => {
             let (name, selector) = Variable::selected(rule::RULE, selector)?;
             Some(Variable::new(&name, Source::Rule(selector)))
@@ -163,72 +115,6 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
             S::Dynamic(_) => None,
         },
 
-        // Single valued (C++ DEFINE_VARIABLE). The name is the one of the
-        // C++ class, which for a few differs from the token (sic).
-        "RESPONSE_CONTENT_TYPE" => single!("RESPONSE_CONTENT_TYPE", response_content_type),
-        "ARGS_COMBINED_SIZE" => single!("ARGS_COMBINED_SIZE", args_combined_size),
-        "AUTH_TYPE" => single!("AUTH_TYPE", auth_type),
-        "FILES_COMBINED_SIZE" => single!("FILES_COMBINED_SIZE", files_combined_size),
-        "FULL_REQUEST" => single!("FULL_REQUEST", full_request),
-        "FULL_REQUEST_LENGTH" => single!("FULL_REQUEST_LENGTH", full_request_length),
-        "INBOUND_DATA_ERROR" => single!("INBOUND_DATA_ERROR", inbound_data_error),
-        "MATCHED_VAR" => single!("MATCHED_VAR", matched_var),
-        "MATCHED_VAR_NAME" => single!("MATCHED_VAR_NAME", matched_var_name),
-        "MSC_PCRE_ERROR" => single!("MSC_PCRE_ERROR", msc_pcre_error),
-        "MSC_PCRE_LIMITS_EXCEEDED" => single!("MSC_PCRE_LIMITS_EXCEEDED", msc_pcre_limits_exceeded),
-        "MULTIPART_BOUNDARY_QUOTED" => single!("MULTIPART_BOUNDARY_QUOTED", multipart_boundary_quoted),
-        "MULTIPART_BOUNDARY_WHITESPACE" => single!("MULTIPART_BOUNDARY_WHITESPACE", multipart_boundary_white_space),
-        "MULTIPART_CRLF_LF_LINES" => single!("MULTIPART_CRLF_LF_LINES", multipart_crlf_lf_lines),
-        "MULTIPART_DATA_AFTER" => single!("MULTIPART_DATA_AFTER", multipart_data_after),
-        "MULTIPART_DATA_BEFORE" => single!("MULTIPART_DATA_BEFORE", multipart_data_before),
-        "MULTIPART_DUPLICATE_PART_HEADER" => {
-            single!("MULTIPART_DUPLICATE_PART_HEADER", multipart_duplicate_part_header)
-        }
-        "MULTIPART_FILE_LIMIT_EXCEEDED" => single!("MULTIPART_FILE_LIMIT_EXCEEDED", multipart_file_limit_exceeded),
-        "MULTIPART_HEADER_FOLDING" => single!("MULTIPART_HEADER_FOLDING", multipart_header_folding),
-        "MULTIPART_INVALID_HEADER_FOLDING" => {
-            single!("MULTIPART_INVALID_HEADER_FOLDING", multipart_invalid_header_folding)
-        }
-        "MULTIPART_INVALID_PART" => single!("MULTIPART_INVALID_PART", multipart_invalid_part),
-        "MULTIPART_INVALID_QUOTING" => single!("MULTIPART_INVALID_QUOTING", multipart_invalid_quoting),
-        "MULTIPART_LF_LINE" => single!("MULTIPART_LF_LINE", multipart_lf_line),
-        "MULTIPART_MISSING_SEMICOLON" | "MULTIPART_SEMICOLON_MISSING" => {
-            single!("MULTIPART_MISSING_SEMICOLON", multipart_missing_semicolon)
-        }
-        "MULTIPART_STRICT_ERROR" => single!("MULTIPART_STRICT_ERROR", multipart_strict_error),
-        "MULTIPART_UNMATCHED_BOUNDARY" => single!("MULTIPART_UNMATCHED_BOUNDARY", multipart_unmatched_boundary),
-        "OUTBOUND_DATA_ERROR" => single!("OUTBOUND_DATA_ERROR", outbound_data_error),
-        "PATH_INFO" => single!("PATH_INFO", path_info),
-        "QUERY_STRING" => single!("QUERY_STRING", query_string),
-        "REMOTE_ADDR" => single!("REMOTE_ADDR", remote_addr),
-        "REMOTE_HOST" => single!("REMOTE_HOST", remote_host),
-        "REMOTE_PORT" => single!("REMOTE_PORT", remote_port),
-        "REQBODY_ERROR" => single!("REQBODY_ERROR", reqbody_error),
-        "REQBODY_ERROR_MSG" => single!("REQBODY_ERROR_MSG", reqbody_error_msg),
-        "REQBODY_PROCESSOR" => single!("REQBODY_PROCESSOR", reqbody_processor),
-        "REQBODY_PROCESSOR_ERROR" => single!("REQBODY_PROCESSOR_ERROR", reqbody_processor_error),
-        "REQBODY_PROCESSOR_ERROR_MSG" => single!("PROCESSOR_ERROR_MSG", reqbody_processor_error_msg),
-        "REQUEST_BASENAME" => single!("REQUEST_BASENAME", request_basename),
-        "REQUEST_BODY" => single!("REQUEST_BODY", request_body),
-        "REQUEST_BODY_LENGTH" => single!("REQUEST_BODY_LENGTH", request_body_length),
-        "REQUEST_FILENAME" => single!("REQUEST_FILENAME", request_filename),
-        "REQUEST_LINE" => single!("REQUEST_LINE", request_line),
-        "REQUEST_METHOD" => single!("REQUEST_METHOD", request_method),
-        "REQUEST_PROTOCOL" => single!("REQUEST_PROTOCOL", request_protocol),
-        "REQUEST_URI" => single!("REQUEST_URI", request_uri),
-        "REQUEST_URI_RAW" => single!("REQUEST_URI_RAW", request_uri_raw),
-        "RESPONSE_BODY" => single!("RESPONSE_BODY", response_body),
-        "RESPONSE_CONTENT_LENGTH" => single!("RESPONSE_CONTENT_LENGTH", response_content_length),
-        "RESPONSE_PROTOCOL" => single!("RESPONSE_PROTOCOL", response_protocol),
-        "RESPONSE_STATUS" => single!("RESPONSE_STATUS", response_status),
-        "SERVER_ADDR" => single!("SERVER_ADDR", server_addr),
-        "SERVER_NAME" => single!("SERVER_NAME", server_name),
-        "SERVER_PORT" => single!("SERVER_PORT", server_port),
-        "SESSIONID" => single!("SESSIONID", session_id),
-        "UNIQUE_ID" => single!("UNIQUEID", unique_id),
-        "URLENCODED_ERROR" => single!("URLENCODED_ERROR", url_encoded_error),
-        "USERID" => single!("USERID", user_id),
-        "STATUS" | "STATUS_LINE" => single!("STATUS", response_status),
         "WEBAPPID" => match selector {
             S::None => Some(Variable::new("WEBAPPID", Source::Computed(C::WebAppId))),
             _ => None,

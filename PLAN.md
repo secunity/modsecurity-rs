@@ -99,15 +99,16 @@ The engine reaches them under their old paths (`crate::variable_value`,
 
 ### 4. One name table per family
 
-Each family should own a single registry that the parser consults.
+~~Each family should own a single registry that the parser consults.~~
+Done (see `REFACTORING.md`):
 
-- **Operators:** the parser's `operator_name` table (`src/parser/build.rs`)
-  duplicates the crate's `instantiate`. The crate should export the table
-  (name, whether it takes a parameter).
-- **Variables:** `variables::new_variable` and the by-name lookup used by
-  Lua (`string_match_resolve`) are two tables.
-- **Transformations:** done. Two lookups remain on purpose (they differ);
-  both live in the crate.
+- **Operators:** `modsecurity_operators::seclang_operator` (the grammar's
+  table) next to `instantiate` (C++ `Operator::instantiate`); they differ
+  on purpose (`@pmf`, `@noMatch`, the unsupported ones).
+- **Variables:** `src/variables/names.rs`, read by `new_variable` and by
+  Lua's lookups by name, with the C++ differences as columns.
+- **Transformations:** two lookups on purpose, both in the crate.
+- Actions have no second lookup: the parser's dispatch is the only one.
 
 ### 5. Module layout of the engine
 

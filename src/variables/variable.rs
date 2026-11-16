@@ -390,6 +390,14 @@ pub fn comp(a: &str, b: &str) -> bool {
 }
 
 #[cfg(feature = "lua")]
+/// The multi valued variable `col` of the shared table, as Lua looks it
+/// up: `whole` is the name as given, key included (see
+/// [`names::Set::lua_whole_name`](crate::variables::names::Set)).
+fn lua_set(col: &str, whole: &str) -> Option<&'static crate::variables::names::Set> {
+    crate::variables::names::SETS.iter().find(|v| comp(if v.lua_whole_name { whole } else { col }, v.token))
+}
+
+#[cfg(feature = "lua")]
 /// Resolves a variable given by name, appending its values to `l` (used
 /// by the Lua engine).
 pub fn string_match_resolve_multi(
@@ -403,54 +411,8 @@ pub fn string_match_resolve_multi(
         Some(d) => (variable[..d].to_string(), variable[d + 1..].to_string()),
     };
     let v = &t.vars;
-    let anchored = if comp(&col, "ARGS") {
-        Some(&v.args)
-    } else if comp(&col, "ARGS_GET") {
-        Some(&v.args_get)
-    } else if comp(&col, "ARGS_POST") {
-        Some(&v.args_post)
-    } else if comp(&col, "FILES_SIZES") {
-        Some(&v.files_sizes)
-    } else if comp(&col, "FILES_NAMES") {
-        Some(&v.files_names)
-    } else if comp(&col, "FILES_TMP_CONTENT") {
-        Some(&v.files_tmp_content)
-    } else if comp(&col, "MULTIPART_FILENAME") {
-        Some(&v.multipart_file_name)
-    } else if comp(&col, "MULTIPART_FILENAME_CHARSET") {
-        Some(&v.multipart_file_name_charset)
-    } else if comp(&col, "MULTIPART_FILENAME_LANGUAGE") {
-        Some(&v.multipart_file_name_language)
-    } else if comp(&col, "MULTIPART_NAME") {
-        Some(&v.multipart_name)
-    } else if comp(&col, "MATCHED_VARS_NAMES") {
-        Some(&v.matched_vars_names)
-    } else if comp(&col, "MATCHED_VARS") {
-        Some(&v.matched_vars)
-    } else if comp(&col, "FILES") {
-        Some(&v.files)
-    } else if comp(&col, "REQUEST_COOKIES") {
-        Some(&v.request_cookies)
-    } else if comp(&col, "REQUEST_HEADERS") {
-        Some(&v.request_headers)
-    } else if comp(variable, "REQUEST_HEADERS_NAMES") {
-        Some(&v.request_headers_names)
-    } else if comp(&col, "RESPONSE_HEADERS") {
-        Some(&v.response_headers)
-    } else if comp(variable, "RESPONSE_HEADERS_NAMES") {
-        Some(&v.response_headers_names)
-    } else if comp(&col, "GEO") {
-        Some(&v.geo)
-    } else if comp(&col, "REQUEST_COOKIES_NAMES") {
-        Some(&v.request_cookies_names)
-    } else if comp(&col, "MULTIPART_PART_HEADERS") {
-        Some(&v.multipart_part_headers)
-    } else if comp(&col, "FILES_TMPNAMES") {
-        Some(&v.files_tmp_names)
-    } else {
-        None
-    };
-    if let Some(a) = anchored {
+    if let Some(set) = lua_set(&col, variable) {
+        let a = (set.get)(v);
         if delim.is_none() {
             a.resolve(l);
         } else {
@@ -458,16 +420,8 @@ pub fn string_match_resolve_multi(
         }
         return Ok(());
     }
-    let proxy = if comp(&col, "ARGS_NAMES") {
-        Some((&v.args_names, &v.args))
-    } else if comp(&col, "ARGS_GET_NAMES") {
-        Some((&v.args_get_names, &v.args_get))
-    } else if comp(&col, "ARGS_POST_NAMES") {
-        Some((&v.args_post_names, &v.args_post))
-    } else {
-        None
-    };
-    if let Some((p, fount)) = proxy {
+    if let Some(names) = crate::variables::names::NAMES.iter().find(|n| comp(&col, n.token)) {
+        let (p, fount) = (names.get)(v);
         if delim.is_none() {
             p.resolve(fount, l);
         } else {
@@ -488,70 +442,13 @@ pub fn string_match_resolve_multi(
 }
 
 #[cfg(feature = "lua")]
-/// The single valued anchored variables addressable by name, in the order
-/// the C++ resolution tests them.
+/// The single valued variable named `variable`, among the ones Lua knows.
 fn single_anchored<'t>(
     t: &'t Transaction<'_>,
     variable: &str,
 ) -> Option<&'t crate::anchored_variable::AnchoredVariable> {
-    let v = &t.vars;
-    let table: [(&str, &crate::anchored_variable::AnchoredVariable); 51] = [
-        ("RESPONSE_CONTENT_TYPE", &v.response_content_type),
-        ("ARGS_COMBINED_SIZE", &v.args_combined_size),
-        ("AUTH_TYPE", &v.auth_type),
-        ("FILES_COMBINED_SIZE", &v.files_combined_size),
-        ("FULL_REQUEST", &v.full_request),
-        ("FULL_REQUEST_LENGTH", &v.full_request_length),
-        ("INBOUND_DATA_ERROR", &v.inbound_data_error),
-        ("MATCHED_VAR", &v.matched_var),
-        ("MATCHED_VAR_NAME", &v.matched_var_name),
-        ("MSC_PCRE_ERROR", &v.msc_pcre_error),
-        ("MSC_PCRE_LIMITS_EXCEEDED", &v.msc_pcre_limits_exceeded),
-        ("MULTIPART_CRLF_LF_LINES", &v.multipart_crlf_lf_lines),
-        ("MULTIPART_DATA_AFTER", &v.multipart_data_after),
-        ("MULTIPART_DUPLICATE_PART_HEADER", &v.multipart_duplicate_part_header),
-        ("MULTIPART_FILE_LIMIT_EXCEEDED", &v.multipart_file_limit_exceeded),
-        ("MULTIPART_STRICT_ERROR", &v.multipart_strict_error),
-        ("MULTIPART_HEADER_FOLDING", &v.multipart_header_folding),
-        ("MULTIPART_INVALID_QUOTING", &v.multipart_invalid_quoting),
-        ("MULTIPART_INVALID_HEADER_FOLDING", &v.multipart_invalid_header_folding),
-        ("MULTIPART_UNMATCHED_BOUNDARY", &v.multipart_unmatched_boundary),
-        ("OUTBOUND_DATA_ERROR", &v.outbound_data_error),
-        ("PATH_INFO", &v.path_info),
-        ("QUERY_STRING", &v.query_string),
-        ("REMOTE_ADDR", &v.remote_addr),
-        ("REMOTE_HOST", &v.remote_host),
-        ("REMOTE_PORT", &v.remote_port),
-        ("REQBODY_ERROR", &v.reqbody_error),
-        ("REQBODY_ERROR_MSG", &v.reqbody_error_msg),
-        ("REQBODY_PROCESSOR_ERROR_MSG", &v.reqbody_processor_error_msg),
-        ("REQBODY_PROCESSOR_ERROR", &v.reqbody_processor_error),
-        ("REQBODY_PROCESSOR", &v.reqbody_processor),
-        ("REQUEST_BASENAME", &v.request_basename),
-        ("REQUEST_BODY", &v.request_body),
-        ("REQUEST_BODY_LENGTH", &v.request_body_length),
-        ("REQUEST_FILENAME", &v.request_filename),
-        ("REQUEST_LINE", &v.request_line),
-        ("REQUEST_METHOD", &v.request_method),
-        ("REQUEST_PROTOCOL", &v.request_protocol),
-        ("REQUEST_URI", &v.request_uri),
-        ("REQUEST_URI_RAW", &v.request_uri_raw),
-        ("RESOURCE", &v.resource),
-        ("RESPONSE_BODY", &v.response_body),
-        ("RESPONSE_CONTENT_LENGTH", &v.response_content_length),
-        ("RESPONSE_PROTOCOL", &v.response_protocol),
-        ("RESPONSE_STATUS", &v.response_status),
-        ("SERVER_ADDR", &v.server_addr),
-        ("SERVER_NAME", &v.server_name),
-        ("SERVER_PORT", &v.server_port),
-        ("SESSIONID", &v.session_id),
-        ("UNIQUE_ID", &v.unique_id),
-        ("URLENCODED_ERROR", &v.url_encoded_error),
-    ];
-    if comp(variable, "USERID") {
-        return Some(&v.user_id);
-    }
-    table.iter().find(|(n, _)| comp(variable, n)).map(|(_, a)| *a)
+    let v = crate::variables::names::SINGLE.iter().find(|v| v.lua && comp(variable, v.token))?;
+    Some((v.get)(&t.vars))
 }
 
 #[cfg(feature = "lua")]
@@ -583,57 +480,10 @@ pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u
         Some(c) => {
             let col = &variable[..c];
             let var = &variable.as_bytes()[c + 1..];
-            let v = &t.vars;
-            if comp(col, "ARGS") {
-                v.args.resolve_first(var)
-            } else if comp(variable, "ARGS_NAMES") {
-                v.args_names.resolve_first(&v.args, var)
-            } else if comp(col, "ARGS_GET") {
-                v.args_get.resolve_first(var)
-            } else if comp(variable, "ARGS_GET_NAMES") {
-                v.args_get_names.resolve_first(&v.args_get, var)
-            } else if comp(col, "ARGS_POST") {
-                v.args_post.resolve_first(var)
-            } else if comp(variable, "ARGS_POST_NAMES") {
-                v.args_post_names.resolve_first(&v.args_post, var)
-            } else if comp(col, "FILES_SIZES") {
-                v.files_sizes.resolve_first(var)
-            } else if comp(col, "FILES_NAMES") {
-                v.files_names.resolve_first(var)
-            } else if comp(col, "FILES_TMP_CONTENT") {
-                v.files_tmp_content.resolve_first(var)
-            } else if comp(col, "MULTIPART_FILENAME") {
-                v.multipart_file_name.resolve_first(var)
-            } else if comp(col, "MULTIPART_FILENAME_CHARSET") {
-                v.multipart_file_name_charset.resolve_first(var)
-            } else if comp(col, "MULTIPART_FILENAME_LANGUAGE") {
-                v.multipart_file_name_language.resolve_first(var)
-            } else if comp(col, "MULTIPART_NAME") {
-                v.multipart_name.resolve_first(var)
-            } else if comp(col, "MATCHED_VARS_NAMES") {
-                v.matched_vars_names.resolve_first(var)
-            } else if comp(col, "MATCHED_VARS") {
-                v.matched_vars.resolve_first(var)
-            } else if comp(col, "FILES") {
-                v.files.resolve_first(var)
-            } else if comp(col, "REQUEST_COOKIES") {
-                v.request_cookies.resolve_first(var)
-            } else if comp(col, "REQUEST_HEADERS") {
-                v.request_headers.resolve_first(var)
-            } else if comp(variable, "REQUEST_HEADERS_NAMES") {
-                v.request_headers_names.resolve_first(var)
-            } else if comp(col, "RESPONSE_HEADERS") {
-                v.response_headers.resolve_first(var)
-            } else if comp(variable, "RESPONSE_HEADERS_NAMES") {
-                v.response_headers_names.resolve_first(var)
-            } else if comp(col, "GEO") {
-                v.geo.resolve_first(var)
-            } else if comp(col, "REQUEST_COOKIES_NAMES") {
-                v.request_cookies_names.resolve_first(var)
-            } else if comp(col, "MULTIPART_PART_HEADERS") {
-                v.multipart_part_headers.resolve_first(var)
-            } else if comp(col, "FILES_TMPNAMES") {
-                v.files_tmp_names.resolve_first(var)
+            // (The `*_NAMES` proxies are not found here: C++ compares their
+            // tokens with the whole name, key included.)
+            if let Some(set) = lua_set(col, variable) {
+                (set.get)(&t.vars).resolve_first(var)
             } else if comp(col, "TX") {
                 cols.tx.get(var).map(<[u8]>::to_vec)
             } else if comp(col, "RESOURCE") {
