@@ -666,3 +666,26 @@ The call sites were rewritten from the compiler's errors. The
 differential test is identical (582,671 debug log lines; outputs with
 and without the debug log), and so are the C library's symbols, SONAME
 and NEEDED.
+
+## Audit log rendering in `audit_log::format`
+
+The three renderers moved out of `transaction.rs` (third step of
+splitting the transaction, see `PLAN.md`) into `src/audit_log/format.rs`,
+as functions of the transaction they read:
+
+| Was (`Transaction` method) | Now |
+|---|---|
+| `to_old_audit_log_format` | `format::native(t, parts, trailer, prefix)` |
+| `to_old_audit_log_format_index` | `format::native_index_line(t, filename, size, md5)` |
+| `to_json` | `format::json(t, parts)` |
+
+The bodies moved statement for statement (`self` became `t`), with their
+helper `cstr_prefix`. The three writers (`serial`, `parallel`, `https`)
+call them; `transaction.rs` lost about 290 lines.
+
+Before the move, the differential test gained an audit log pass (commit
+"Compare the audit logs in the differential test"): Serial native with
+every part, Serial JSON, and Concurrent (index and entries), compared
+with C++ after normalizing dates, boundaries, storage paths and the
+entry md5. It was identical before the move and is identical after; the
+parent's and this build's logs are also identical to each other.

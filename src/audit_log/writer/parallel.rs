@@ -2,6 +2,7 @@
 //! under `SecAuditLogStorageDir`, and an index line into `SecAuditLog` /
 //! `SecAuditLog2`.
 
+use crate::audit_log::format;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt;
@@ -56,7 +57,7 @@ pub fn log_file_path(t: i64, part: i32) -> String {
 fn write_index(transaction: &Transaction<'_>, index: &SharedFile, file_name: &str, log: &[u8]) -> Result<(), String> {
     let log_md5 = Md5::hexdigest(log);
 
-    let msg = transaction.to_old_audit_log_format_index(file_name, log.len() as f64, &log_md5);
+    let msg = format::native_index_line(transaction, file_name, log.len() as f64, &log_md5);
     index.write(&msg)
 }
 
@@ -88,10 +89,10 @@ pub(super) fn write(
 
     // As in C++, the format comes from the transaction's rule set.
     let log = if transaction.rules.properties.audit_log.format == Some(AuditLogFormat::Json) {
-        transaction.to_json(parts)
+        format::json(transaction, parts)
     } else {
         let boundary = generate_boundary();
-        transaction.to_old_audit_log_format(parts, &format!("-{}--", boundary), &audit.prefix)
+        format::native(transaction, parts, &format!("-{}--", boundary), &audit.prefix)
     };
 
     let log_path = &audit.storage_dir;

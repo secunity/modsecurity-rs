@@ -1,6 +1,7 @@
 //! The audit log: its configuration (`SecAuditEngine`, `SecAuditLog*`),
 //! which transactions are relevant, and the writers that save them.
 
+pub mod format;
 pub mod writer;
 
 use crate::audit_log::writer::Writer;

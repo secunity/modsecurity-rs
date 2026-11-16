@@ -2,6 +2,7 @@
 //! given by `SecAuditLog`.
 
 use crate::audit_log::AuditLog;
+use crate::audit_log::format;
 use crate::transaction::Transaction;
 use crate::utils::https_client::HttpsClient;
 
@@ -9,7 +10,7 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32)
     let mut http_client = HttpsClient::new();
     crate::ms_dbg_a!(transaction, 7, "Sending logs to: {}", audit.path1);
 
-    let log = transaction.to_json(parts);
+    let log = format::json(transaction, parts);
     http_client.set_request_type("application/json");
     http_client.set_request_body(&log);
     // As in C++, a failed upload is not reported.

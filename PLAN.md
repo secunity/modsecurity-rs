@@ -73,9 +73,9 @@ Suggested steps:
    offers what actions do.~~ Done (`src/actions/context.rs`); `setvar`,
    `exec` and `block` still reach the transaction through
    `ActionContext::engine()`.
-3. Move the audit-log rendering (`to_json`, `to_old_audit_log_format`,
-   about 300 lines in `transaction.rs`) into `audit_log`, reading from the
-   transaction.
+3. ~~Move the audit-log rendering into `audit_log`, reading from the
+   transaction.~~ Done (`src/audit_log/format.rs`). The differential test
+   now compares the audit logs with C++ too.
 
 ### 2. Actions
 
@@ -165,6 +165,12 @@ The rules are in `AGENT.md`. These points cost time to find out:
   agreed with itself to about 0.5% on an idle machine; under other load,
   gaps of 2% appeared and disappeared. Compare only runs from the same
   interleaved session.
+- **The differential also compares the audit logs** (native, JSON,
+  concurrent) with C++. Before it did, nothing checked that output
+  format beyond a few substrings in the regression suite.
+- **Instruction counts (callgrind) are the steadier benchmark here**, but
+  builds of identical code from different worktrees differ by up to about
+  0.4% (`corpus_pl4`), so treat smaller differences as noise.
 - **The debug log is compared line by line** by the differential. When a
   step rewrites logging calls, keep the statements in order; the
   differential is the check that matters most for these refactors.
