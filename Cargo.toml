@@ -7,6 +7,7 @@ members = [
     "crates/modsecurity-transformations",
     "crates/modsecurity-seclang",
     "crates/modsecurity-compat",
+    "crates/modsecurity-types",
     "crates/modsecurity-operators",
     "crates/modsecurity-body",
     "crates/modsecurity-capi",
@@ -25,6 +26,7 @@ default-members = [
     "crates/modsecurity-transformations",
     "crates/modsecurity-seclang",
     "crates/modsecurity-compat",
+    "crates/modsecurity-types",
     "crates/modsecurity-operators",
     "crates/modsecurity-body",
     "crates/modsecurity-capi",
@@ -126,6 +128,9 @@ nix = { version = "0.31.3", default-features = false, features = ["net"] }
 # ACMP, the crit-bit IP tree, the libstdc++-ordered multimap and the
 # yajl-compatible JSON: what reproduces C++ behavior.
 modsecurity-compat = { path = "crates/modsecurity-compat" }
+# VariableValue, VariableOrigin and the key exclusions, shared with the
+# collections.
+modsecurity-types = { path = "crates/modsecurity-types" }
 # The request body processors (multipart, JSON, XML).
 modsecurity-body = { path = "crates/modsecurity-body" }
 # The operators that only match (@rx, @pm, ...).

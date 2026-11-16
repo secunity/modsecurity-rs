@@ -19,58 +19,7 @@ use crate::variables::computed::Computed;
 use crate::variables::persistent::Persistent;
 use crate::variables::{VariableSelector, env, rule, xml};
 
-// ---------------------------------------------------------------------------
-// Key exclusions (`!ARGS:foo`, `!ARGS:/regex/`)
-// ---------------------------------------------------------------------------
-
-/// A key excluded from a variable (`!ARGS:foo` or `!ARGS:/regex/`).
-#[derive(Debug)]
-pub enum KeyExclusion {
-    /// The keys a regular expression matches (case insensitive).
-    Regex(Regex),
-    /// One key, stored upper case and compared case insensitively.
-    String(Vec<u8>),
-}
-
-impl KeyExclusion {
-    pub fn regex(re: &str) -> Self {
-        KeyExclusion::Regex(Regex::new_case(re, true))
-    }
-
-    pub fn string(a: &str) -> Self {
-        KeyExclusion::String(a.as_bytes().to_ascii_uppercase())
-    }
-
-    pub fn matches(&self, a: &[u8]) -> bool {
-        match self {
-            KeyExclusion::Regex(r) => r.search(a) > 0,
-            KeyExclusion::String(k) => a.len() == k.len() && a.iter().zip(k).all(|(x, y)| x.to_ascii_uppercase() == *y),
-        }
-    }
-}
-
-/// The keys excluded from a variable.
-#[derive(Debug, Default)]
-pub struct KeyExclusions(pub Vec<KeyExclusion>);
-
-impl KeyExclusions {
-    pub fn new() -> Self {
-        KeyExclusions(Vec::new())
-    }
-
-    /// Whether the key `a` is excluded.
-    pub fn to_omit(&self, a: &[u8]) -> bool {
-        self.0.iter().any(|z| z.matches(a))
-    }
-
-    pub fn push(&mut self, k: KeyExclusion) {
-        self.0.push(k);
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
+pub use modsecurity_types::key_exclusions::{KeyExclusion, KeyExclusions};
 
 // ---------------------------------------------------------------------------
 // Variable

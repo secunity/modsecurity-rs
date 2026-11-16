@@ -749,6 +749,7 @@ dependencies = [
  "modsecurity-operators",
  "modsecurity-seclang",
  "modsecurity-transformations",
+ "modsecurity-types",
  "nix",
  "rand 0.9.5",
  "rustix",
@@ -839,6 +840,13 @@ dependencies = [
  "md-5",
  "modsecurity-compat",
  "sha1",
+]
+
+[[package]]
+name = "modsecurity-types"
+version = "3.0.17"
+dependencies = [
+ "modsecurity-native",
 ]
 
 [[package]]

@@ -103,9 +103,9 @@ pub(crate) mod run_time_string;
 pub(crate) mod transaction;
 pub(crate) mod unique_id;
 pub(crate) mod utils;
-pub(crate) mod variable_origin;
-pub(crate) mod variable_value;
 pub(crate) mod variables;
+/// The resolved values and their origin (the `modsecurity-types` crate).
+pub(crate) use modsecurity_types::{variable_origin, variable_value};
 
 /// Internals the test utilities of this repository (`test/`, `tools/`,
 /// `fuzz/`) drive directly. Not part of the API: they change without
