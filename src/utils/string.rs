@@ -27,35 +27,8 @@ pub fn split_str(s: &str, delimiter: char) -> Vec<String> {
     split(s.as_bytes(), delimiter as u8).into_iter().map(|v| String::from_utf8_lossy(&v).into_owned()).collect()
 }
 
-/// Removes leading and trailing spaces, leaving at least one character.
-pub fn remove_white_spaces_if_needed(mut a: String) -> String {
-    while a.len() > 1 && a.starts_with(' ') {
-        a.remove(0);
-    }
-    while a.len() > 1 && a.ends_with(' ') {
-        a.pop();
-    }
-    a
-}
-
-/// Removes one pair of surrounding double quotes, then one pair of single
-/// quotes.
-pub fn remove_brackets_if_needed(mut a: String) -> String {
-    if a.len() > 1 && a.starts_with('"') && a.ends_with('"') {
-        a.pop();
-        a.remove(0);
-    }
-    if a.len() > 1 && a.starts_with('\'') && a.ends_with('\'') {
-        a.pop();
-        a.remove(0);
-    }
-    a
-}
-
-/// Trims the spaces around a configuration value, then its quotes.
-pub fn parser_sanitizer(a: String) -> String {
-    remove_brackets_if_needed(remove_white_spaces_if_needed(a))
-}
+// The helpers that clean a configuration value are part of the syntax.
+pub use modsecurity_seclang::value::sanitize as parser_sanitizer;
 
 /// Lowercases every byte (C locale `::tolower`).
 pub fn tolower(s: &[u8]) -> Vec<u8> {

@@ -6,18 +6,15 @@
 //! directives before it applied (as the C++ parser does).
 //!
 //! The grammar only describes the shape of a directive. The names it reads
-//! (directives, variables, operators, actions, transformations) and the
-//! values they accept are checked here, against the same rules as the
-//! C++ scanner: a directive keyword and its value, an action name and its
-//! payload. Values are read as the C++ scanner reads them (the first space
-//! after the keyword separates it from the value, quotes are removed by the
-//! same helpers), so that the properties and rules built are the same.
+//! (variables, operators, actions, transformations) are looked up here, in
+//! the table of each family; the directives that are a keyword and a value
+//! are in `settings.rs`.
 
 use crate::actions::action::Kind;
 use crate::actions::rule_action::RuleAction;
 use crate::actions::seclang::{ParsedAction, other, split_actions};
 use crate::actions::{self};
-use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
+use crate::audit_log::AuditLogStatus;
 use crate::operators::operator::{RuleOperator, instantiate_with_param};
 use crate::parser::driver::Driver;
 use crate::parser::driver::Position;
@@ -28,14 +25,8 @@ use crate::phases::Phases;
 use crate::rule::sec_rule::SecRule;
 use crate::rule::sec_rule_script::Script;
 use crate::rule::{Rule, RuleKind};
-use crate::rules_set::properties::{
-    BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
-    parse_octal_mode,
-};
 use crate::run_time_string::RunTimeString;
-use crate::utils::https_client::HttpsClient;
-use crate::utils::string::{atoi, parser_sanitizer, remove_brackets_if_needed, ssplit, stod, strtol_int};
-use crate::utils::system::{expand_env, find_resource};
+use crate::utils::string::{parser_sanitizer, stod};
 use crate::variables::variable::Variable;
 use crate::variables::{VariableSelector, new_variable};
 use modsecurity_operators::seclang_operator;
@@ -44,7 +35,7 @@ use modsecurity_operators::seclang_operator;
 #[derive(Debug)]
 pub(crate) struct Failed;
 
-type Res<T> = Result<T, Failed>;
+pub(super) type Res<T> = Result<T, Failed>;
 
 /// Loads the configuration `data`, read from the file `file` (an index in
 /// the driver's file names).
@@ -94,7 +85,7 @@ fn apply(driver: &mut Driver, file: usize, lines: &mut Lines<'_>, statement: syn
 }
 
 /// Line numbers of offsets of a text, read forward.
-struct Lines<'a> {
+pub(super) struct Lines<'a> {
     text: &'a str,
     offset: usize,
     line: usize,
@@ -111,7 +102,7 @@ impl Lines<'_> {
         self.line
     }
 
-    fn location(&mut self, file: usize, offset: usize) -> Position {
+    pub(super) fn location(&mut self, file: usize, offset: usize) -> Position {
         let line = self.line_of(offset);
         let column = offset - self.text[..offset].rfind('\n').map_or(0, |i| i + 1) + 1;
         Position { file, line, column }
@@ -127,18 +118,18 @@ fn string(s: &str) -> String {
     String::from_utf8_lossy(&syntax::bytes(s)).into_owned()
 }
 
-struct Builder<'d, 't> {
-    driver: &'d mut Driver,
-    file: usize,
-    lines: &'d mut Lines<'t>,
+pub(super) struct Builder<'d, 't> {
+    pub(super) driver: &'d mut Driver,
+    pub(super) file: usize,
+    pub(super) lines: &'d mut Lines<'t>,
     /// The line of the directive keyword.
-    line: usize,
+    pub(super) line: usize,
     /// Where errors are reported: the directive, or the action being built.
-    at: usize,
+    pub(super) at: usize,
 }
 
 impl Builder<'_, '_> {
-    fn fail<T>(&mut self, msg: &str) -> Res<T> {
+    pub(super) fn fail<T>(&mut self, msg: &str) -> Res<T> {
         let at = self.lines.location(self.file, self.at);
         self.driver.error(at, msg, "");
         Err(Failed)
@@ -149,7 +140,7 @@ impl Builder<'_, '_> {
         Err(Failed)
     }
 
-    fn file_name(&self) -> String {
+    pub(super) fn file_name(&self) -> String {
         self.driver.filename(self.file).to_string()
     }
 
@@ -181,7 +172,7 @@ impl Builder<'_, '_> {
                 self.driver.add_sec_action(rule);
             }
             Directive::Script { path, actions } => {
-                if !path.quoted && !syntax::bytes(path.text).iter().all(|&c| is_path(c)) {
+                if !path.quoted && !syntax::bytes(path.text).iter().all(|&c| syntax::value::is_path(c)) {
                     return self.fail(&format!("Invalid input: {}", string(path.text)));
                 }
                 let Some(list) = actions else {
@@ -478,331 +469,6 @@ impl Builder<'_, '_> {
         self.driver.properties.default_actions[index].extend(checked_actions.into_iter().map(std::sync::Arc::new));
         Ok(())
     }
-
-    // -----------------------------------------------------------------------
-    // Settings
-    // -----------------------------------------------------------------------
-
-    fn setting(&mut self, keyword: &str, rest: &str) -> Res<()> {
-        let rest = syntax::bytes(rest);
-        let Some(d) = setting_kind(keyword) else {
-            return self.fail(&format!("Invalid input: {}{}", keyword, String::from_utf8_lossy(&rest)));
-        };
-        match d.form {
-            Form::Value(patterns) => {
-                let Some((end, extract, which)) = longest(&rest, patterns) else {
-                    return self.fail(&format!(
-                        "Invalid value for {}: {}",
-                        keyword,
-                        String::from_utf8_lossy(rest.trim_ascii_start())
-                    ));
-                };
-                if !ignorable(&rest[end..]) {
-                    return self.fail(&format!("Invalid input: {}", String::from_utf8_lossy(&rest[end..])));
-                }
-                let mut yytext = keyword.as_bytes().to_vec();
-                yytext.extend_from_slice(&rest[..end]);
-                let v = extract.apply(&yytext);
-                // `SecArgumentSeparator` with more than a word is another
-                // (ignored) directive of the C++ scanner.
-                let dir = if d.dir == Effect::ArgumentSeparator && which == 2 { Effect::Ignored } else { d.dir };
-                self.apply_value(dir, v, &rest[..end])
-            }
-            Form::Choice(choices) => {
-                let r = rest.trim_ascii_start();
-                if choices.is_empty() {
-                    if !ignorable(&rest) {
-                        return self.fail(&format!("Invalid input: {}", String::from_utf8_lossy(&rest)));
-                    }
-                    return self.apply_choice(d.dir, "");
-                }
-                let word_end = r.iter().position(|&c| matches!(c, b' ' | b'\t' | b'\r' | b'#')).unwrap_or(r.len());
-                let word = String::from_utf8_lossy(&r[..word_end]);
-                let separated = rest.first().is_some_and(|&c| c == b' ' || c == b'\t');
-                let choice = choices.iter().find(|c| c.eq_ignore_ascii_case(&word));
-                match choice {
-                    Some(c) if separated && ignorable(&r[word_end..]) => self.apply_choice(d.dir, c),
-                    _ => self.fail(&format!("Invalid value for {}: {}", keyword, String::from_utf8_lossy(r))),
-                }
-            }
-        }
-    }
-
-    /// The directives with a choice of values (`SecRuleEngine On`).
-    fn apply_choice(&mut self, dir: Effect, choice: &str) -> Res<()> {
-        let is = |v: &str| choice.eq_ignore_ascii_case(v);
-        let p = &mut self.driver.properties;
-        match dir {
-            Effect::RuleEngine => {
-                p.settings.sec_rule_engine = Some(if is("off") {
-                    RuleEngine::Disabled
-                } else if is("on") {
-                    RuleEngine::Enabled
-                } else {
-                    RuleEngine::DetectionOnly
-                })
-            }
-            Effect::RequestBodyAccess => p.settings.sec_request_body_access = Some(is("on")),
-            Effect::ResponseBodyAccess => p.settings.sec_response_body_access = Some(is("on")),
-            Effect::AuditEngine => p.audit_log.set_status(if is("relevantonly") {
-                AuditLogStatus::RelevantOnly
-            } else if is("off") {
-                AuditLogStatus::Off
-            } else {
-                AuditLogStatus::On
-            }),
-            Effect::AuditLogFormat => {
-                p.audit_log.set_format(if is("json") { AuditLogFormat::Json } else { AuditLogFormat::Native })
-            }
-            Effect::AuditLogType => p.audit_log.set_type(if is("serial") {
-                AuditLogType::Serial
-            } else if is("https") {
-                AuditLogType::Https
-            } else {
-                AuditLogType::Parallel
-            }),
-            Effect::UploadKeepFiles => {
-                if is("relevantonly") {
-                    return self.fail(
-                        "SecUploadKeepFiles RelevantOnly is not currently supported. Accepted values are On or Off",
-                    );
-                }
-                p.settings.upload_keep_files = Some(is("on"));
-            }
-            Effect::TmpSaveUploadedFiles => p.settings.tmp_save_uploaded_files = Some(is("on")),
-            Effect::RequestBodyLimitAction => {
-                p.settings.request_body_limit_action =
-                    Some(if is("processpartial") { BodyLimitAction::ProcessPartial } else { BodyLimitAction::Reject })
-            }
-            Effect::ResponseBodyLimitAction => {
-                p.settings.response_body_limit_action =
-                    Some(if is("processpartial") { BodyLimitAction::ProcessPartial } else { BodyLimitAction::Reject })
-            }
-            Effect::RemoteRulesFailAction => {
-                p.remote_rules_action_on_failed =
-                    Some(if is("abort") { OnFailedRemoteRulesAction::Abort } else { OnFailedRemoteRulesAction::Warn })
-            }
-            Effect::XmlExternalEntity => p.settings.sec_xml_external_entity = Some(is("on")),
-            Effect::ParseXmlIntoArgs => {
-                p.settings.sec_xml_parse_xml_into_args = Some(if is("onlyargs") {
-                    ParseXmlIntoArgs::OnlyArgs
-                } else if is("off") {
-                    ParseXmlIntoArgs::Off
-                } else {
-                    ParseXmlIntoArgs::On
-                })
-            }
-            Effect::ResponseBodyMimeTypesClear => {
-                let t = &mut p.response_body_type_to_be_inspected;
-                t.set = true;
-                t.clear = true;
-                t.value.clear();
-            }
-            Effect::ConnEngine if is("on") => return self.fail("SecConnEngine is not yet supported."),
-            Effect::DisableBackendCompression if is("on") => {
-                return self.fail("SecDisableBackendCompression is not supported.");
-            }
-            Effect::ContentInjection if is("on") => return self.fail("SecContentInjection is not yet supported."),
-            Effect::HashEngine if is("on") => return self.fail("SecHashEngine is not yet supported."),
-            Effect::InterceptOnError if is("on") => return self.fail("SecInterceptOnError is not yet supported."),
-            Effect::RuleInheritance if is("on") => return self.fail("SecRuleInheritance is not yet supported."),
-            Effect::ConnEngine
-            | Effect::DisableBackendCompression
-            | Effect::ContentInjection
-            | Effect::HashEngine
-            | Effect::InterceptOnError
-            | Effect::RuleInheritance => {}
-            Effect::Unsupported(msg) => return self.fail(msg),
-            _ => unreachable!("not a directive with a choice of values"),
-        }
-        Ok(())
-    }
-
-    /// The directives with a value. `v` is the value as the C++ scanner
-    /// returns it; `token` is the text after the keyword it was read from.
-    fn apply_value(&mut self, dir: Effect, v: Vec<u8>, token: &[u8]) -> Res<()> {
-        let s = String::from_utf8_lossy(&v).into_owned();
-        let p = &mut self.driver.properties;
-        match dir {
-            Effect::AuditLogDirMode => p.audit_log.set_storage_dir_mode(strtol_int(&s, 8) as u32),
-            Effect::AuditLogStorageDir => p.audit_log.set_storage_dir(&s),
-            Effect::AuditLogFileMode => p.audit_log.set_file_mode(strtol_int(&s, 8) as u32),
-            Effect::AuditLog2 => p.audit_log.set_file_path2(&s),
-            Effect::AuditLogParts => p.audit_log.set_parts(&s),
-            Effect::AuditLog => p.audit_log.set_file_path1(&s),
-            Effect::AuditLogRelevantStatus => p.audit_log.set_relevant_status(&s),
-            Effect::AuditLogPrefix => p.audit_log.set_prefix(&s),
-            Effect::UploadFileLimit => match parse_config_number(&s) {
-                Ok(n) => p.settings.upload_file_limit = Some(n),
-                Err(e) => return self.fail(&format!("Failed to parse SecUploadFileLimit: {}", e)),
-            },
-            Effect::UploadFileMode => match parse_octal_mode(&s) {
-                Ok(n) => p.settings.upload_file_mode = Some(n),
-                Err(e) => return self.fail(&format!("Failed to parse SecUploadFileMode: {}", e)),
-            },
-            Effect::UploadDir => p.settings.upload_directory = Some(s),
-            Effect::Marker => {
-                let marker = remove_brackets_if_needed(s);
-                let file = self.file_name();
-                self.driver.add_sec_marker(&marker, &file, self.line as i32);
-            }
-            Effect::ArgumentSeparator => {
-                if v.len() != 1 {
-                    return self.fail("Argument separator should be set to a single character.");
-                }
-                p.settings.sec_argument_separator = Some(s);
-            }
-            Effect::ComponentSignature => p.components.push(s),
-            Effect::WebAppId => p.settings.sec_web_app_id = Some(s),
-            Effect::RuleRemoveById => {
-                if let Err(error) = p.exceptions.load(&s) {
-                    return self.fail(&format!("SecRuleRemoveById: failed to load:{}. {}", s, error));
-                }
-            }
-            Effect::RuleRemoveByTag => p.exceptions.load_remove_rule_by_tag(&s),
-            Effect::RuleRemoveByMsg => p.exceptions.load_remove_rule_by_msg(&s),
-            Effect::DebugLogLevel => p.debug_log.set_level(atoi(&v)),
-            Effect::DebugLog => {
-                if let Err(error) = p.debug_log.set_file(&s) {
-                    return self.fail(&format!("Failed to start DebugLog: {}", error));
-                }
-            }
-            Effect::GeoLookupDb => {
-                if !cfg!(feature = "maxmind") {
-                    return self.fail("This version of ModSecurity was not compiled with GeoIP or MaxMind support.");
-                }
-                let lookup = find_resource(&s, &self.file_name());
-                let Some(file) = lookup.path else {
-                    return self
-                        .fail(&format!("Failed to load locate the GeoDB file from: {} {}", s, lookup.looked_at));
-                };
-                match crate::utils::geo_lookup::GeoDb::open(&file) {
-                    Ok(db) => self.driver.properties.settings.geo_db = Some(std::sync::Arc::new(db)),
-                    // A database opened before stays in use, as in C++.
-                    Err(_) if self.driver.properties.settings.geo_db.is_some() => {}
-                    Err(err) => return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err)),
-                }
-            }
-            Effect::ArgumentsLimit => p.settings.arguments_limit = Some(atoi(&v) as u32),
-            Effect::RequestBodyJsonDepthLimit => p.settings.request_body_json_depth_limit = Some(atoi(&v) as u32),
-            Effect::RequestBodyLimit => match parse_config_number(&s) {
-                Ok(n) => p.settings.request_body_limit = Some(n),
-                Err(e) => return self.fail(&format!("Failed to parse SecRequestBodyLimit: {}", e)),
-            },
-            Effect::RequestBodyNoFilesLimit => match parse_config_number(&s) {
-                Ok(n) => p.settings.request_body_no_files_limit = Some(n),
-                Err(e) => return self.fail(&format!("Failed to parse SecRequestsBodyNoFilesLimit: {}", e)),
-            },
-            Effect::ResponseBodyLimit => match parse_config_number(&s) {
-                Ok(n) => p.settings.response_body_limit = Some(n),
-                Err(e) => return self.fail(&format!("Failed to parse SecResponseBodyLimit: {}", e)),
-            },
-            Effect::PcreMatchLimit => match parse_config_number(&s) {
-                Ok(n) => p.settings.pcre_match_limit = Some(n),
-                Err(e) => return self.fail(&format!("Failed to parse SecPcreMatchLimit: {}", e)),
-            },
-            Effect::ResponseBodyMimeType => {
-                let tokens: std::collections::BTreeSet<&str> = s.split_ascii_whitespace().collect();
-                let t = &mut p.response_body_type_to_be_inspected;
-                t.set = true;
-                for it in tokens {
-                    t.value.insert(it.to_ascii_lowercase());
-                }
-            }
-            Effect::CookieFormat => {
-                if atoi(&v) == 1 {
-                    return self.fail("SecCookieFormat 1 is not yet supported.");
-                }
-            }
-            Effect::HttpBlKey => p.settings.httpbl_key = Some(s),
-            Effect::UnicodeMapFile => return self.unicode_map_file(&s),
-            Effect::Include => return self.include(token),
-            Effect::RemoteRules => return self.remote_rules(&s),
-            // Accepted and ignored.
-            Effect::Ignored => {}
-            Effect::Unsupported(msg) => return self.fail(msg),
-            _ => unreachable!("not a directive with a value"),
-        }
-        Ok(())
-    }
-
-    /// `SecUnicodeMapFile <file> <code page>`
-    fn unicode_map_file(&mut self, v: &str) -> Res<()> {
-        let mut param: Vec<String> =
-            ssplit(v.as_bytes(), b' ').into_iter().map(|p| String::from_utf8_lossy(&p).into_owned()).collect();
-        if param.len() <= 1 {
-            return self.fail(&format!("Failed to process unicode map, missing parameter: {} ", v));
-        }
-        let last = param.pop().unwrap_or_default();
-        let Some(num) = stod(&last) else {
-            return self
-                .fail(&format!("Failed to process unicode map, last parameter is expected to be a number: {} ", last));
-        };
-        let f = param.join(" ");
-        let lookup = find_resource(&f, &self.file_name());
-        let Some(file) = lookup.path else {
-            return self.fail(&format!("Failed to locate the unicode map file from: {} {}", f, lookup.looked_at));
-        };
-        if let Err(error) = ConfigUnicodeMap::load_config(&file, num, &mut self.driver.properties) {
-            return self.fail(&error);
-        }
-        Ok(())
-    }
-
-    /// `Include <path>`: loads each file the (glob) path names, in place.
-    fn include(&mut self, token: &[u8]) -> Res<()> {
-        let token = String::from_utf8_lossy(token);
-        let after_whitespace = token.trim_start_matches([' ', '\t']);
-        let quoted = after_whitespace.starts_with('"');
-        let file = if quoted {
-            after_whitespace.get(1..after_whitespace.len().saturating_sub(1)).unwrap_or("")
-        } else {
-            after_whitespace
-        };
-        let current = self.file_name();
-        let lookup = find_resource(file, &current);
-        let Some(fi) = lookup.path else {
-            let at = self.lines.location(self.file, self.at);
-            self.driver.error(at, "", &format!("{}: Not able to open file. {}", file, lookup.looked_at));
-            return Err(Failed);
-        };
-        for s in expand_env(&fi, 0) {
-            let lookup = find_resource(&s, &current);
-            let f = lookup.path.unwrap_or_default();
-            let Ok(data) = std::fs::read(&f) else {
-                let at = self.lines.location(self.file, self.at);
-                self.driver.error(at, "", &format!("{}: Not able to open file. {}", s, lookup.looked_at));
-                return Err(Failed);
-            };
-            let idx = self.driver.add_filename(f);
-            load(self.driver, &data, idx)?;
-        }
-        Ok(())
-    }
-
-    /// `SecRemoteRules <key> <url>`: downloads the rules and loads them.
-    fn remote_rules(&mut self, v: &str) -> Res<()> {
-        let Some((key, url)) = v.split_once(' ') else {
-            return self.fail("SecRemoteRules demands a key and a URI");
-        };
-        let mut c = HttpsClient::new();
-        c.set_key(key);
-        if !c.download(url) {
-            match self.driver.properties.remote_rules_action_on_failed {
-                Some(OnFailedRemoteRulesAction::Abort) => {
-                    return self.fail(&format!("{} - Failed to download: {}", url, c.error));
-                }
-                // TODO (C++): Implement the server logging mechanism.
-                _ => return Ok(()),
-            }
-        }
-        let content = match c.content.iter().position(|&b| b == 0) {
-            Some(n) => &c.content[..n],
-            None => &c.content[..],
-        };
-        let idx = self.driver.add_filename(url.to_string());
-        load(self.driver, content, idx)
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -882,414 +548,4 @@ fn update_value(v: syntax::Value<'_>) -> String {
     let s = string(v.text);
     let lead = string(v.lead);
     parser_sanitizer(if v.quoted { format!("{}\"{}\"", lead, s) } else { lead + &s })
-}
-
-fn is_audit_part(c: u8) -> bool {
-    b"ABCDEFGHJKIZ".contains(&c)
-}
-
-/// Whether `c` may appear in an unquoted path (`SecRuleScript`, and the
-/// directives with a path value).
-fn is_path(c: u8) -> bool {
-    c.is_ascii_alphanumeric() || b"_/.*: \\()-".contains(&c)
-}
-
-// ---------------------------------------------------------------------------
-// Directive values
-// ---------------------------------------------------------------------------
-
-/// What a setting directive does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Effect {
-    AuditLogDirMode,
-    AuditLogStorageDir,
-    AuditEngine,
-    AuditLogFileMode,
-    AuditLog2,
-    AuditLogParts,
-    AuditLog,
-    AuditLogFormat,
-    AuditLogRelevantStatus,
-    AuditLogPrefix,
-    AuditLogType,
-    UploadKeepFiles,
-    UploadFileLimit,
-    UploadFileMode,
-    UploadDir,
-    TmpSaveUploadedFiles,
-    Marker,
-    RuleEngine,
-    RequestBodyAccess,
-    ResponseBodyAccess,
-    ArgumentSeparator,
-    ComponentSignature,
-    ConnEngine,
-    WebAppId,
-    DisableBackendCompression,
-    ContentInjection,
-    HashEngine,
-    InterceptOnError,
-    RuleInheritance,
-    RuleRemoveById,
-    RuleRemoveByTag,
-    RuleRemoveByMsg,
-    DebugLogLevel,
-    DebugLog,
-    GeoLookupDb,
-    ArgumentsLimit,
-    RequestBodyJsonDepthLimit,
-    RequestBodyLimit,
-    RequestBodyNoFilesLimit,
-    ResponseBodyLimit,
-    RequestBodyLimitAction,
-    ResponseBodyLimitAction,
-    RemoteRulesFailAction,
-    PcreMatchLimit,
-    ResponseBodyMimeType,
-    ResponseBodyMimeTypesClear,
-    XmlExternalEntity,
-    ParseXmlIntoArgs,
-    CookieFormat,
-    UnicodeMapFile,
-    HttpBlKey,
-    Include,
-    RemoteRules,
-    /// Accepted and ignored (`SecTmpDir`, `SecDataDir`, ...).
-    Ignored,
-    /// Rejected with this message.
-    Unsupported(&'static str),
-}
-
-/// A character class of the C++ scanner.
-#[derive(Debug, Clone, Copy)]
-enum Class {
-    /// A number: `[0-9]+`.
-    Number,
-    /// A path: the bytes [`is_path`] accepts.
-    Path,
-    /// Text up to a quote, `|` or line feed: `[^"|\n]+`.
-    FreeTextNewLine,
-    /// A word: `[^, \t"\n\r]+`.
-    Word,
-    /// Audit log part letters (`ABCDEFGHJKIZ`).
-    AuditParts,
-    /// Any byte but a quote (the C++ scanner's `FREE_TEXT` was
-    /// `([^"]|([^\\]\\"))+`).
-    FreeText,
-}
-
-impl Class {
-    fn contains(self, c: u8) -> bool {
-        match self {
-            Class::Number => c.is_ascii_digit(),
-            Class::Path => is_path(c),
-            Class::FreeTextNewLine => !matches!(c, b'"' | b'|' | b'\n'),
-            Class::Word => !matches!(c, b',' | b' ' | b'\t' | b'"' | b'\n' | b'\r'),
-            Class::AuditParts => is_audit_part(c),
-            Class::FreeText => c != b'"',
-        }
-    }
-
-    /// The length of the longest prefix of `s` made of this class.
-    fn run(self, s: &[u8]) -> usize {
-        s.iter().position(|&c| !self.contains(c)).unwrap_or(s.len())
-    }
-}
-
-/// How the value of a directive is written after its keyword.
-#[derive(Debug, Clone, Copy)]
-enum Pattern {
-    /// `[ \t]+CLASS`
-    Sep(Class),
-    /// `[ \t]+"CLASS"`
-    SepQuoted(Class),
-    /// `CLASS`, right after the keyword.
-    Direct(Class),
-    /// `[ \t]+[^"|\n]+[ ]+[0-9]+`: a file and a code page
-    /// (`SecUnicodeMapFile`).
-    UnicodeMap,
-    /// `[ ][^ ]+[ ][^\n\r ]+`: a key and a URL (`SecRemoteRules`).
-    Remote,
-}
-
-/// How the value is taken from the text the scanner matched (the keyword
-/// and the value).
-#[derive(Debug, Clone, Copy)]
-enum Extract {
-    /// After the first space or tab.
-    FindSep,
-    /// After the first space or tab, without the spaces and quotes around
-    /// it.
-    SanFindSep,
-    /// Two bytes after the first space (`strchr(text, ' ') + 2`).
-    Strchr2,
-    /// Two bytes after the first space, without the spaces and quotes
-    /// around it.
-    SanStrchr2,
-}
-
-impl Extract {
-    fn apply(self, yytext: &[u8]) -> Vec<u8> {
-        let find_sep = || match yytext.iter().position(|&c| c == b' ' || c == b'\t') {
-            Some(p) => &yytext[p + 1..],
-            None => &yytext[yytext.len()..],
-        };
-        let strchr2 = || match yytext.iter().position(|&c| c == b' ') {
-            Some(p) => &yytext[(p + 2).min(yytext.len())..],
-            None => &yytext[yytext.len()..],
-        };
-        let sanitize = |s: &[u8]| parser_sanitizer(String::from_utf8_lossy(s).into_owned()).into_bytes();
-        match self {
-            Extract::FindSep => find_sep().to_vec(),
-            Extract::SanFindSep => sanitize(find_sep()),
-            Extract::Strchr2 => strchr2().to_vec(),
-            Extract::SanStrchr2 => sanitize(strchr2()),
-        }
-    }
-}
-
-/// How a setting directive is written.
-enum Form {
-    /// A value, written in one of these ways (in the order of the C++
-    /// scanner rules, which breaks ties).
-    Value(&'static [(Pattern, Extract)]),
-    /// One of these words (case-insensitive); none for a directive without
-    /// a value.
-    Choice(&'static [&'static str]),
-}
-
-struct Setting {
-    dir: Effect,
-    form: Form,
-}
-
-fn setting_kind(keyword: &str) -> Option<Setting> {
-    use Class::*;
-    use Extract::*;
-    use Pattern::*;
-    const ON_OFF: &[&str] = &["On", "Off"];
-    let value = |dir, p: &'static [(Pattern, Extract)]| Some(Setting { dir, form: Form::Value(p) });
-    let choice = |dir, c: &'static [&'static str]| Some(Setting { dir, form: Form::Choice(c) });
-    const PATH: &[(Pattern, Extract)] = &[(Sep(Path), SanFindSep), (SepQuoted(Path), SanFindSep)];
-    const NUMBER: &[(Pattern, Extract)] = &[(Sep(Number), FindSep)];
-    const FREE_TEXT_LINE: &[(Pattern, Extract)] = &[(Sep(FreeTextNewLine), FindSep)];
-    const FREE_TEXT_LINE_SAN: &[(Pattern, Extract)] =
-        &[(Sep(FreeTextNewLine), SanFindSep), (SepQuoted(FreeTextNewLine), SanFindSep)];
-    match keyword.to_ascii_lowercase().as_str() {
-        "secauditlogdirmode" => {
-            value(Effect::AuditLogDirMode, &[(Sep(Number), SanFindSep), (SepQuoted(Number), SanFindSep)])
-        }
-        "secauditlogstoragedir" => value(Effect::AuditLogStorageDir, PATH),
-        "secauditengine" => choice(Effect::AuditEngine, &["RelevantOnly", "Off", "On"]),
-        "secauditlogfilemode" => value(Effect::AuditLogFileMode, NUMBER),
-        "secauditlog2" => value(Effect::AuditLog2, &[(Sep(Path), FindSep)]),
-        "secauditlogparts" => {
-            value(Effect::AuditLogParts, &[(Sep(AuditParts), SanFindSep), (SepQuoted(AuditParts), SanFindSep)])
-        }
-        "secauditlog" => value(Effect::AuditLog, &[(Sep(Path), FindSep), (SepQuoted(Path), SanFindSep)]),
-        "secauditlogformat" => choice(Effect::AuditLogFormat, &["JSON", "Native"]),
-        "secauditlogrelevantstatus" => {
-            value(Effect::AuditLogRelevantStatus, &[(Sep(FreeTextNewLine), SanFindSep), (SepQuoted(Word), SanFindSep)])
-        }
-        "secauditlogprefix" => value(Effect::AuditLogPrefix, FREE_TEXT_LINE_SAN),
-        "secauditlogtype" => choice(Effect::AuditLogType, &["Serial", "Parallel", "Concurrent", "https"]),
-        "secuploadkeepfiles" => choice(Effect::UploadKeepFiles, &["On", "Off", "RelevantOnly"]),
-        "secuploadfilelimit" => value(Effect::UploadFileLimit, NUMBER),
-        "secuploadfilemode" => value(Effect::UploadFileMode, NUMBER),
-        "secuploaddir" => value(Effect::UploadDir, PATH),
-        "sectmpsaveuploadedfiles" => choice(Effect::TmpSaveUploadedFiles, ON_OFF),
-        "secmarker" => value(Effect::Marker, &[(SepQuoted(Word), FindSep), (Sep(Word), FindSep)]),
-        "secruleengine" => choice(Effect::RuleEngine, &["Off", "On", "DetectionOnly"]),
-        "secrequestbodyaccess" => choice(Effect::RequestBodyAccess, ON_OFF),
-        "secresponsebodyaccess" => choice(Effect::ResponseBodyAccess, ON_OFF),
-        // `[ \t]+FREE_TEXT_NEW_LINE` (`CONGIG_DIR_SEC_ARG_SEP`, ignored)
-        // wins when it is longer: with a space after the separator.
-        "secargumentseparator" => value(
-            Effect::ArgumentSeparator,
-            &[(SepQuoted(Word), SanFindSep), (Sep(Word), SanFindSep), (Sep(FreeTextNewLine), FindSep)],
-        ),
-        "seccomponentsignature" => value(Effect::ComponentSignature, &[(SepQuoted(FreeText), Strchr2)]),
-        "secconnengine" => choice(Effect::ConnEngine, ON_OFF),
-        "secwebappid" => {
-            value(Effect::WebAppId, &[(SepQuoted(FreeText), SanStrchr2), (Sep(FreeTextNewLine), SanFindSep)])
-        }
-        "secserversignature" => {
-            value(Effect::Unsupported("SecServerSignature is not supported."), &[(SepQuoted(FreeText), Strchr2)])
-        }
-        "seccachetransformations" => value(
-            Effect::Unsupported("SecCacheTransformations is not supported."),
-            &[(Direct(FreeTextNewLine), FindSep)],
-        ),
-        "secdisablebackendcompression" => choice(Effect::DisableBackendCompression, ON_OFF),
-        "seccontentinjection" => choice(Effect::ContentInjection, ON_OFF),
-        "secchrootdir" => value(Effect::Unsupported("SecChrootDir is not supported."), PATH),
-        "sechashengine" => choice(Effect::HashEngine, ON_OFF),
-        "sechashkey" => choice(Effect::Unsupported("SecHashKey is not yet supported."), &[]),
-        "sechashparam" => choice(Effect::Unsupported("SecHashParam is not yet supported."), &[]),
-        "sechashmethodrx" => choice(Effect::Unsupported("SecHashMethodRx is not yet supported."), &[]),
-        "sechashmethodpm" => choice(Effect::Unsupported("SecHashMethodPm is not yet supported."), &[]),
-        "secgsblookupdb" => value(Effect::Unsupported("SecGsbLookupDb is not supported."), PATH),
-        "secguardianlog" => choice(Effect::Unsupported("SecGuardianLog is not supported."), &[]),
-        "secinterceptonerror" => choice(Effect::InterceptOnError, ON_OFF),
-        "secconnreadstatelimit" => value(
-            Effect::Unsupported("SecConnReadStateLimit is not yet supported."),
-            &[(Direct(FreeTextNewLine), FindSep)],
-        ),
-        "secconnwritestatelimit" => value(
-            Effect::Unsupported("SecConnWriteStateLimit is not yet supported."),
-            &[(Direct(FreeTextNewLine), FindSep)],
-        ),
-        "secsensorid" => {
-            value(Effect::Unsupported("SecSensorId is not yet supported."), &[(Direct(FreeTextNewLine), FindSep)])
-        }
-        "secruleinheritance" => choice(Effect::RuleInheritance, ON_OFF),
-        "secruleperftime" => value(Effect::Unsupported("SecRulePerfTime is not yet supported."), NUMBER),
-        "secstreaminbodyinspection" => choice(Effect::Unsupported("SecStreamInBodyInspection is not supported."), &[]),
-        "secstreamoutbodyinspection" => {
-            choice(Effect::Unsupported("SecStreamOutBodyInspection is not supported."), &[])
-        }
-        "secruleremovebyid" => value(Effect::RuleRemoveById, &[(Sep(FreeTextNewLine), SanFindSep)]),
-        "secruleremovebymsg" => value(Effect::RuleRemoveByMsg, FREE_TEXT_LINE_SAN),
-        "secruleremovebytag" => value(Effect::RuleRemoveByTag, FREE_TEXT_LINE_SAN),
-        "secdebuglog" => value(Effect::DebugLog, &[(Sep(Path), FindSep), (SepQuoted(Path), SanFindSep)]),
-        "secdebugloglevel" => value(Effect::DebugLogLevel, NUMBER),
-        "secgeolookupdb" => value(Effect::GeoLookupDb, FREE_TEXT_LINE),
-        "secargumentslimit" => value(Effect::ArgumentsLimit, NUMBER),
-        "secrequestbodyjsondepthlimit" => value(Effect::RequestBodyJsonDepthLimit, NUMBER),
-        "secrequestbodylimit" => value(Effect::RequestBodyLimit, NUMBER),
-        "secrequestbodynofileslimit" => value(Effect::RequestBodyNoFilesLimit, NUMBER),
-        "secrequestbodyinmemorylimit" => value(
-            Effect::Unsupported(
-                "As of ModSecurity version 3.0, SecRequestBodyInMemoryLimit is no longer supported. Instead, you can use your web server configurations to control those values. ModSecurity will follow the web server decision.",
-            ),
-            NUMBER,
-        ),
-        "secresponsebodylimit" => value(Effect::ResponseBodyLimit, NUMBER),
-        "secrequestbodylimitaction" => choice(Effect::RequestBodyLimitAction, &["ProcessPartial", "Reject"]),
-        "secresponsebodylimitaction" => choice(Effect::ResponseBodyLimitAction, &["ProcessPartial", "Reject"]),
-        "secremoterulesfailaction" => choice(Effect::RemoteRulesFailAction, &["Abort", "Warn"]),
-        // Accepted (without effect) so that modsecurity.conf-recommended
-        // loads.
-        "secpcrematchlimitrecursion" => value(Effect::Ignored, NUMBER),
-        "secpcrematchlimit" => value(Effect::PcreMatchLimit, NUMBER),
-        "secresponsebodymimetype" => value(Effect::ResponseBodyMimeType, FREE_TEXT_LINE),
-        "secresponsebodymimetypesclear" => choice(Effect::ResponseBodyMimeTypesClear, &[]),
-        "secxmlexternalentity" => choice(Effect::XmlExternalEntity, ON_OFF),
-        "secparsexmlintoargs" => choice(Effect::ParseXmlIntoArgs, &["OnlyArgs", "Off", "On"]),
-        "sectmpdir" | "secdatadir" => value(Effect::Ignored, PATH),
-        "secstatusengine" => value(Effect::Ignored, &[(Sep(FreeTextNewLine), FindSep)]),
-        "seccookieformat" => value(Effect::CookieFormat, NUMBER),
-        "seccookiev0separator" => value(
-            Effect::Unsupported("SecCookieV0Separator is not yet supported."),
-            &[(SepQuoted(Word), SanFindSep), (Sep(Word), SanFindSep)],
-        ),
-        "secunicodemapfile" => value(Effect::UnicodeMapFile, &[(UnicodeMap, FindSep)]),
-        "seccollectiontimeout" => value(Effect::Ignored, NUMBER),
-        "sechttpblkey" => value(Effect::HttpBlKey, FREE_TEXT_LINE),
-        "include" => value(Effect::Include, &[(Sep(Path), FindSep), (SepQuoted(Path), FindSep)]),
-        "secremoterules" => value(Effect::RemoteRules, &[(Remote, FindSep)]),
-        _ => None,
-    }
-}
-
-/// The longest match of `patterns` at the start of `rest` (the first
-/// pattern among those of the same length): its length, how its value is
-/// extracted and which pattern it is.
-fn longest(rest: &[u8], patterns: &[(Pattern, Extract)]) -> Option<(usize, Extract, usize)> {
-    let mut best: Option<(usize, Extract, usize)> = None;
-    for (i, &(p, e)) in patterns.iter().enumerate() {
-        if let Some(n) = match_pattern(rest, p)
-            && best.is_none_or(|(b, _, _)| n > b)
-        {
-            best = Some((n, e, i));
-        }
-    }
-    best
-}
-
-/// The length of the longest match of `p` at the start of `rest`.
-fn match_pattern(rest: &[u8], p: Pattern) -> Option<usize> {
-    let ws = rest.iter().take_while(|&&c| c == b' ' || c == b'\t').count();
-    let mut best = None;
-    match p {
-        Pattern::Direct(class) => {
-            let n = class.run(rest);
-            return (n > 0).then_some(n);
-        }
-        Pattern::Sep(class) => {
-            for k in 1..=ws {
-                let n = class.run(&rest[k..]);
-                if n > 0 {
-                    best = best.max(Some(k + n));
-                }
-            }
-        }
-        Pattern::SepQuoted(class) => {
-            for k in 1..=ws {
-                if rest.get(k) != Some(&b'"') {
-                    continue;
-                }
-                let content = &rest[k + 1..];
-                if let Class::FreeText = class {
-                    // `([^"]|([^\\]\\"))+` followed by `"`: the last quote
-                    // that closes a valid text.
-                    let mut valid = vec![false; content.len() + 1];
-                    valid[0] = true;
-                    for i in 1..=content.len() {
-                        valid[i] = (valid[i - 1] && content[i - 1] != b'"')
-                            || (i >= 3
-                                && valid[i - 3]
-                                && content[i - 3] != b'\\'
-                                && content[i - 2] == b'\\'
-                                && content[i - 1] == b'"');
-                    }
-                    for i in 1..content.len() {
-                        if valid[i] && content[i] == b'"' {
-                            best = best.max(Some(k + 1 + i + 1));
-                        }
-                    }
-                } else {
-                    let n = class.run(content);
-                    if n > 0 && content.get(n) == Some(&b'"') {
-                        best = best.max(Some(k + 1 + n + 1));
-                    }
-                }
-            }
-        }
-        Pattern::UnicodeMap => {
-            for k in 1..=ws {
-                let s = &rest[k..];
-                let l = Class::FreeTextNewLine.run(s);
-                for e in (1..=l).rev() {
-                    if !s[e - 1].is_ascii_digit() {
-                        continue;
-                    }
-                    let digits_start = s[..e].iter().rposition(|c| !c.is_ascii_digit()).map_or(0, |i| i + 1);
-                    if digits_start >= 2 && s[digits_start - 1] == b' ' {
-                        best = best.max(Some(k + e));
-                        break;
-                    }
-                }
-            }
-        }
-        Pattern::Remote => {
-            if rest.first() != Some(&b' ') {
-                return None;
-            }
-            let key = rest[1..].iter().take_while(|&&c| c != b' ').count();
-            if key == 0 || rest.get(1 + key) != Some(&b' ') {
-                return None;
-            }
-            let url = rest[2 + key..].iter().take_while(|&&c| !matches!(c, b'\n' | b'\r' | b' ')).count();
-            return (url > 0).then_some(2 + key + url);
-        }
-    }
-    best
-}
-
-/// What may follow a directive on its line: spaces, carriage returns and a
-/// comment.
-fn ignorable(s: &[u8]) -> bool {
-    let n = s.iter().take_while(|&&c| matches!(c, b' ' | b'\t' | b'\r')).count();
-    n == s.len() || s[n] == b'#'
 }

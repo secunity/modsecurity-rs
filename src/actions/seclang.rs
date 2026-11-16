@@ -10,6 +10,7 @@ use crate::actions::rule_action::RuleAction;
 use crate::actions::transformation::{Transformation, TransformationKind};
 use crate::actions::{self, ctl, data, disruptive};
 use crate::audit_log::AuditLogStatus;
+use crate::parser::syntax::value::is_audit_part;
 use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
 use crate::run_time_string::RunTimeString;
 
@@ -208,10 +209,6 @@ pub(crate) fn plain(name: &str, text: &str) -> Result<ParsedAction, String> {
             _ => Err(invalid()),
         },
     }
-}
-
-fn is_audit_part(c: u8) -> bool {
-    b"ABCDEFGHJKIZ".contains(&c)
 }
 
 /// Whether `c` may appear in the value of a `ctl:ruleRemoveById`,

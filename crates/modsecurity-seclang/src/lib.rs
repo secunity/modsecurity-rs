@@ -28,6 +28,8 @@
 // `::alloc`.
 extern crate alloc;
 
+pub mod value;
+
 use pest::Parser;
 use pest::iterators::Pair;
 use pest_derive::Parser;

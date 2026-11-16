@@ -1021,3 +1021,27 @@ last name table that was not with its family. It is
 Compared with `parser::tests::dump_outcomes` (see its documentation): the
 real configurations and 9915 generated lines build the same, byte for
 byte, before and after.
+
+## The setting directives, declared once
+
+A directive that is a keyword and a value was spread over three places of
+the parser's builder: a table from the keyword to an `Effect` and the
+patterns of its value, the `Effect` enum (60 variants), and two long
+`match`es from the `Effect` to what it does. And the patterns themselves
+(a second, hand-written lexer next to the grammar) had no tests.
+
+- `modsecurity_seclang::value` has the shapes of values: `Class`,
+  `Pattern`, `Extract`, and `read` / `word`, which give the value or say
+  what is wrong with the text (`Refused::NotAValue`, `Refused::Trailing`).
+  The helpers that trim a value (`sanitize`, `remove_brackets_if_needed`)
+  moved there from the engine's `utils::string`. Nine unit tests cover the
+  shapes and the quirks they keep from the C++ scanner (`SecWebAppId "my
+  app"` is `my app"`, checked against the C++ library).
+- `src/parser/settings.rs` has one entry per directive: how its value is
+  written, and what it does (a function, `Ignored` or `Unsupported`). The
+  `Effect` enum, `apply_choice` and `apply_value` are gone.
+- `src/parser/build.rs` went from 1604 to 551 lines over this and the
+  previous section.
+
+`parser::tests::dump_outcomes` is byte-identical before and after; a
+planted change in one setting changes 147 lines of it.
