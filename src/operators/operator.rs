@@ -36,16 +36,6 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
         MatchContext { param, ..self }
     }
 
-    /// Whether the debug log takes messages of `level`.
-    pub fn debug_enabled(&self, level: i32) -> bool {
-        self.t.debug_enabled(level)
-    }
-
-    /// Writes `message` to the debug log.
-    pub fn debug(&self, level: i32, message: &str) {
-        self.t.debug(level, message);
-    }
-
     /// `param` with its macros expanded for this transaction, borrowed
     /// when it has none.
     pub fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]> {
@@ -87,11 +77,11 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
     /// sets `MSC_PCRE_ERROR` and `TX.MSC_PCRE_ERROR`.
     pub fn regex_compile_error(&mut self, pattern: &str) {
         let t = &mut *self.t;
-        crate::ms_dbg_a!(t, 1, "Error with regular expression: \"{}\"", pattern);
+        crate::ms_dbg!(t, 1, "Error with regular expression: \"{}\"", pattern);
         let off = t.vars.offset;
         t.vars.msc_pcre_error.set(b"1", off);
         t.collections.tx.set(b"MSC_PCRE_ERROR", b"1".to_vec());
-        crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
+        crate::ms_dbg!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
     }
 
     /// Reports a failed regular expression search by `op_name`: sets
@@ -102,13 +92,13 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
         let off = t.vars.offset;
         t.vars.msc_pcre_error.set(b"1", off);
         t.collections.tx.set(b"MSC_PCRE_ERROR", b"1".to_vec());
-        crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
+        crate::ms_dbg!(t, 7, "Set TX.MSC_PCRE_ERROR to 1");
         if match_limit {
             t.vars.msc_pcre_limits_exceeded.set(b"1", off);
             t.collections.tx.set(b"MSC_PCRE_LIMITS_EXCEEDED", b"1".to_vec());
-            crate::ms_dbg_a!(t, 7, "Set TX.MSC_PCRE_LIMITS_EXCEEDED to 1");
+            crate::ms_dbg!(t, 7, "Set TX.MSC_PCRE_LIMITS_EXCEEDED to 1");
         }
-        crate::ms_dbg_a!(
+        crate::ms_dbg!(
             t,
             1,
             "{}: regex error '{}' for pattern '{}'",
@@ -276,13 +266,17 @@ impl Resources for EngineResources {
     }
 }
 
-impl Context for MatchContext<'_, '_, '_> {
+impl crate::DebugSink for MatchContext<'_, '_, '_> {
     fn debug_enabled(&self, level: i32) -> bool {
-        MatchContext::debug_enabled(self, level)
+        self.t.debug_enabled(level)
     }
+
     fn debug(&self, level: i32, message: &str) {
-        MatchContext::debug(self, level, message)
+        self.t.debug(level, message);
     }
+}
+
+impl Context for MatchContext<'_, '_, '_> {
     fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]> {
         MatchContext::param(self, param)
     }

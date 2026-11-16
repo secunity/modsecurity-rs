@@ -46,7 +46,7 @@ impl Operator for ValidateDTD {
     /// matches, as the base `Operator::evaluate` does in C++.
     #[cfg(not(feature = "libxml2"))]
     fn evaluate(&self, cx: &mut dyn Context, _input: &[u8]) -> bool {
-        crate::op_dbg!(cx, 2, "Operator: {} is not implemented or malfunctioning.", self.name());
+        crate::ms_dbg!(cx, 2, "Operator: {} is not implemented or malfunctioning.", self.name());
         true
     }
 
@@ -58,36 +58,36 @@ impl Operator for ValidateDTD {
         let dtd = Dtd::load(&self.resource);
 
         let Some(dtd) = dtd else {
-            crate::op_dbg!(cx, 4, "XML: Failed to load DTD: {}", self.resource);
+            crate::ms_dbg!(cx, 4, "XML: Failed to load DTD: {}", self.resource);
             return true;
         };
 
         let Some((doc, well_formed)) = cx.xml_document() else {
-            crate::op_dbg!(cx, 4, "XML document tree could not be found for DTD validation.");
+            crate::ms_dbg!(cx, 4, "XML document tree could not be found for DTD validation.");
             return true;
         };
 
         if well_formed != 1 {
-            crate::op_dbg!(cx, 4, "XML: DTD validation failed because content is not well formed.");
+            crate::ms_dbg!(cx, 4, "XML: DTD validation failed because content is not well formed.");
             return true;
         }
 
         // Validator errors/warnings go to the debug log.
         let Some(valid) = doc.validate_dtd(&dtd, &mut |m| {
             if let Some(msg) = message(m) {
-                crate::op_dbg!(cx, 4, "{}", msg);
+                crate::ms_dbg!(cx, 4, "{}", msg);
             }
         }) else {
-            crate::op_dbg!(cx, 4, "XML: Failed to create a validation context.");
+            crate::ms_dbg!(cx, 4, "XML: Failed to create a validation context.");
             return true;
         };
 
         if !valid {
-            crate::op_dbg!(cx, 4, "XML: DTD validation failed.");
+            crate::ms_dbg!(cx, 4, "XML: DTD validation failed.");
             return true;
         }
 
-        crate::op_dbg!(cx, 4, "XML: Successfully validated payload against DTD: {}", self.resource);
+        crate::ms_dbg!(cx, 4, "XML: Successfully validated payload against DTD: {}", self.resource);
 
         false
     }

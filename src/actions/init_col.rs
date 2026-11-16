@@ -44,7 +44,7 @@ impl Action for InitCol {
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let collection_name = cx.expand(&self.string);
         cx.init_collection(self.collection, collection_name);
-        crate::act_dbg!(
+        crate::ms_dbg!(
             cx,
             5,
             "Collection `{}' initialized with value: {}",

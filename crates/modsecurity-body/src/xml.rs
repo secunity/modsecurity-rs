@@ -19,16 +19,6 @@ pub use with_libxml2::{Context, IntoArgs, Xml};
 
 #[cfg(feature = "libxml2")]
 mod with_libxml2 {
-    /// Writes to the debug log through a [`Context`]: the message is only
-    /// formatted when the debug level is high enough.
-    macro_rules! xml_dbg {
-        ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
-            if $cx.debug_enabled($lvl) {
-                $cx.debug($lvl, &format!($($arg)*));
-            }
-        }};
-    }
-
     /// `SecParseXmlIntoArgs`: whether the leaf elements become arguments,
     /// and whether the document is still built.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,13 +40,7 @@ mod with_libxml2 {
     }
 
     /// What the XML processor needs from the transaction it parses for.
-    pub trait Context {
-        /// Whether the debug log takes messages of `level`.
-        fn debug_enabled(&self, level: i32) -> bool;
-
-        /// Writes `message` to the debug log.
-        fn debug(&self, level: i32, message: &str);
-
+    pub trait Context: DebugSink {
         /// `SecXmlExternalEntity`: whether external entities are loaded.
         fn external_entities(&self) -> bool;
 
@@ -69,6 +53,7 @@ mod with_libxml2 {
     }
 
     use modsecurity_native::libxml2::{self, Document, PushParser, SaxHandler, SaxParser};
+    use modsecurity_types::{DebugSink, ms_dbg};
 
     /// An open element while parsing XML into args.
     #[derive(Debug, Default)]
@@ -231,7 +216,7 @@ mod with_libxml2 {
             libxml2::allow_external_entities(cx.external_entities());
 
             if Self::parse_into_args(cx) {
-                xml_dbg!(cx, 9, "XML: SecParseXmlIntoArgs is set to {}", cx.args_mode().as_str());
+                ms_dbg!(cx, 9, "XML: SecParseXmlIntoArgs is set to {}", cx.args_mode().as_str());
                 // set the parser state struct
                 self.xml_parser_state = Some(XmlNodes::new());
             }
@@ -270,14 +255,14 @@ mod with_libxml2 {
             if self.parsing_ctx.is_none() && self.parsing_ctx_arg.is_none() {
                 // First invocation.
 
-                xml_dbg!(cx, 4, "XML: Initialising parser.");
+                ms_dbg!(cx, 4, "XML: Initialising parser.");
 
                 // NOTE When Sax interface is used libxml will not create the
                 // document object, but we need it.
 
                 if !Self::only_args(cx) {
                     let Some(parser) = PushParser::new(buf) else {
-                        xml_dbg!(cx, 4, "XML: Failed to create parsing context.");
+                        ms_dbg!(cx, 4, "XML: Failed to create parsing context.");
                         return Err("XML: Failed to create parsing context.".to_string());
                     };
                     self.parsing_ctx = Some(parser);
@@ -299,7 +284,7 @@ mod with_libxml2 {
             {
                 parser.parse_chunk(buf);
                 if parser.well_formed() != 1 {
-                    xml_dbg!(cx, 4, "XML: Failed to parse document.");
+                    ms_dbg!(cx, 4, "XML: Failed to parse document.");
                     return Err("XML: Failed to parse document.".to_string());
                 }
             }
@@ -309,7 +294,7 @@ mod with_libxml2 {
             {
                 Self::with_handler(&mut self.xml_parser_state, cx, |h| parser.parse_chunk(buf, h));
                 if parser.well_formed() != 1 {
-                    xml_dbg!(cx, 4, "XML: Failed to parse document for ARGS.");
+                    ms_dbg!(cx, 4, "XML: Failed to parse document for ARGS.");
                     return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
             }
@@ -332,10 +317,10 @@ mod with_libxml2 {
                 let (well_formed, doc) = parser.finish();
                 self.well_formed = well_formed as u32;
                 self.doc = doc;
-                xml_dbg!(cx, 4, "XML: Parsing complete (well_formed {}).", self.well_formed);
+                ms_dbg!(cx, 4, "XML: Parsing complete (well_formed {}).", self.well_formed);
 
                 if self.well_formed != 1 {
-                    xml_dbg!(cx, 4, "XML: Failed to parse document.");
+                    ms_dbg!(cx, 4, "XML: Failed to parse document.");
                     return Err("XML: Failed to parse document.".to_string());
                 }
             }

@@ -280,7 +280,7 @@ impl AuditLog {
         let transaction_audit_log_status = match status {
             Some(s @ (AuditLogStatus::On | AuditLogStatus::RelevantOnly)) => s,
             None | Some(AuditLogStatus::Off) => {
-                crate::ms_dbg_a!(t, 5, "Audit log engine was not set.");
+                crate::ms_dbg!(t, 5, "Audit log engine was not set.");
                 return true;
             }
         };
@@ -291,7 +291,7 @@ impl AuditLog {
             && !self.is_relevant(t.http.http_code_returned)
             && !save_anyway
         {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 t,
                 9,
                 "Return code `{}' is not interesting to audit logs, relevant code(s): `{}'.",
@@ -302,14 +302,14 @@ impl AuditLog {
         }
 
         let parts = parts.or(self.parts).unwrap_or(-1);
-        crate::ms_dbg_a!(t, 5, "Saving this request as part of the audit logs.");
+        crate::ms_dbg!(t, 5, "Saving this request as part of the audit logs.");
         match &self.writer {
             None => {
-                crate::ms_dbg_a!(t, 1, "Internal error, audit log writer is null");
+                crate::ms_dbg!(t, 1, "Internal error, audit log writer is null");
             }
             Some(w) => {
                 if let Err(error) = w.write(self, t, parts) {
-                    crate::ms_dbg_a!(t, 1, "Cannot save the audit log: {}", error);
+                    crate::ms_dbg!(t, 1, "Cannot save the audit log: {}", error);
                     return false;
                 }
             }

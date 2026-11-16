@@ -43,7 +43,7 @@ impl Action for Msg {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let msg = cx.expand(&self.string);
-        crate::act_dbg!(cx, 9, "Saving msg: {}", lossy(&msg));
+        crate::ms_dbg!(cx, 9, "Saving msg: {}", lossy(&msg));
         cx.set_message(msg);
     }
 }

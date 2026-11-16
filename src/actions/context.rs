@@ -35,18 +35,6 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
         (self.t, self.rule)
     }
 
-    // --- debug log ---------------------------------------------------
-
-    /// Whether the debug log takes messages of `level`.
-    pub fn debug_enabled(&self, level: i32) -> bool {
-        self.t.debug_enabled(level)
-    }
-
-    /// Writes `message` to the debug log (see [`act_dbg`](crate::act_dbg)).
-    pub fn debug(&self, level: i32, message: &str) {
-        self.t.debug(level, message);
-    }
-
     // --- text ----------------------------------------------------------
 
     /// `string` with its macros expanded for this transaction.
@@ -241,5 +229,15 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
     /// `setenv`: `name` in the transaction's `ENV`.
     pub fn set_env(&mut self, name: Vec<u8>, value: Vec<u8>) {
         self.t.variable_envs.insert(name, value);
+    }
+}
+
+impl crate::DebugSink for ActionContext<'_, '_, '_> {
+    fn debug_enabled(&self, level: i32) -> bool {
+        self.t.debug_enabled(level)
+    }
+
+    fn debug(&self, level: i32, message: &str) {
+        self.t.debug(level, message);
     }
 }

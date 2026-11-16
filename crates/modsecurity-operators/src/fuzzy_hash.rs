@@ -84,14 +84,14 @@ impl Operator for FuzzyHash {
     #[cfg(feature = "ssdeep")]
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
         let Some(result) = modsecurity_native::ssdeep::hash(input) else {
-            crate::op_dbg!(cx, 4, "Problems generating fuzzy hash");
+            crate::ms_dbg!(cx, 4, "Problems generating fuzzy hash");
             return false;
         };
 
         for chunk in &self.chunks {
             let i = modsecurity_native::ssdeep::compare(chunk, &result);
             if i >= self.threshold {
-                crate::op_dbg!(cx, 4, "Fuzzy hash: matched with score: {}.", i);
+                crate::ms_dbg!(cx, 4, "Fuzzy hash: matched with score: {}.", i);
                 return true;
             }
         }

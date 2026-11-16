@@ -67,7 +67,7 @@ impl Operator for ValidateSchema {
     /// matches, as the base `Operator::evaluate` does in C++.
     #[cfg(not(feature = "libxml2"))]
     fn evaluate(&self, cx: &mut dyn Context, _input: &[u8]) -> bool {
-        crate::op_dbg!(cx, 2, "Operator: {} is not implemented or malfunctioning.", self.name());
+        crate::ms_dbg!(cx, 2, "Operator: {} is not implemented or malfunctioning.", self.name());
         true
     }
 
@@ -76,12 +76,12 @@ impl Operator for ValidateSchema {
         use modsecurity_native::libxml2::SchemaError;
 
         let Some((doc, well_formed)) = cx.xml_document() else {
-            crate::op_dbg!(cx, 4, "XML document tree could not be found for schema validation.");
+            crate::ms_dbg!(cx, 4, "XML document tree could not be found for schema validation.");
             return true;
         };
 
         if well_formed != 1 {
-            crate::op_dbg!(cx, 4, "XML: Schema validation failed because content is not well formed.");
+            crate::ms_dbg!(cx, 4, "XML: Schema validation failed because content is not well formed.");
             return true;
         }
 
@@ -102,7 +102,7 @@ impl Operator for ValidateSchema {
             // Validator errors/warnings go to the debug log.
             &mut |m| {
                 if let Some(msg) = message(m) {
-                    crate::op_dbg!(cx, 4, "{}", msg);
+                    crate::ms_dbg!(cx, 4, "{}", msg);
                 }
             },
         );
@@ -112,7 +112,7 @@ impl Operator for ValidateSchema {
                 if !m_err.is_empty() {
                     err.push_str(&m_err);
                 }
-                crate::op_dbg!(cx, 4, "{}", err);
+                crate::ms_dbg!(cx, 4, "{}", err);
                 true
             }
             Err(SchemaError::Parse) => {
@@ -121,7 +121,7 @@ impl Operator for ValidateSchema {
                     err.push(' ');
                     err.push_str(&m_err);
                 }
-                crate::op_dbg!(cx, 4, "{}", err);
+                crate::ms_dbg!(cx, 4, "{}", err);
                 true
             }
             Err(SchemaError::ValidationContext) => {
@@ -135,15 +135,15 @@ impl Operator for ValidateSchema {
                     err[..n].copy_from_slice(&over[..n]);
                     err.extend_from_slice(&over[n..]);
                 }
-                crate::op_dbg!(cx, 4, "{}", String::from_utf8_lossy(&err));
+                crate::ms_dbg!(cx, 4, "{}", String::from_utf8_lossy(&err));
                 true
             }
             Ok(false) => {
-                crate::op_dbg!(cx, 4, "XML: Schema validation failed.");
+                crate::ms_dbg!(cx, 4, "XML: Schema validation failed.");
                 true // No match.
             }
             Ok(true) => {
-                crate::op_dbg!(cx, 4, "XML: Successfully validated payload against Schema: {}", self.resource);
+                crate::ms_dbg!(cx, 4, "XML: Successfully validated payload against Schema: {}", self.resource);
                 false
             }
         }

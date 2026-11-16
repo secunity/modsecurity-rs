@@ -16,6 +16,8 @@ regex-dollar-endonly = []
 pm-aho-corasick = ["dep:aho-corasick"]
 
 [dependencies]
+# The debug log interface (DebugSink, ms_dbg).
+modsecurity-types = { path = "../modsecurity-types" }
 # PCRE2 (@rx, @verifyCC, ...) and ssdeep (@fuzzyHash).
 modsecurity-native = { path = "../modsecurity-native" }
 # ACMP (@pm), the IP tree (@ipMatch) and the byte helpers.

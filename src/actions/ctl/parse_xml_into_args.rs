@@ -22,7 +22,7 @@ impl Action for ParseXmlIntoArgs {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(
+        crate::ms_dbg!(
             cx,
             8,
             "Setting SecParseXmlIntoArgs to {} as requested by a ctl:parseXmlIntoArgs action",

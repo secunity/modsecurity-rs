@@ -15,16 +15,8 @@
 
 use std::borrow::Cow;
 
-/// Writes to the debug log through a [`Context`]: the message is only
-/// formatted when the debug level is high enough.
-macro_rules! op_dbg {
-    ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
-        if $cx.debug_enabled($lvl) {
-            $cx.debug($lvl, &format!($($arg)*));
-        }
-    }};
-}
-pub(crate) use op_dbg;
+pub use modsecurity_types::DebugSink;
+pub(crate) use modsecurity_types::ms_dbg;
 
 pub mod begins_with;
 pub mod contains;
@@ -118,13 +110,7 @@ impl Param {
 pub use seclang::{SecLangOperator, seclang_operator};
 
 /// What an operator may do while it evaluates a value.
-pub trait Context {
-    /// Whether the debug log takes messages of `level`.
-    fn debug_enabled(&self, level: i32) -> bool;
-
-    /// Writes `message` to the debug log.
-    fn debug(&self, level: i32, message: &str);
-
+pub trait Context: DebugSink {
     /// `param` with its macros expanded for this transaction, borrowed
     /// when it has none.
     fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]>;
@@ -293,11 +279,14 @@ pub(crate) mod test_support {
         pub httpbl_key: Vec<u8>,
     }
 
-    impl Context for TestContext {
+    impl DebugSink for TestContext {
         fn debug_enabled(&self, _level: i32) -> bool {
             false
         }
         fn debug(&self, _level: i32, _message: &str) {}
+    }
+
+    impl Context for TestContext {
         fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]> {
             Cow::Borrowed(&param.literal)
         }

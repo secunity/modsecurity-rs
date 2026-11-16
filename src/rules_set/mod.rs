@@ -122,7 +122,7 @@ impl RulesSet {
     /// Clears `MATCHED_VAR`, `MATCHED_VARS` and their `*_NAME(S)`
     /// counterparts after a rule.
     pub(crate) fn clean_matched_vars(t: &mut Transaction<'_>) {
-        crate::ms_dbg_a!(t, 9, "Matched vars cleaned.");
+        crate::ms_dbg!(t, 9, "Matched vars cleaned.");
         // Every match adds to MATCHED_VARS, so when that is empty no rule
         // matched since the last cleaning and there is nothing to unset
         // (this runs after every rule).
@@ -139,10 +139,10 @@ impl RulesSet {
     /// the rule removals and a disruptive intervention.
     pub(crate) fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
         let rules = self.rules_set_phases.for_phase(phase);
-        crate::ms_dbg_a!(t, 9, "This phase consists of {} rule(s).", rules.len());
+        crate::ms_dbg!(t, 9, "This phase consists of {} rule(s).", rules.len());
 
         if t.eval.allow_type == Some(AllowType::FromNowOn) && phase != Phases::Logging {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 t,
                 9,
                 "Skipping all rules evaluation on this phase as request through the utilization of an `allow' action."
@@ -150,7 +150,7 @@ impl RulesSet {
             return;
         }
         if t.eval.allow_type == Some(AllowType::Request) && phase <= Phases::RequestBody {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 t,
                 9,
                 "Skipping all rules evaluation on this phase as request through the utilization of an `allow' action."
@@ -163,7 +163,7 @@ impl RulesSet {
         for rule in rules {
             let rule: &'a crate::rules_set::entry::Entry = rule.as_ref();
             if t.is_inside_a_marker() && !rule.is_marker() {
-                crate::ms_dbg_a!(
+                crate::ms_dbg!(
                     t,
                     9,
                     "Skipped rule id '{}' due to a SecMarker: {}",
@@ -174,7 +174,7 @@ impl RulesSet {
                 rule.evaluate(t);
             } else if t.eval.skip_next > 0 {
                 t.eval.skip_next -= 1;
-                crate::ms_dbg_a!(
+                crate::ms_dbg!(
                     t,
                     9,
                     "Skipped rule id '{}' due to a `skip' action. Still {} to be skipped.",
@@ -182,7 +182,7 @@ impl RulesSet {
                     t.eval.skip_next
                 );
             } else if t.eval.allow_type.is_some() {
-                crate::ms_dbg_a!(
+                crate::ms_dbg!(
                     t,
                     9,
                     "Skipped rule id '{}' as request trough the utilization of an `allow' action.",
@@ -193,7 +193,7 @@ impl RulesSet {
                 // FIXME (C++): Those should be treated inside the rule itself
                 if let Some(r) = rwa {
                     if ex.contains(r.rule_id as i32) {
-                        crate::ms_dbg_a!(
+                        crate::ms_dbg!(
                             t,
                             9,
                             "Skipped rule id '{}'. Removed by an SecRuleRemove directive.",
@@ -202,7 +202,7 @@ impl RulesSet {
                         continue;
                     }
                     if ex.remove_rule_by_msg.iter().any(|z| r.contains_msg(z, t)) {
-                        crate::ms_dbg_a!(
+                        crate::ms_dbg!(
                             t,
                             9,
                             "Skipped rule id '{}'. Removed by a SecRuleRemoveByMsg directive.",
@@ -211,7 +211,7 @@ impl RulesSet {
                         continue;
                     }
                     if ex.remove_rule_by_tag.iter().any(|z| r.contains_tag(z, t)) {
-                        crate::ms_dbg_a!(
+                        crate::ms_dbg!(
                             t,
                             9,
                             "Skipped rule id '{}'. Removed by a SecRuleRemoveByTag directive.",
@@ -220,7 +220,7 @@ impl RulesSet {
                         continue;
                     }
                     if t.ctl.rule_remove_by_tag.iter().any(|z| r.contains_tag(z, t)) {
-                        crate::ms_dbg_a!(
+                        crate::ms_dbg!(
                             t,
                             9,
                             "Skipped rule id '{}'. Skipped due to a ruleRemoveByTag action.",
@@ -234,7 +234,7 @@ impl RulesSet {
                 Self::clean_matched_vars(t);
 
                 if t.outcome.intervention.disruptive {
-                    crate::ms_dbg_a!(t, 8, "Skipping this phase as this request was already intercepted.");
+                    crate::ms_dbg!(t, 8, "Skipping this phase as this request was already intercepted.");
                     break;
                 }
             }

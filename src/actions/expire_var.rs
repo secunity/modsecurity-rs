@@ -35,7 +35,7 @@ impl Action for ExpireVar {
                     // C++ `atoi` (an empty value gives 0).
                     expiry_seconds = atoi(expiry);
                 } else {
-                    crate::act_dbg!(cx, 5, "Non-numeric expiry seconds found in expirevar expression.");
+                    crate::ms_dbg!(cx, 5, "Non-numeric expiry seconds found in expirevar expression.");
                     return;
                 }
                 &expire_expression_expanded[..pos_equals]
@@ -43,7 +43,7 @@ impl Action for ExpireVar {
         };
 
         let Some(pos_dot) = fully_qualified_var.iter().position(|&c| c == b'.') else {
-            crate::act_dbg!(cx, 5, "No collection found in expirevar expression.");
+            crate::ms_dbg!(cx, 5, "No collection found in expirevar expression.");
             return;
         };
 
@@ -63,7 +63,7 @@ impl Action for ExpireVar {
                 cx.expire(collection, variable_name, expiry_seconds);
             }
             None => {
-                crate::act_dbg!(
+                crate::ms_dbg!(
                     cx,
                     5,
                     "Invalid collection found in expirevar expression: collection must be `ip', `global', `resource', `user' or `session'"
@@ -72,7 +72,7 @@ impl Action for ExpireVar {
         }
 
         // Logged even for an invalid collection (as in C++).
-        crate::act_dbg!(cx, 9, "Setting variable `{}' to expire in {} seconds.", lossy(variable_name), expiry_seconds);
+        crate::ms_dbg!(cx, 9, "Setting variable `{}' to expire in {} seconds.", lossy(variable_name), expiry_seconds);
     }
 }
 

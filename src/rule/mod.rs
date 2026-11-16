@@ -318,17 +318,17 @@ impl Rule {
     ) -> bool {
         let mut contains_block = false;
         for a in &self.actions_set_var {
-            crate::ms_dbg_a!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
+            crate::ms_dbg!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
             a.evaluate(&mut ActionContext::new(t, self, rm));
         }
 
         let rules = t.rules;
         for a in rules.properties.exceptions.action_pre_update_target_by_id.for_rule(self.rule_id) {
             if a.is_disruptive() && a.name() == "block" {
-                crate::ms_dbg_a!(t, 9, "Rule contains a `block' action");
+                crate::ms_dbg!(t, 9, "Rule contains a `block' action");
                 contains_block = true;
             } else if a.name() == "setvar" {
-                crate::ms_dbg_a!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
+                crate::ms_dbg!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
                 a.evaluate(&mut ActionContext::new(t, self, rm));
             }
         }
@@ -374,7 +374,7 @@ impl Rule {
         }
 
         for a in &self.actions_tag {
-            crate::ms_dbg_a!(t, 4, "Running (non-disruptive) action: {}", a.name());
+            crate::ms_dbg!(t, 4, "Running (non-disruptive) action: {}", a.name());
             a.evaluate(&mut ActionContext::new(t, self, rm));
         }
 
@@ -415,23 +415,23 @@ impl Rule {
         default_context: bool,
     ) {
         if !a.is_disruptive() && a.name() != "block" {
-            crate::ms_dbg_a!(t, 9, "Running action: {}", a.name());
+            crate::ms_dbg!(t, 9, "Running action: {}", a.name());
             a.evaluate(&mut ActionContext::new(t, self, rm));
             return;
         }
 
         if default_context && !contains_block {
-            crate::ms_dbg_a!(t, 4, "Ignoring action: {} (rule does not cotains block)", a.name());
+            crate::ms_dbg!(t, 4, "Ignoring action: {} (rule does not cotains block)", a.name());
             return;
         }
 
         if t.rule_engine_state() == Some(RuleEngine::Enabled) {
-            crate::ms_dbg_a!(t, 4, "Running (disruptive)     action: {}.", a.name());
+            crate::ms_dbg!(t, 4, "Running (disruptive)     action: {}.", a.name());
             a.evaluate(&mut ActionContext::new(t, self, rm));
             return;
         }
 
-        crate::ms_dbg_a!(t, 4, "Not running any disruptive action (or block): {}. SecRuleEngine is not On.", a.name());
+        crate::ms_dbg!(t, 4, "Not running any disruptive action (or block): {}. SecRuleEngine is not On.", a.name());
     }
 
     /// The transformations the rule applies, in order:
@@ -531,11 +531,11 @@ impl Rule {
                 ret.push((value.clone(), TransformationPath::Step(a.name().to_string())));
                 nth += 1;
             }
-            crate::ms_dbg_a!(t, 9, " T ({}) {}: \"{}\"", nth, a.name(), String::from_utf8_lossy(&limit_to(80, &value)));
+            crate::ms_dbg!(t, 9, " T ({}) {}: \"{}\"", nth, a.name(), String::from_utf8_lossy(&limit_to(80, &value)));
         }
 
         if multi_match {
-            crate::ms_dbg_a!(t, 9, "multiMatch is enabled. {} values to be tested.", ret.len());
+            crate::ms_dbg!(t, 9, "multiMatch is enabled. {} values to be tested.", ret.len());
         } else {
             ret.push((value, TransformationPath::Full));
         }

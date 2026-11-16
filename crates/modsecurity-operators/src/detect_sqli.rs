@@ -41,7 +41,7 @@ impl Operator for DetectSQLi {
             InjectionResult::True => {
                 cx.matched(fingerprint.clone());
 
-                crate::op_dbg!(
+                crate::ms_dbg!(
                     cx,
                     4,
                     "detected SQLi using libinjection with fingerprint '{}' at: '{}'",
@@ -51,11 +51,11 @@ impl Operator for DetectSQLi {
 
                 if cx.captures() {
                     cx.set_capture(b"0", fingerprint.clone());
-                    crate::op_dbg!(cx, 7, "Added DetectSQLi match TX.0: {}", String::from_utf8_lossy(&fingerprint));
+                    crate::ms_dbg!(cx, 7, "Added DetectSQLi match TX.0: {}", String::from_utf8_lossy(&fingerprint));
                 }
             }
             InjectionResult::Error => {
-                crate::op_dbg!(
+                crate::ms_dbg!(
                     cx,
                     4,
                     "libinjection parser error during SQLi analysis ({}); treating as match (fail-safe). Input: '{}'",
@@ -65,14 +65,14 @@ impl Operator for DetectSQLi {
 
                 if cx.captures() {
                     cx.set_capture(b"0", input.to_vec());
-                    crate::op_dbg!(cx, 7, "Added DetectSQLi error input TX.0: {}", String::from_utf8_lossy(input));
+                    crate::ms_dbg!(cx, 7, "Added DetectSQLi error input TX.0: {}", String::from_utf8_lossy(input));
                 }
 
                 // Keep `matched` untouched for parser-error paths to avoid
                 // introducing synthetic fingerprints for non-TRUE results.
             }
             InjectionResult::False => {
-                crate::op_dbg!(cx, 9, "libinjection was not able to find any SQLi in: {}", loggable_input(input));
+                crate::ms_dbg!(cx, 9, "libinjection was not able to find any SQLi in: {}", loggable_input(input));
             }
         }
 

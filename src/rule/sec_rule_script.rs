@@ -25,7 +25,7 @@ impl Script {
     /// Runs the script; the rule matches when the script's `main` returns
     /// a non empty string (or number).
     pub fn evaluate<'a>(&'a self, rule: &'a Rule, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
-        crate::ms_dbg_a!(t, 4, " Executing script: {}.", self.name);
+        crate::ms_dbg!(t, 4, " Executing script: {}.", self.name);
         let contains_block = rule.execute_actions_independent_of_chained_rule_result(t, rm);
         let ret = self.lua.run(t, b"");
         if ret {

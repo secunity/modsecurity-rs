@@ -7,14 +7,6 @@ use crate::request_body_processor::multipart::{self, Entries, Flag, MultipartPar
 use crate::transaction::Transaction;
 
 impl multipart::Context for Transaction<'_> {
-    fn debug_enabled(&self, level: i32) -> bool {
-        Transaction::debug_enabled(self, level)
-    }
-
-    fn debug(&self, level: i32, message: &str) {
-        Transaction::debug(self, level, message)
-    }
-
     fn offset(&self) -> usize {
         self.vars.offset
     }
@@ -101,14 +93,6 @@ impl Transaction<'_> {
 
 #[cfg(feature = "libxml2")]
 impl crate::request_body_processor::xml::Context for Transaction<'_> {
-    fn debug_enabled(&self, level: i32) -> bool {
-        Transaction::debug_enabled(self, level)
-    }
-
-    fn debug(&self, level: i32, message: &str) {
-        Transaction::debug(self, level, message)
-    }
-
     fn external_entities(&self) -> bool {
         self.rules.properties.settings.sec_xml_external_entity == Some(true)
     }

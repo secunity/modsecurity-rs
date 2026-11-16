@@ -475,23 +475,8 @@ impl<'a> Transaction<'a> {
         t.vars.url_encoded_error.set(b"0", 0);
         t.vars.msc_pcre_error.set(b"0", 0);
         t.vars.msc_pcre_limits_exceeded.set(b"0", 0);
-        crate::ms_dbg_a!(&t, 4, "Initializing transaction");
+        crate::ms_dbg!(&t, 4, "Initializing transaction");
         t
-    }
-
-    // ------------------------------------------------------------------
-    // Debug log
-    // ------------------------------------------------------------------
-
-    /// Whether a debug message of `level` would be written (the test done by
-    /// the `ms_dbg` macros).
-    pub(crate) fn debug_enabled(&self, level: i32) -> bool {
-        self.rules.properties.debug_log.enabled(level)
-    }
-
-    /// Writes `message` to the debug log with the transaction id and URI.
-    pub(crate) fn debug(&self, level: i32, message: &str) {
-        self.rules.debug(level, &self.id, &String::from_utf8_lossy(&self.http.uri), message);
     }
 
     // ------------------------------------------------------------------
@@ -540,8 +525,8 @@ impl<'a> Transaction<'a> {
         }
         self.http.client_port = c_port;
         self.http.server_port = s_port;
-        crate::ms_dbg_a!(self, 4, "Transaction context created.");
-        crate::ms_dbg_a!(self, 4, "Starting phase CONNECTION. (SecRules 0)");
+        crate::ms_dbg!(self, 4, "Transaction context created.");
+        crate::ms_dbg!(self, 4, "Starting phase CONNECTION. (SecRules 0)");
 
         let off = self.vars.offset;
         self.vars.remote_host.set(self.http.client_ip_address.as_bytes(), off);
@@ -581,7 +566,7 @@ impl<'a> Transaction<'a> {
     /// Records the request line (URI, method, HTTP version) and fills the
     /// URI variables and the query string arguments. No rules run here.
     pub fn process_uri(&mut self, uri: &[u8], method: &[u8], http_version: &[u8]) {
-        crate::ms_dbg_a!(self, 4, "Starting phase URI. (SecRules 0 + 1/2)");
+        crate::ms_dbg!(self, 4, "Starting phase URI. (SecRules 0 + 1/2)");
         self.http.http_version = String::from_utf8_lossy(http_version).into_owned();
         self.http.uri = uri.to_vec();
         let mut uri_s: &[u8] = uri;
@@ -662,9 +647,9 @@ impl<'a> Transaction<'a> {
 
     /// Phase 1: runs the request headers rules.
     pub fn process_request_headers(&mut self) {
-        crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_HEADERS.  (SecRules 1)");
+        crate::ms_dbg!(self, 4, "Starting phase REQUEST_HEADERS.  (SecRules 1)");
         if self.rule_engine_state() == Some(RuleEngine::Disabled) {
-            crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
+            crate::ms_dbg!(self, 4, "Rule engine disabled, returning...");
             return;
         }
         self.evaluate_phase(Phases::RequestHeaders);
@@ -741,10 +726,10 @@ impl<'a> Transaction<'a> {
     /// Phase 2: parses the request body with its body processor and runs
     /// the request body rules.
     pub fn process_request_body(&mut self) {
-        crate::ms_dbg_a!(self, 4, "Starting phase REQUEST_BODY. (SecRules 2)");
+        crate::ms_dbg!(self, 4, "Starting phase REQUEST_BODY. (SecRules 2)");
 
         if self.rule_engine_state() == Some(RuleEngine::Disabled) {
-            crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
+            crate::ms_dbg!(self, 4, "Rule engine disabled, returning...");
             return;
         }
 
@@ -767,7 +752,7 @@ impl<'a> Transaction<'a> {
             self.vars.reqbody_error_msg.set(b"Request body excluding files is bigger than the maximum expected.", 0);
             let off = self.vars.offset;
             self.vars.inbound_data_error.set(b"1", off);
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 self,
                 5,
                 "Request body excluding files is bigger than the maximum expected. Limit: {}",
@@ -866,7 +851,7 @@ impl<'a> Transaction<'a> {
                     .set(b"Request body excluding files is bigger than the maximum expected.", 0);
                 let off = self.vars.offset;
                 self.vars.inbound_data_error.set(b"1", off);
-                crate::ms_dbg_a!(
+                crate::ms_dbg!(
                     self,
                     5,
                     "Request body excluding files is bigger than the maximum expected. Limit: {}",
@@ -898,17 +883,17 @@ impl<'a> Transaction<'a> {
         let props = &self.rules.properties;
         if props.settings.sec_request_body_access == Some(false) {
             if self.ctl.request_body_access != Some(true) {
-                crate::ms_dbg_a!(self, 4, "Request body processing is disabled");
+                crate::ms_dbg!(self, 4, "Request body processing is disabled");
                 return;
             } else {
-                crate::ms_dbg_a!(
+                crate::ms_dbg!(
                     self,
                     4,
                     "Request body processing is disabled, but enabled to this transaction due to ctl:requestBodyAccess action"
                 );
             }
         } else if self.ctl.request_body_access == Some(false) {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 self,
                 4,
                 "Request body processing is enabled, but disabled to this transaction due to ctl:requestBodyAccess action"
@@ -947,9 +932,9 @@ impl<'a> Transaction<'a> {
     /// [`Self::append_request_body`] with the content of a file.
     pub fn request_body_from_file(&mut self, path: &str) -> std::io::Result<bool> {
         let s = std::fs::read(path).inspect_err(|_| {
-            crate::ms_dbg_a!(self, 3, "Failed to open request body at: {}", path);
+            crate::ms_dbg!(self, 3, "Failed to open request body at: {}", path);
         })?;
-        crate::ms_dbg_a!(
+        crate::ms_dbg!(
             self,
             9,
             "Adding request body: {} bytes. Limit set to: {}",
@@ -965,7 +950,7 @@ impl<'a> Transaction<'a> {
     pub fn append_request_body(&mut self, buf: &[u8]) -> bool {
         let current_size = self.http.request_body.len();
         let props = &self.rules.properties;
-        crate::ms_dbg_a!(
+        crate::ms_dbg!(
             self,
             9,
             "Appending request body: {} bytes. Limit set to: {}",
@@ -978,16 +963,16 @@ impl<'a> Transaction<'a> {
         {
             let off = self.vars.offset;
             self.vars.inbound_data_error.set(b"1", off);
-            crate::ms_dbg_a!(self, 5, "Request body is bigger than the maximum expected.");
+            crate::ms_dbg!(self, 5, "Request body is bigger than the maximum expected.");
             if props.settings.request_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
                 let space_left = (props.settings.request_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
                 let n = space_left.min(buf.len());
                 self.http.request_body.extend_from_slice(&buf[..n]);
-                crate::ms_dbg_a!(self, 5, "Request body limit is marked to process partial");
+                crate::ms_dbg!(self, 5, "Request body limit is marked to process partial");
                 return false;
             } else {
                 if props.settings.request_body_limit_action == Some(BodyLimitAction::Reject) {
-                    crate::ms_dbg_a!(self, 5, "Request body limit is marked to reject the request");
+                    crate::ms_dbg!(self, 5, "Request body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
                         self.outcome.intervention = Intervention {
                             status: 403,
@@ -996,7 +981,7 @@ impl<'a> Transaction<'a> {
                             disruptive: true,
                         };
                     } else {
-                        crate::ms_dbg_a!(self, 5, "Not rejecting the request as the engine is not Enabled");
+                        crate::ms_dbg!(self, 5, "Not rejecting the request as the engine is not Enabled");
                     }
                 }
                 return true;
@@ -1009,14 +994,14 @@ impl<'a> Transaction<'a> {
     /// Phase 3: records the response status and protocol and runs the
     /// response headers rules.
     pub fn process_response_headers(&mut self, code: i32, proto: &str) {
-        crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_HEADERS. (SecRules 3)");
+        crate::ms_dbg!(self, 4, "Starting phase RESPONSE_HEADERS. (SecRules 3)");
         self.http.http_code_returned = code;
         let off = self.vars.offset;
         self.vars.response_status.set(code.to_string().as_bytes(), off);
         self.vars.response_protocol.set(proto.as_bytes(), off);
 
         if self.rule_engine_state() == Some(RuleEngine::Disabled) {
-            crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
+            crate::ms_dbg!(self, 4, "Rule engine disabled, returning...");
             return;
         }
         self.evaluate_phase(Phases::ResponseHeaders);
@@ -1046,16 +1031,16 @@ impl<'a> Transaction<'a> {
     /// Phase 4: runs the response body rules, when the response body is
     /// inspected.
     pub fn process_response_body(&mut self) {
-        crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_BODY. (SecRules 4)");
+        crate::ms_dbg!(self, 4, "Starting phase RESPONSE_BODY. (SecRules 4)");
 
         if self.rule_engine_state() == Some(RuleEngine::Disabled) {
-            crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
+            crate::ms_dbg!(self, 4, "Rule engine disabled, returning...");
             return;
         }
 
         let props = &self.rules.properties;
         if props.settings.sec_response_body_access != Some(true) {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 self,
                 4,
                 "Response body is disabled, returning... {}",
@@ -1065,7 +1050,7 @@ impl<'a> Transaction<'a> {
         }
 
         if !self.response_type_is_inspected() && props.response_body_type_to_be_inspected.set {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 self,
                 5,
                 "Response Content-Type is {}. It is not marked to be inspected.",
@@ -1076,7 +1061,7 @@ impl<'a> Transaction<'a> {
                 valid.push_str(i);
                 valid.push(' ');
             }
-            crate::ms_dbg_a!(self, 8, "Content-Type(s) marked to be inspected: {}", valid);
+            crate::ms_dbg!(self, 8, "Content-Type(s) marked to be inspected: {}", valid);
             return;
         }
         if self.vars.outbound_data_error.value.is_empty() {
@@ -1098,7 +1083,7 @@ impl<'a> Transaction<'a> {
         let props = &self.rules.properties;
         let bi = &props.response_body_type_to_be_inspected.value;
         if !self.response_type_is_inspected() && !bi.is_empty() {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 self,
                 4,
                 "Not appending response body. Response Content-Type is {}. It is not marked to be inspected.",
@@ -1107,7 +1092,7 @@ impl<'a> Transaction<'a> {
             return true;
         }
 
-        crate::ms_dbg_a!(
+        crate::ms_dbg!(
             self,
             9,
             "Appending response body: {} bytes. Limit set to: {}",
@@ -1120,17 +1105,17 @@ impl<'a> Transaction<'a> {
         {
             let off = self.vars.offset;
             self.vars.outbound_data_error.set(b"1", off);
-            crate::ms_dbg_a!(self, 5, "Response body is bigger than the maximum expected.");
+            crate::ms_dbg!(self, 5, "Response body is bigger than the maximum expected.");
             if props.settings.response_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
                 let space_left =
                     (props.settings.response_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
                 let n = space_left.min(buf.len());
                 self.http.response_body.extend_from_slice(&buf[..n]);
-                crate::ms_dbg_a!(self, 5, "Response body limit is marked to process partial");
+                crate::ms_dbg!(self, 5, "Response body limit is marked to process partial");
                 return false;
             } else {
                 if props.settings.response_body_limit_action == Some(BodyLimitAction::Reject) {
-                    crate::ms_dbg_a!(self, 5, "Response body limit is marked to reject the request");
+                    crate::ms_dbg!(self, 5, "Response body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
                         self.outcome.intervention = Intervention {
                             status: 403,
@@ -1139,7 +1124,7 @@ impl<'a> Transaction<'a> {
                             disruptive: true,
                         };
                     } else {
-                        crate::ms_dbg_a!(self, 5, "Not rejecting the request as the engine is not Enabled");
+                        crate::ms_dbg!(self, 5, "Not rejecting the request as the engine is not Enabled");
                     }
                 }
                 return true;
@@ -1172,10 +1157,10 @@ impl<'a> Transaction<'a> {
     /// Phase 5: runs the logging rules, then writes the audit log entry
     /// if the transaction is relevant.
     pub fn process_logging(&mut self) {
-        crate::ms_dbg_a!(self, 4, "Starting phase LOGGING. (SecRules 5)");
+        crate::ms_dbg!(self, 4, "Starting phase LOGGING. (SecRules 5)");
 
         if self.rule_engine_state() == Some(RuleEngine::Disabled) {
-            crate::ms_dbg_a!(self, 4, "Rule engine disabled, returning...");
+            crate::ms_dbg!(self, 4, "Rule engine disabled, returning...");
             return;
         }
 
@@ -1184,11 +1169,11 @@ impl<'a> Transaction<'a> {
         // If relevant, save this transaction information at the audit_logs
         let audit = &self.rules.properties.audit_log;
         let mut parts = audit.parts();
-        crate::ms_dbg_a!(self, 8, "Checking if this request is suitable to be saved as an audit log.");
+        crate::ms_dbg!(self, 8, "Checking if this request is suitable to be saved as an audit log.");
 
         if !self.ctl.audit_log_modifier.is_empty() {
-            crate::ms_dbg_a!(self, 4, "There was an audit log modifier for this transaction.");
-            crate::ms_dbg_a!(self, 7, "AuditLog parts before modification(s): {}.", parts);
+            crate::ms_dbg!(self, 4, "There was an audit log modifier for this transaction.");
+            crate::ms_dbg!(self, 7, "AuditLog parts before modification(s): {}.", parts);
             for (op, p) in &self.ctl.audit_log_modifier {
                 parts = match op {
                     PartsChange::Add => audit_log::AuditLog::add_parts(parts, p),
@@ -1196,10 +1181,10 @@ impl<'a> Transaction<'a> {
                 };
             }
         }
-        crate::ms_dbg_a!(self, 8, "Checking if this request is relevant to be part of the audit logs.");
+        crate::ms_dbg!(self, 8, "Checking if this request is relevant to be part of the audit logs.");
         let saved = audit.save_if_relevant(self, Some(parts));
         if saved {
-            crate::ms_dbg_a!(self, 8, "Request was relevant to be saved. Parts: {}", parts);
+            crate::ms_dbg!(self, 8, "Request was relevant to be saved. Parts: {}", parts);
         }
     }
 
@@ -1254,5 +1239,17 @@ impl Drop for Transaction<'_> {
         for f in &me.body.multipart_part_tmp_files {
             f.release(Some(me));
         }
+    }
+}
+
+/// The debug log of the rule set, with the transaction id and URI on each
+/// line.
+impl crate::DebugSink for Transaction<'_> {
+    fn debug_enabled(&self, level: i32) -> bool {
+        self.rules.properties.debug_log.enabled(level)
+    }
+
+    fn debug(&self, level: i32, message: &str) {
+        self.rules.debug(level, &self.id, &String::from_utf8_lossy(&self.http.uri), message);
     }
 }

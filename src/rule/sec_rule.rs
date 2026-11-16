@@ -31,7 +31,7 @@ impl SecRule {
     /// Records a matched target in `MATCHED_VAR`, `MATCHED_VAR_NAME`,
     /// `MATCHED_VARS` and `MATCHED_VARS_NAMES`.
     pub fn update_matched_vars(t: &mut Transaction<'_>, key: &[u8], value: &[u8]) {
-        crate::ms_dbg_a!(t, 9, "Matched vars updated.");
+        crate::ms_dbg!(t, 9, "Matched vars updated.");
         let off = t.vars.offset;
         t.vars.matched_var.set(value, off);
         t.vars.matched_var_name.set(key, off);
@@ -48,7 +48,7 @@ impl SecRule {
         value: &[u8],
         rm: &mut RuleMessage<'a>,
     ) -> bool {
-        crate::ms_dbg_a!(
+        crate::ms_dbg!(
             t,
             9,
             "Target value: \"{}\" (Variable: {})",
@@ -138,21 +138,21 @@ impl SecRule {
             if rule.rule_id != i as i64 {
                 continue;
             }
-            crate::ms_dbg_a!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
+            crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
             return true;
         }
         for &(a, b) in &t.ctl.rule_remove_by_id_range {
             if !(a as i64 <= rule.rule_id && b as i64 >= rule.rule_id) {
                 continue;
             }
-            crate::ms_dbg_a!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
+            crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
             return true;
         }
 
         // Only needed for the debug log (C++ builds it unconditionally).
         let vars_str = || variables_to_string(&self.variables);
         if let Some(s) = &self.operator.param {
-            if t.debug_enabled(4) {
+            if crate::DebugSink::debug_enabled(t, 4) {
                 let mut eparam = s.evaluate(Some(t));
                 if s.contains_macro() {
                     let mut e = b"\"".to_vec();
@@ -167,7 +167,7 @@ impl SecRule {
                     e.push(b'"');
                     eparam = e;
                 }
-                crate::ms_dbg_a!(
+                crate::ms_dbg!(
                     t,
                     4,
                     "(Rule: {}) Executing operator \"{}\" with param {} against {}.",
@@ -178,7 +178,7 @@ impl SecRule {
                 );
             }
         } else {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 t,
                 4,
                 "(Rule: {}) Executing operator \"{} against {}.",
@@ -251,18 +251,18 @@ impl SecRule {
         t.eval.scratch = EvalScratch { vars, e, values, chain };
 
         if !global_ret {
-            crate::ms_dbg_a!(t, 4, "Rule returned 0.");
+            crate::ms_dbg!(t, 4, "Rule returned 0.");
             return false;
         }
-        crate::ms_dbg_a!(t, 4, "Rule returned 1.");
+        crate::ms_dbg!(t, 4, "Rule returned 1.");
 
         if rule.is_chained() {
             let Some(child) = rule.chained_rule_child.as_deref() else {
                 // FIXME (C++): this check should happen on the parser.
-                crate::ms_dbg_a!(t, 4, "Rule is marked as chained but there isn't a subsequent rule.");
+                crate::ms_dbg!(t, 4, "Rule is marked as chained but there isn't a subsequent rule.");
                 return false;
             };
-            crate::ms_dbg_a!(t, 4, "Executing chained rule.");
+            crate::ms_dbg!(t, 4, "Executing chained rule.");
             t.eval.chained_rule_parents.push(rule);
             let recursive_global_ret = child.evaluate_with_message(t, rm);
             t.eval.chained_rule_parents.pop();

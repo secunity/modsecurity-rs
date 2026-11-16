@@ -54,7 +54,7 @@ impl Action for Allow {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(
+        crate::ms_dbg!(
             cx,
             4,
             "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: {}",

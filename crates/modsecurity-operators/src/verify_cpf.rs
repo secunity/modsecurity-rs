@@ -111,7 +111,7 @@ impl Operator for VerifyCPF {
                     cx.offset(m.offset(), m.str().len());
                     if cx.captures() {
                         cx.set_capture(b"0", m.str().to_vec());
-                        crate::op_dbg!(cx, 7, "Added VerifyCPF match TX.0: {}", String::from_utf8_lossy(m.str()));
+                        crate::ms_dbg!(cx, 7, "Added VerifyCPF match TX.0: {}", String::from_utf8_lossy(m.str()));
                     }
                     return true;
                 }

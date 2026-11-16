@@ -35,14 +35,14 @@ impl Operator for DetectXSS {
 
         match xss_result {
             InjectionResult::True => {
-                crate::op_dbg!(cx, 5, "detected XSS using libinjection.");
+                crate::ms_dbg!(cx, 5, "detected XSS using libinjection.");
                 if cx.captures() {
                     cx.set_capture(b"0", input.to_vec());
-                    crate::op_dbg!(cx, 7, "Added DetectXSS match TX.0: {}", String::from_utf8_lossy(input));
+                    crate::ms_dbg!(cx, 7, "Added DetectXSS match TX.0: {}", String::from_utf8_lossy(input));
                 }
             }
             InjectionResult::Error => {
-                crate::op_dbg!(
+                crate::ms_dbg!(
                     cx,
                     4,
                     "libinjection parser error during XSS analysis ({}); treating as match (fail-safe). Input: {}",
@@ -51,11 +51,11 @@ impl Operator for DetectXSS {
                 );
                 if cx.captures() {
                     cx.set_capture(b"0", input.to_vec());
-                    crate::op_dbg!(cx, 7, "Added DetectXSS error input TX.0: {}", String::from_utf8_lossy(input));
+                    crate::ms_dbg!(cx, 7, "Added DetectXSS error input TX.0: {}", String::from_utf8_lossy(input));
                 }
             }
             InjectionResult::False => {
-                crate::op_dbg!(cx, 9, "libinjection was not able to find any XSS in: {}", loggable_input(input));
+                crate::ms_dbg!(cx, 9, "libinjection was not able to find any XSS in: {}", loggable_input(input));
             }
         }
 

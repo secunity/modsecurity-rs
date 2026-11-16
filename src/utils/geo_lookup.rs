@@ -53,7 +53,7 @@ impl GeoDb {
 
     /// `lookup` without a database (no `SecGeoLookupDb`).
     pub fn not_loaded(trans: &Transaction<'_>) -> bool {
-        crate::ms_dbg_a!(trans, 4, "Database is not open. Use: SecGeoLookupDb directive.");
+        crate::ms_dbg!(trans, 4, "Database is not open. Use: SecGeoLookupDb directive.");
         false
     }
 }

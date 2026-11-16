@@ -112,7 +112,7 @@ impl Operator for ValidateUtf8Encoding {
 
             let msg = match rc {
                 UNICODE_ERROR_CHARACTERS_MISSING => {
-                    crate::op_dbg!(
+                    crate::ms_dbg!(
                         cx,
                         8,
                         "Invalid UTF-8 encoding: not enough bytes in character at {}. [offset \"{}\"]",
@@ -131,7 +131,7 @@ impl Operator for ValidateUtf8Encoding {
             };
 
             if let Some(msg) = msg {
-                crate::op_dbg!(cx, 8, "{}{}. [offset \"{}\"]", msg, String::from_utf8_lossy(input), i);
+                crate::ms_dbg!(cx, 8, "{}{}. [offset \"{}\"]", msg, String::from_utf8_lossy(input), i);
                 cx.offset(i, input.len());
 
                 return true;

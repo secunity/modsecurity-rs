@@ -23,7 +23,7 @@ impl Action for SetUID {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let col_name_expanded = cx.expand(&self.string);
-        crate::act_dbg!(cx, 8, "User collection initiated with value: '{}'.", lossy(&col_name_expanded));
+        crate::ms_dbg!(cx, 8, "User collection initiated with value: '{}'.", lossy(&col_name_expanded));
         cx.set_user_id(col_name_expanded);
     }
 }

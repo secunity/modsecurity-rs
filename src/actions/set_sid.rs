@@ -23,7 +23,7 @@ impl Action for SetSID {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let col_name_expanded = cx.expand(&self.string);
-        crate::act_dbg!(cx, 8, "Session ID initiated with value: '{}'.", lossy(&col_name_expanded));
+        crate::ms_dbg!(cx, 8, "Session ID initiated with value: '{}'.", lossy(&col_name_expanded));
         cx.set_session_id(col_name_expanded);
     }
 }

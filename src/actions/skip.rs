@@ -26,7 +26,7 @@ impl Action for Skip {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(cx, 5, "Skipping the next {} rules.", self.skip_next);
+        crate::ms_dbg!(cx, 5, "Skipping the next {} rules.", self.skip_next);
         cx.skip_next(self.skip_next);
     }
 }

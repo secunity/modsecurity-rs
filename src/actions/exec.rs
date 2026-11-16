@@ -31,7 +31,7 @@ impl Action for Exec {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(cx, 8, "Running script... {}", self.script);
+        crate::ms_dbg!(cx, 8, "Running script... {}", self.script);
         let (t, _) = cx.engine();
         self.lua.run(t, b"");
     }

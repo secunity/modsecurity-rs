@@ -23,7 +23,7 @@ impl Action for SkipAfter {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(cx, 5, "Setting skipAfter for: {}", self.skip_name);
+        crate::ms_dbg!(cx, 5, "Setting skipAfter for: {}", self.skip_name);
         cx.skip_after(&self.skip_name);
     }
 }

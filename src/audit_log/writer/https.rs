@@ -8,7 +8,7 @@ use crate::utils::https_client::HttpsClient;
 
 pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: i32) -> Result<(), String> {
     let mut http_client = HttpsClient::new();
-    crate::ms_dbg_a!(transaction, 7, "Sending logs to: {}", audit.path1);
+    crate::ms_dbg!(transaction, 7, "Sending logs to: {}", audit.path1);
 
     let log = format::json(transaction, parts);
     http_client.set_request_type("application/json");

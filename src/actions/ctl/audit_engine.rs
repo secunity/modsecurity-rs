@@ -23,7 +23,7 @@ impl Action for AuditEngine {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         // C++ prints the numeric value of the enum.
-        crate::act_dbg!(
+        crate::ms_dbg!(
             cx,
             8,
             "Setting SecAuditEngine to {} as requested by a ctl:auditEngine action",

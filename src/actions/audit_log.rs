@@ -21,7 +21,7 @@ impl Action for AuditLog {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         cx.set_no_audit_log(false);
-        crate::act_dbg!(cx, 9, "Saving transaction to logs");
+        crate::ms_dbg!(cx, 9, "Saving transaction to logs");
         cx.set_save_message(true);
     }
 }

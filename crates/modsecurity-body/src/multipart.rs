@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use modsecurity_compat::chars::{chomp, is_space, lossy};
+use modsecurity_types::{DebugSink, ms_dbg, ms_dbg_opt};
 
 pub const MULTIPART_BUF_SIZE: usize = 4096;
 
@@ -63,25 +64,6 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 // ---------------------------------------------------------------------------
 // MultipartPartTmpFile
 // ---------------------------------------------------------------------------
-
-/// Writes to the debug log through a [`Context`]: the message is only
-/// formatted when the debug level is high enough.
-macro_rules! mp_dbg {
-    ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
-        if $cx.debug_enabled($lvl) {
-            $cx.debug($lvl, &format!($($arg)*));
-        }
-    }};
-}
-
-/// [`mp_dbg`] where the context is optional.
-macro_rules! mp_dbg_opt {
-    ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
-        if let Some(cx) = $cx {
-            mp_dbg!(cx, $lvl, $($arg)*);
-        }
-    }};
-}
 
 /// The single valued variables the parser sets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,13 +117,7 @@ pub struct Uploads {
 
 /// What the multipart parser needs from the transaction it parses for: the
 /// variables it reports, the upload settings and the debug log.
-pub trait Context {
-    /// Whether the debug log takes messages of `level`.
-    fn debug_enabled(&self, level: i32) -> bool;
-
-    /// Writes `message` to the debug log.
-    fn debug(&self, level: i32, message: &str);
-
+pub trait Context: DebugSink {
     /// The offset of the request body in the transaction (the base of the
     /// offsets of the variables).
     fn offset(&self) -> usize;
@@ -197,7 +173,7 @@ impl MultipartPartTmpFile {
         path.push_str("-file-XXXXXX");
 
         let (path, mut file) = modsecurity_native::posix::mkstemp(&path);
-        mp_dbg!(cx, 4, "MultipartPartTmpFile: Create filename= {}", path);
+        ms_dbg!(cx, 4, "MultipartPartTmpFile: Create filename= {}", path);
 
         let mode = cx.uploads().file_mode;
         if mode != 0
@@ -275,7 +251,7 @@ impl MultipartPartTmpFile {
         match std::fs::remove_file(&self.tmp_file_name) {
             Err(e) => {
                 let errno = e.raw_os_error().unwrap_or(0);
-                mp_dbg_opt!(
+                ms_dbg_opt!(
                     cx,
                     1,
                     "Multipart: Failed to delete file (part) \"{}\" because {}({})",
@@ -285,7 +261,7 @@ impl MultipartPartTmpFile {
                 );
             }
             Ok(()) => {
-                mp_dbg_opt!(cx, 4, "Multipart: file deleted successfully (part) \"{}\"", self.tmp_file_name);
+                ms_dbg_opt!(cx, 4, "Multipart: file deleted successfully (part) \"{}\"", self.tmp_file_name);
             }
         }
     }
@@ -571,7 +547,7 @@ impl Multipart {
         }
         for &c in data {
             if c == b'\'' {
-                mp_dbg!(cx, 9, "Multipart: Invalid quoting detected: {} length {} bytes", lossy(data), data.len());
+                ms_dbg!(cx, 9, "Multipart: Invalid quoting detected: {} length {} bytes", lossy(data), data.len());
                 self.flag_invalid_quoting = 1;
             }
         }
@@ -666,7 +642,7 @@ impl Multipart {
                 }
                 mpp.filename_charset = cd[start_of_charset..p].to_vec();
                 mpp.filename_charset_offset = offset.wrapping_add(p - mpp.filename_charset.len());
-                mp_dbg!(cx, 4, "Multipart: Content-Disposition filename* charset: {}.", lossy(&mpp.filename_charset));
+                ms_dbg!(cx, 4, "Multipart: Content-Disposition filename* charset: {}.", lossy(&mpp.filename_charset));
                 p += 1;
                 // Read beyond the charset and the optional language
                 let start_of_language = p;
@@ -679,7 +655,7 @@ impl Multipart {
                 }
                 mpp.filename_language = cd[start_of_language..p].to_vec();
                 mpp.filename_language_offset = offset.wrapping_add(p - mpp.filename_language.len());
-                mp_dbg!(cx, 4, "Multipart: Content-Disposition filename* language: {}.", lossy(&mpp.filename_language));
+                ms_dbg!(cx, 4, "Multipart: Content-Disposition filename* language: {}.", lossy(&mpp.filename_language));
                 p += 1;
 
                 // Now read what should be the actual filename
@@ -768,7 +744,7 @@ impl Multipart {
                 let mpp = self.mpp.as_mut().expect("part being built");
                 if !mpp.name.is_empty() {
                     self.flag_duplicate_part_header = 1;
-                    mp_dbg!(
+                    ms_dbg!(
                         cx,
                         4,
                         "Multipart: Warning: Duplicate Content-Disposition name: {}. Previously: {}",
@@ -779,13 +755,13 @@ impl Multipart {
                 }
                 mpp.name = value.clone();
                 mpp.name_offset = value_offset;
-                mp_dbg!(cx, 9, "Multipart: Content-Disposition name: {}.", lossy(&value));
+                ms_dbg!(cx, 9, "Multipart: Content-Disposition name: {}.", lossy(&value));
             } else if name == b"filename" {
                 // here we set up the 'filename' only if it's not set up
                 // already (and not the filename_star)
                 if !self.mpp.as_ref().expect("part being built").filename.is_empty() {
                     self.flag_duplicate_part_header = 1;
-                    mp_dbg!(cx, 4, "Multipart: Warning: Duplicate Content-Disposition filename: {}.", lossy(&value));
+                    ms_dbg!(cx, 4, "Multipart: Warning: Duplicate Content-Disposition filename: {}.", lossy(&value));
                     return Err(-15);
                 } else {
                     self.validate_quotes(cx, &value, quote);
@@ -793,14 +769,14 @@ impl Multipart {
                     mpp.filename = value.clone();
                     mpp.filename_offset = value_offset;
 
-                    mp_dbg!(cx, 9, "Multipart: Content-Disposition filename: {}.", lossy(&value));
+                    ms_dbg!(cx, 9, "Multipart: Content-Disposition filename: {}.", lossy(&value));
                 }
             } else if name == b"filename*" {
                 // here we set up the 'filename_star' only if it's not set up
                 // already (and not the filename)
                 if !self.mpp.as_ref().expect("part being built").filename_star.is_empty() {
                     self.flag_duplicate_part_header = 1;
-                    mp_dbg!(cx, 4, "Multipart: Warning: Duplicate Content-Disposition filename*: {}.", lossy(&value));
+                    ms_dbg!(cx, 4, "Multipart: Warning: Duplicate Content-Disposition filename*: {}.", lossy(&value));
                     return Err(-15);
                 }
 
@@ -817,7 +793,7 @@ impl Multipart {
                 let mpp = self.mpp.as_mut().expect("part being built");
                 mpp.filename_star = decoded_value;
                 mpp.filename_star_offset = value_offset;
-                mp_dbg!(cx, 9, "Multipart: Content-Disposition filename*: {}.", lossy(&mpp.filename_star));
+                ms_dbg!(cx, 9, "Multipart: Content-Disposition filename*: {}.", lossy(&mpp.filename_star));
             } else {
                 return Err(-11);
             }
@@ -834,7 +810,7 @@ impl Multipart {
                     if at(p) != b';' {
                         p -= 1;
                         if at(p) == b'\'' || at(p) == b'"' {
-                            mp_dbg!(
+                            ms_dbg!(
                                 cx,
                                 9,
                                 "Multipart: Invalid quoting detected: {} length {} bytes",
@@ -930,7 +906,7 @@ impl Multipart {
                 let limit = props.file_limit;
                 if extract && limit != 0 && self.nfiles as u32 >= limit {
                     if self.flag_file_limit_exceeded == 0 {
-                        mp_dbg!(
+                        ms_dbg!(
                             cx,
                             1,
                             "Multipart: Upload file limit exceeded {}. Use SecUploadFileLimit to change the limit.",
@@ -957,14 +933,14 @@ impl Multipart {
 
                         // do we have an opened file?
                         if !tmp.is_open() {
-                            mp_dbg!(cx, 1, "Multipart: Failed to create file: {}", tmp.filename());
+                            ms_dbg!(cx, 1, "Multipart: Failed to create file: {}", tmp.filename());
                             self.error = Some(format!("Multipart: Failed to create file: {}", tmp.filename()));
                             return false;
                         }
                         // keep track of the files count
                         self.nfiles += 1;
 
-                        mp_dbg!(
+                        ms_dbg!(
                             cx,
                             4,
                             "Multipart: Created temporary file {} (mode 0{:o}): {}",
@@ -978,7 +954,7 @@ impl Multipart {
                     // write the reserve first
                     if reserved != 0 {
                         if !tmp.write(&self.reserve[1..1 + reserved]) {
-                            mp_dbg!(cx, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
+                            ms_dbg!(cx, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
                             self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.filename()));
                             return false;
                         }
@@ -992,7 +968,7 @@ impl Multipart {
 
                     // write data to the file
                     if !tmp.write(&self.buf[..len]) {
-                        mp_dbg!(cx, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
+                        ms_dbg!(cx, 1, "Multipart: writing to \"{}\" failed", tmp.filename());
                         self.error = Some(format!("Multipart: writing to \"{}\" failed", tmp.filename()));
                         return false;
                     }
@@ -1033,7 +1009,7 @@ impl Multipart {
                 d.extend_from_slice(&self.buf[..len]);
                 mpp.length = mpp.length.wrapping_add(d.len() as u32);
 
-                mp_dbg!(cx, 9, "Multipart: Added data to variable: {}", lossy(&d));
+                ms_dbg!(cx, 9, "Multipart: Added data to variable: {}", lossy(&d));
                 mpp.value_parts.push((d, self.buf_offset));
             }
         }
@@ -1061,7 +1037,7 @@ impl Multipart {
         let len = MULTIPART_BUF_SIZE - self.bufleft;
         let mut len_without_termination = len as isize - 1;
         if self.buf[..len].contains(&0) {
-            mp_dbg!(cx, 1, "Multipart: Nul byte in part headers.");
+            ms_dbg!(cx, 1, "Multipart: Nul byte in part headers.");
             self.error = Some("Multipart: Nul byte in part headers.".to_string());
             return;
         }
@@ -1096,13 +1072,13 @@ impl Multipart {
             }
 
             let Some((cd_offset, header_value)) = mpp.header(b"Content-Disposition").cloned() else {
-                mp_dbg!(cx, 1, "Multipart: Part missing Content-Disposition header.");
+                ms_dbg!(cx, 1, "Multipart: Part missing Content-Disposition header.");
                 self.error = Some("Multipart: Part missing Content-Disposition header.".to_string());
                 return;
             };
 
             if let Err(rc) = self.parse_content_disposition(cx, &header_value, cd_offset) {
-                mp_dbg!(cx, 1, "Multipart: Invalid Content-Disposition header ({}): {}", rc, lossy(&header_value));
+                ms_dbg!(cx, 1, "Multipart: Invalid Content-Disposition header ({}): {}", rc, lossy(&header_value));
                 self.error =
                     Some(format!("Multipart: Invalid Content-Disposition header ({}): {}", rc, lossy(&header_value)));
                 return;
@@ -1110,7 +1086,7 @@ impl Multipart {
 
             let mpp = self.mpp.as_mut().expect("part being built");
             if mpp.name.is_empty() {
-                mp_dbg!(cx, 1, "Multipart: Content-Disposition header missing name field.");
+                ms_dbg!(cx, 1, "Multipart: Content-Disposition header missing name field.");
                 self.error = Some("Multipart: Content-Disposition header missing name field.".to_string());
                 return;
             }
@@ -1124,7 +1100,7 @@ impl Multipart {
                 // is present
                 let hv = c_str(&header_value);
                 if find(hv, b"filename=").is_none() && find(hv, b"filename*=").is_none() {
-                    mp_dbg!(cx, 1, "Multipart: Invalid Content-Disposition header (filename).");
+                    ms_dbg!(cx, 1, "Multipart: Invalid Content-Disposition header (filename).");
                     self.error = Some("Multipart: Invalid Content-Disposition header (filename).".to_string());
                     return;
                 }
@@ -1153,7 +1129,7 @@ impl Multipart {
             let mpp = self.mpp.as_mut().expect("part being built");
             if mpp.last_header_name.is_empty() {
                 // we are not building a header at this moment
-                mp_dbg!(cx, 1, "Multipart: Invalid part header (folding error).");
+                ms_dbg!(cx, 1, "Multipart: Invalid part header (folding error).");
                 self.error = Some("Multipart: Invalid part header (folding error).".to_string());
                 return;
             }
@@ -1181,7 +1157,7 @@ impl Multipart {
             let new_value = v;
             entry.1 = new_value.clone();
 
-            mp_dbg!(
+            ms_dbg!(
                 cx,
                 9,
                 "Multipart: Continued folder header \"{}\" with \"{}\"",
@@ -1190,7 +1166,7 @@ impl Multipart {
             );
 
             if new_value.len() > MULTIPART_BUF_SIZE {
-                mp_dbg!(cx, 1, "Multipart: Part header too long.");
+                ms_dbg!(cx, 1, "Multipart: Part header too long.");
                 self.error = Some("Multipart: Part header too long.".to_string());
                 return;
             }
@@ -1215,7 +1191,7 @@ impl Multipart {
                 i += 1;
             }
             if c_at(line, data) == 0 {
-                mp_dbg!(cx, 1, "Multipart: Invalid part header (colon missing): {}", lossy(line));
+                ms_dbg!(cx, 1, "Multipart: Invalid part header (colon missing): {}", lossy(line));
                 self.error = Some(format!("Multipart: Invalid part header (colon missing): {}", lossy(line)));
                 return;
             }
@@ -1223,14 +1199,14 @@ impl Multipart {
             // extract header name
             let header_name = line[..data].to_vec();
             if data == 0 {
-                mp_dbg!(cx, 1, "Multipart: Invalid part header (header name missing).");
+                ms_dbg!(cx, 1, "Multipart: Invalid part header (header name missing).");
                 self.error = Some("Multipart: Invalid part header (header name missing).".to_string());
                 return;
             }
 
             // check if multipart header contains any invalid characters
             if header_name.iter().any(|&ch| !(33..=126).contains(&ch)) {
-                mp_dbg!(cx, 1, "Multipart: Invalid part header (contains invalid character).");
+                ms_dbg!(cx, 1, "Multipart: Invalid part header (contains invalid character).");
                 self.error = Some("Multipart: Invalid part header (contains invalid character).".to_string());
                 return;
             }
@@ -1248,13 +1224,13 @@ impl Multipart {
             // error if the name already exists
             if mpp.header(&header_name).is_some() {
                 self.flag_duplicate_part_header = 1;
-                mp_dbg!(cx, 1, "Multipart: Duplicate part header: {}.", lossy(&header_name));
+                ms_dbg!(cx, 1, "Multipart: Duplicate part header: {}.", lossy(&header_name));
                 return;
             }
 
             mpp.last_header_name = header_name.clone();
 
-            mp_dbg!(cx, 9, "Multipart: Added part header \"{}\" \"{}\".", lossy(&header_name), lossy(&header_value));
+            ms_dbg!(cx, 9, "Multipart: Added part header \"{}\" \"{}\".", lossy(&header_name), lossy(&header_value));
             mpp.headers.push((header_name, (offset.wrapping_sub(len).wrapping_add(i), header_value)));
             if len_without_termination > 0 {
                 mpp.last_header_line = buf[..len_without_termination as usize].to_vec();
@@ -1273,7 +1249,7 @@ impl Multipart {
             // transaction collection
             for (off, line) in &mpp.header_lines {
                 cx.add(Entries::MultipartPartHeaders, &mpp.name, line, *off);
-                mp_dbg!(cx, 9, "Multipart: Added part header line:{}", lossy(line));
+                ms_dbg!(cx, 9, "Multipart: Added part header line:{}", lossy(line));
             }
 
             // close the temp file
@@ -1302,7 +1278,7 @@ impl Multipart {
                 // variable accordingly
                 if mpp.type_ == PartType::File {
                     let fname = if !mpp.filename_star.is_empty() { &mpp.filename_star } else { &mpp.filename };
-                    mp_dbg!(
+                    ms_dbg!(
                         cx,
                         9,
                         "Multipart: Added file part to the list: name \"{}\" file name \"{}\" (offset {}, length {})",
@@ -1312,7 +1288,7 @@ impl Multipart {
                         mpp.length
                     );
                 } else {
-                    mp_dbg!(
+                    ms_dbg!(
                         cx,
                         9,
                         "Multipart: Added part to the list: name \"{}\" (offset {}, length {})",
@@ -1324,7 +1300,7 @@ impl Multipart {
                 self.parts.push(mpp);
             } else {
                 self.flag_invalid_part = 1;
-                mp_dbg!(
+                ms_dbg!(
                     cx,
                     3,
                     "Multipart: Skipping invalid part (part name missing): (offset {}, length {})",
@@ -1353,9 +1329,9 @@ impl Multipart {
         let mixed = self.flag_crlf_line != 0 && self.flag_lf_line != 0;
         cx.set(Flag::MultipartCrlfLfLines, if mixed { b"1" } else { b"0" }, off);
         if mixed {
-            mp_dbg!(cx, 4, "Multipart: Warning: mixed line endings used (CRLF/LF).");
+            ms_dbg!(cx, 4, "Multipart: Warning: mixed line endings used (CRLF/LF).");
         } else if self.flag_lf_line != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: incorrect line endings used (LF).");
+            ms_dbg!(cx, 4, "Multipart: Warning: incorrect line endings used (LF).");
         }
     }
 
@@ -1389,62 +1365,62 @@ impl Multipart {
         let (v, off) = flag(cx, self.flag_data_before);
         cx.set(Flag::MultipartDataBefore, &v, off);
         if self.flag_data_before != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: seen data before first boundary.");
+            ms_dbg!(cx, 4, "Multipart: Warning: seen data before first boundary.");
         }
 
         let (v, off) = flag(cx, self.flag_data_after);
         cx.set(Flag::MultipartDataAfter, &v, off);
         if self.flag_data_after != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: seen data after last boundary.");
+            ms_dbg!(cx, 4, "Multipart: Warning: seen data after last boundary.");
         }
 
         let (v, off) = flag(cx, self.flag_duplicate_part_header);
         cx.set(Flag::MultipartDuplicatePartHeader, &v, off);
         if self.flag_duplicate_part_header != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: seen duplicate part header.");
+            ms_dbg!(cx, 4, "Multipart: Warning: seen duplicate part header.");
         }
 
         let (v, off) = flag(cx, self.flag_boundary_quoted);
         cx.set(Flag::MultipartBoundaryQuoted, &v, off);
         if self.flag_boundary_quoted != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: boundary was quoted.");
+            ms_dbg!(cx, 4, "Multipart: Warning: boundary was quoted.");
         }
 
         let (v, off) = flag(cx, self.flag_boundary_whitespace);
         cx.set(Flag::MultipartBoundaryWhiteSpace, &v, off);
         if self.flag_boundary_whitespace != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: boundary whitespace in C-T header.");
+            ms_dbg!(cx, 4, "Multipart: Warning: boundary whitespace in C-T header.");
         }
 
         let (v, off) = flag(cx, self.flag_header_folding);
         cx.set(Flag::MultipartHeaderFolding, &v, off);
         if self.flag_header_folding != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: header folding used.");
+            ms_dbg!(cx, 4, "Multipart: Warning: header folding used.");
         }
         self.set_line_ending_flags(cx);
 
         let (v, off) = flag(cx, self.flag_missing_semicolon);
         cx.set(Flag::MultipartMissingSemicolon, &v, off);
         if self.flag_missing_semicolon != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: missing semicolon in C-T header.");
+            ms_dbg!(cx, 4, "Multipart: Warning: missing semicolon in C-T header.");
         }
 
         let (v, off) = flag(cx, self.flag_invalid_quoting);
         cx.set(Flag::MultipartInvalidQuoting, &v, off);
         if self.flag_invalid_quoting != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: invalid quoting used.");
+            ms_dbg!(cx, 4, "Multipart: Warning: invalid quoting used.");
         }
 
         let (v, off) = flag(cx, self.flag_invalid_part);
         cx.set(Flag::MultipartInvalidPart, &v, off);
         if self.flag_invalid_part != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: invalid part parsing.");
+            ms_dbg!(cx, 4, "Multipart: Warning: invalid part parsing.");
         }
 
         let (v, off) = flag(cx, self.flag_invalid_header_folding);
         cx.set(Flag::MultipartInvalidHeaderFolding, &v, off);
         if self.flag_invalid_header_folding != 0 {
-            mp_dbg!(cx, 4, "Multipart: Warning: invalid header folding used.");
+            ms_dbg!(cx, 4, "Multipart: Warning: invalid header folding used.");
         }
 
         // Note: like the C++ code, MULTIPART_FILE_LIMIT_EXCEEDED is never
@@ -1492,11 +1468,11 @@ impl Multipart {
                             // it looks like the final boundary, but it's
                             // where part data should begin
                             self.flag_invalid_part = 1;
-                            mp_dbg!(cx, 3, "Multipart: Invalid part (data contains final boundary)");
+                            ms_dbg!(cx, 3, "Multipart: Invalid part (data contains final boundary)");
                             let (v, off) = flag(cx, self.flag_invalid_part);
                             cx.set(Flag::MultipartStrictError, &v, off);
                             cx.set(Flag::MultipartInvalidPart, &v, off);
-                            mp_dbg!(cx, 4, "Multipart: Warning: invalid part parsing.");
+                            ms_dbg!(cx, 4, "Multipart: Warning: invalid part parsing.");
                         }
 
                         // Looks like the final boundary - process it.
@@ -1508,12 +1484,12 @@ impl Multipart {
                 }
 
                 if !self.is_complete {
-                    mp_dbg!(cx, 1, "Multipart: Final boundary missing.");
+                    ms_dbg!(cx, 1, "Multipart: Final boundary missing.");
                     self.error = Some("Multipart: Final boundary missing.".to_string());
                     return false;
                 }
             } else {
-                mp_dbg!(cx, 1, "Multipart: No boundaries found in payload.");
+                ms_dbg!(cx, 1, "Multipart: No boundaries found in payload.");
                 self.error = Some("Multipart: No boundaries found in payload.".to_string());
                 return false;
             }
@@ -1566,7 +1542,7 @@ impl Multipart {
                     m.tmp_file_size.0,
                 );
             } else {
-                mp_dbg!(
+                ms_dbg!(
                     cx,
                     4,
                     "Adding request argument (BODY): name \"{}\", value \"{}\"",
@@ -1591,14 +1567,14 @@ impl Multipart {
 
         if self.header.is_empty() {
             self.flag_error = 1;
-            mp_dbg!(cx, 4, "Multipart: Content-Type header not available.");
+            ms_dbg!(cx, 4, "Multipart: Content-Type header not available.");
             self.error = Some("Multipart: Content-Type header not available.".to_string());
             return false;
         }
 
         if self.header.len() > 1024 {
             self.flag_error = 1;
-            mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (length).");
+            ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (length).");
             self.error = Some("Multipart: Invalid boundary in C-T (length).".to_string());
             return false;
         }
@@ -1608,7 +1584,7 @@ impl Multipart {
 
         if header.len() < 19 || !header[..19].eq_ignore_ascii_case(b"multipart/form-data") {
             self.flag_error = 1;
-            mp_dbg!(cx, 4, "Multipart: Invalid MIME type.");
+            ms_dbg!(cx, 4, "Multipart: Invalid MIME type.");
             self.error = Some("Multipart: Invalid MIME type.".to_string());
             return false;
         }
@@ -1617,7 +1593,7 @@ impl Multipart {
         // header.
         if Self::count_boundary_params(&header) > 1 {
             self.flag_error = 1;
-            mp_dbg!(cx, 4, "Multipart: Multiple boundary parameters in C-T.");
+            ms_dbg!(cx, 4, "Multipart: Multiple boundary parameters in C-T.");
             self.error = Some("Multipart: Multiple boundary parameters in C-T.".to_string());
             return false;
         }
@@ -1632,7 +1608,7 @@ impl Multipart {
                         seen_semicolon = true; // It is OK to have one semicolon.
                     } else {
                         self.flag_error = 1;
-                        mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (malformed).");
+                        ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (malformed).");
                         self.error = Some("Multipart: Invalid boundary in C-T (malformed).".to_string());
                         return false;
                     }
@@ -1646,7 +1622,7 @@ impl Multipart {
 
             let Some(eq) = header[boundary_tmp + 8..].iter().position(|&c| c == b'=') else {
                 self.flag_error = 1;
-                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (malformed).");
+                ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (malformed).");
                 self.error = Some("Multipart: Invalid boundary in C-T (malformed).".to_string());
                 return false;
             };
@@ -1662,7 +1638,7 @@ impl Multipart {
                     self.flag_boundary_whitespace = 1;
                 } else {
                     self.flag_error = 1;
-                    mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (parameter name).");
+                    ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (parameter name).");
                     self.error = Some("Multipart: Invalid boundary in C-T (parameter name).".to_string());
                     return false;
                 }
@@ -1691,7 +1667,7 @@ impl Multipart {
                 // Test for partial quoting.
                 if c_at(bv, 0) == b'"' || (len >= 2 && bv[len - 1] == b'"') {
                     self.flag_error = 1;
-                    mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (quote).");
+                    ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (quote).");
                     self.error = Some("Multipart: Invalid boundary in C-T (quote).".to_string());
                     return false;
                 }
@@ -1708,7 +1684,7 @@ impl Multipart {
             // boundary.
             if Self::count_boundary_params(&self.boundary) != 0 {
                 self.flag_error = 1;
-                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (content).");
+                ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (content).");
                 self.error = Some("Multipart: Invalid boundary in C-T (content).".to_string());
                 return false;
             }
@@ -1719,18 +1695,18 @@ impl Multipart {
             if !Self::boundary_characters_valid(&self.boundary)
                 && let Some(semicolon_after_boundary) = self.boundary.iter().position(|&c| c == b';')
             {
-                mp_dbg!(cx, 3, "Multipart: Invalid parameter after boundary in C-T (tolerated).");
+                ms_dbg!(cx, 3, "Multipart: Invalid parameter after boundary in C-T (tolerated).");
                 self.boundary.truncate(semicolon_after_boundary);
             }
             // Validate the characters used in the boundary.
             if !Self::boundary_characters_valid(&self.boundary) {
                 self.flag_error = 1;
-                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (characters).");
+                ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (characters).");
                 self.error = Some("Multipart: Invalid boundary in C-T (characters).".to_string());
                 return false;
             }
 
-            mp_dbg!(
+            ms_dbg!(
                 cx,
                 9,
                 "Multipart: Boundary{}: {}",
@@ -1740,7 +1716,7 @@ impl Multipart {
 
             if self.boundary.is_empty() {
                 self.flag_error = 1;
-                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (empty).");
+                ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (empty).");
                 self.error = Some("Multipart: Invalid boundary in C-T (empty).".to_string());
                 return false;
             }
@@ -1751,12 +1727,12 @@ impl Multipart {
             // Test for case-insensitive boundary. Allowed by the RFC but
             // highly unusual.
             if Self::count_boundary_params(&header) > 0 {
-                mp_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (case sensitivity).");
+                ms_dbg!(cx, 4, "Multipart: Invalid boundary in C-T (case sensitivity).");
                 self.error = Some("Multipart: Invalid boundary in C-T (case sensitivity).".to_string());
                 return false;
             }
 
-            mp_dbg!(cx, 4, "Multipart: Boundary not found in C-T.");
+            ms_dbg!(cx, 4, "Multipart: Boundary not found in C-T.");
             self.error = Some("Multipart: Boundary not found in C-T.".to_string());
             return false;
         }
@@ -1779,14 +1755,14 @@ impl Multipart {
         if self.is_complete {
             self.flag_data_before = 1;
 
-            mp_dbg!(cx, 4, "Multipart: Ignoring data after last boundary (received {} bytes)", data.len());
+            ms_dbg!(cx, 4, "Multipart: Ignoring data after last boundary (received {} bytes)", data.len());
 
             return true;
         }
 
         if self.bufleft == 0 {
             self.flag_error = 1;
-            mp_dbg!(cx, 4, "Multipart: Internal error in process_chunk: no space left in the buffer");
+            ms_dbg!(cx, 4, "Multipart: Internal error in process_chunk: no space left in the buffer");
             return false;
         }
 
@@ -1829,7 +1805,7 @@ impl Multipart {
                             // string matches our boundary, but it's where
                             // part data should begin
                             self.flag_invalid_part = 1;
-                            mp_dbg!(cx, 3, "Multipart: Invalid part (data contains boundary)");
+                            ms_dbg!(cx, 3, "Multipart: Invalid part (data contains boundary)");
                         } else {
                             let mut boundary_end = 2 + blen;
                             // if it match, AND there was a matched boundary
@@ -1854,7 +1830,7 @@ impl Multipart {
 
                                 if self.is_complete {
                                     self.flag_error = 1;
-                                    mp_dbg!(cx, 4, "Multipart: Invalid boundary (final duplicate).");
+                                    ms_dbg!(cx, 4, "Multipart: Invalid boundary (final duplicate).");
                                     self.error = Some("Multipart: Invalid boundary (final duplicate).".to_string());
                                     return false;
                                 }
@@ -1882,7 +1858,7 @@ impl Multipart {
                                 // error
                                 self.flag_error = 1;
                                 let line = lossy(c_str(&self.buf)).into_owned();
-                                mp_dbg!(cx, 4, "Multipart: Invalid boundary: {}", line);
+                                ms_dbg!(cx, 4, "Multipart: Invalid boundary: {}", line);
                                 self.error = Some(format!("Multipart: Invalid boundary: {}", line));
                                 return false;
                             }
@@ -1898,7 +1874,7 @@ impl Multipart {
                             && c_starts_with(&self.buf, 3, &self.boundary)
                         {
                             self.flag_error = 1;
-                            mp_dbg!(cx, 4, "Multipart: Invalid boundary (quotes).");
+                            ms_dbg!(cx, 4, "Multipart: Invalid boundary (quotes).");
                             self.error = Some("Multipart: Invalid boundary (quotes).".to_string());
                             return false;
                         }
@@ -1912,7 +1888,7 @@ impl Multipart {
                         if p != 2 && c_starts_with(&self.buf, p, &self.boundary) {
                             // Found whitespace in front of a boundary.
                             self.flag_error = 1;
-                            mp_dbg!(cx, 4, "Multipart: Invalid boundary (whitespace).");
+                            ms_dbg!(cx, 4, "Multipart: Invalid boundary (whitespace).");
                             self.error = Some("Multipart: Invalid boundary (whitespace).".to_string());
                             return false;
                         }
@@ -1937,13 +1913,13 @@ impl Multipart {
                 if !processed_as_boundary {
                     if self.mpp.is_none() {
                         self.flag_data_before = 1;
-                        mp_dbg!(cx, 4, "Multipart: Ignoring data before first boundary.");
+                        ms_dbg!(cx, 4, "Multipart: Ignoring data before first boundary.");
                     } else if self.mpp_state == 0 {
                         if self.bufleft == 0 || process_buffer {
                             // part header lines must be shorter than
                             // MULTIPART_BUF_SIZE bytes
                             self.flag_error = 1;
-                            mp_dbg!(cx, 4, "Multipart: Part header line over {} bytes long", MULTIPART_BUF_SIZE);
+                            ms_dbg!(cx, 4, "Multipart: Part header line over {} bytes long", MULTIPART_BUF_SIZE);
                             self.error =
                                 Some(format!("Multipart: Part header line over {} bytes long", MULTIPART_BUF_SIZE));
                             return false;
@@ -1987,7 +1963,7 @@ impl Multipart {
 
             if self.is_complete && inleft != 0 {
                 self.flag_data_after = 1;
-                mp_dbg!(cx, 4, "Multipart: Ignoring data after last boundary ({}bytes left)", inleft);
+                ms_dbg!(cx, 4, "Multipart: Ignoring data after last boundary ({}bytes left)", inleft);
                 return true;
             }
         }
@@ -2003,7 +1979,7 @@ impl Multipart {
             return;
         }
         self.cleaned_up = true;
-        mp_dbg_opt!(
+        ms_dbg_opt!(
             cx,
             4,
             "Multipart: Cleanup started (keep files set to {})",
@@ -2021,7 +1997,7 @@ impl Multipart {
                 {
                     // only mark for deletion for now; the file should stay
                     // on disk until the transaction is complete
-                    mp_dbg_opt!(cx, 9, "Multipart: Marking temporary file for deletion: {}", f.filename());
+                    ms_dbg_opt!(cx, 9, "Multipart: Marking temporary file for deletion: {}", f.filename());
                     f.set_delete();
                 }
             }

@@ -24,7 +24,7 @@ impl Action for SetENV {
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let col_name_expanded = cx.expand(&self.string);
         let (name, value) = ssplit_pair(&col_name_expanded, b'=');
-        crate::act_dbg!(cx, 8, "Setting environment variable: {} to {}", lossy(&name), lossy(&value));
+        crate::ms_dbg!(cx, 8, "Setting environment variable: {} to {}", lossy(&name), lossy(&value));
 
         // `setenv(3)` with overwrite, as in C++. Names/values with an
         // embedded NUL cannot be represented (C++ silently truncates them);

@@ -898,3 +898,21 @@ check for an empty error from the unicode map loader, which never returns
 one, is gone. The other `String` errors stay strings: see "Decided
 against" in `PLAN.md`.
 
+
+## One debug log interface
+
+Each extraction left its own copy of the debug log macro (`ms_dbg_a!`,
+`act_dbg!`, `op_dbg!`, `mp_dbg!`, `xml_dbg!`, and two `_opt` forms), and
+each context trait declared `debug_enabled` and `debug` again. There is now
+one of each, in `modsecurity-types` (`debug.rs`):
+
+- `DebugSink` has the two methods. `Transaction`, `ActionContext` and
+  `MatchContext` implement it, and the context traits of the operators and
+  of the multipart and XML processors have it as their supertrait.
+- `ms_dbg!(sink, level, "...")` formats the message only when the level is
+  logged, and takes the sink by value or by reference; `ms_dbg_opt!` takes
+  an `Option`.
+
+The operators and body crates depend on `modsecurity-types` for it. The
+messages and their order are unchanged (the differential test compares
+the debug log line by line).

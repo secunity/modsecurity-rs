@@ -23,7 +23,7 @@ impl Action for Block {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(cx, 8, "Marking request as disruptive.");
+        crate::ms_dbg!(cx, 8, "Marking request as disruptive.");
         let (t, rule) = cx.engine();
         let rules = t.rules;
         if let Some(defaults) = rule.phase().map(|p| &rules.properties.default_actions[p.index()]) {

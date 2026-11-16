@@ -47,7 +47,7 @@ impl Action for Tag {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let tag = cx.expand(&self.string);
-        crate::act_dbg!(cx, 9, "Rule tag: {}", lossy(&tag));
+        crate::ms_dbg!(cx, 9, "Rule tag: {}", lossy(&tag));
         cx.add_tag(tag);
     }
 }

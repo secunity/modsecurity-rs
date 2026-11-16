@@ -40,22 +40,22 @@ pub(crate) fn evaluate_xpath(var: &Variable, t: &Transaction<'_>, rule: Option<&
     // namespaces registered.
     let registered = |n: usize| {
         if rule.is_none() {
-            crate::ms_dbg_a!(t, 2, "XML: Can't look for xmlns, internal error.");
+            crate::ms_dbg!(t, 2, "XML: Can't look for xmlns, internal error.");
         }
         for (prefix, href) in &namespaces[..n] {
-            crate::ms_dbg_a!(t, 4, "Registered XML namespace href \"{}\" prefix \"{}\"", href, prefix);
+            crate::ms_dbg!(t, 4, "Registered XML namespace href \"{}\" prefix \"{}\"", href, prefix);
         }
     };
     match doc.xpath(var.name().as_bytes(), &ns) {
-        Err(XPathError::Context) => crate::ms_dbg_a!(t, 1, "XML: Unable to create new XPath context. : "),
+        Err(XPathError::Context) => crate::ms_dbg!(t, 1, "XML: Unable to create new XPath context. : "),
         Err(XPathError::Namespace(i)) => {
             registered(i);
             let (prefix, href) = &namespaces[i];
-            crate::ms_dbg_a!(t, 1, "Failed to register XML namespace href \"{}\" prefix \"{}\".", href, prefix);
+            crate::ms_dbg!(t, 1, "Failed to register XML namespace href \"{}\" prefix \"{}\".", href, prefix);
         }
         Err(XPathError::Eval) => {
             registered(namespaces.len());
-            crate::ms_dbg_a!(t, 1, "XML: Unable to evaluate xpath expression.");
+            crate::ms_dbg!(t, 1, "XML: Unable to evaluate xpath expression.");
         }
         Ok(contents) => {
             registered(namespaces.len());

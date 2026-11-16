@@ -93,7 +93,7 @@ impl Rbl {
         let key: Vec<u8> = cx.httpbl_key().to_vec();
 
         let Some([h0, h1, h2, h3]) = scan_dotted_quad(ip_str) else {
-            crate::op_dbg!(
+            crate::ms_dbg!(
                 cx,
                 0,
                 "Failed to understand `{}' as a valid IP address, assuming domain format input",
@@ -106,7 +106,7 @@ impl Rbl {
         };
 
         if self.demands_password && key.is_empty() {
-            crate::op_dbg!(
+            crate::ms_dbg!(
                 cx,
                 0,
                 "Missing RBL key, cannot continue with the operator execution, please set the key using: SecHttpBlKey"
@@ -134,7 +134,7 @@ impl Rbl {
         let [first, days, score, ty] = sin_addr.octets();
 
         if first != 127 {
-            crate::op_dbg!(cx, 4, "RBL lookup of {} failed: bad response", ip_str);
+            crate::ms_dbg!(cx, 4, "RBL lookup of {} failed: bad response", ip_str);
             return;
         }
 
@@ -151,7 +151,7 @@ impl Rbl {
         };
 
         // The literal "%s" is part of the C++ message.
-        crate::op_dbg!(
+        crate::ms_dbg!(
             cx,
             4,
             "RBL lookup of {} succeeded. %s: {} days since last activity, threat score {}. Case: {}",
@@ -165,24 +165,24 @@ impl Rbl {
     /// Logs the spamhaus.org list named by the answer.
     fn further_info_spamhaus(high8bits: u32, ip_str: &str, cx: &dyn Context) {
         match high8bits {
-            2 | 3 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (Static UBE sources).", ip_str),
-            4..=7 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (Illegal 3rd party exploits).", ip_str),
+            2 | 3 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (Static UBE sources).", ip_str),
+            4..=7 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (Illegal 3rd party exploits).", ip_str),
             10 | 11 => {
-                crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (Delivering unauthenticated SMTP email).", ip_str)
+                crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (Delivering unauthenticated SMTP email).", ip_str)
             }
-            _ => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded ", ip_str),
+            _ => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded ", ip_str),
         }
     }
 
     /// Logs the uribl.com list named by the answer.
     fn further_info_uribl(high8bits: u32, ip_str: &str, cx: &dyn Context) {
         match high8bits {
-            2 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (BLACK).", ip_str),
-            4 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (GREY).", ip_str),
-            8 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (RED).", ip_str),
-            14 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (BLACK,GREY,RED).", ip_str),
-            255 => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (DNS IS BLOCKED).", ip_str),
-            _ => crate::op_dbg!(cx, 4, "RBL lookup of {} succeeded (WHITE).", ip_str),
+            2 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (BLACK).", ip_str),
+            4 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (GREY).", ip_str),
+            8 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (RED).", ip_str),
+            14 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (BLACK,GREY,RED).", ip_str),
+            255 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (DNS IS BLOCKED).", ip_str),
+            _ => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (WHITE).", ip_str),
         }
     }
 
@@ -193,7 +193,7 @@ impl Rbl {
         let high8bits = u32::from_ne_bytes(sin_addr.octets()) >> 24;
 
         match provider {
-            RblProvider::UnknownProvider => crate::op_dbg!(cx, 2, "RBL lookup of {} succeeded.", ip_str),
+            RblProvider::UnknownProvider => crate::ms_dbg!(cx, 2, "RBL lookup of {} succeeded.", ip_str),
             RblProvider::Httpbl => Self::further_info_httpbl(sin_addr, ip_str, cx),
             RblProvider::Uribl => Self::further_info_uribl(high8bits, ip_str, cx),
             RblProvider::Spamhaus => Self::further_info_spamhaus(high8bits, ip_str, cx),
@@ -242,11 +242,11 @@ impl Operator for Rbl {
 
         match resolve(&host) {
             Resolved::Failed => {
-                crate::op_dbg!(cx, 5, "RBL lookup of {} failed.", ip_s);
+                crate::ms_dbg!(cx, 5, "RBL lookup of {} failed.", ip_s);
                 return false;
             }
             Resolved::OtherFamily(family) => {
-                crate::op_dbg!(cx, 7, "Unsupported address family: {}", family);
+                crate::ms_dbg!(cx, 7, "Unsupported address family: {}", family);
                 return false;
             }
             Resolved::V4(sin_addr) => {
@@ -256,7 +256,7 @@ impl Operator for Rbl {
 
         if cx.captures() {
             cx.set_capture(b"0", ip_str.to_vec());
-            crate::op_dbg!(cx, 7, "Added RXL match TX.0: {}", ip_s);
+            crate::ms_dbg!(cx, 7, "Added RXL match TX.0: {}", ip_s);
         }
 
         true

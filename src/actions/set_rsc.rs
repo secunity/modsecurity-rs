@@ -24,7 +24,7 @@ impl Action for SetRSC {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let col_name_expanded = cx.expand(&self.string);
-        crate::act_dbg!(cx, 8, "RESOURCE initiated with value: '{}'.", lossy(&col_name_expanded));
+        crate::ms_dbg!(cx, 8, "RESOURCE initiated with value: '{}'.", lossy(&col_name_expanded));
         cx.set_resource(col_name_expanded);
     }
 }

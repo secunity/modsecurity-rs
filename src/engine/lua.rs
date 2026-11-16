@@ -59,7 +59,7 @@ mod without_lua {
 
         /// Logs that Lua support is not enabled and returns `false`.
         pub fn run(&self, t: &mut Transaction<'_>, _s: &[u8]) -> bool {
-            crate::ms_dbg_a!(t, 9, "Lua support was not enabled.");
+            crate::ms_dbg!(t, 9, "Lua support was not enabled.");
             false
         }
     }
@@ -306,7 +306,7 @@ end
                 Ok(ret) => ret,
                 Err(e) => {
                     // Failures of the Lua API itself (e.g. out of memory).
-                    crate::ms_dbg_a!(
+                    crate::ms_dbg!(
                         t,
                         2,
                         "Failed to execute lua script: {} - {}",
@@ -378,7 +378,7 @@ end
                             _ => format!("Failed to execute lua script: {}. ", self.script_name),
                         };
                         msg.push_str(&mlua_error_text(&e));
-                        crate::ms_dbg_a!(&**t.borrow(), 2, "{}", msg);
+                        crate::ms_dbg!(&**t.borrow(), 2, "{}", msg);
                         return Ok(false);
                     }
                 };
@@ -390,7 +390,7 @@ end
                         e.push_str(" - ");
                         e.push_str(&lossy(&luaerr));
                     }
-                    crate::ms_dbg_a!(&**t.borrow(), 2, "{}", e);
+                    crate::ms_dbg!(&**t.borrow(), 2, "{}", e);
                     return Ok(false);
                 }
 
@@ -400,7 +400,7 @@ end
 
                 let main: Value = globals.get("main")?;
 
-                crate::ms_dbg_a!(&**t.borrow(), 9, "{}", lossy(s));
+                crate::ms_dbg!(&**t.borrow(), 9, "{}", lossy(s));
 
                 // Put the parameter on the stack.
                 let mut args = MultiValue::new();
@@ -415,14 +415,14 @@ end
                         e.push_str(" - ");
                         e.push_str(&lossy(&luaerr));
                     }
-                    crate::ms_dbg_a!(&**t.borrow(), 2, "{}", e);
+                    crate::ms_dbg!(&**t.borrow(), 2, "{}", e);
                     return Ok(false);
                 }
 
                 // One result, as lua_pcall(L, nargs, 1, 0) asks for.
                 let lua_ret = lua_tostring(lua, res.next().unwrap_or(Value::Nil)).unwrap_or_default();
 
-                crate::ms_dbg_a!(&**t.borrow(), 9, "Returning from lua script: {}", lossy(&lua_ret));
+                crate::ms_dbg!(&**t.borrow(), 9, "Returning from lua script: {}", lossy(&lua_ret));
 
                 Ok(!lua_ret.is_empty())
             })
@@ -482,7 +482,7 @@ end
         let level = check_number(lua, args.front(), 1)? as i32;
         let text = check_string(lua, args.get(1), 2)?;
         // Log message.
-        crate::ms_dbg_a!(&**t.borrow(), level, "{}", lossy(&text));
+        crate::ms_dbg!(&**t.borrow(), level, "{}", lossy(&text));
         Ok(())
     }
 
@@ -495,7 +495,7 @@ end
         let mut var = match string_match_resolve(&t.borrow(), &lossy(&varname)) {
             Ok(v) => v,
             Err(_) => {
-                crate::ms_dbg_a!(
+                crate::ms_dbg!(
                     &**t.borrow(),
                     2,
                     "Lua: m.getvar(): unknown variable: {}.",
@@ -521,7 +521,7 @@ end
 
         let mut l = Vec::new();
         if string_match_resolve_multi(&t.borrow(), &lossy(&varname), &mut l).is_err() {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 &**t.borrow(),
                 2,
                 "Lua: m.getvars(): unknown variable: {}.",
@@ -544,7 +544,7 @@ end
     /// collection variable.
     fn setvar(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
         if args.len() != 2 {
-            crate::ms_dbg_a!(&**t.borrow(), 8, "m.setvar: Failed m.setvar funtion must has 2 arguments");
+            crate::ms_dbg!(&**t.borrow(), 8, "m.setvar: Failed m.setvar funtion must has 2 arguments");
             // The C++ function returns -1 here; to the caller that is no
             // value.
             return Ok(());
@@ -553,7 +553,7 @@ end
         let var_name = check_string(lua, args.front(), 1)?;
 
         let Some(pos) = var_name.iter().position(|&c| c == b'.') else {
-            crate::ms_dbg_a!(
+            crate::ms_dbg!(
                 &**t.borrow(),
                 8,
                 "m.setvar: Must specify a collection using dot character - ie m.setvar(tx.myvar,mydata)"
@@ -611,7 +611,7 @@ end
             other => {
                 // Sic: the C++ code passes the stack index (2) to
                 // lua_typename, which names type 2: "userdata".
-                crate::ms_dbg_a!(
+                crate::ms_dbg!(
                     &**t.borrow(),
                     8,
                     "SecRuleScript: Transformation parameter must be a transformation name or array of \

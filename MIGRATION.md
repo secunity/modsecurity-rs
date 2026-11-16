@@ -71,7 +71,7 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
   phases are the `Phases` enum; fallible operations return `Result`. The C
   API keeps its integer codes. Numbers that C++ prints are kept as numbers
   (`AuditLogStatus`, the multipart Content-Disposition error codes).
-- **Macros.** `ms_dbg_a` became `ms_dbg_a!`.
+- **Macros.** `ms_dbg_a` became `ms_dbg!` (`modsecurity_types::ms_dbg`).
 - **Ownership and lifetimes.** `Transaction<'a>` borrows its `ModSecurity`
   and `RulesSet` for `'a` (C++ keeps raw pointers that must outlive it).
   Rules are `Arc<Rule>` because `RulesSet::merge` shares them between sets

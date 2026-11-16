@@ -28,38 +28,7 @@
 // The calls into C libraries are in the `modsecurity-native` crate.
 #![forbid(unsafe_code)]
 
-/// Writes to the debug log of a transaction: the message is only formatted
-/// when the configured debug level is high enough.
-macro_rules! ms_dbg_a {
-    ($t:expr, $lvl:expr, $($arg:tt)*) => {{
-        let __t: &$crate::transaction::Transaction<'_> = &*$t;
-        if __t.debug_enabled($lvl) {
-            __t.debug($lvl, &format!($($arg)*));
-        }
-    }};
-}
-
-/// Same as [`ms_dbg_a`] for call sites where the transaction is optional
-/// (the C++ macro tolerates a null transaction pointer).
-macro_rules! ms_dbg_opt {
-    ($t:expr, $lvl:expr, $($arg:tt)*) => {{
-        if let Some(__t) = $t {
-            $crate::ms_dbg_a!(__t, $lvl, $($arg)*);
-        }
-    }};
-}
-
-/// Writes to the debug log from an action (through its `ActionContext`):
-/// the message is only formatted when the debug level is high enough.
-macro_rules! act_dbg {
-    ($cx:expr, $lvl:expr, $($arg:tt)*) => {{
-        if $cx.debug_enabled($lvl) {
-            $cx.debug($lvl, &format!($($arg)*));
-        }
-    }};
-}
-
-pub(crate) use {act_dbg, ms_dbg_a, ms_dbg_opt};
+pub(crate) use modsecurity_types::{DebugSink, ms_dbg, ms_dbg_opt};
 
 pub use crate::debug_log::DebugLog;
 pub use crate::instance::{

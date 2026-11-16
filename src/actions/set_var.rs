@@ -86,7 +86,7 @@ impl Action for SetVar {
             }
         };
 
-        crate::ms_dbg_a!(
+        crate::ms_dbg!(
             t,
             8,
             "Saving variable: {}:{} with value: {}",

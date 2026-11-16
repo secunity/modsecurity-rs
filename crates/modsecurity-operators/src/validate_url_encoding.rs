@@ -73,18 +73,18 @@ impl Operator for ValidateUrlEncoding {
         match rc {
             1 => {
                 // Encoding is valid.
-                crate::op_dbg!(cx, 7, "Valid URL Encoding at '{}'", input_s);
+                crate::ms_dbg!(cx, 7, "Valid URL Encoding at '{}'", input_s);
 
                 false
             }
             -2 => {
-                crate::op_dbg!(cx, 7, "Invalid URL Encoding: Non-hexadecimal digits used at '{}'", input_s);
+                crate::ms_dbg!(cx, 7, "Invalid URL Encoding: Non-hexadecimal digits used at '{}'", input_s);
                 cx.offset(offset, input.len());
 
                 true // Invalid match.
             }
             -3 => {
-                crate::op_dbg!(
+                crate::ms_dbg!(
                     cx,
                     7,
                     "Invalid URL Encoding: Not enough characters at the end of input at '{}'",
@@ -95,7 +95,7 @@ impl Operator for ValidateUrlEncoding {
                 true // Invalid match.
             }
             _ => {
-                crate::op_dbg!(cx, 7, "Invalid URL Encoding: Internal Error (rc = {}) at '{}'", rc, input_s);
+                crate::ms_dbg!(cx, 7, "Invalid URL Encoding: Internal Error (rc = {}) at '{}'", rc, input_s);
                 cx.offset(offset, input.len());
 
                 true

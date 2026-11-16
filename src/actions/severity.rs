@@ -36,7 +36,7 @@ impl Action for Severity {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(
+        crate::ms_dbg!(
             cx,
             9,
             "This rule severity is: {} current transaction is: {}",

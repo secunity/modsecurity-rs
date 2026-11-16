@@ -24,7 +24,7 @@ impl Action for Drop {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(cx, 8, "Running action drop [executing deny instead of drop.]");
+        crate::ms_dbg!(cx, 8, "Running action drop [executing deny instead of drop.]");
         if cx.intervention_status() == 200 {
             cx.set_intervention_status(403);
         }

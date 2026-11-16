@@ -11,6 +11,8 @@ publish = false
 libxml2 = ["modsecurity-native/libxml2"]
 
 [dependencies]
+# The debug log interface (DebugSink, ms_dbg).
+modsecurity-types = { path = "../modsecurity-types" }
 # libxml2 (the XML processor) and mkstemp (uploaded files).
 modsecurity-native = { path = "../modsecurity-native" }
 # The yajl-compatible JSON reader and the byte helpers.

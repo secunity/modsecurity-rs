@@ -20,7 +20,7 @@ impl Action for Log {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::act_dbg!(cx, 9, "Saving transaction to logs");
+        crate::ms_dbg!(cx, 9, "Saving transaction to logs");
         cx.set_save_message(true);
     }
 }

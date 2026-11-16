@@ -69,7 +69,7 @@ impl RxGlobal {
                 let capture_substring = &input[capture.offset..capture.offset + capture.length];
                 let key = capture.group.to_string();
                 cx.set_capture(key.as_bytes(), capture_substring.to_vec());
-                crate::op_dbg!(
+                crate::ms_dbg!(
                     cx,
                     7,
                     "Added regex subexpression TX.{}: {}",

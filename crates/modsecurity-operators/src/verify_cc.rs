@@ -83,9 +83,9 @@ impl Operator for VerifyCC {
             if Self::luhn_verify(m) {
                 if cx.captures() {
                     cx.set_capture(b"0", m.to_vec());
-                    crate::op_dbg!(cx, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
+                    crate::ms_dbg!(cx, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
                 }
-                crate::op_dbg!(
+                crate::ms_dbg!(
                     cx,
                     9,
                     "CC# match \"{}\" at {}. [offset {}]",
