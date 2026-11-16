@@ -30,6 +30,6 @@ impl Action for ParseXmlIntoArgs {
             "Setting SecParseXmlIntoArgs to {} as requested by a ctl:parseXmlIntoArgs action",
             config_xml_parse_xml_into_args_string(Some(self.value))
         );
-        t.sec_xml_parse_xml_into_args = Some(self.value);
+        t.ctl.parse_xml_into_args = Some(self.value);
     }
 }

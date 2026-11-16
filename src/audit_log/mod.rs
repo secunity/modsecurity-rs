@@ -259,7 +259,7 @@ impl AuditLog {
     /// saved because the transaction is not relevant or writing failed.
     pub fn save_if_relevant(&self, t: &Transaction<'_>, parts: Option<i32>) -> bool {
         // A `ctl:auditEngine` of the transaction overrides the configuration.
-        let status = t.ctl_audit_engine.or(self.status);
+        let status = t.ctl.audit_engine.or(self.status);
         let transaction_audit_log_status = match status {
             Some(s @ (AuditLogStatus::On | AuditLogStatus::RelevantOnly)) => s,
             None | Some(AuditLogStatus::Off) => {
@@ -268,17 +268,17 @@ impl AuditLog {
             }
         };
 
-        let save_anyway = t.rules_messages.iter().any(|i| !i.no_audit_log);
+        let save_anyway = t.outcome.rules_messages.iter().any(|i| !i.no_audit_log);
 
         if transaction_audit_log_status == AuditLogStatus::RelevantOnly
-            && !self.is_relevant(t.http_code_returned)
+            && !self.is_relevant(t.http.http_code_returned)
             && !save_anyway
         {
             crate::ms_dbg_a!(
                 t,
                 9,
                 "Return code `{}' is not interesting to audit logs, relevant code(s): `{}'.",
-                t.http_code_returned,
+                t.http.http_code_returned,
                 self.relevant.as_ref().map_or("", |r| r.pattern.as_str())
             );
             return false;
@@ -523,26 +523,26 @@ mod tests {
         // A rule message without noauditlog forces the entry.
         let rule: &'static RuleWithActions =
             Box::leak(Box::new(RuleWithActions::new(None, None, "file", 1, RuleWithActionsKind::Unconditional)));
-        run(&rules, "forced", |t| t.rules_messages.push(RuleMessage::new(rule)));
+        run(&rules, "forced", |t| t.outcome.rules_messages.push(RuleMessage::new(rule)));
         assert!(std::fs::read_to_string(&log).unwrap().contains(" forced 1.2.3.4 "));
         // ... unless it is marked noauditlog.
         run(&rules, "noaudit", |t| {
             let mut m = RuleMessage::new(rule);
             m.no_audit_log = true;
-            t.rules_messages.push(m);
+            t.outcome.rules_messages.push(m);
         });
         assert!(!std::fs::read_to_string(&log).unwrap().contains("noaudit"));
         // A relevant status code.
-        run(&rules, "status500", |t| t.http_code_returned = 500);
+        run(&rules, "status500", |t| t.http.http_code_returned = 500);
         assert!(std::fs::read_to_string(&log).unwrap().contains(" status500 "));
         // ctl:auditEngine=Off wins over the configuration.
         run(&rules, "ctl-off", |t| {
-            t.http_code_returned = 500;
-            t.ctl_audit_engine = Some(AuditLogStatus::Off);
+            t.http.http_code_returned = 500;
+            t.ctl.audit_engine = Some(AuditLogStatus::Off);
         });
         assert!(!std::fs::read_to_string(&log).unwrap().contains("ctl-off"));
         // ctl:auditEngine=On saves a non relevant transaction.
-        run(&rules, "ctl-on", |t| t.ctl_audit_engine = Some(AuditLogStatus::On));
+        run(&rules, "ctl-on", |t| t.ctl.audit_engine = Some(AuditLogStatus::On));
         assert!(std::fs::read_to_string(&log).unwrap().contains(" ctl-on "));
     }
 

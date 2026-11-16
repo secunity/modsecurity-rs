@@ -30,7 +30,7 @@ impl Action for RuleEngine {
             "Setting SecRuleEngine to {} as requested by a ctl:ruleEngine action",
             rule_engine_state_string(Some(self.state))
         );
-        t.sec_rule_engine = Some(self.state);
+        t.ctl.rule_engine = Some(self.state);
     }
 }
 
@@ -66,39 +66,39 @@ mod tests {
         let engine = RuleEngine::new(rules_set_properties::RuleEngine::DetectionOnly);
         assert_eq!(engine.name(), "ctl");
         run(&engine, &mut t);
-        assert_eq!(t.sec_rule_engine, Some(rules_set_properties::RuleEngine::DetectionOnly));
+        assert_eq!(t.ctl.rule_engine, Some(rules_set_properties::RuleEngine::DetectionOnly));
         assert!(has_log(&t, "Setting SecRuleEngine to DetectionOnly as requested by a ctl:ruleEngine action"));
 
         run(&AuditEngine::new(AuditLogStatus::RelevantOnly), &mut t);
-        assert_eq!(t.ctl_audit_engine, Some(AuditLogStatus::RelevantOnly));
+        assert_eq!(t.ctl.audit_engine, Some(AuditLogStatus::RelevantOnly));
         assert!(has_log(&t, "Setting SecAuditEngine to 3 as requested by a ctl:auditEngine action"));
 
         run(&ParseXmlIntoArgs::new(ParseXmlIntoArgsState::OnlyArgs), &mut t);
-        assert_eq!(t.sec_xml_parse_xml_into_args, Some(ParseXmlIntoArgsState::OnlyArgs));
+        assert_eq!(t.ctl.parse_xml_into_args, Some(ParseXmlIntoArgsState::OnlyArgs));
         assert!(has_log(&t, "Setting SecParseXmlIntoArgs to OnlyArgs as requested by a ctl:parseXmlIntoArgs action"));
 
         // The name keeps the spelling of the rule.
         let access = RequestBodyAccess::new("CTL:requestBodyAccess=", false);
         assert_eq!(access.name(), "CTL");
         run(&access, &mut t);
-        assert_eq!(t.request_body_access, Some(false));
+        assert_eq!(t.ctl.request_body_access, Some(false));
         run(&RequestBodyAccess::new("ctl:requestBodyAccess=", true), &mut t);
-        assert_eq!(t.request_body_access, Some(true));
+        assert_eq!(t.ctl.request_body_access, Some(true));
 
         run(&AuditLogParts::new("ctl:auditLogParts=+E"), &mut t);
         run(&AuditLogParts::new("ctl:auditLogParts=-HK"), &mut t);
         assert_eq!(
-            t.audit_log_modifier,
+            t.ctl.audit_log_modifier,
             vec![(PartsChange::Add, "E".to_string()), (PartsChange::Remove, "HK".to_string())]
         );
 
         run(&RequestBodyProcessorJSON::new("ctl:requestBodyProcessor=JSON"), &mut t);
-        assert_eq!(t.request_body_processor, RequestBodyType::JSONRequestBody);
+        assert_eq!(t.body.request_body_processor, RequestBodyType::JSONRequestBody);
         assert_eq!(t.vars.reqbody_processor.evaluate(), b"JSON");
         run(&RequestBodyProcessorXML::new("ctl:requestBodyProcessor=XML"), &mut t);
-        assert_eq!(t.request_body_processor, RequestBodyType::XMLRequestBody);
+        assert_eq!(t.body.request_body_processor, RequestBodyType::XMLRequestBody);
         run(&RequestBodyProcessorURLENCODED::new("ctl:requestBodyProcessor=URLENCODED"), &mut t);
-        assert_eq!(t.request_body_type, RequestBodyType::WWWFormUrlEncoded);
+        assert_eq!(t.body.request_body_type, RequestBodyType::WWWFormUrlEncoded);
         assert_eq!(t.vars.reqbody_processor.evaluate(), b"URLENCODED");
     }
 }

@@ -74,8 +74,8 @@ impl Action for RuleRemoveById {
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.rule_remove_by_id.extend_from_slice(&self.ids);
-        t.rule_remove_by_id_range.extend_from_slice(&self.ranges);
+        t.ctl.rule_remove_by_id.extend_from_slice(&self.ids);
+        t.ctl.rule_remove_by_id_range.extend_from_slice(&self.ranges);
     }
 }
 
@@ -122,10 +122,10 @@ mod tests {
         for a in &actions {
             a.evaluate(&r, &mut t, &mut rm);
         }
-        assert_eq!(t.rule_remove_by_id, vec![1, 2, 3]);
-        assert_eq!(t.rule_remove_by_id_range, vec![(10, 20)]);
-        assert_eq!(t.rule_remove_by_tag, vec!["attack-sqli".to_string()]);
-        assert_eq!(t.rule_remove_target_by_id, vec![(981260, "ARGS:foo".to_string())]);
-        assert_eq!(t.rule_remove_target_by_tag, vec![("CRS".to_string(), "REQUEST_HEADERS:x".to_string())]);
+        assert_eq!(t.ctl.rule_remove_by_id, vec![1, 2, 3]);
+        assert_eq!(t.ctl.rule_remove_by_id_range, vec![(10, 20)]);
+        assert_eq!(t.ctl.rule_remove_by_tag, vec!["attack-sqli".to_string()]);
+        assert_eq!(t.ctl.rule_remove_target_by_id, vec![(981260, "ARGS:foo".to_string())]);
+        assert_eq!(t.ctl.rule_remove_target_by_tag, vec![("CRS".to_string(), "REQUEST_HEADERS:x".to_string())]);
     }
 }

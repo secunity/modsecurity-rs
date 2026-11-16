@@ -25,6 +25,6 @@ impl Action for RequestBodyAccess {
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.request_body_access = Some(self.request_body_access);
+        t.ctl.request_body_access = Some(self.request_body_access);
     }
 }

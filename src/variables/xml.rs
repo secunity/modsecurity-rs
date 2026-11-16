@@ -32,7 +32,7 @@ pub(crate) fn evaluate_xpath(
     use crate::utils::libxml2::XPathError;
 
     // Is there an XML document tree at all?
-    let Some(doc) = t.xml.as_ref().and_then(|x| x.document()) else {
+    let Some(doc) = t.body.xml.as_ref().and_then(|x| x.document()) else {
         // Sorry, we've got nothing to give!
         return;
     };

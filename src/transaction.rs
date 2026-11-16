@@ -6,11 +6,19 @@
 //! (the connector guarantees they outlive the transaction). The rule
 //! messages it accumulates borrow the rules for the same lifetime.
 //!
-//! The C++ class inherits `TransactionAnchoredVariables` and
-//! `TransactionSecMarkerManagement`; here the anchored variables are the
-//! [`TransactionAnchoredVariables`] in the `vars` field (C++
-//! `m_variableArgs` is `t.vars.args`) and the marker state is the `marker`
-//! field.
+//! Its state is grouped by what it is for:
+//!
+//! - `http` ([`HttpData`]): the request and response as the connector
+//!   reported them (addresses, URI, bodies, status);
+//! - `vars` ([`TransactionAnchoredVariables`]), `collections` and
+//!   `variable_envs`: the variables rules inspect (C++ `m_variableArgs` is
+//!   `t.vars.args`);
+//! - `body` ([`BodyProcessing`]): the request body processors' state;
+//! - `ctl` ([`CtlOverrides`]): the settings rules changed with `ctl:`;
+//! - `eval` ([`EvalState`]): where rule evaluation is (skips, the
+//!   `SecMarker` being skipped to, `allow`, chains, captures);
+//! - `outcome` ([`Outcome`]): the intervention and the messages for the
+//!   logs.
 
 mod arguments;
 mod body;
@@ -262,80 +270,113 @@ pub struct EvalScratch<'a> {
     pub chain: Vec<&'a Transformation>,
 }
 
-pub struct Transaction<'a> {
-    /// CPU time at creation, base of the `DURATION` variable.
-    pub(crate) creation_time_stamp: f64,
+/// The HTTP exchange as the connector reported it, and what is derived
+/// from it directly (decoded URIs, the bodies, the status code).
+pub(crate) struct HttpData {
     pub(crate) client_ip_address: String,
+    pub(crate) client_port: i32,
+    pub(crate) server_ip_address: String,
+    pub(crate) server_port: i32,
+    pub(crate) request_host_name: String,
     /// The HTTP version: 1.1, 2.0, ...
     pub(crate) http_version: String,
-    pub(crate) server_ip_address: String,
-    pub(crate) request_host_name: String,
     /// The raw URI that was requested.
     pub(crate) uri: Vec<u8>,
+    /// The decoded URI (raw is `uri`).
+    pub(crate) uri_decoded: Vec<u8>,
     /// The decoded URI without the query string.
     pub(crate) uri_no_query_string_decoded: Vec<u8>,
+    pub(crate) request_body: Vec<u8>,
+    pub(crate) response_body: Vec<u8>,
     /// Combined size of all arguments (`ARGS_COMBINED_SIZE`).
     pub(crate) args_combined_size_double: f64,
-    pub(crate) client_port: i32,
-    /// Set by the `severity` action (`HIGHEST_SEVERITY`).
-    pub(crate) highest_severity_action: i32,
     /// The HTTP status code, when known.
     pub(crate) http_code_returned: i32,
-    pub(crate) server_port: i32,
-    pub(crate) ms: &'a ModSecurity,
+}
+
+/// Request body processing: the body's type, the processor chosen for it
+/// and the processors' state.
+pub(crate) struct BodyProcessing {
     pub(crate) request_body_type: RequestBodyType,
     pub(crate) request_body_processor: RequestBodyType,
-    pub(crate) rules: &'a RulesSet,
+    #[cfg(feature = "libxml2")]
+    pub(crate) xml: Option<Box<Xml>>,
+    pub(crate) json: Json,
+    pub(crate) multipart_part_tmp_files: Vec<Arc<MultipartPartTmpFile>>,
+}
+
+/// The settings rules changed for this transaction with `ctl:` (`None`:
+/// the rule set's value applies).
+pub(crate) struct CtlOverrides {
+    /// `ctl:ruleEngine`.
+    pub(crate) rule_engine: Option<RuleEngine>,
+    /// `ctl:requestBodyAccess`.
+    pub(crate) request_body_access: Option<bool>,
+    /// `ctl:parseXmlIntoArgs` (starts as the rule set's value).
+    pub(crate) parse_xml_into_args: Option<ParseXmlIntoArgs>,
+    /// `ctl:auditEngine`.
+    pub(crate) audit_engine: Option<AuditLogStatus>,
+    /// `ctl:auditLogParts` changes, in rule order.
+    pub(crate) audit_log_modifier: Vec<(PartsChange, String)>,
     pub(crate) rule_remove_by_id: Vec<i32>,
     pub(crate) rule_remove_by_id_range: Vec<(i32, i32)>,
     pub(crate) rule_remove_by_tag: Vec<String>,
     pub(crate) rule_remove_target_by_tag: Vec<(String, String)>,
     pub(crate) rule_remove_target_by_id: Vec<(i32, String)>,
-    pub(crate) request_body_access: Option<bool>,
-    /// `ctl:auditLogParts` changes for this transaction, in rule order.
-    pub(crate) audit_log_modifier: Vec<(PartsChange, String)>,
-    /// `ctl:auditEngine`, when a rule set it for this transaction.
-    pub(crate) ctl_audit_engine: Option<AuditLogStatus>,
-    /// Messages saved by `log`/`msg`/... for the audit log.
-    pub(crate) rules_messages: Vec<RuleMessage<'a>>,
-    pub(crate) request_body: Vec<u8>,
-    pub(crate) response_body: Vec<u8>,
-    /// The unique ID of the transaction (`UNIQUE_ID`).
-    pub(crate) id: String,
+}
+
+/// Where rule evaluation is: skips, markers, `allow`, the chain being
+/// evaluated, captures, and buffers reused from rule to rule.
+pub(crate) struct EvalState<'a> {
     /// Rules still to be skipped because of a `skip` action.
     pub(crate) skip_next: i32,
+    /// The `SecMarker` being skipped to (by `skipAfter`).
+    pub(crate) marker: Option<String>,
     /// Set by a matching `allow` action, until the rules it covers are
     /// skipped.
     pub(crate) allow_type: Option<AllowType>,
-    /// The decoded URI (raw is `uri`).
-    pub(crate) uri_decoded: Vec<u8>,
+    /// Chain ancestors of the rule being evaluated (replaces the C++
+    /// `RuleWithActions::m_chainedRuleParent` back pointers).
+    pub(crate) chained_rule_parents: Vec<&'a RuleWithActions>,
+    /// Matched strings, used by the `capture` action.
+    pub(crate) matched: Vec<Vec<u8>>,
+    /// Buffers reused by rule evaluation.
+    pub(crate) scratch: EvalScratch<'a>,
+}
+
+/// What the rules decided and reported: the intervention, the messages
+/// for the logs, the highest severity.
+pub(crate) struct Outcome<'a> {
+    /// Messages saved by `log`/`msg`/... for the audit log.
+    pub(crate) rules_messages: Vec<RuleMessage<'a>>,
     /// The pending disruptive action, handed out by
     /// [`Transaction::intervention`].
     pub(crate) intervention: Intervention,
     /// Sticky flag set the first time a disruptive intervention is consumed
     /// through [`Transaction::intervention`].
     pub(crate) is_interrupted: bool,
+    /// Set by the `severity` action (`HIGHEST_SEVERITY`).
+    pub(crate) highest_severity_action: i32,
+}
+
+pub struct Transaction<'a> {
+    pub(crate) ms: &'a ModSecurity,
+    pub(crate) rules: &'a RulesSet,
+    /// The unique ID of the transaction (`UNIQUE_ID`).
+    pub(crate) id: String,
     /// Creation time, in seconds since the epoch.
     pub(crate) time_stamp: i64,
+    /// CPU time at creation, base of the `DURATION` variable.
+    pub(crate) creation_time_stamp: f64,
+    pub(crate) http: HttpData,
+    pub(crate) vars: TransactionAnchoredVariables,
     pub(crate) collections: Collections<'a>,
-    /// Matched strings, used by the `capture` action.
-    pub(crate) matched: Vec<Vec<u8>>,
-    #[cfg(feature = "libxml2")]
-    pub(crate) xml: Option<Box<Xml>>,
-    pub(crate) json: Json,
-    pub(crate) sec_rule_engine: Option<RuleEngine>,
-    pub(crate) sec_xml_parse_xml_into_args: Option<ParseXmlIntoArgs>,
     /// Environment variables set by `setenv`.
     pub(crate) variable_envs: BTreeMap<Vec<u8>, Vec<u8>>,
-    pub(crate) multipart_part_tmp_files: Vec<Arc<MultipartPartTmpFile>>,
-    pub(crate) vars: TransactionAnchoredVariables,
-    /// The `SecMarker` being skipped to (by `skipAfter`).
-    pub(crate) marker: Option<String>,
-    /// Chain ancestors of the rule being evaluated (replaces the C++
-    /// `RuleWithActions::m_chainedRuleParent` back pointers).
-    pub(crate) chained_rule_parents: Vec<&'a RuleWithActions>,
-    /// Buffers reused by rule evaluation.
-    pub(crate) eval_scratch: EvalScratch<'a>,
+    pub(crate) body: BodyProcessing,
+    pub(crate) ctl: CtlOverrides,
+    pub(crate) eval: EvalState<'a>,
+    pub(crate) outcome: Outcome<'a>,
     log_cb_data: Option<Box<dyn Any + Send>>,
 }
 
@@ -371,41 +412,27 @@ impl<'a> Transaction<'a> {
         timestamp: i64,
     ) -> Self {
         let mut t = Transaction {
-            creation_time_stamp: crate::utils::system::cpu_seconds(),
-            client_ip_address: String::new(),
-            http_version: String::new(),
-            server_ip_address: String::new(),
-            request_host_name: String::new(),
-            uri: Vec::new(),
-            uri_no_query_string_decoded: Vec::new(),
-            args_combined_size_double: 0.0,
-            client_port: 0,
-            highest_severity_action: 255,
-            http_code_returned: 200,
-            server_port: 0,
             ms,
-            request_body_type: RequestBodyType::UnknownFormat,
-            request_body_processor: RequestBodyType::UnknownFormat,
             rules,
-            rule_remove_by_id: Vec::new(),
-            rule_remove_by_id_range: Vec::new(),
-            rule_remove_by_tag: Vec::new(),
-            rule_remove_target_by_tag: Vec::new(),
-            rule_remove_target_by_id: Vec::new(),
-            request_body_access: None,
-            audit_log_modifier: Vec::new(),
-            ctl_audit_engine: None,
-            rules_messages: Vec::new(),
-            request_body: Vec::new(),
-            response_body: Vec::new(),
             id: transaction_id(id, timestamp),
-            skip_next: 0,
-            allow_type: None,
-            uri_decoded: Vec::new(),
-            intervention: Intervention::default(),
-            is_interrupted: false,
             time_stamp: timestamp,
-            matched: Vec::new(),
+            creation_time_stamp: crate::utils::system::cpu_seconds(),
+            http: HttpData {
+                client_ip_address: String::new(),
+                client_port: 0,
+                server_ip_address: String::new(),
+                server_port: 0,
+                request_host_name: String::new(),
+                http_version: String::new(),
+                uri: Vec::new(),
+                uri_decoded: Vec::new(),
+                uri_no_query_string_decoded: Vec::new(),
+                request_body: Vec::new(),
+                response_body: Vec::new(),
+                args_combined_size_double: 0.0,
+                http_code_returned: 200,
+            },
+            vars: TransactionAnchoredVariables::new(),
             collections: Collections::new(
                 ms.global_collection.as_ref(),
                 ms.ip_collection.as_ref(),
@@ -413,17 +440,41 @@ impl<'a> Transaction<'a> {
                 ms.user_collection.as_ref(),
                 ms.resource_collection.as_ref(),
             ),
-            #[cfg(feature = "libxml2")]
-            xml: Some(Box::new(Xml::new())),
-            json: Json::new(),
-            sec_rule_engine: None,
-            sec_xml_parse_xml_into_args: rules.properties.sec_xml_parse_xml_into_args,
             variable_envs: BTreeMap::new(),
-            multipart_part_tmp_files: Vec::new(),
-            vars: TransactionAnchoredVariables::new(),
-            marker: None,
-            chained_rule_parents: Vec::new(),
-            eval_scratch: EvalScratch::default(),
+            body: BodyProcessing {
+                request_body_type: RequestBodyType::UnknownFormat,
+                request_body_processor: RequestBodyType::UnknownFormat,
+                #[cfg(feature = "libxml2")]
+                xml: Some(Box::new(Xml::new())),
+                json: Json::new(),
+                multipart_part_tmp_files: Vec::new(),
+            },
+            ctl: CtlOverrides {
+                rule_engine: None,
+                request_body_access: None,
+                parse_xml_into_args: rules.properties.sec_xml_parse_xml_into_args,
+                audit_engine: None,
+                audit_log_modifier: Vec::new(),
+                rule_remove_by_id: Vec::new(),
+                rule_remove_by_id_range: Vec::new(),
+                rule_remove_by_tag: Vec::new(),
+                rule_remove_target_by_tag: Vec::new(),
+                rule_remove_target_by_id: Vec::new(),
+            },
+            eval: EvalState {
+                skip_next: 0,
+                marker: None,
+                allow_type: None,
+                chained_rule_parents: Vec::new(),
+                matched: Vec::new(),
+                scratch: EvalScratch::default(),
+            },
+            outcome: Outcome {
+                rules_messages: Vec::new(),
+                intervention: Intervention::default(),
+                is_interrupted: false,
+                highest_severity_action: 255,
+            },
             log_cb_data,
         };
         t.vars.url_encoded_error.set(b"0", 0);
@@ -445,7 +496,7 @@ impl<'a> Transaction<'a> {
 
     /// Writes `message` to the debug log with the transaction id and URI.
     pub(crate) fn debug(&self, level: i32, message: &str) {
-        self.rules.debug(level, &self.id, &String::from_utf8_lossy(&self.uri), message);
+        self.rules.debug(level, &self.id, &String::from_utf8_lossy(&self.http.uri), message);
     }
 
     // ------------------------------------------------------------------
@@ -453,19 +504,19 @@ impl<'a> Transaction<'a> {
     // ------------------------------------------------------------------
 
     pub(crate) fn is_inside_a_marker(&self) -> bool {
-        self.marker.is_some()
+        self.eval.marker.is_some()
     }
 
     pub(crate) fn current_marker(&self) -> Option<&str> {
-        self.marker.as_deref()
+        self.eval.marker.as_deref()
     }
 
     pub(crate) fn remove_marker(&mut self) {
-        self.marker = None;
+        self.eval.marker = None;
     }
 
     pub(crate) fn add_marker(&mut self, name: &str) {
-        self.marker = Some(name.to_string());
+        self.eval.marker = Some(name.to_string());
     }
 
     // ------------------------------------------------------------------
@@ -487,33 +538,33 @@ impl<'a> Transaction<'a> {
     /// Records the client and server addresses and ports and runs the
     /// rules of the connection phase.
     pub fn process_connection(&mut self, client: &str, c_port: i32, server: &str, s_port: i32) {
-        self.client_ip_address = client.to_string();
-        self.server_ip_address = server.to_string();
-        if self.request_host_name.is_empty() {
-            self.request_host_name = server.to_string();
+        self.http.client_ip_address = client.to_string();
+        self.http.server_ip_address = server.to_string();
+        if self.http.request_host_name.is_empty() {
+            self.http.request_host_name = server.to_string();
         }
-        self.client_port = c_port;
-        self.server_port = s_port;
+        self.http.client_port = c_port;
+        self.http.server_port = s_port;
         crate::ms_dbg_a!(self, 4, "Transaction context created.");
         crate::ms_dbg_a!(self, 4, "Starting phase CONNECTION. (SecRules 0)");
 
         let off = self.vars.offset;
-        self.vars.remote_host.set(self.client_ip_address.as_bytes(), off);
+        self.vars.remote_host.set(self.http.client_ip_address.as_bytes(), off);
         self.vars.unique_id.set(self.id.as_bytes(), off);
-        self.vars.remote_addr.set(self.client_ip_address.as_bytes(), off);
-        self.vars.server_addr.set(self.server_ip_address.as_bytes(), off);
-        self.vars.server_port.set(self.server_port.to_string().as_bytes(), off);
-        self.vars.remote_port.set(self.client_port.to_string().as_bytes(), off);
+        self.vars.remote_addr.set(self.http.client_ip_address.as_bytes(), off);
+        self.vars.server_addr.set(self.http.server_ip_address.as_bytes(), off);
+        self.vars.server_port.set(self.http.server_port.to_string().as_bytes(), off);
+        self.vars.remote_port.set(self.http.client_port.to_string().as_bytes(), off);
         self.evaluate_phase(Phases::Connection);
     }
 
     fn argument_writer(&mut self) -> ArgumentWriter<'_> {
         ArgumentWriter {
             vars: &mut self.vars,
-            combined_size: &mut self.args_combined_size_double,
+            combined_size: &mut self.http.args_combined_size_double,
             rules: self.rules,
             id: &self.id,
-            uri: &self.uri,
+            uri: &self.http.uri,
         }
     }
 
@@ -536,8 +587,8 @@ impl<'a> Transaction<'a> {
     /// URI variables and the query string arguments. No rules run here.
     pub fn process_uri(&mut self, uri: &[u8], method: &[u8], http_version: &[u8]) {
         crate::ms_dbg_a!(self, 4, "Starting phase URI. (SecRules 0 + 1/2)");
-        self.http_version = String::from_utf8_lossy(http_version).into_owned();
-        self.uri = uri.to_vec();
+        self.http.http_version = String::from_utf8_lossy(http_version).into_owned();
+        self.http.uri = uri.to_vec();
         let mut uri_s: &[u8] = uri;
 
         // any uri-fragment that was received should only be retained in
@@ -552,7 +603,7 @@ impl<'a> Transaction<'a> {
             Some(p) => &uri_s[..p],
         };
         let path_info = uri_decode(path_info_raw);
-        self.uri_decoded = uri_decode(uri_s);
+        self.http.uri_decoded = uri_decode(uri_s);
 
         let off = self.vars.offset;
         self.vars.request_method.set(method, 0);
@@ -569,7 +620,7 @@ impl<'a> Transaction<'a> {
         proto.extend_from_slice(http_version);
         self.vars.request_protocol.set(&proto, off + request_line.len() + 1);
 
-        self.uri_no_query_string_decoded = path_info.clone();
+        self.http.uri_no_query_string_decoded = path_info.clone();
 
         if let Some(p) = pos_raw_query {
             let qry = uri_s[p + 1..].to_vec();
@@ -588,10 +639,10 @@ impl<'a> Transaction<'a> {
         }
         self.vars.offset = self.vars.request_line.value.len();
 
-        let mut parsed_uri = self.uri_decoded.clone();
+        let mut parsed_uri = self.http.uri_decoded.clone();
         // The more popular case is without domain
-        if !self.uri_decoded.is_empty() && self.uri_decoded[0] != b'/' {
-            let d = &self.uri_decoded;
+        if !self.http.uri_decoded.is_empty() && self.http.uri_decoded[0] != b'/' {
+            let d = &self.http.uri_decoded;
             // `find(":") + 1`: npos + 1 wraps to 0 in C++.
             let scheme = d.iter().position(|&c| c == b':').map(|p| p + 1).unwrap_or(0);
             // `find("//", scheme) + 2`; npos + 2 wraps to 1.
@@ -676,11 +727,11 @@ impl<'a> Transaction<'a> {
         if keyl == b"content-type" {
             let l = tolower(value);
             if l.starts_with(b"multipart/form-data") {
-                self.request_body_type = RequestBodyType::MultiPartRequestBody;
+                self.body.request_body_type = RequestBodyType::MultiPartRequestBody;
                 self.vars.reqbody_processor.set(b"MULTIPART", off);
             }
             if l.starts_with(b"application/x-www-form-urlencoded") {
-                self.request_body_type = RequestBodyType::WWWFormUrlEncoded;
+                self.body.request_body_type = RequestBodyType::WWWFormUrlEncoded;
                 self.vars.reqbody_processor.set(b"URLENCODED", off);
             }
         }
@@ -711,11 +762,11 @@ impl<'a> Transaction<'a> {
         let props = &self.rules.properties;
 
         let mut request_body_no_files_limit_exceeded = false;
-        if (self.request_body_type == RequestBodyType::WWWFormUrlEncoded
-            || self.request_body_processor == RequestBodyType::JSONRequestBody
-            || self.request_body_processor == RequestBodyType::XMLRequestBody)
+        if (self.body.request_body_type == RequestBodyType::WWWFormUrlEncoded
+            || self.body.request_body_processor == RequestBodyType::JSONRequestBody
+            || self.body.request_body_processor == RequestBodyType::XMLRequestBody)
             && let Some(limit) = props.request_body_no_files_limit
-            && self.request_body.len() as u64 > limit
+            && self.http.request_body.len() as u64 > limit
         {
             self.vars.reqbody_error.set(b"1", 0);
             self.vars.reqbody_error_msg.set(b"Request body excluding files is bigger than the maximum expected.", 0);
@@ -749,20 +800,20 @@ impl<'a> Transaction<'a> {
         #[allow(unused_mut)]
         let mut handled = false;
         #[cfg(feature = "libxml2")]
-        if self.request_body_processor == RequestBodyType::XMLRequestBody {
+        if self.body.request_body_processor == RequestBodyType::XMLRequestBody {
             handled = true;
             // large size might cause issues in the parsing itself; omit if
             // exceeded
             if !request_body_no_files_limit_exceeded {
-                let body = self.request_body.clone();
-                let mut xml = self.xml.take().unwrap_or_else(|| Box::new(Xml::new()));
+                let body = self.http.request_body.clone();
+                let mut xml = self.body.xml.take().unwrap_or_else(|| Box::new(Xml::new()));
                 let mut error = None;
                 if xml.init(self) {
                     // The error of `complete` replaces that of `process_chunk`.
                     error = xml.process_chunk(self, &body).err();
                     error = xml.complete(self).err().or(error);
                 }
-                self.xml = Some(xml);
+                self.body.xml = Some(xml);
                 if let Some(error) = error {
                     set_error(self, "XML parsing error: ", &error, true);
                 } else {
@@ -772,29 +823,30 @@ impl<'a> Transaction<'a> {
         }
         if handled {
             // done
-        } else if self.request_body_processor == RequestBodyType::JSONRequestBody {
+        } else if self.body.request_body_processor == RequestBodyType::JSONRequestBody {
             if !request_body_no_files_limit_exceeded {
                 if let Some(depth) = self.rules.properties.request_body_json_depth_limit {
-                    self.json.set_max_depth(depth);
+                    self.body.json.set_max_depth(depth);
                 }
                 let mut arguments = ArgumentWriter {
                     vars: &mut self.vars,
-                    combined_size: &mut self.args_combined_size_double,
+                    combined_size: &mut self.http.args_combined_size_double,
                     rules: self.rules,
                     id: &self.id,
-                    uri: &self.uri,
+                    uri: &self.http.uri,
                 };
-                let result = self.json.parse(&self.request_body, |key, value| arguments.add("JSON", key, value, 0));
+                let result =
+                    self.body.json.parse(&self.http.request_body, |key, value| arguments.add("JSON", key, value, 0));
                 if let Err(error) = result
-                    && !self.request_body.is_empty()
+                    && !self.http.request_body.is_empty()
                 {
                     set_error(self, "JSON parsing error: ", &error, true);
                 } else {
                     set_ok(self);
                 }
             }
-        } else if self.request_body_type == RequestBodyType::MultiPartRequestBody {
-            let body = self.request_body.clone();
+        } else if self.body.request_body_type == RequestBodyType::MultiPartRequestBody {
+            let body = self.http.request_body.clone();
             let mut error = None;
             let mut reqbody_no_files_length: u64 = 0;
             if let Some(a) = &a {
@@ -828,20 +880,20 @@ impl<'a> Transaction<'a> {
             } else {
                 set_ok(self);
             }
-        } else if self.request_body_type == RequestBodyType::WWWFormUrlEncoded {
+        } else if self.body.request_body_type == RequestBodyType::WWWFormUrlEncoded {
             self.vars.offset += 1;
             if !request_body_no_files_limit_exceeded {
                 let off = self.vars.offset;
                 ArgumentWriter {
                     vars: &mut self.vars,
-                    combined_size: &mut self.args_combined_size_double,
+                    combined_size: &mut self.http.args_combined_size_double,
                     rules: self.rules,
                     id: &self.id,
-                    uri: &self.uri,
+                    uri: &self.http.uri,
                 }
-                .extract("POST", &self.request_body, off);
+                .extract("POST", &self.http.request_body, off);
             }
-        } else if self.request_body_type != RequestBodyType::UnknownFormat {
+        } else if self.body.request_body_type != RequestBodyType::UnknownFormat {
             let error = a.as_ref().map(|a| String::from_utf8_lossy(a).into_owned()).unwrap_or_default();
             set_error(self, "Unknown request body processor: ", &error, true);
         } else {
@@ -850,7 +902,7 @@ impl<'a> Transaction<'a> {
 
         let props = &self.rules.properties;
         if props.sec_request_body_access == Some(false) {
-            if self.request_body_access != Some(true) {
+            if self.ctl.request_body_access != Some(true) {
                 crate::ms_dbg_a!(self, 4, "Request body processing is disabled");
                 return;
             } else {
@@ -860,7 +912,7 @@ impl<'a> Transaction<'a> {
                     "Request body processing is disabled, but enabled to this transaction due to ctl:requestBodyAccess action"
                 );
             }
-        } else if self.request_body_access == Some(false) {
+        } else if self.ctl.request_body_access == Some(false) {
             crate::ms_dbg_a!(
                 self,
                 4,
@@ -880,17 +932,17 @@ impl<'a> Transaction<'a> {
             full_request.push(b'\n');
         }
         full_request.extend_from_slice(b"\n\n");
-        full_request.extend_from_slice(&self.request_body);
+        full_request.extend_from_slice(&self.http.request_body);
         let off = self.vars.offset;
         self.vars.full_request.set(&full_request, off);
         self.vars.full_request_length.set(full_request.len().to_string().as_bytes(), off);
 
-        if !self.request_body.is_empty() {
-            self.vars.request_body.set(&self.request_body, off);
+        if !self.http.request_body.is_empty() {
+            self.vars.request_body.set(&self.http.request_body, off);
             self.vars.request_body_length.set_with_len(
-                self.request_body.len().to_string().as_bytes(),
+                self.http.request_body.len().to_string().as_bytes(),
                 off,
-                self.request_body.len(),
+                self.http.request_body.len(),
             );
         }
 
@@ -916,7 +968,7 @@ impl<'a> Transaction<'a> {
     /// was hit and only a part was kept
     /// (`SecRequestBodyLimitAction ProcessPartial`).
     pub fn append_request_body(&mut self, buf: &[u8]) -> bool {
-        let current_size = self.request_body.len();
+        let current_size = self.http.request_body.len();
         let props = &self.rules.properties;
         crate::ms_dbg_a!(
             self,
@@ -935,14 +987,14 @@ impl<'a> Transaction<'a> {
             if props.request_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
                 let space_left = (props.request_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
                 let n = space_left.min(buf.len());
-                self.request_body.extend_from_slice(&buf[..n]);
+                self.http.request_body.extend_from_slice(&buf[..n]);
                 crate::ms_dbg_a!(self, 5, "Request body limit is marked to process partial");
                 return false;
             } else {
                 if props.request_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Request body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
-                        self.intervention = Intervention {
+                        self.outcome.intervention = Intervention {
                             status: 403,
                             url: None,
                             log: Some("Request body limit is marked to reject the request".into()),
@@ -955,7 +1007,7 @@ impl<'a> Transaction<'a> {
                 return true;
             }
         }
-        self.request_body.extend_from_slice(buf);
+        self.http.request_body.extend_from_slice(buf);
         true
     }
 
@@ -963,7 +1015,7 @@ impl<'a> Transaction<'a> {
     /// response headers rules.
     pub fn process_response_headers(&mut self, code: i32, proto: &str) {
         crate::ms_dbg_a!(self, 4, "Starting phase RESPONSE_HEADERS. (SecRules 3)");
-        self.http_code_returned = code;
+        self.http.http_code_returned = code;
         let off = self.vars.offset;
         self.vars.response_status.set(code.to_string().as_bytes(), off);
         self.vars.response_protocol.set(proto.as_bytes(), off);
@@ -1038,8 +1090,8 @@ impl<'a> Transaction<'a> {
         }
 
         let off = self.vars.offset;
-        self.vars.response_body.set(&self.response_body, off);
-        self.vars.response_content_length.set(self.response_body.len().to_string().as_bytes(), off);
+        self.vars.response_body.set(&self.http.response_body, off);
+        self.vars.response_content_length.set(self.http.response_body.len().to_string().as_bytes(), off);
         self.evaluate_phase(Phases::ResponseBody);
     }
 
@@ -1047,7 +1099,7 @@ impl<'a> Transaction<'a> {
     /// limit was hit and only a part was kept
     /// (`SecResponseBodyLimitAction ProcessPartial`).
     pub fn append_response_body(&mut self, buf: &[u8]) -> bool {
-        let current_size = self.response_body.len();
+        let current_size = self.http.response_body.len();
         let props = &self.rules.properties;
         let bi = &props.response_body_type_to_be_inspected.value;
         if !self.response_type_is_inspected() && !bi.is_empty() {
@@ -1077,14 +1129,14 @@ impl<'a> Transaction<'a> {
             if props.response_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
                 let space_left = (props.response_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
                 let n = space_left.min(buf.len());
-                self.response_body.extend_from_slice(&buf[..n]);
+                self.http.response_body.extend_from_slice(&buf[..n]);
                 crate::ms_dbg_a!(self, 5, "Response body limit is marked to process partial");
                 return false;
             } else {
                 if props.response_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg_a!(self, 5, "Response body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
-                        self.intervention = Intervention {
+                        self.outcome.intervention = Intervention {
                             status: 403,
                             url: None,
                             log: Some("Response body limit is marked to reject the request".into()),
@@ -1097,28 +1149,28 @@ impl<'a> Transaction<'a> {
                 return true;
             }
         }
-        self.response_body.extend_from_slice(buf);
+        self.http.response_body.extend_from_slice(buf);
         true
     }
 
     /// The response body kept so far.
     pub fn response_body(&self) -> &[u8] {
-        &self.response_body
+        &self.http.response_body
     }
 
     /// The length of the response body kept so far.
     pub fn response_body_length(&self) -> usize {
-        self.response_body.len()
+        self.http.response_body.len()
     }
 
     /// The length of the request body kept so far.
     pub fn request_body_length(&self) -> usize {
-        self.request_body.len()
+        self.http.request_body.len()
     }
 
     /// The messages of the rules that matched so far, in order.
     pub fn rule_messages(&self) -> &[RuleMessage<'a>] {
-        &self.rules_messages
+        &self.outcome.rules_messages
     }
 
     /// Phase 5: runs the logging rules, then writes the audit log entry
@@ -1138,10 +1190,10 @@ impl<'a> Transaction<'a> {
         let mut parts = audit.parts();
         crate::ms_dbg_a!(self, 8, "Checking if this request is suitable to be saved as an audit log.");
 
-        if !self.audit_log_modifier.is_empty() {
+        if !self.ctl.audit_log_modifier.is_empty() {
             crate::ms_dbg_a!(self, 4, "There was an audit log modifier for this transaction.");
             crate::ms_dbg_a!(self, 7, "AuditLog parts before modification(s): {}.", parts);
-            for (op, p) in &self.audit_log_modifier {
+            for (op, p) in &self.ctl.audit_log_modifier {
                 parts = match op {
                     PartsChange::Add => audit_log::AuditLog::add_parts(parts, p),
                     PartsChange::Remove => audit_log::AuditLog::remove_parts(parts, p),
@@ -1159,15 +1211,15 @@ impl<'a> Transaction<'a> {
     /// replaced by the status code. Handing it out resets the status and
     /// the disruptive flag (the url and log stay, as in C++).
     pub fn intervention(&mut self) -> Option<Intervention> {
-        if !self.intervention.disruptive {
+        if !self.outcome.intervention.disruptive {
             return None;
         }
-        self.is_interrupted = true;
-        let mut it = self.intervention.clone();
+        self.outcome.is_interrupted = true;
+        let mut it = self.outcome.intervention.clone();
         if let Some(log) = &mut it.log {
             *log = log.replace("%d", &it.status.to_string());
         }
-        self.intervention.reset();
+        self.outcome.intervention.reset();
         Some(it)
     }
 
@@ -1179,7 +1231,7 @@ impl<'a> Transaction<'a> {
         let rh = &self.vars.request_headers;
         ss.extend_from_slice(&dash_if_empty(rh.resolve_first(b"Host").as_deref()));
         ss.push(b' ');
-        ss.extend_from_slice(&dash_if_empty(Some(self.client_ip_address.as_bytes())));
+        ss.extend_from_slice(&dash_if_empty(Some(self.http.client_ip_address.as_bytes())));
         ss.push(b' ');
         let remote_user = crate::variables::computed::remote_user_name(self);
         ss.extend_from_slice(&dash_if_empty(Some(&remote_user)));
@@ -1189,12 +1241,12 @@ impl<'a> Transaction<'a> {
         ss.push(b'"');
         ss.extend_from_slice(&dash_if_empty(Some(self.vars.request_method.evaluate())));
         ss.push(b' ');
-        ss.extend_from_slice(cstr_prefix(&self.uri));
+        ss.extend_from_slice(cstr_prefix(&self.http.uri));
         ss.push(b' ');
         ss.extend_from_slice(b"HTTP/");
-        ss.extend_from_slice(self.http_version.as_bytes());
+        ss.extend_from_slice(self.http.http_version.as_bytes());
         ss.extend_from_slice(b"\" ");
-        ss.extend_from_slice(format!("{} {} ", self.http_code_returned, self.response_body.len()).as_bytes());
+        ss.extend_from_slice(format!("{} {} ", self.http.http_code_returned, self.http.response_body.len()).as_bytes());
         ss.extend_from_slice(&dash_if_empty(rh.resolve_first(b"REFERER").as_deref()));
         ss.push(b' ');
         ss.push(b'"');
@@ -1235,7 +1287,11 @@ impl<'a> Transaction<'a> {
         a.extend_from_slice(
             format!(
                 " {} {} {} {} {}\n",
-                self.id, self.client_ip_address, self.client_port, self.server_ip_address, self.server_port
+                self.id,
+                self.http.client_ip_address,
+                self.http.client_port,
+                self.http.server_ip_address,
+                self.http.server_port
             )
             .as_bytes(),
         );
@@ -1245,9 +1301,9 @@ impl<'a> Transaction<'a> {
             a.extend_from_slice(p);
             a.extend_from_slice(&dash_if_empty(Some(self.vars.request_method.evaluate())));
             a.push(b' ');
-            a.extend_from_slice(cstr_prefix(&self.uri));
+            a.extend_from_slice(cstr_prefix(&self.http.uri));
             a.extend_from_slice(b" HTTP/");
-            line(&mut a, self.http_version.as_bytes());
+            line(&mut a, self.http.http_version.as_bytes());
             let mut l = Vec::new();
             self.vars.request_headers.resolve(&mut l);
             for h in &l {
@@ -1259,10 +1315,10 @@ impl<'a> Transaction<'a> {
             }
             line(&mut a, p);
         }
-        if parts & AL::C_AUDIT_LOG_PART != 0 && !self.request_body.is_empty() {
+        if parts & AL::C_AUDIT_LOG_PART != 0 && !self.http.request_body.is_empty() {
             section(&mut a, "C");
             a.extend_from_slice(p);
-            line(&mut a, &self.request_body);
+            line(&mut a, &self.http.request_body);
             line(&mut a, p);
         }
         if parts & AL::D_AUDIT_LOG_PART != 0 {
@@ -1270,8 +1326,8 @@ impl<'a> Transaction<'a> {
             line(&mut a, p);
             // TODO (C++): write audit_log D part.
         }
-        if parts & AL::E_AUDIT_LOG_PART != 0 && !self.response_body.is_empty() {
-            let body = to_hex_if_needed(&self.response_body, false);
+        if parts & AL::E_AUDIT_LOG_PART != 0 && !self.http.response_body.is_empty() {
+            let body = to_hex_if_needed(&self.http.response_body, false);
             section(&mut a, "E");
             if !body.is_empty() {
                 a.extend_from_slice(p);
@@ -1282,7 +1338,7 @@ impl<'a> Transaction<'a> {
         if parts & AL::F_AUDIT_LOG_PART != 0 {
             section(&mut a, "F");
             a.extend_from_slice(p);
-            line(&mut a, format!("HTTP/{} {}", self.http_version, self.http_code_returned).as_bytes());
+            line(&mut a, format!("HTTP/{} {}", self.http.http_version, self.http.http_code_returned).as_bytes());
             let mut l = Vec::new();
             self.vars.response_headers.resolve(&mut l);
             for h in &l {
@@ -1300,9 +1356,9 @@ impl<'a> Transaction<'a> {
         }
         if parts & AL::H_AUDIT_LOG_PART != 0 {
             section(&mut a, "H");
-            for m in &self.rules_messages {
+            for m in &self.outcome.rules_messages {
                 a.extend_from_slice(p);
-                line(&mut a, m.log(self, 0, self.http_code_returned).as_bytes());
+                line(&mut a, m.log(self, 0, self.http.http_code_returned).as_bytes());
             }
             line(&mut a, p);
         }
@@ -1335,26 +1391,26 @@ impl<'a> Transaction<'a> {
         g.map_open();
 
         // Part: A (header mandatory)
-        g.add("client_ip", self.client_ip_address.as_bytes());
+        g.add("client_ip", self.http.client_ip_address.as_bytes());
         g.add("time_stamp", ts.as_bytes());
         g.add("server_id", unique_id.as_bytes());
-        g.add_num("client_port", self.client_port as i64);
-        g.add("host_ip", self.server_ip_address.as_bytes());
-        g.add_num("host_port", self.server_port as i64);
+        g.add_num("client_port", self.http.client_port as i64);
+        g.add("host_ip", self.http.server_ip_address.as_bytes());
+        g.add_num("host_port", self.http.server_port as i64);
         g.add("unique_id", self.id.as_bytes());
         g.string(b"is_interrupted");
-        g.bool(self.is_interrupted);
+        g.bool(self.outcome.is_interrupted);
 
         // request
         g.string(b"request");
         g.map_open();
         g.add("method", &dash_if_empty(Some(self.vars.request_method.evaluate())));
-        g.add("http_version", self.http_version.as_bytes());
-        g.add("hostname", self.request_host_name.as_bytes());
-        g.add("uri", &self.uri);
+        g.add("http_version", self.http.http_version.as_bytes());
+        g.add("hostname", self.http.request_host_name.as_bytes());
+        g.add("uri", &self.http.uri);
         if parts & AL::C_AUDIT_LOG_PART != 0 {
             // FIXME (C++): check for the binary content size.
-            g.add("body", to_hex_if_needed(&self.request_body, false).as_bytes());
+            g.add("body", to_hex_if_needed(&self.http.request_body, false).as_bytes());
         }
         if parts & AL::B_AUDIT_LOG_PART != 0 {
             g.string(b"headers");
@@ -1373,9 +1429,9 @@ impl<'a> Transaction<'a> {
         g.string(b"response");
         g.map_open();
         if parts & AL::E_AUDIT_LOG_PART != 0 {
-            g.add("body", &self.response_body);
+            g.add("body", &self.http.response_body);
         }
-        g.add_num("http_code", self.http_code_returned as i64);
+        g.add_num("http_code", self.http.http_code_returned as i64);
         if parts & AL::F_AUDIT_LOG_PART != 0 {
             g.string(b"headers");
             g.map_open();
@@ -1407,7 +1463,7 @@ impl<'a> Transaction<'a> {
             // messages
             g.string(b"messages");
             g.array_open();
-            for a in &self.rules_messages {
+            for a in &self.outcome.rules_messages {
                 g.map_open();
                 g.add("message", &a.message);
                 g.string(b"details");
@@ -1450,12 +1506,12 @@ impl<'a> Transaction<'a> {
     /// The rule engine state: this transaction's `ctl:ruleEngine`, else
     /// `SecRuleEngine`.
     pub(crate) fn rule_engine_state(&self) -> Option<RuleEngine> {
-        self.sec_rule_engine.or(self.rules.properties.sec_rule_engine)
+        self.ctl.rule_engine.or(self.rules.properties.sec_rule_engine)
     }
 
     /// Sets the response status (`RESPONSE_STATUS`).
     pub fn update_status_code(&mut self, code: i32) {
-        self.http_code_returned = code;
+        self.http.http_code_returned = code;
         let off = self.vars.offset;
         self.vars.response_status.set(code.to_string().as_bytes(), off);
     }
@@ -1463,7 +1519,7 @@ impl<'a> Transaction<'a> {
     /// Sets the host name the logs report (ignored when empty).
     pub fn set_request_host_name(&mut self, hostname: &str) {
         if !hostname.is_empty() {
-            self.request_host_name = hostname.to_string();
+            self.http.request_host_name = hostname.to_string();
         }
     }
 }
@@ -1474,7 +1530,7 @@ impl Drop for Transaction<'_> {
         // temp files) logs while deleting; do it here while the transaction
         // (and its debug log) is still alive.
         let me: &Transaction<'_> = self;
-        for f in &me.multipart_part_tmp_files {
+        for f in &me.body.multipart_part_tmp_files {
             f.release(Some(me));
         }
     }

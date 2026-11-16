@@ -103,13 +103,15 @@ impl RuleWithOperator {
             if exclusion.contains_var(variable) {
                 continue;
             }
-            if t.rule_remove_target_by_id
+            if t.ctl
+                .rule_remove_target_by_id
                 .iter()
                 .any(|(id, target)| *id as i64 == rule.rule_id && target.eq_ignore_ascii_case(variable.full_name()))
             {
                 continue;
             }
-            if t.rule_remove_target_by_tag
+            if t.ctl
+                .rule_remove_target_by_tag
                 .iter()
                 .any(|(tag, target)| target == variable.full_name() && rule.contains_tag(tag, t))
             {
@@ -137,14 +139,14 @@ impl RuleWithOperator {
 
         rule.evaluate_base(t);
 
-        for &i in &t.rule_remove_by_id {
+        for &i in &t.ctl.rule_remove_by_id {
             if rule.rule_id != i as i64 {
                 continue;
             }
             crate::ms_dbg_a!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
             return true;
         }
-        for &(a, b) in &t.rule_remove_by_id_range {
+        for &(a, b) in &t.ctl.rule_remove_by_id_range {
             if !(a as i64 <= rule.rule_id && b as i64 >= rule.rule_id) {
                 continue;
             }
@@ -193,7 +195,7 @@ impl RuleWithOperator {
 
         // The transaction's buffers, reused by every rule (a chained rule
         // evaluated below gets fresh ones); given back after the loop.
-        let EvalScratch { mut vars, mut e, mut values, mut chain } = std::mem::take(&mut t.eval_scratch);
+        let EvalScratch { mut vars, mut e, mut values, mut chain } = std::mem::take(&mut t.eval.scratch);
         chain.clear();
         rule.transformations_in(t.rules, &mut chain);
         vars.clear();
@@ -208,14 +210,16 @@ impl RuleWithOperator {
                 let key = v.key_with_collection();
 
                 if exclusion.contains_value(&v)
-                    || t.rule_remove_target_by_id
+                    || t.ctl
+                        .rule_remove_target_by_id
                         .iter()
                         .any(|(id, target)| *id as i64 == rule.rule_id && target.as_bytes() == v.key_with_collection())
                 {
                     continue;
                 }
                 if exclusion.contains_value(&v)
-                    || t.rule_remove_target_by_tag
+                    || t.ctl
+                        .rule_remove_target_by_tag
                         .iter()
                         .any(|(tag, target)| target.as_bytes() == v.key_with_collection() && rule.contains_tag(tag, t))
                 {
@@ -249,7 +253,7 @@ impl RuleWithOperator {
         }
         vars.clear();
         chain.clear();
-        t.eval_scratch = EvalScratch { vars, e, values, chain };
+        t.eval.scratch = EvalScratch { vars, e, values, chain };
 
         if !global_ret {
             crate::ms_dbg_a!(t, 4, "Rule returned 0.");
@@ -264,9 +268,9 @@ impl RuleWithOperator {
                 return false;
             };
             crate::ms_dbg_a!(t, 4, "Executing chained rule.");
-            t.chained_rule_parents.push(rule);
+            t.eval.chained_rule_parents.push(rule);
             let recursive_global_ret = child.evaluate_with_message(t, rm);
-            t.chained_rule_parents.pop();
+            t.eval.chained_rule_parents.pop();
             if !recursive_global_ret {
                 return false;
             }

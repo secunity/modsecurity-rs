@@ -116,14 +116,14 @@ mod tests {
         assert!(has_log(&t, "Running action deny"));
         // Only the disruptive default action ran.
         assert!(!rm.save_message);
-        assert_eq!(t.intervention.status, 403);
-        assert!(t.intervention.disruptive);
+        assert_eq!(t.outcome.intervention.status, 403);
+        assert!(t.outcome.intervention.disruptive);
         assert!(rm.is_disruptive);
 
         // Nothing happens in a phase without default actions.
         Pass::new("pass").evaluate(&r, &mut t, &mut rm);
         let r1 = rule(vec![RuleAction::Block(Block::new("block"))]);
         Block::new("block").evaluate(&r1, &mut t, &mut rm);
-        assert_eq!(t.intervention.status, 200);
+        assert_eq!(t.outcome.intervention.status, 200);
     }
 }

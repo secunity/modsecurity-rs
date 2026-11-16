@@ -28,7 +28,8 @@ pub const RULE_MSG: &str = "msg";
 /// The rule of the chain whose chained child is `r`, if `r` is being
 /// evaluated as part of a chain.
 fn chained_rule_parent<'r>(t: &'r Transaction<'_>, r: &RuleWithActions) -> Option<&'r RuleWithActions> {
-    t.chained_rule_parents
+    t.eval
+        .chained_rule_parents
         .iter()
         .rev()
         .find(|p| p.chained_rule_child.as_deref().is_some_and(|c| std::ptr::eq(c, r)))

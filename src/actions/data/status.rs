@@ -29,6 +29,6 @@ impl Action for Status {
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.intervention.status = self.status;
+        t.outcome.intervention.status = self.status;
     }
 }

@@ -646,7 +646,7 @@ mod tests {
         // Outside of the chain evaluation the child has no parent.
         assert!(eval(&var("RULE", sel_key("id")), &t, Some(child)).is_empty());
 
-        t.chained_rule_parents.push(&parent);
+        t.eval.chained_rule_parents.push(&parent);
         assert_eq!(eval(&var("RULE", sel_key("id")), &t, Some(child)), vec![("RULE:id".into(), "10".into())]);
         assert_eq!(eval(&var("RULE", sel_key("rev")), &t, Some(child)), vec![("RULE:rev".into(), "3".into())]);
         assert_eq!(

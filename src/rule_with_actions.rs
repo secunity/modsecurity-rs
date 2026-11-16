@@ -385,7 +385,7 @@ impl RuleWithActions {
     /// The part of the evaluation shared by every kind of rule: matched
     /// values are cleared at every new rule execution.
     pub fn evaluate_base(&self, t: &mut Transaction<'_>) {
-        t.matched.clear();
+        t.eval.matched.clear();
     }
 
     /// Runs the actions that do not depend on the result of the chain:
@@ -682,7 +682,7 @@ impl RuleWithActions {
             if point == LogPoint::RuleEnd {
                 is_it_to_be_logged = rm.save_message && !self.chained_rule_parent;
                 if is_it_to_be_logged && !self.has_multimatch() {
-                    t.rules_messages.push(rm.clone());
+                    t.outcome.rules_messages.push(rm.clone());
                     if !rm.is_disruptive {
                         t.server_log(rm);
                     }
@@ -691,13 +691,13 @@ impl RuleWithActions {
                 || (is_it_to_be_logged && !self.has_multimatch() && !rm.message.is_empty())
             {
                 // (two C++ branches with identical bodies)
-                t.rules_messages.push(rm.clone());
+                t.outcome.rules_messages.push(rm.clone());
                 if !rm.is_disruptive {
                     t.server_log(rm);
                 }
             }
         } else if self.has_multimatch() && is_it_to_be_logged {
-            t.rules_messages.push(rm.clone());
+            t.outcome.rules_messages.push(rm.clone());
             if !rm.is_disruptive {
                 t.server_log(rm);
             }

@@ -36,7 +36,7 @@ pub(crate) mod test_support {
         }
         t.process_request_headers();
         if let Some(p) = processor {
-            t.request_body_processor = p;
+            t.body.request_body_processor = p;
         }
         t.append_request_body(body);
         t.process_request_body();
@@ -480,10 +480,10 @@ mod regression_dump {
                     }
                     t.process_request_headers();
                     if let Some(p) = processor {
-                        t.request_body_processor = p;
+                        t.body.request_body_processor = p;
                     }
                     if let Some(a) = ctl_args {
-                        t.sec_xml_parse_xml_into_args = Some(a);
+                        t.ctl.parse_xml_into_args = Some(a);
                     }
                     let mut body = Vec::new();
                     if let Some(JsonValue::Array(b)) = req.get("body") {

@@ -27,11 +27,11 @@ impl Action for Drop {
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(t, 8, "Running action drop [executing deny instead of drop.]");
-        if t.intervention.status == 200 {
-            t.intervention.status = 403;
+        if t.outcome.intervention.status == 200 {
+            t.outcome.intervention.status = 403;
         }
-        t.intervention.disruptive = true;
+        t.outcome.intervention.disruptive = true;
         rm.is_disruptive = true;
-        t.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
+        t.outcome.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
     }
 }

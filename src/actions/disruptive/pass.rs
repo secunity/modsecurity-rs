@@ -29,7 +29,7 @@ impl Action for Pass {
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         // intervention::free + reset: drops the url and log too.
-        t.intervention = Intervention::default();
+        t.outcome.intervention = Intervention::default();
         crate::ms_dbg_a!(t, 8, "Running action pass");
     }
 }

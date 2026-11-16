@@ -95,7 +95,7 @@ impl<'r> RuleMessage<'r> {
     pub fn log(&self, t: &Transaction<'_>, props: i32, code: i32) -> String {
         let mut msg: Vec<u8> = Vec::with_capacity(2048);
         if props & CLIENT_LOG_MESSAGE_INFO != 0 {
-            msg.extend_from_slice(format!("[client {}] ", t.client_ip_address).as_bytes());
+            msg.extend_from_slice(format!("[client {}] ", t.http.client_ip_address).as_bytes());
         }
         if self.is_disruptive {
             msg.extend_from_slice(b"ModSecurity: Access denied with code ");
@@ -144,10 +144,10 @@ impl<'r> RuleMessage<'r> {
             push(format!(" [tag \"{}\"]", to_hex_if_needed(a, true)).as_bytes());
         }
         push(b" [hostname \"");
-        push(t.request_host_name.as_bytes());
+        push(t.http.request_host_name.as_bytes());
         push(b"\"]");
         push(b" [uri \"");
-        push(&limit_to(200, &t.uri_no_query_string_decoded));
+        push(&limit_to(200, &t.http.uri_no_query_string_decoded));
         push(b"\"]");
         push(format!(" [unique_id \"{}\"]", t.id).as_bytes());
         push(b" [ref \"");
@@ -160,9 +160,9 @@ impl<'r> RuleMessage<'r> {
     /// the uri and the unique id.
     pub(crate) fn error_log_tail(t: &Transaction<'_>) -> Vec<u8> {
         let mut msg: Vec<u8> = Vec::new();
-        msg.extend_from_slice(format!("[hostname \"{}\"]", t.server_ip_address).as_bytes());
+        msg.extend_from_slice(format!("[hostname \"{}\"]", t.http.server_ip_address).as_bytes());
         msg.extend_from_slice(b" [uri \"");
-        msg.extend_from_slice(&limit_to(200, &t.uri_no_query_string_decoded));
+        msg.extend_from_slice(&limit_to(200, &t.http.uri_no_query_string_decoded));
         msg.extend_from_slice(b"\"]");
         msg.extend_from_slice(format!(" [unique_id \"{}\"]", t.id).as_bytes());
         msg

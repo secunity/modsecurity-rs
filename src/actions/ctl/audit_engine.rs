@@ -31,6 +31,6 @@ impl Action for AuditEngine {
             "Setting SecAuditEngine to {} as requested by a ctl:auditEngine action",
             self.status as i32
         );
-        t.ctl_audit_engine = Some(self.status);
+        t.ctl.audit_engine = Some(self.status);
     }
 }

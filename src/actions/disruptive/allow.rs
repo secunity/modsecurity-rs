@@ -62,7 +62,7 @@ impl Action for Allow {
             "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: {}",
             Self::allow_type_to_name(self.allow_type)
         );
-        t.allow_type = Some(self.allow_type);
+        t.eval.allow_type = Some(self.allow_type);
     }
 }
 
@@ -87,7 +87,7 @@ mod tests {
         let mut rm = RuleMessage::new(&r);
         let a = Allow::new("allow:phase").unwrap();
         a.evaluate(&r, &mut t, &mut rm);
-        assert_eq!(t.allow_type, Some(AllowType::Phase));
+        assert_eq!(t.eval.allow_type, Some(AllowType::Phase));
         assert!(has_log(&t, "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: Phase"));
     }
 }

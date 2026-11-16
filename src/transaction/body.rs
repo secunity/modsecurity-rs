@@ -52,7 +52,7 @@ impl multipart::Context for Transaction<'_> {
     }
 
     fn keep_tmp_file(&mut self, file: Arc<MultipartPartTmpFile>) {
-        self.multipart_part_tmp_files.push(file);
+        self.body.multipart_part_tmp_files.push(file);
     }
 }
 
@@ -116,7 +116,7 @@ impl crate::request_body_processor::xml::Context for Transaction<'_> {
     fn args_mode(&self) -> crate::request_body_processor::xml::IntoArgs {
         use crate::request_body_processor::xml::IntoArgs;
         use crate::rules_set_properties::ParseXmlIntoArgs;
-        match self.sec_xml_parse_xml_into_args {
+        match self.ctl.parse_xml_into_args {
             Some(ParseXmlIntoArgs::On) => IntoArgs::On,
             Some(ParseXmlIntoArgs::OnlyArgs) => IntoArgs::OnlyArgs,
             Some(ParseXmlIntoArgs::Off) | None => IntoArgs::Off,

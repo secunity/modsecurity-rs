@@ -601,3 +601,33 @@ Their tests that run a whole transaction stayed in the engine
 (`request_body_processor/tests/`). `chomp`, `lossy` and `strerror`
 (`compat::errno`) moved to `modsecurity-compat`.
 
+
+## `Transaction` state grouped by purpose
+
+The 41 loose fields of `Transaction` are now five structs, one per
+concern (the first step of splitting the transaction, see `PLAN.md`):
+
+| Field | Type | Holds |
+|---|---|---|
+| `http` | `HttpData` | the exchange as the connector reported it: addresses and ports, host name, HTTP version, the raw and decoded URIs, the request and response bodies, `ARGS_COMBINED_SIZE`, the status code |
+| `body` | `BodyProcessing` | the body type and the processor chosen, the XML and JSON processors, the multipart temporary files |
+| `ctl` | `CtlOverrides` | what `ctl:` changed for this transaction: rule engine, body access, XML into `ARGS`, audit engine and parts, the five `ruleRemove*` lists |
+| `eval` | `EvalState<'a>` | `skip_next`, the `SecMarker` being skipped to, `allow`, the chain being evaluated, captures, the reused buffers |
+| `outcome` | `Outcome<'a>` | the rule messages, the intervention, `is_interrupted`, the highest severity |
+
+`ms`, `rules`, `id`, the two timestamps, `vars`, `collections`,
+`variable_envs` and `log_cb_data` stay on `Transaction`. `PLAN.md` put
+the audit-log `ctl` settings with logging; they are in `ctl` because
+`ctl:` sets them like the others. Field names are unchanged except where
+the group repeats them: `eval_scratch` → `eval.scratch`,
+`sec_rule_engine` → `ctl.rule_engine`, `sec_xml_parse_xml_into_args` →
+`ctl.parse_xml_into_args`, `ctl_audit_engine` → `ctl.audit_engine`.
+
+The accesses were rewritten from the compiler's errors (a script turned
+each "no field `x` on type `Transaction`" into `x`'s new path), so no
+statement changed place. Drop order changed only among fields whose drop
+has no visible effect: the temporary files are still released, with
+their debug messages, by `Transaction::drop` before any field is
+dropped. The differential test is identical (582,671 debug log lines;
+outputs with and without the debug log), and the C library's symbols,
+SONAME and NEEDED are unchanged.

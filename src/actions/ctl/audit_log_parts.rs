@@ -33,6 +33,6 @@ impl Action for AuditLogParts {
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.audit_log_modifier.push((self.change, self.parts.clone()));
+        t.ctl.audit_log_modifier.push((self.change, self.parts.clone()));
     }
 }

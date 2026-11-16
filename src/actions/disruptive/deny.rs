@@ -28,12 +28,12 @@ impl Action for Deny {
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(t, 8, "Running action deny");
-        if t.intervention.status == 200 {
-            t.intervention.status = 403;
+        if t.outcome.intervention.status == 200 {
+            t.outcome.intervention.status = 403;
         }
-        t.intervention.disruptive = true;
+        t.outcome.intervention.disruptive = true;
         rm.is_disruptive = true;
-        t.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
+        t.outcome.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
     }
 }
 
@@ -58,22 +58,22 @@ mod tests {
 
         Deny::new("deny").evaluate(&r, &mut t, &mut rm);
         assert!(has_log(&t, "Running action deny"));
-        assert_eq!((t.intervention.status, t.intervention.disruptive), (403, true));
+        assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (403, true));
         assert!(rm.is_disruptive);
-        let log = t.intervention.log.clone().unwrap();
+        let log = t.outcome.intervention.log.clone().unwrap();
         assert!(log.contains("ModSecurity: Access denied with code %d (phase 1)."), "{}", log);
 
         Pass::new("pass").evaluate(&r, &mut t, &mut rm);
         assert!(has_log(&t, "Running action pass"));
-        assert_eq!(t.intervention, crate::intervention::Intervention::default());
+        assert_eq!(t.outcome.intervention, crate::intervention::Intervention::default());
 
         // A status set before is kept.
         let s = Status::new("status:404").unwrap();
         s.evaluate(&r, &mut t, &mut rm);
         Drop::new("drop").evaluate(&r, &mut t, &mut rm);
         assert!(has_log(&t, "Running action drop [executing deny instead of drop.]"));
-        assert_eq!((t.intervention.status, t.intervention.disruptive), (404, true));
-        assert!(t.intervention.log.is_some());
+        assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (404, true));
+        assert!(t.outcome.intervention.log.is_some());
 
         assert_eq!(Status::new("status:abc").unwrap_err(), "Not a valid number: abc");
     }

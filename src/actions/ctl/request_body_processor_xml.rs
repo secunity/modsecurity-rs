@@ -22,7 +22,7 @@ impl Action for RequestBodyProcessorXML {
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.request_body_processor = RequestBodyType::XMLRequestBody;
+        t.body.request_body_processor = RequestBodyType::XMLRequestBody;
         let offset = t.vars.offset;
         t.vars.reqbody_processor.set(b"XML", offset);
     }

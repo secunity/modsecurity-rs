@@ -45,11 +45,11 @@ impl Action for Severity {
             9,
             "This rule severity is: {} current transaction is: {}",
             self.severity,
-            t.highest_severity_action
+            t.outcome.highest_severity_action
         );
         rm.severity = self.severity;
-        if t.highest_severity_action > self.severity {
-            t.highest_severity_action = self.severity;
+        if t.outcome.highest_severity_action > self.severity {
+            t.outcome.highest_severity_action = self.severity;
         }
     }
 }
@@ -81,14 +81,14 @@ mod tests {
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
-        let before = t.highest_severity_action;
+        let before = t.outcome.highest_severity_action;
         s.evaluate(&r, &mut t, &mut rm);
         assert_eq!(rm.severity, 2);
-        assert_eq!(t.highest_severity_action, 2.min(before));
+        assert_eq!(t.outcome.highest_severity_action, 2.min(before));
         assert!(has_log(&t, &format!("This rule severity is: 2 current transaction is: {}", before)));
         let s5 = Severity::new("severity:5").unwrap();
         s5.evaluate(&r, &mut t, &mut rm);
         assert_eq!(rm.severity, 5);
-        assert_eq!(t.highest_severity_action, 2.min(before));
+        assert_eq!(t.outcome.highest_severity_action, 2.min(before));
     }
 }

@@ -135,7 +135,7 @@ impl RulesSet {
         let rules = self.rules_set_phases.for_phase(phase);
         crate::ms_dbg_a!(t, 9, "This phase consists of {} rule(s).", rules.len());
 
-        if t.allow_type == Some(AllowType::FromNowOn) && phase != Phases::Logging {
+        if t.eval.allow_type == Some(AllowType::FromNowOn) && phase != Phases::Logging {
             crate::ms_dbg_a!(
                 t,
                 9,
@@ -143,7 +143,7 @@ impl RulesSet {
             );
             return;
         }
-        if t.allow_type == Some(AllowType::Request) && phase <= Phases::RequestBody {
+        if t.eval.allow_type == Some(AllowType::Request) && phase <= Phases::RequestBody {
             crate::ms_dbg_a!(
                 t,
                 9,
@@ -151,7 +151,7 @@ impl RulesSet {
             );
             return;
         }
-        t.allow_type = None;
+        t.eval.allow_type = None;
 
         let ex = &self.properties.exceptions;
         for rule in rules {
@@ -166,16 +166,16 @@ impl RulesSet {
                 );
             } else if rule.is_marker() {
                 rule.evaluate(t);
-            } else if t.skip_next > 0 {
-                t.skip_next -= 1;
+            } else if t.eval.skip_next > 0 {
+                t.eval.skip_next -= 1;
                 crate::ms_dbg_a!(
                     t,
                     9,
                     "Skipped rule id '{}' due to a `skip' action. Still {} to be skipped.",
                     rule.reference(),
-                    t.skip_next
+                    t.eval.skip_next
                 );
-            } else if t.allow_type.is_some() {
+            } else if t.eval.allow_type.is_some() {
                 crate::ms_dbg_a!(
                     t,
                     9,
@@ -213,7 +213,7 @@ impl RulesSet {
                         );
                         continue;
                     }
-                    if t.rule_remove_by_tag.iter().any(|z| r.contains_tag(z, t)) {
+                    if t.ctl.rule_remove_by_tag.iter().any(|z| r.contains_tag(z, t)) {
                         crate::ms_dbg_a!(
                             t,
                             9,
@@ -227,7 +227,7 @@ impl RulesSet {
                 rule.evaluate(t);
                 Self::clean_matched_vars(t);
 
-                if t.intervention.disruptive {
+                if t.outcome.intervention.disruptive {
                     crate::ms_dbg_a!(t, 8, "Skipping this phase as this request was already intercepted.");
                     break;
                 }

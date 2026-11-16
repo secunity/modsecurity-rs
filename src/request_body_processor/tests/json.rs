@@ -90,13 +90,13 @@ mod tests {
         let mut t = run(&ms, &rules, &[], br#"{"a":[1,2"#, Some(RequestBodyType::JSONRequestBody));
         let error = t.vars.reqbody_error_msg.value.clone();
         assert_eq!(error, b"JSON parsing error: parse error: premature EOF\n");
-        t.request_body = b"[3]".to_vec();
+        t.http.request_body = b"[3]".to_vec();
         t.process_request_body();
         assert_eq!(t.vars.args.resolve_first(b"json.a.array_2.array_0").unwrap(), b"3");
         assert_eq!(t.vars.reqbody_error.value, b"0");
         // Successful processing clears the flags, but retains earlier text.
         assert_eq!(t.vars.reqbody_error_msg.value, error);
-        assert_eq!(t.request_body, b"[3]");
+        assert_eq!(t.http.request_body, b"[3]");
         assert_eq!(t.vars.request_body.value, b"[3]");
     }
 
@@ -107,11 +107,11 @@ mod tests {
         rules.properties.request_body_json_depth_limit = Some(0);
         let mut t = run(&ms, &rules, &[], b"[]", Some(RequestBodyType::JSONRequestBody));
         assert_eq!(t.vars.reqbody_error.value, b"1");
-        t.request_body = b"x".to_vec();
+        t.http.request_body = b"x".to_vec();
         t.process_request_body();
         let error = b"JSON parsing error: lexical error: invalid char in json text.\n. Parsing depth limit exceeded";
         assert_eq!(t.vars.reqbody_error_msg.value, error);
-        t.request_body.clear();
+        t.http.request_body.clear();
         t.process_request_body();
         assert_eq!(t.vars.reqbody_error.value, b"0");
         assert_eq!(t.vars.reqbody_error_msg.value, error);

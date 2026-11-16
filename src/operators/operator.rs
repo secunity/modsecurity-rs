@@ -69,7 +69,7 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
     /// Records text the operator matched (what `capture` and the logs
     /// refer to).
     pub fn matched(&mut self, value: Vec<u8>) {
-        self.t.matched.push(value);
+        self.t.eval.matched.push(value);
     }
 
     /// Records the position of a match in the input (`o<offset>,<length>`

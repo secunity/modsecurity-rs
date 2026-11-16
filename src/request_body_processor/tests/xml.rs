@@ -67,8 +67,8 @@ mod tests {
         assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document.");
         assert_eq!(t.vars.reqbody_processor_error.value, b"1");
         // the (partial) document is kept, as in C++
-        assert!(t.xml.as_ref().unwrap().has_doc());
-        assert_eq!(t.xml.as_ref().unwrap().well_formed(), 0);
+        assert!(t.body.xml.as_ref().unwrap().has_doc());
+        assert_eq!(t.body.xml.as_ref().unwrap().well_formed(), 0);
     }
 
     #[test]
@@ -99,7 +99,7 @@ mod tests {
             );
             assert_eq!(t.vars.reqbody_error.value, b"0");
             // OnlyArgs: no document
-            assert_eq!(t.xml.as_ref().unwrap().has_doc(), mode == Some(ParseXmlIntoArgs::On));
+            assert_eq!(t.body.xml.as_ref().unwrap().has_doc(), mode == Some(ParseXmlIntoArgs::On));
         }
 
         // SecArgumentsLimit stops the SAX parser
@@ -138,7 +138,7 @@ mod tests {
         t.process_uri(b"/", b"POST", b"1.1");
         t.add_request_header(b"Content-Type", b"text/xml");
         t.process_request_headers();
-        t.request_body_type = RequestBodyType::XMLRequestBody;
+        t.body.request_body_type = RequestBodyType::XMLRequestBody;
         t.append_request_body(&body[..60]);
         drop(t);
     }

@@ -36,13 +36,13 @@ impl Action for Redirect {
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, rm: &mut RuleMessage<'_>) {
         let url_expanded = self.string.evaluate(Some(t));
         // if it was changed before, lets keep it.
-        if t.intervention.status == 200 || !(301..=307).contains(&t.intervention.status) {
-            t.intervention.status = Self::STATUS;
+        if t.outcome.intervention.status == 200 || !(301..=307).contains(&t.outcome.intervention.status) {
+            t.outcome.intervention.status = Self::STATUS;
         }
-        t.intervention.url = Some(url_expanded);
-        t.intervention.disruptive = true;
+        t.outcome.intervention.url = Some(url_expanded);
+        t.outcome.intervention.disruptive = true;
         rm.is_disruptive = true;
-        t.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
+        t.outcome.intervention.log = Some(rm.log(t, CLIENT_LOG_MESSAGE_INFO, -1));
     }
 }
 
@@ -63,20 +63,20 @@ mod tests {
         assert!(a.is_disruptive());
 
         a.evaluate(&r, &mut t, &mut rm);
-        assert_eq!((t.intervention.status, t.intervention.disruptive), (302, true));
-        assert_eq!(t.intervention.url.as_deref(), Some(&b"https://www.example.com/"[..]));
-        assert!(rm.is_disruptive && t.intervention.log.is_some());
+        assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (302, true));
+        assert_eq!(t.outcome.intervention.url.as_deref(), Some(&b"https://www.example.com/"[..]));
+        assert!(rm.is_disruptive && t.outcome.intervention.log.is_some());
 
         // A 301..307 status set before is kept, others are replaced.
-        t.intervention.status = 301;
+        t.outcome.intervention.status = 301;
         a.evaluate(&r, &mut t, &mut rm);
-        assert_eq!(t.intervention.status, 301);
-        t.intervention.status = 404;
+        assert_eq!(t.outcome.intervention.status, 301);
+        t.outcome.intervention.status = 404;
         a.evaluate(&r, &mut t, &mut rm);
-        assert_eq!(t.intervention.status, 302);
+        assert_eq!(t.outcome.intervention.status, 302);
 
         // The URL is handed out as raw bytes (C++ copies them unchanged).
-        t.intervention.url = Some(b"/a\xffb".to_vec());
+        t.outcome.intervention.url = Some(b"/a\xffb".to_vec());
         assert_eq!(t.intervention().unwrap().url.as_deref(), Some(&b"/a\xffb"[..]));
     }
 }

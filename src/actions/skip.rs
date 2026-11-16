@@ -30,7 +30,7 @@ impl Action for Skip {
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
         crate::ms_dbg_a!(t, 5, "Skipping the next {} rules.", self.skip_next);
-        t.skip_next = self.skip_next;
+        t.eval.skip_next = self.skip_next;
     }
 }
 
@@ -51,11 +51,11 @@ mod tests {
         let mut rm = RuleMessage::new(&r);
         let s = Skip::new("skip:2").unwrap();
         s.evaluate(&r, &mut t, &mut rm);
-        assert_eq!(t.skip_next, 2);
+        assert_eq!(t.eval.skip_next, 2);
         assert!(has_log(&t, "Skipping the next 2 rules."));
 
         SkipAfter::new("skipAfter:END_HOST_CHECK").evaluate(&r, &mut t, &mut rm);
-        assert_eq!(t.marker.as_deref(), Some("END_HOST_CHECK"));
+        assert_eq!(t.eval.marker.as_deref(), Some("END_HOST_CHECK"));
         assert!(has_log(&t, "Setting skipAfter for: END_HOST_CHECK"));
     }
 }

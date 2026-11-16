@@ -66,8 +66,9 @@ four things. Nearly everything else in the engine takes `&mut Transaction`.
   `intervention`, the log callback data.
 
 Suggested steps:
-1. Group the fields into named sub-structs inside `Transaction`, with no
-   behavior change. This is mechanical and makes the next steps visible.
+1. ~~Group the fields into named sub-structs inside `Transaction`, with no
+   behavior change.~~ Done: `http`, `body`, `ctl`, `eval`, `outcome` (see
+   `REFACTORING.md`).
 2. Give actions the same treatment operators got: an `ActionContext` that
    offers what actions do (set a variable, set the intervention, change a
    `ctl` setting, log).

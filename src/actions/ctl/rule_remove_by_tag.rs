@@ -29,6 +29,6 @@ impl Action for RuleRemoveByTag {
     }
 
     fn evaluate(&self, _rule: &RuleWithActions, t: &mut Transaction<'_>, _rm: &mut RuleMessage<'_>) {
-        t.rule_remove_by_tag.push(self.tag.clone());
+        t.ctl.rule_remove_by_tag.push(self.tag.clone());
     }
 }

@@ -80,7 +80,7 @@ impl Operator for ValidateSchema {
         // (The C++ code needed a transaction: it dereferenced it.)
         let t: &Transaction<'_> = cx.transaction_ref();
 
-        let Some((doc, well_formed)) = t.xml.as_ref().and_then(|x| Some((x.document()?, x.well_formed()))) else {
+        let Some((doc, well_formed)) = t.body.xml.as_ref().and_then(|x| Some((x.document()?, x.well_formed()))) else {
             crate::op_dbg!(cx, 4, "XML document tree could not be found for schema validation.");
             return true;
         };
