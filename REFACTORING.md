@@ -964,3 +964,38 @@ lints to all its targets, and the engine's regression runner
 (`test/regression/regression.rs`) sets an environment variable, which is
 `unsafe`; the `#![forbid(unsafe_code)]` attribute on each library says
 exactly what is meant.
+
+## The multipart parser, reworked inside
+
+The parser was the C++ one transcribed: 15 `flag_*` integers used as
+booleans, integer states, a fixed buffer with a write position and a
+"bytes left" counter, a four byte `reserve` whose first byte was a count,
+and five functions of 180 to 300 lines. It is the same line-oriented
+state machine with the same C string rules, written with Rust types:
+
+- `multipart/` is a directory: `mod.rs` (the state machine over the lines,
+  and what is reported when the body ends), `content_type.rs` (the
+  boundary from the Content-Type header), `part.rs` (a part: its header
+  lines and its data), `content_disposition.rs`, `tmp_file.rs`.
+- The flags are a `Flags` struct of `bool`s (`unmatched_boundary` keeps its
+  0/1/2), the states are `PartState` and `LineEnd`, the buffer is a
+  `Vec<u8>` holding the line, and the line break held back between pieces
+  of data is a `&'static [u8]` (`b""`, `b"\n"` or `b"\r\n"`).
+- `Multipart::fail` logs an error and records it, where each of about 30
+  places formatted the message twice. The flags are reported from a list.
+- The longest function is 120 lines (`read_boundary`); the others are
+  under 75.
+
+`count_boundary_params` returns `usize`. The parser's behavior is
+unchanged, checked three ways:
+
+- `tests/multipart.rs` runs the parser alone with a recording context
+  (`tests/support`) on 54 bodies and compares everything it reports with
+  `tests/data/multipart.trace`, written by the parser before the rework.
+- While reworking, a copy of the old parser ran next to the new one on
+  the body fuzz corpus (2555 inputs) and on mutations of it, in one piece
+  and in chunks, with uploads off, saved, kept, limited and failing:
+  613,040 bodies, then 313,045 more after the last change, all with
+  identical traces. (That comparison was a scratch test; it is not in the
+  repository, since it needs the old code.)
+- The differential test against C++ and the `body` fuzz target.
