@@ -63,11 +63,11 @@ pub(crate) use {act_dbg, ms_dbg_a, ms_dbg_opt};
 
 pub use crate::debug_log::DebugLog;
 pub use crate::instance::{
-    INCLUDE_FULL_HIGHLIGHT_LOG_PROPERTY, MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL,
-    MODSECURITY_VERSION, ModSecLogCb, ModSecurity, RULE_MESSAGE_LOG_PROPERTY, ServerLogEntry, TEXT_LOG_PROPERTY,
+    LogProperties, MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, MODSECURITY_VERSION, ModSecLogCb,
+    ModSecurity, ServerLogEntry,
 };
 pub use crate::intervention::Intervention;
-pub use crate::rule::message::{CLIENT_LOG_MESSAGE_INFO, ERROR_LOG_TAIL_LOG_MESSAGE_INFO, RuleMessage};
+pub use crate::rule::message::{LogParts, RuleMessage};
 pub use crate::rules_set::{LoadError, RulesSet};
 pub use crate::transaction::Transaction;
 

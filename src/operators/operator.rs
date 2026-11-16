@@ -170,7 +170,7 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
     }
 
     /// The text logged for a match of `value` in the variable `key`;
-    /// `param` is [`RuleOperator::message_param`] at the time of the match.
+    /// `param` is `RuleOperator::message_param` at the time of the match.
     fn resolve_match_message(&self, param: &[u8], key: &[u8], value: &[u8]) -> Vec<u8> {
         modsecurity_operators::match_message(self.name(), param, key, value)
     }

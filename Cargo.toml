@@ -118,6 +118,9 @@ mlua = { version = "0.12", features = ["lua54", "vendored"], optional = true }
 maxminddb = { version = "0.32", optional = true }
 # libcurl binding (SecRemoteRules, HTTPS audit log writer, remote pm/ip files).
 curl = { version = "0.4", optional = true }
+# Typed flag sets for the log options of the Rust API (LogProperties,
+# LogParts), instead of i32 constants.
+bitflags = "2.13"
 # Random numbers (transaction id suffix, audit log boundaries); replaces the
 # C++ <random> engine and libc rand()/srand().
 rand = "0.9"

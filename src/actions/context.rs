@@ -4,7 +4,7 @@ use crate::actions::disruptive::allow::AllowType;
 use crate::audit_log::{AuditLogStatus, PartsChange};
 use crate::collection::Persistent;
 use crate::intervention::Intervention;
-use crate::rule::message::{CLIENT_LOG_MESSAGE_INFO, RuleMessage};
+use crate::rule::message::{LogParts, RuleMessage};
 use crate::rule::with_actions::RuleWithActions;
 use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
 use crate::run_time_string::RunTimeString;
@@ -108,7 +108,7 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
     pub fn disrupt(&mut self) {
         self.t.outcome.intervention.disruptive = true;
         self.rm.is_disruptive = true;
-        self.t.outcome.intervention.log = Some(self.rm.log(self.t, CLIENT_LOG_MESSAGE_INFO, -1));
+        self.t.outcome.intervention.log = Some(self.rm.log(self.t, LogParts::CLIENT, None));
     }
 
     /// Drops the pending intervention (`pass`): status, URL and log.

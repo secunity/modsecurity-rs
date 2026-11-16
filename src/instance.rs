@@ -6,7 +6,7 @@ use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 
 use crate::collection::Collection;
-use crate::rule::message::RuleMessage;
+use crate::rule::message::{LogParts, RuleMessage};
 use crate::transaction::Transaction;
 
 pub const MODSECURITY_MAJOR: &str = "3";
@@ -17,12 +17,21 @@ pub const MODSECURITY_VERSION: &str = "3.0.17";
 #[cfg_attr(not(feature = "curl"), allow(dead_code))] // Sent by the HTTPS client.
 pub const MODSECURITY_VERSION_NUM: u64 = 30170100;
 
-/// Original ModSecurity text log entry.
-pub const TEXT_LOG_PROPERTY: i32 = 1;
-/// Pass the RuleMessage instead of the text entry.
-pub const RULE_MESSAGE_LOG_PROPERTY: i32 = 2;
-/// Fill the highlight information of the RuleMessage.
-pub const INCLUDE_FULL_HIGHLIGHT_LOG_PROPERTY: i32 = 4;
+bitflags::bitflags! {
+    /// What the server log callback receives
+    /// ([`ModSecurity::set_server_log_cb_with_properties`]). The bits are
+    /// those of the C++ `LogProperty` enumeration.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub struct LogProperties: u8 {
+        /// The text of the log entry.
+        const TEXT = 1;
+        /// The rule message itself, instead of the text.
+        const RULE_MESSAGE = 2;
+        /// The highlight information of the rule message (no effect, as
+        /// in C++).
+        const INCLUDE_FULL_HIGHLIGHT = 4;
+    }
+}
 
 /// What the server log callback receives (C++ passes either a `const char*`
 /// or a `RuleMessage*` through a `const void*`, depending on the log
@@ -49,7 +58,7 @@ pub struct ModSecurity {
     /// NUL terminated for `msc_who_am_i`.
     whoami: OnceLock<CString>,
     log_cb: Option<ModSecLogCb>,
-    log_properties: i32,
+    log_properties: LogProperties,
 }
 
 impl Default for ModSecurity {
@@ -86,7 +95,7 @@ impl ModSecurity {
             connector: String::new(),
             whoami: OnceLock::new(),
             log_cb: None,
-            log_properties: 0,
+            log_properties: LogProperties::empty(),
         }
     }
 
@@ -136,12 +145,13 @@ impl ModSecurity {
 
     /// Sets the server log callback; it receives text log entries.
     pub fn set_server_log_cb(&mut self, cb: ModSecLogCb) {
-        self.set_server_log_cb_with_properties(cb, TEXT_LOG_PROPERTY);
+        self.set_server_log_cb_with_properties(cb, LogProperties::TEXT);
     }
 
-    /// Sets the server log callback and the `*_LOG_PROPERTY` flags that
-    /// choose what it receives.
-    pub fn set_server_log_cb_with_properties(&mut self, cb: ModSecLogCb, properties: i32) {
+    /// Sets the server log callback and what it receives: with
+    /// [`LogProperties::TEXT`] the text of each entry, otherwise with
+    /// [`LogProperties::RULE_MESSAGE`] the rule message.
+    pub fn set_server_log_cb_with_properties(&mut self, cb: ModSecLogCb, properties: LogProperties) {
         self.log_cb = Some(cb);
         self.log_properties = properties;
     }
@@ -154,12 +164,12 @@ impl ModSecurity {
             eprintln!("Server log callback is not set -- {}", rm.error_log(t));
             return;
         };
-        if self.log_properties & TEXT_LOG_PROPERTY != 0 {
-            let d = rm.log(t, 0, -1);
+        if self.log_properties.contains(LogProperties::TEXT) {
+            let d = rm.log(t, LogParts::empty(), None);
             cb(data, ServerLogEntry::Text(&d));
             return;
         }
-        if self.log_properties & RULE_MESSAGE_LOG_PROPERTY != 0 {
+        if self.log_properties.contains(LogProperties::RULE_MESSAGE) {
             cb(data, ServerLogEntry::RuleMessage(rm, t));
         }
     }

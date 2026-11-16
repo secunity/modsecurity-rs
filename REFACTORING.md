@@ -406,7 +406,7 @@ The crate exposed nearly every module (`actions`, `operators`, `variables`,
 
 - `ModSecurity`, `RulesSet`, `Transaction`, `Intervention`;
 - the server log callback: `ModSecLogCb`, `ServerLogEntry`, `RuleMessage`
-  (with the `*_LOG_PROPERTY` and `*_LOG_MESSAGE_INFO` flags);
+  (with the `LogProperties` and `LogParts` flag sets);
 - the `DebugLog` trait, for `RulesSet::with_debug_log`;
 - the version constants, and `ModSecurity::process_content_offset`;
 - `LoadError`, the error of `RulesSet::load*` and `RulesSet::merge`
@@ -849,3 +849,15 @@ pattern still gives a regex that never matches, as documented on them.
 `@rx` and `@rxGlobal` keep `Option<Result<Regex, CompileError>>`, so a
 pattern that fails to compile is still reported when the operator runs;
 `@verifyCC` fails its `init`, as before.
+
+## Typed log flags
+
+The Rust API took the C++ `LogProperty` and `LogMessageInfo` values as
+`i32` constants, and `RuleMessage::log` a status code where -1 meant "keep
+the `%d` placeholder". They are `bitflags` types now:
+`LogProperties` (`TEXT`, `RULE_MESSAGE`, `INCLUDE_FULL_HIGHLIGHT`) for
+`ModSecurity::set_server_log_cb_with_properties`, and `LogParts`
+(`CLIENT`, `ERROR_LOG_TAIL`) with an `Option<i32>` code for
+`RuleMessage::log`. The bits are those of the C++ enumerations. The C API
+never passed these values, so it is unchanged.
+

@@ -730,6 +730,7 @@ dependencies = [
 name = "modsecurity"
 version = "3.0.17"
 dependencies = [
+ "bitflags",
  "bstr",
  "bytes",
  "curl",

@@ -56,13 +56,6 @@ runs Lua with the transaction); they reach it through
 
 ### 1. C-shaped APIs
 
-- **Log properties are `i32` bit flags.**
-  `ModSecurity::set_server_log_cb_with_properties` takes the
-  `*_LOG_PROPERTY` constants and `RuleMessage::log` the
-  `*_LOG_MESSAGE_INFO` ones, plus a status code where -1 means "leave a
-  `%d`". `bitflags` types (`bitflags` is already in the lock file) and
-  `Option<i32>` for the code. Only the Rust API changes: the C API never
-  passes these values.
 - **The rule-set properties are about 30 `Option` fields**, each merged by
   a hand-written `merge_value` line in `RulesSetProperties::merge_properties`
   (`src/rules_set/properties.rs`). One settings struct declared by a macro

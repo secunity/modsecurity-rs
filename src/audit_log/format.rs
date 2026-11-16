@@ -3,6 +3,7 @@
 //! logs, and the JSON format.
 
 use crate::audit_log::AuditLog as AL;
+use crate::rule::message::LogParts;
 use crate::rules_set::properties::rule_engine_state_string;
 use crate::transaction::Transaction;
 use crate::unique_id::UniqueId;
@@ -137,9 +138,12 @@ pub(crate) fn native(t: &Transaction<'_>, parts: i32, trailer: &str, prefix: &st
     }
     if parts & AL::H_AUDIT_LOG_PART != 0 {
         section(&mut a, "H");
+        // A status of -1 reads as "no code" (the `%d` placeholder), as the
+        // C++ comparison with -1 does.
+        let code = Some(t.http.http_code_returned).filter(|&c| c != -1);
         for m in &t.outcome.rules_messages {
             a.extend_from_slice(p);
-            line(&mut a, m.log(t, 0, t.http.http_code_returned).as_bytes());
+            line(&mut a, m.log(t, LogParts::empty(), code).as_bytes());
         }
         line(&mut a, p);
     }
