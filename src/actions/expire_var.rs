@@ -33,7 +33,7 @@ impl Action for ExpireVar {
                 let expiry = &expire_expression_expanded[pos_equals + 1..];
                 if expiry.iter().all(u8::is_ascii_digit) {
                     // C++ `atoi` (an empty value gives 0).
-                    expiry_seconds = atoi(expiry) as i32;
+                    expiry_seconds = atoi(expiry);
                 } else {
                     crate::act_dbg!(cx, 5, "Non-numeric expiry seconds found in expirevar expression.");
                     return;

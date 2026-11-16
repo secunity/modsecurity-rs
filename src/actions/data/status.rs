@@ -14,9 +14,7 @@ impl Status {
     pub fn new(action: &str) -> Result<Self, String> {
         let (name, payload) = name_and_payload(action);
         // `std::stoi`: no digits or out of `int` range -> error.
-        let status = stoi(payload.as_bytes())
-            .and_then(|v| i32::try_from(v).ok())
-            .ok_or_else(|| format!("Not a valid number: {}", payload))?;
+        let status = stoi(payload.as_bytes()).ok_or_else(|| format!("Not a valid number: {}", payload))?;
         Ok(Status { name: name.to_string(), status })
     }
 }

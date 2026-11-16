@@ -14,9 +14,8 @@ impl Accuracy {
     pub fn new(action: &str) -> Result<Self, String> {
         let (name, payload) = name_and_payload(action);
         // `std::stoi`: no digits or out of `int` range -> error.
-        let accuracy = stoi(payload.as_bytes())
-            .and_then(|v| i32::try_from(v).ok())
-            .ok_or_else(|| format!("Accuracy: The input \"{}\" is not a number.", payload))?;
+        let accuracy =
+            stoi(payload.as_bytes()).ok_or_else(|| format!("Accuracy: The input \"{}\" is not a number.", payload))?;
         Ok(Accuracy { name: name.to_string(), accuracy })
     }
 }

@@ -34,7 +34,7 @@ impl SetVar {
 /// Parses a leading integer as `std::stoi` does; any failure (no digits,
 /// out of `int` range) gives 0.
 fn stoi_or_zero(s: &[u8]) -> i32 {
-    stoi(s).and_then(|v| i32::try_from(v).ok()).unwrap_or(0)
+    stoi(s).unwrap_or(0)
 }
 
 impl Action for SetVar {

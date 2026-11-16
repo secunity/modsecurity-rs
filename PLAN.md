@@ -75,11 +75,6 @@ the gain is small next to the work.
 
 ## Open items
 
-- **`atoi` / `stoi` in the engine wrap on overflow.**
-  `utils::string::atoi` and `stoi` wrap where glibc saturates. They differ
-  from C only for numbers of 19 or more digits. `compat::cnum` has the
-  faithful versions. Switching is a behavior change: it needs its own
-  commit, a regression test, and an entry in `MIGRATION.md`.
 - **Other number parsers not yet in `cnum`:** `strtol16`
   (`src/rules_set/properties.rs`), `strtol_to_byte` and `strtol_digits` (the
   transformations crate). They are specialized; check each against

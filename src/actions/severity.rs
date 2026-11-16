@@ -24,9 +24,7 @@ impl Severity {
             "notice" => 5,
             "info" => 6,
             "debug" => 7,
-            _ => stoi(a.as_bytes())
-                .and_then(|v| i32::try_from(v).ok())
-                .ok_or_else(|| format!("Severity: The input \"{}\" is not a number.", a))?,
+            _ => stoi(a.as_bytes()).ok_or_else(|| format!("Severity: The input \"{}\" is not a number.", a))?,
         };
         Ok(Severity { name: name.to_string(), severity })
     }

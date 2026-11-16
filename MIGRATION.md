@@ -159,6 +159,20 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   destructor read the paths after the merge): the new log was closed, so
   nothing was audited, and the old file stayed open. Each writer now
   releases the files it opened.
+- **Numbers beyond the `int` range** are read as C and C++ read them. The
+  Rust engine let them wrap around modulo 2^64, so it accepted
+  configurations the C++ library rejects and gave limits another value:
+  `skip:18446744073709551617` was `skip:1` (C++: "is not a number"), and
+  likewise `accuracy`, `maturity`, `severity`, `status`,
+  `ctl:ruleRemoveById`, `ctl:ruleRemoveTargetById` and `SecRuleRemoveById`
+  (which also truncated ids between 2^31 and 2^63);
+  `SecArgumentsLimit 18446744073709551617` and
+  `SecRequestBodyJsonDepthLimit` were a limit of 1 (C++: `atoi` saturates,
+  no effective limit). They now use `std::stoi` and `atoi` semantics
+  (`modsecurity_compat::cnum`), checked against the C++ library on these
+  inputs. One case goes beyond C++: `phase:` with a number beyond `int`
+  crashes the C++ library (the exception is not caught); it is an
+  "Unknown phase" error here (it used to give a rule that never runs).
 - **Each rule set has its own GeoIP database**: C++ keeps one database
   per process, set by the last `SecGeoLookupDb` loaded anywhere, so
   `@geoLookup` in one rule set used the database of another (and which one

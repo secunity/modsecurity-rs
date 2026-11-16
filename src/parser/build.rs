@@ -897,7 +897,7 @@ impl Builder<'_, '_> {
             }
             Effect::RuleRemoveByTag => p.exceptions.load_remove_rule_by_tag(&s),
             Effect::RuleRemoveByMsg => p.exceptions.load_remove_rule_by_msg(&s),
-            Effect::DebugLogLevel => p.debug_log.set_level(atoi(&v) as i32),
+            Effect::DebugLogLevel => p.debug_log.set_level(atoi(&v)),
             Effect::DebugLog => {
                 if let Err(error) = p.debug_log.set_file(&s) {
                     return self.fail(&format!("Failed to start DebugLog: {}", error));
@@ -919,10 +919,8 @@ impl Builder<'_, '_> {
                     Err(err) => return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err)),
                 }
             }
-            Effect::ArgumentsLimit => p.settings.arguments_limit = Some(atoi(&v) as i32 as u32),
-            Effect::RequestBodyJsonDepthLimit => {
-                p.settings.request_body_json_depth_limit = Some(atoi(&v) as i32 as u32)
-            }
+            Effect::ArgumentsLimit => p.settings.arguments_limit = Some(atoi(&v) as u32),
+            Effect::RequestBodyJsonDepthLimit => p.settings.request_body_json_depth_limit = Some(atoi(&v) as u32),
             Effect::RequestBodyLimit => match parse_config_number(&s) {
                 Ok(n) => p.settings.request_body_limit = Some(n),
                 Err(e) => return self.fail(&format!("Failed to parse SecRequestBodyLimit: {}", e)),
@@ -948,7 +946,7 @@ impl Builder<'_, '_> {
                 }
             }
             Effect::CookieFormat => {
-                if atoi(&v) as i32 == 1 {
+                if atoi(&v) == 1 {
                     return self.fail("SecCookieFormat 1 is not yet supported.");
                 }
             }

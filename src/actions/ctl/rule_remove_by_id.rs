@@ -15,7 +15,7 @@ pub struct RuleRemoveById {
 /// Parses a leading integer as `std::stoi` does; `None` when there are no
 /// digits or the value is out of `int` range.
 fn stoi_int(s: &str) -> Option<i32> {
-    stoi(s.as_bytes()).and_then(|v| i32::try_from(v).ok())
+    stoi(s.as_bytes())
 }
 
 impl RuleRemoveById {

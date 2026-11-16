@@ -7,7 +7,7 @@
 pub use modsecurity_compat::chars::{
     find_from, is_space, limit_to, lossy, split, ssplit, ssplit_pair, string_to_hex, to_hex_if_needed,
 };
-pub use modsecurity_compat::cnum::{double_to_string, stod, strtol_int};
+pub use modsecurity_compat::cnum::{atoi, double_to_string, stod, stoi, strtol_int};
 
 /// The local time `t` formatted by `strftime("%c")`.
 pub fn asc_time(t: i64) -> String {
@@ -65,39 +65,6 @@ pub fn tolower(s: &[u8]) -> Vec<u8> {
 /// Upper-cases the ASCII letters of a configuration string.
 pub fn toupper_str(s: &str) -> String {
     s.to_ascii_uppercase()
-}
-
-/// Parses an integer as `atoi` does: leading whitespace, optional sign,
-/// decimal digits; 0 on failure.
-pub fn atoi(s: &[u8]) -> i64 {
-    let mut i = 0;
-    while i < s.len() && is_space(s[i]) {
-        i += 1;
-    }
-    let mut neg = false;
-    if i < s.len() && (s[i] == b'+' || s[i] == b'-') {
-        neg = s[i] == b'-';
-        i += 1;
-    }
-    let mut v: i64 = 0;
-    while i < s.len() && s[i].is_ascii_digit() {
-        v = v.wrapping_mul(10).wrapping_add((s[i] - b'0') as i64);
-        i += 1;
-    }
-    if neg { -v } else { v }
-}
-
-/// Like [`atoi`] (and `std::stoi`), but reports whether any digit was
-/// consumed (C++ throws `std::invalid_argument` otherwise).
-pub fn stoi(s: &[u8]) -> Option<i64> {
-    let mut i = 0;
-    while i < s.len() && is_space(s[i]) {
-        i += 1;
-    }
-    if i < s.len() && (s[i] == b'+' || s[i] == b'-') {
-        i += 1;
-    }
-    if i < s.len() && s[i].is_ascii_digit() { Some(atoi(s)) } else { None }
 }
 
 #[cfg(test)]

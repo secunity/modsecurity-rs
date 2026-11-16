@@ -438,3 +438,47 @@ fn quoted_phase_name() {
     assert!(!format!("{rule:?}").contains("Allow"), "{rule:?}");
     assert_eq!(load("SecAction \"id:1,phase:'phase',pass\"\n", "t").0, -1);
 }
+
+/// Numbers beyond the `int` range are what C and C++ make of them:
+/// `std::stoi` throws (the directive is an error), `atoi` saturates. They
+/// used to wrap around, so `skip:18446744073709551617` was `skip:1` and
+/// `SecArgumentsLimit 18446744073709551617` a limit of one argument.
+#[test]
+fn numbers_beyond_the_int_range() {
+    const TWO_64_PLUS_1: &str = "18446744073709551617";
+    let rejected = [
+        (
+            format!("SecAction \"id:1,phase:1,pass,skip:{TWO_64_PLUS_1}\""),
+            "Skip: The input \"18446744073709551617\" is not a number.",
+        ),
+        (format!("SecAction \"id:1,phase:1,pass,accuracy:{TWO_64_PLUS_1}\""), "Accuracy: The input"),
+        (format!("SecAction \"id:1,phase:1,pass,maturity:{TWO_64_PLUS_1}\""), "Maturity: The input"),
+        (format!("SecAction \"id:1,phase:1,pass,severity:{TWO_64_PLUS_1}\""), "Severity: The input"),
+        (format!("SecAction \"id:1,phase:1,deny,status:{TWO_64_PLUS_1}\""), "Not a valid number: 18446744073709551617"),
+        (
+            format!("SecAction \"id:1,phase:1,pass,ctl:ruleRemoveById={TWO_64_PLUS_1}\""),
+            "Not a number or range: 18446744073709551617",
+        ),
+        (
+            format!("SecAction \"id:1,phase:1,pass,ctl:ruleRemoveTargetById={TWO_64_PLUS_1};ARGS\""),
+            "Not able to convert '18446744073709551617' into a number",
+        ),
+        (format!("SecRuleRemoveById {TWO_64_PLUS_1}"), "Not a number or range: 18446744073709551617"),
+        // Beyond `int` but within 64 bits: these two were truncated.
+        ("SecRuleRemoveById 3000000000".to_string(), "Not a number or range: 3000000000"),
+        ("SecRuleRemoveById 1-3000000000".to_string(), "Not a number: 3000000000"),
+        (format!("SecAction \"id:1,phase:{TWO_64_PLUS_1},pass\""), "Unknown phase: 18446744073709551617"),
+    ];
+    for (rule, error) in rejected {
+        let mut d = Driver::new();
+        assert!(!d.parse(&format!("{rule}\n"), "t"), "accepted: {rule}");
+        assert!(d.properties.parser_error.contains(error), "{rule}: {}", d.properties.parser_error);
+    }
+
+    // `atoi`: `(int) strtol`, which saturates at LONG_MAX, so -1.
+    let mut d = Driver::new();
+    let conf = format!("SecArgumentsLimit {TWO_64_PLUS_1}\nSecRequestBodyJsonDepthLimit {TWO_64_PLUS_1}\n");
+    assert!(d.parse(&conf, "t"), "{}", d.properties.parser_error);
+    assert_eq!(d.properties.settings.arguments_limit, Some(u32::MAX));
+    assert_eq!(d.properties.settings.request_body_json_depth_limit, Some(u32::MAX));
+}

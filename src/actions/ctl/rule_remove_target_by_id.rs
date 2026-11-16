@@ -24,7 +24,7 @@ impl RuleRemoveTargetById {
             return Err(format!("{} is not a valid 'ID;VARIABLE'", what));
         };
         // `std::stoi`: no digits or out of `int` range -> error.
-        let Some(id) = stoi(id.as_bytes()).and_then(|v| i32::try_from(v).ok()) else {
+        let Some(id) = stoi(id.as_bytes()) else {
             return Err(format!("Not able to convert '{}' into a number", id));
         };
         Ok(RuleRemoveTargetById { name: name.to_string(), id, target })

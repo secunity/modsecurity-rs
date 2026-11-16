@@ -22,7 +22,7 @@ impl Phase {
         let (name, payload) = name_and_payload(action);
         // `std::stoi` throws for non numbers and for values out of the
         // `int` range.
-        let (phase, sec_rules_phase) = match stoi(payload.as_bytes()).and_then(|v| i32::try_from(v).ok()) {
+        let (phase, sec_rules_phase) = match stoi(payload.as_bytes()) {
             Some(0) => (Some(Phases::Connection), 0),
             Some(1) => (Some(Phases::RequestHeaders), 1),
             Some(2) => (Some(Phases::RequestBody), 2),
@@ -30,6 +30,11 @@ impl Phase {
             Some(4) => (Some(Phases::ResponseBody), 4),
             Some(5) => (Some(Phases::Logging), 5),
             Some(_) => return Err(format!("Unknown phase: {}", payload)),
+            // A number beyond the `int` range: C++ crashes here (the
+            // exception of `std::stoi` is not caught).
+            None if modsecurity_compat::cnum::strtoll(payload.as_bytes(), 10).digits => {
+                return Err(format!("Unknown phase: {}", payload));
+            }
             None => match payload.to_ascii_lowercase().as_str() {
                 "request" => (Some(Phases::RequestBody), 2),
                 "response" => (Some(Phases::ResponseBody), 4),
@@ -84,5 +89,9 @@ mod tests {
         // C++ quirk: an unknown name is accepted, without a phase.
         assert_eq!(phase("foo"), Ok((None, 0)));
         assert_eq!(phase("6"), Err("Unknown phase: 6".to_string()));
+        // Beyond `int` (C++ crashes): an unknown phase too, not a rule
+        // without a phase, nor the number modulo 2^64.
+        assert_eq!(phase("2147483648"), Err("Unknown phase: 2147483648".to_string()));
+        assert_eq!(phase("18446744073709551618"), Err("Unknown phase: 18446744073709551618".to_string()));
     }
 }

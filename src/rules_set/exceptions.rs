@@ -158,12 +158,12 @@ impl RulesExceptions {
                 if n1s > n2s {
                     return Err(format!("Invalid range: {}", b));
                 }
-                self.add_range(n1n as i32, n2n as i32);
+                self.add_range(n1n, n2n);
                 added = true;
             } else {
                 match stoi(b.as_bytes()) {
                     Some(num) => {
-                        self.add_number(num as i32);
+                        self.add_number(num);
                         added = true;
                     }
                     None => return Err(format!("Not a number or range: {}", b)),
