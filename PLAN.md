@@ -94,8 +94,8 @@ that only use it could become a crate, as the operators did.
 ~~`src/collection` can become a crate once `VariableValue` and
 `VariableOrigin` sit in a small shared-types crate below it.~~ Done:
 `modsecurity-types` and `modsecurity-collections` (see `REFACTORING.md`).
-The engine reaches them under their old paths (`crate::variable_value`,
-`crate::collection`).
+The engine reaches them as `crate::variables::variable_value` and
+`crate::collection`.
 
 ### 4. One name table per family
 
@@ -124,9 +124,10 @@ kind. That changes types, not paths, and is a step of its own.
 
 ### 6. C-shaped APIs
 
-- `Regex::search` returns an `i32` that callers compare with `<= 0`, and
-  constructors need `has_error()` checks. A `Result` from the constructor
-  and `bool`/`Option` from searches would be the Rust shape.
+- ~~`Regex::search` returns an `i32` that callers compare with `<= 0`,
+  and constructors need `has_error()` checks.~~ Done: `Regex::compile`
+  returns a `Result`, `is_match` a `bool`, the searches
+  `Result<(), MatchError>` (see `REFACTORING.md`).
 - 55 signatures return `Result<_, String>`. Typed errors per layer.
 - Log properties are `i32` bit flags.
 - The rule-set properties are about 30 `Option` fields, each merged by a

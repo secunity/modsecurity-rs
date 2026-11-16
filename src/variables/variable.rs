@@ -337,7 +337,7 @@ impl<'v> Variables<'v> {
     /// a `COLLECTION:/regex/` variable, by full name otherwise.
     pub fn contains_value(&self, v: &VariableValue) -> bool {
         self.0.iter().any(|m| match m.regex() {
-            Some(r) => r.search(v.key()) > 0,
+            Some(r) => r.is_match(v.key()),
             None => v.key_with_collection() == m.full_name().as_bytes(),
         })
     }

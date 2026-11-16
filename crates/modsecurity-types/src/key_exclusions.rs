@@ -22,7 +22,7 @@ impl KeyExclusion {
 
     pub fn matches(&self, a: &[u8]) -> bool {
         match self {
-            KeyExclusion::Regex(r) => r.search(a) > 0,
+            KeyExclusion::Regex(r) => r.is_match(a),
             KeyExclusion::String(k) => a.len() == k.len() && a.iter().zip(k).all(|(x, y)| x.to_ascii_uppercase() == *y),
         }
     }

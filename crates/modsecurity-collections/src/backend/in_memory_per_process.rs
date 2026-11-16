@@ -134,7 +134,7 @@ impl Collection for InMemoryPerProcess {
         {
             let m = self.read();
             for (k, d) in m.iter() {
-                if r.search(k) <= 0 {
+                if !r.is_match(k) {
                     continue;
                 }
                 if ke.to_omit(k) {

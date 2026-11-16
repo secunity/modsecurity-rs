@@ -7,7 +7,6 @@
 
 use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
-use crate::utils::regex::regex_search;
 use crate::variables::variable::Selector;
 use crate::variables::variable_origin::VariableOrigin;
 use crate::variables::variable_value::VariableValue;
@@ -131,7 +130,7 @@ pub(crate) fn evaluate(
             }
         }
         Selector::Regex(r) => {
-            if let Some((_, property)) = PROPERTIES.iter().find(|(name, _)| regex_search(name.as_bytes(), r) > 0) {
+            if let Some((_, property)) = PROPERTIES.iter().find(|(name, _)| r.is_match(name.as_bytes())) {
                 property(t, rule, l);
             }
         }

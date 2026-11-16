@@ -151,7 +151,7 @@ impl RegressionTest {
 }
 
 fn contains(s: &str, pattern: &str) -> bool {
-    Regex::new(pattern).search(s.as_bytes()) > 0
+    Regex::new(pattern).is_match(s.as_bytes())
 }
 
 /// Whether the parser error `s` is the expected one.

@@ -303,7 +303,7 @@ impl AuditLog {
     }
 
     pub fn is_relevant(&self, status: i32) -> bool {
-        self.relevant.as_ref().is_some_and(|r| r.re.search(status.to_string().as_bytes()) != 0)
+        self.relevant.as_ref().is_some_and(|r| r.re.is_match(status.to_string().as_bytes()))
     }
 
     pub fn add_parts(parts: i32, new_parts: &str) -> i32 {

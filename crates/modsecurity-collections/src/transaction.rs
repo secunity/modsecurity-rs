@@ -60,7 +60,7 @@ impl TransactionVariables {
     pub fn resolve_regex(&self, regex: &Regex, out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
         let start = out.len();
         for (key, value) in self.values.iter() {
-            if regex.search(key) > 0 && !exclusions.to_omit(key) {
+            if regex.is_match(key) && !exclusions.to_omit(key) {
                 out.push(VariableValue::with_collection(b"TX", key, value));
             }
         }

@@ -61,12 +61,8 @@ impl Operator for VerifyCC {
     fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
         // `PCRE2_DOTALL | PCRE2_MULTILINE`; the pattern ends at its first
         // NUL byte.
-        let re = Regex::with_options(&self.param.literal, false, true);
-        if re.has_error() {
-            // The C++ (PCRE2) code fails without an error message.
-            return Err(String::new());
-        }
-        self.re = Some(re);
+        // The C++ (PCRE2) code fails without an error message.
+        self.re = Some(Regex::compile(&self.param.literal, false, true).map_err(|_| String::new())?);
         Ok(())
     }
 

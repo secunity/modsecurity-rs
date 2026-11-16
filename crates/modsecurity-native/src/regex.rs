@@ -11,12 +11,20 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ptr;
 
-/// Outcome of a search that may hit PCRE2 limits.
+/// Why a search failed (neither a match nor a mismatch).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RegexResult {
-    Ok,
-    ErrorMatchLimit,
-    ErrorOther,
+pub enum MatchError {
+    /// It hit the match limit (`SecPcreMatchLimit`).
+    MatchLimit,
+    /// Any other PCRE2 error.
+    Other,
+}
+
+/// A pattern PCRE2 does not compile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompileError {
+    /// The pattern, as text (up to its first NUL byte, as compiled).
+    pub pattern: String,
 }
 
 /// A (sub)match: the matched bytes and their offset.
@@ -211,20 +219,31 @@ impl Drop for Regex {
     }
 }
 
+/// Compiling: [`Regex::compile`] reports a pattern PCRE2 rejects; the
+/// other constructors are for patterns of the configuration whose errors
+/// the C++ code ignores, and give a regex that never matches.
 impl Regex {
-    /// Compiles `pattern`, case sensitive, in multi-line mode.
+    /// Compiles `pattern` (`.*` when empty) with the given options; `.`
+    /// always matches newlines.
+    pub fn compile(pattern: &[u8], ignore_case: bool, multi_line: bool) -> Result<Regex, CompileError> {
+        let mut re = Self::with_options(pattern, ignore_case, multi_line);
+        if re.has_error() { Err(CompileError { pattern: std::mem::take(&mut re.pattern) }) } else { Ok(re) }
+    }
+
+    /// Compiles `pattern`, case sensitive, in multi-line mode (an invalid
+    /// pattern never matches).
     pub fn new(pattern: &str) -> Self {
         Self::with_options(pattern.as_bytes(), false, true)
     }
 
     /// Compiles `pattern` in multi-line mode, ignoring case if
-    /// `ignore_case`.
+    /// `ignore_case` (an invalid pattern never matches).
     pub fn new_case(pattern: &str, ignore_case: bool) -> Self {
         Self::with_options(pattern.as_bytes(), ignore_case, true)
     }
 
-    /// Compiles the byte string `pattern` (`.*` when empty) with the given
-    /// options; `.` always matches newlines.
+    /// [`Regex::compile`], except that an invalid pattern gives a regex
+    /// that never matches.
     pub fn with_options(pattern: &[u8], ignore_case: bool, multi_line: bool) -> Self {
         let pattern: Vec<u8> = if pattern.is_empty() { b".*".to_vec() } else { pattern.to_vec() };
         let mut options = PCRE2_DOTALL | if multi_line { PCRE2_MULTILINE } else { PCRE2_DOLLAR_ENDONLY };
@@ -255,7 +274,7 @@ impl Regex {
         Regex { pattern: String::from_utf8_lossy(&pattern).into_owned(), pc, pcje, pairs: captures + 1 }
     }
 
-    pub fn has_error(&self) -> bool {
+    fn has_error(&self) -> bool {
         self.pc.is_null()
     }
 
@@ -375,9 +394,14 @@ impl Regex {
 
     /// Appends the groups of the first match in `s` to `captures` (group 0
     /// is the whole match), with `match_limit` (0 for PCRE2's default).
-    pub fn search_one_match(&self, s: &[u8], captures: &mut Vec<SMatchCapture>, match_limit: u64) -> RegexResult {
+    pub fn search_one_match(
+        &self,
+        s: &[u8],
+        captures: &mut Vec<SMatchCapture>,
+        match_limit: u64,
+    ) -> Result<(), MatchError> {
         if self.has_error() {
-            return RegexResult::ErrorOther;
+            return Err(MatchError::Other);
         }
         let subject = Subject::new(s);
         self.with_match_data(match_limit, |md, ctx| {
@@ -389,7 +413,7 @@ impl Regex {
                 }
                 captures.push(SMatchCapture::new(i as usize, start, end - start));
             }
-            Self::to_regex_result(rc)
+            Self::to_result(rc)
         })
     }
 
@@ -397,9 +421,14 @@ impl Regex {
     /// across matches, with `match_limit` (0 for PCRE2's default). After an
     /// empty match the search moves on by one character (two over a CRLF
     /// when it is a newline).
-    pub fn search_global(&self, s: &[u8], captures: &mut Vec<SMatchCapture>, match_limit: u64) -> RegexResult {
+    pub fn search_global(
+        &self,
+        s: &[u8],
+        captures: &mut Vec<SMatchCapture>,
+        match_limit: u64,
+    ) -> Result<(), MatchError> {
         if self.has_error() {
-            return RegexResult::ErrorOther;
+            return Err(MatchError::Other);
         }
         self.with_match_data(match_limit, |md, ctx| self.search_global_with(s, captures, md, ctx))
     }
@@ -410,7 +439,7 @@ impl Regex {
         captures: &mut Vec<SMatchCapture>,
         md: &MatchData,
         ctx: *mut pcre2_match_context_8,
-    ) -> RegexResult {
+    ) -> Result<(), MatchError> {
         let subject = Subject::new(s);
         let mut prev_match_zero_length = false;
         let mut start_offset = 0usize;
@@ -420,10 +449,7 @@ impl Regex {
             // unless the options require the interpreter).
             // SAFETY: as in `exec`.
             let rc = unsafe { pcre2_match_8(self.pc, subject.as_ptr(), s.len(), start_offset, options, md.0, ctx) };
-            let r = Self::to_regex_result(rc);
-            if r != RegexResult::Ok {
-                return r;
-            }
+            Self::to_result(rc)?;
             if rc > 0 {
                 let first_group = captures.len();
                 for i in 0..rc {
@@ -458,34 +484,7 @@ impl Regex {
                 break;
             }
         }
-        RegexResult::Ok
-    }
-
-    /// Stores the first match of `s` in `m`; returns 1 on match, 0
-    /// otherwise. (The C++ code means to store the last captured group, but
-    /// always stores group 0.)
-    pub fn search_match(&self, s: &[u8], m: &mut SMatch) -> i32 {
-        if self.has_error() {
-            return 0;
-        }
-        let subject = Subject::new(s);
-        self.with_match_data(0, |md, _| {
-            // The C++ code turns the return value into a boolean before
-            // reading the ovector, so the "last group" is always group 0.
-            let rc = self.exec(&subject, 0, 0, md, ptr::null_mut(), false);
-            let ret = (rc > 0) as i32;
-            if ret > 0 {
-                // SAFETY: a successful match has at least one ovector pair.
-                let (a, b) = unsafe {
-                    let ov = md.ovector();
-                    (*ov.add(ret as usize - 1), *ov.add(ret as usize))
-                };
-                if a <= b && b <= s.len() {
-                    *m = SMatch::new(&s[a..b], 0);
-                }
-            }
-            ret
-        })
+        Ok(())
     }
 
     /// The bounds of the first match starting at or after `offset`, without
@@ -501,29 +500,24 @@ impl Regex {
         })
     }
 
-    /// Whether `s` matches: 1 on match, 0 otherwise.
-    pub fn search(&self, s: &[u8]) -> i32 {
+    /// Whether `s` matches (a failed search does not).
+    pub fn is_match(&self, s: &[u8]) -> bool {
         if self.has_error() {
-            return 0;
+            return false;
         }
         let subject = Subject::new(s);
-        self.with_match_data(0, |md, _| (self.exec(&subject, 0, 0, md, ptr::null_mut(), true) > 0) as i32)
+        self.with_match_data(0, |md, _| self.exec(&subject, 0, 0, md, ptr::null_mut(), true) > 0)
     }
 
-    fn to_regex_result(rc: i32) -> RegexResult {
+    fn to_result(rc: i32) -> Result<(), MatchError> {
         if rc > 0 || rc == PCRE2_ERROR_NOMATCH {
-            RegexResult::Ok
+            Ok(())
         } else if rc == PCRE2_ERROR_MATCHLIMIT {
-            RegexResult::ErrorMatchLimit
+            Err(MatchError::MatchLimit)
         } else {
-            RegexResult::ErrorOther
+            Err(MatchError::Other)
         }
     }
-}
-
-/// [`Regex::search`] as a free function.
-pub fn regex_search(s: &[u8], regex: &Regex) -> i32 {
-    regex.search(s)
 }
 
 #[cfg(test)]
@@ -533,8 +527,8 @@ mod tests {
     #[test]
     fn basic_search() {
         let r = Regex::new("b+");
-        assert_eq!(r.search(b"abbbc"), 1);
-        assert_eq!(r.search(b"ac"), 0);
+        assert!(r.is_match(b"abbbc"));
+        assert!(!r.is_match(b"ac"));
         let all = r.search_all(b"abxbb");
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].str(), b"bb");
@@ -545,19 +539,19 @@ mod tests {
     fn captures_and_global() {
         let r = Regex::new("(a)(b)?");
         let mut c = Vec::new();
-        assert_eq!(r.search_one_match(b"xab", &mut c, 0), RegexResult::Ok);
+        assert_eq!(r.search_one_match(b"xab", &mut c, 0), Ok(()));
         assert_eq!(c.len(), 3);
         let mut g = Vec::new();
-        assert_eq!(r.search_global(b"aab", &mut g, 0), RegexResult::Ok);
+        assert_eq!(r.search_global(b"aab", &mut g, 0), Ok(()));
         assert_eq!(g[0].offset, 0);
     }
 
     #[test]
     fn empty_subject() {
-        assert_eq!(Regex::new("^$").search(b""), 1);
-        assert_eq!(Regex::new("a").search(&Vec::new()), 0);
+        assert!(Regex::new("^$").is_match(b""));
+        assert!(!Regex::new("a").is_match(&Vec::new()));
         let mut c = Vec::new();
-        assert_eq!(Regex::new("x*").search_global(b"", &mut c, 0), RegexResult::Ok);
+        assert_eq!(Regex::new("x*").search_global(b"", &mut c, 0), Ok(()));
     }
 
     /// The per-thread match data grows for patterns with more groups than
@@ -566,28 +560,29 @@ mod tests {
     fn shared_match_data() {
         let small = Regex::new("(a)");
         let mut c = Vec::new();
-        assert_eq!(small.search_one_match(b"a", &mut c, 0), RegexResult::Ok);
+        assert_eq!(small.search_one_match(b"a", &mut c, 0), Ok(()));
         assert_eq!(c.len(), 2);
 
         let pattern: String = (0..40).map(|_| "(x)").collect();
         let big = Regex::new(&pattern);
         let subject = vec![b'x'; 40];
         let mut c = Vec::new();
-        assert_eq!(big.search_one_match(&subject, &mut c, 0), RegexResult::Ok);
+        assert_eq!(big.search_one_match(&subject, &mut c, 0), Ok(()));
         assert_eq!(c.len(), 41);
         assert_eq!(c[40], SMatchCapture::new(40, 39, 1));
         assert_eq!(big.search_all(&subject).len(), 41);
 
         let slow = Regex::new("(a+)+$");
         let input = [&[b'a'; 30][..], b"b"].concat();
-        assert_eq!(slow.search_one_match(&input, &mut Vec::new(), 10), RegexResult::ErrorMatchLimit);
-        assert_eq!(small.search_one_match(b"a", &mut Vec::new(), 0), RegexResult::Ok);
+        assert_eq!(slow.search_one_match(&input, &mut Vec::new(), 10), Err(MatchError::MatchLimit));
+        assert_eq!(small.search_one_match(b"a", &mut Vec::new(), 0), Ok(()));
     }
 
     #[test]
     fn invalid_pattern() {
         let r = Regex::new("(");
         assert!(r.has_error());
-        assert_eq!(r.search(b"("), 0);
+        assert_eq!(Regex::compile(b"(", false, true).unwrap_err().pattern, "(");
+        assert!(!r.is_match(b"("));
     }
 }

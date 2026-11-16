@@ -297,7 +297,7 @@ impl Collection for Lmdb {
     fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let start = l.len();
         self.walk("resolveRegularExpression", |k, d| {
-            if r.search(k) <= 0 {
+            if !r.is_match(k) {
                 return;
             }
             if ke.to_omit(k) {

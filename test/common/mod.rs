@@ -154,7 +154,7 @@ impl CustomDebugLog {
     pub fn contains(&self, pattern: &str) -> bool {
         let re = modsecurity::internal::Regex::new(pattern);
         let s = self.log.lock().unwrap();
-        re.search(s.as_bytes()) > 0
+        re.is_match(s.as_bytes())
     }
 }
 

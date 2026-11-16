@@ -829,3 +829,23 @@ rewriting paths only (no code changed; the public API and
 Ten files remain at the root: `lib`, `instance`, `phases`, `transaction`,
 `intervention`, `debug_log`, `run_time_string`, `unique_id`,
 `http_support`, `middleware`.
+
+## `Regex` without integer results (PLAN.md step 6)
+
+The PCRE2 wrapper (`modsecurity_native::regex`) answered with integers
+and an error state the caller had to check:
+
+| Was | Now |
+|---|---|
+| `Regex::with_options(..)` then `has_error()` | `Regex::compile(pattern, ignore_case, multi_line) -> Result<Regex, CompileError>` (the pattern as text, for the messages); `has_error` is private |
+| `search(s) -> i32` (1 or 0), compared with `> 0`, `!= 0` or `<= 0`; the free function `regex_search` | `is_match(s) -> bool` |
+| `search_one_match` / `search_global` -> `RegexResult { Ok, ErrorMatchLimit, ErrorOther }` | `-> Result<(), MatchError>` (`MatchLimit`, `Other`); a `Result` cannot be ignored silently |
+| `search_match` (no callers) | removed |
+
+`Regex::new`, `new_case` and `with_options` stay for the patterns of the
+configuration whose errors the C++ code ignores (key exclusions,
+`ARGS:/re/` selectors, `SecAuditLogRelevantStatus`, ...): an invalid
+pattern still gives a regex that never matches, as documented on them.
+`@rx` and `@rxGlobal` keep `Option<Result<Regex, CompileError>>`, so a
+pattern that fails to compile is still reported when the operator runs;
+`@verifyCC` fails its `init`, as before.

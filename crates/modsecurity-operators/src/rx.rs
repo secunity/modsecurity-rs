@@ -1,7 +1,7 @@
 //! The `@rx` operator: matches a PCRE2 regular expression.
 
 use crate::{Context, Operator, Param, Resources};
-use modsecurity_native::regex::{Regex, RegexResult, SMatchCapture};
+use modsecurity_native::regex::{CompileError, MatchError, Regex, SMatchCapture};
 
 /// Whether patterns are multi-line: `$` only matches at the very end of
 /// the subject when built with `MODSEC_REGEX_DOLLAR_ENDONLY` (cargo feature
@@ -11,7 +11,8 @@ const MULTI_LINE: bool = !cfg!(feature = "regex-dollar-endonly");
 #[derive(Debug)]
 pub struct Rx {
     param: Param,
-    re: Option<Regex>,
+    /// The parameter compiled by `init` (without macros).
+    re: Option<Result<Regex, CompileError>>,
 }
 
 impl Rx {
@@ -34,31 +35,31 @@ impl Rx {
         }
 
         let re_owned;
-        let re: &Regex = if self.contains_macro() {
+        let re = if self.contains_macro() {
             let eparam = cx.param(&self.param);
-            re_owned = Regex::with_options(&eparam, false, MULTI_LINE);
+            re_owned = Regex::compile(&eparam, false, MULTI_LINE);
             &re_owned
         } else if let Some(re) = self.re.as_ref() {
             re
         } else {
             // init() was not called: compile the parameter now.
-            re_owned = Regex::with_options(&self.param.literal, false, MULTI_LINE);
+            re_owned = Regex::compile(&self.param.literal, false, MULTI_LINE);
             &re_owned
         };
-
-        if re.has_error() {
-            cx.regex_compile_error(&re.pattern);
-            return None;
-        }
+        let re = match re {
+            Ok(re) => re,
+            Err(e) => {
+                cx.regex_compile_error(&e.pattern);
+                return None;
+            }
+        };
 
         // (`utils::regex` guards against dangling empty-slice pointers.)
         let subject: &[u8] = input;
         let mut captures: Vec<SMatchCapture> = Vec::new();
         let match_limit = cx.pcre_match_limit();
-        let regex_result = re.search_one_match(subject, &mut captures, match_limit);
-
-        if regex_result != RegexResult::Ok {
-            cx.regex_search_error(&re.pattern, regex_result == RegexResult::ErrorMatchLimit, "rx");
+        if let Err(e) = re.search_one_match(subject, &mut captures, match_limit) {
+            cx.regex_search_error(&re.pattern, e == MatchError::MatchLimit, "rx");
             return None;
         }
 
@@ -97,10 +98,10 @@ impl Operator for Rx {
 
     fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
         if !self.contains_macro() {
-            let re = Regex::with_options(&self.param.literal, false, MULTI_LINE);
-            let has_error = re.has_error();
+            let re = Regex::compile(&self.param.literal, false, MULTI_LINE);
+            let failed = re.is_err();
             self.re = Some(re);
-            if has_error {
+            if failed {
                 return Err(format!("Invalid regular expression: {}", String::from_utf8_lossy(&self.param.literal)));
             }
         }

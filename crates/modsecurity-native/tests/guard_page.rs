@@ -41,8 +41,7 @@ fn subjects_at_the_end_of_a_page() {
     ];
     let seed = b"</a>';'|abxml<script error select 1 from 4111111111111111 application/json";
     for pattern in patterns {
-        let re = Regex::new(pattern);
-        assert!(!re.has_error());
+        let re = Regex::compile(pattern.as_bytes(), false, true).expect("valid pattern");
         for (len, gap) in (0..=seed.len()).flat_map(|len| [0, 1, 2, 15, 16, 63, 64].map(|gap| (len, gap))) {
             for start in 0..(seed.len() - len).min(8) + 1 {
                 let bytes = &seed[start..start + len];
@@ -55,11 +54,11 @@ fn subjects_at_the_end_of_a_page() {
                 let mut captures = Vec::new();
                 for limit in [0, 5000] {
                     captures.clear();
-                    re.search_one_match(subject, &mut captures, limit);
+                    let _ = re.search_one_match(subject, &mut captures, limit);
                     captures.clear();
-                    re.search_global(subject, &mut captures, limit);
+                    let _ = re.search_global(subject, &mut captures, limit);
                 }
-                re.search(subject);
+                re.is_match(subject);
             }
         }
     }
@@ -94,8 +93,7 @@ fn the_byte_after_the_subject_is_not_used() {
     ];
     let seed = b"<a>a\nb a\r\nxml ab aa a";
     for pattern in patterns {
-        let re = Regex::new(pattern);
-        assert!(!re.has_error(), "{pattern}");
+        let re = Regex::compile(pattern.as_bytes(), false, true).unwrap_or_else(|_| panic!("{pattern}"));
         for len in 0..=seed.len() {
             for start in 0..=(seed.len() - len) {
                 let bytes = &seed[start..start + len];
@@ -115,7 +113,7 @@ fn the_byte_after_the_subject_is_not_used() {
                     let groups = |c: &[modsecurity_native::regex::SMatchCapture]| {
                         c.iter().map(|c| (c.group, c.offset, c.length)).collect::<Vec<_>>()
                     };
-                    results.push((r1, groups(&one), r2, groups(&all), re.search(subject)));
+                    results.push((r1, groups(&one), r2, groups(&all), re.is_match(subject)));
                 }
                 assert!(
                     results.windows(2).all(|w| w[0] == w[1]),

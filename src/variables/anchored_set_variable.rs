@@ -175,7 +175,7 @@ impl AnchoredSetVariable {
     ) {
         let start = l.len();
         for (k, e) in self.map.iter() {
-            if r.search(k) <= 0 {
+            if !r.is_match(k) {
                 continue;
             }
             if !ke.to_omit(k) {
