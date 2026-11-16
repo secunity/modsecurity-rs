@@ -61,15 +61,7 @@ runs Lua with the transaction); they reach it through
   tests compare them), so typed errors must render the same text. Worth
   doing layer by layer, or not at all.
 
-### 2. One `Rule` with a kind
-
-`RuleWithActions` (`src/rule/with_actions.rs`) still carries "Rule" and
-"RuleWithActions" sections from the C++ class hierarchy, and `Rule` is an
-enum of `RuleMarker` and `RuleWithActions`. One `Rule` with a kind
-(marker, `SecRule`, `SecAction`, `SecRuleScript`) would match what the
-engine does with them. It changes types, not paths: a step of its own.
-
-### 3. Actions in a crate (optional)
+### 2. Actions in a crate (optional)
 
 The actions that use only `ActionContext` could move to a crate, as the
 operators did. What it would take: the macro strings of 11 actions

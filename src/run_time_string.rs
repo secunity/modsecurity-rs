@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 use crate::transaction::Transaction;
 use crate::variables::variable::Variable;
 
@@ -78,13 +78,13 @@ impl RunTimeString {
     /// Expands the string for the rule `r`: concatenates the literals and
     /// the first value of each variable. Without a transaction, variables
     /// expand to nothing.
-    pub fn evaluate_rule(&self, t: Option<&Transaction<'_>>, r: Option<&RuleWithActions>) -> Vec<u8> {
+    pub fn evaluate_rule(&self, t: Option<&Transaction<'_>>, r: Option<&Rule>) -> Vec<u8> {
         let elements = match &self.content {
             Content::Literal(text) => return text.clone(),
             Content::Interpolated(elements) => elements,
         };
         // C++ only forwards operator rules to macro resolution.
-        let rule = r.filter(|r| r.is_rule_with_operator());
+        let rule = r.filter(|r| r.is_sec_rule());
         let mut s = Vec::new();
         for element in elements {
             match element {
@@ -105,7 +105,7 @@ impl RunTimeString {
 
     /// [`Self::evaluate`] without copying when the string is plain text
     /// (no macro): for hot comparisons such as
-    /// [`RuleWithActions::contains_tag`].
+    /// [`Rule::contains_tag`].
     pub fn evaluate_cow(&self, t: Option<&Transaction<'_>>) -> Cow<'_, [u8]> {
         match &self.content {
             Content::Literal(text) => Cow::Borrowed(text),
@@ -195,7 +195,7 @@ mod tests {
         let mut string = RunTimeString::new();
         string.append_var(variable("RULE", "id"));
         let phase = rules.rules_set_phases.for_phase(Phases::RequestHeaders);
-        assert_eq!(string.evaluate_rule(Some(&transaction), phase[0].as_rule_with_actions()), b"");
-        assert_eq!(string.evaluate_rule(Some(&transaction), phase[1].as_rule_with_actions()), b"20");
+        assert_eq!(string.evaluate_rule(Some(&transaction), phase[0].as_rule()), b"");
+        assert_eq!(string.evaluate_rule(Some(&transaction), phase[1].as_rule()), b"20");
     }
 }

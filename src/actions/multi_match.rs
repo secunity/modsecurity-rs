@@ -1,4 +1,4 @@
-//! `multiMatch` — a marker: `RuleWithActions` records its presence and then
+//! `multiMatch` — a marker: `Rule` records its presence and then
 //! runs the operator against every intermediate transformation result.
 
 use crate::actions::action::{Action, name_of};

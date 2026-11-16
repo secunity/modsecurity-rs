@@ -5,7 +5,7 @@
 //! rule) and whatever it parsed from its payload.
 
 use crate::actions::context::ActionContext;
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 
 /// When an action runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +72,7 @@ pub trait Action: Send + Sync + std::fmt::Debug {
 
     /// [`Kind::Configuration`] actions are applied once, while the rule is
     /// being built.
-    fn configure(&self, _rule: &mut RuleWithActions) {}
+    fn configure(&self, _rule: &mut Rule) {}
 
     /// Run time evaluation: what the action does to the transaction, the
     /// rule message and the intervention, through `cx`.

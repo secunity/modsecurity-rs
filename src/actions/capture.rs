@@ -1,4 +1,4 @@
-//! `capture` — a marker: `RuleWithActions` records its presence and the
+//! `capture` — a marker: `Rule` records its presence and the
 //! operators store their captures in `TX:0..9` when it is set.
 
 use crate::actions::action::{Action, name_of};

@@ -9,7 +9,7 @@
 use crate::actions::action::{Action, Kind};
 use crate::actions::context::ActionContext;
 use crate::actions::{self, ctl, data, disruptive};
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 
 /// Declares [`RuleAction`] with one variant per action type, the
 /// `From` conversions, and the dispatch of the [`Action`] operations.
@@ -45,7 +45,7 @@ macro_rules! rule_actions {
             }
 
             /// Applies a [`Kind::Configuration`] action to its rule.
-            pub fn configure(&self, rule: &mut RuleWithActions) {
+            pub fn configure(&self, rule: &mut Rule) {
                 match self { $(RuleAction::$variant(a) => a.configure(rule),)* }
             }
 

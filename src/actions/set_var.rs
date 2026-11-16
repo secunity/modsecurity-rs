@@ -71,8 +71,8 @@ impl Action for SetVar {
                 let pre = stoi_or_zero(&resolved_pre);
 
                 let mut l = Vec::new();
-                // C++ only forwards rules that are `RuleWithOperator`s.
-                let rr = Some(rule).filter(|r| r.is_rule_with_operator());
+                // C++ only forwards `RuleWithOperator`s (`SecRule`s).
+                let rr = Some(rule).filter(|r| r.is_sec_rule());
                 self.variable.evaluate(t, rr, &mut l);
                 let value = l.first().map(|v| stoi_or_zero(v.value())).unwrap_or(0);
 

@@ -871,3 +871,19 @@ declared by the `settings!` macro, which generates the fields and
 `merge_unset` from one list. `SecRemoteRulesFailAction` stays outside: it
 is not merged (as in C++).
 
+## `Rule`, and the entries of a rule set
+
+The type every part of the engine handles was called `RuleWithActions`,
+after the C++ class, and `Rule` was an enum of that and `RuleMarker`. A
+marker is not a rule (no actions, never chained): it is a position in the
+rule list. So:
+
+- `Rule` (`src/rule/mod.rs`) is a `SecRule`, `SecAction` or
+  `SecRuleScript`, told apart by `RuleKind::{SecRule, SecAction,
+  SecRuleScript}`; `SecRule` (variables and operator) and `Script` are the
+  parts only those kinds have (`rule::sec_rule`, `rule::sec_rule_script`).
+- `rules_set::entry::Entry` is what a rule set lists: `Entry::Rule` or
+  `Entry::Marker` (`rules_set::marker::Marker`).
+
+Names only; no behavior change.
+

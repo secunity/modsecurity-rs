@@ -3,7 +3,7 @@
 
 use crate::operators::operator::RuleOperator;
 use crate::rule::message::{Matched, RuleMessage};
-use crate::rule::with_actions::{LogPoint, RuleWithActions, TransformationPath};
+use crate::rule::{LogPoint, Rule, TransformationPath};
 use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
@@ -11,16 +11,16 @@ use crate::variables::variable::{Variable, Variables, variables_to_string};
 
 /// The `SecRule` specific part of a rule: its targets and its operator.
 #[derive(Debug)]
-pub struct RuleWithOperator {
+pub struct SecRule {
     pub variables: Vec<Variable>,
     pub operator: RuleOperator,
 }
 
-impl RuleWithOperator {
+impl SecRule {
     pub fn new(op: RuleOperator, mut variables: Vec<Variable>) -> Self {
         // The list is final: give back what the parser over-allocated.
         variables.shrink_to_fit();
-        RuleWithOperator { variables, operator: op }
+        SecRule { variables, operator: op }
     }
 
     /// The operator name (`rx`, `pm`, ...).
@@ -42,7 +42,7 @@ impl RuleWithOperator {
     /// Runs the operator on one (transformed) target value.
     fn execute_operator_at<'a>(
         &'a self,
-        rule: &'a RuleWithActions,
+        rule: &'a Rule,
         t: &mut Transaction<'a>,
         key: &[u8],
         value: &[u8],
@@ -62,7 +62,7 @@ impl RuleWithOperator {
     /// `...ById` exclude from (`exclusion`) or add to (`addition`) the
     /// rule.
     fn variables_exceptions<'a>(
-        rule: &'a RuleWithActions,
+        rule: &'a Rule,
         t: &Transaction<'a>,
         exclusion: &mut Variables<'a>,
         addition: &mut Variables<'a>,
@@ -92,7 +92,7 @@ impl RuleWithOperator {
     /// transaction), plus the added ones.
     fn final_vars<'a>(
         &'a self,
-        rule: &'a RuleWithActions,
+        rule: &'a Rule,
         t: &Transaction<'a>,
         vars: &mut Vec<&'a Variable>,
         exclusion: &mut Variables<'a>,
@@ -128,12 +128,7 @@ impl RuleWithOperator {
     /// value, then the chained rule and the actions. Returns whether the
     /// rule (with its chain) matched; `true` also for a rule removed by
     /// `ctl:ruleRemoveById`, as in C++.
-    pub fn evaluate<'a>(
-        &'a self,
-        rule: &'a RuleWithActions,
-        t: &mut Transaction<'a>,
-        rm: &mut RuleMessage<'a>,
-    ) -> bool {
+    pub fn evaluate<'a>(&'a self, rule: &'a Rule, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
         let mut global_ret = false;
         let mut contains_block = rule.has_block_action();
 

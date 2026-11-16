@@ -6,7 +6,7 @@
 //! target is one struct: its name, its key exclusions and a [`Source`]
 //! saying where the values come from.
 
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{Transaction, TransactionAnchoredVariables};
 use crate::utils::regex::Regex;
@@ -196,7 +196,7 @@ impl Variable {
 
     /// Resolves the variable for `t`, appending the values to `l`. `rule`
     /// is the rule being evaluated, when there is one.
-    pub fn evaluate(&self, t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
+    pub fn evaluate(&self, t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
         let ke = &self.key_exclusion;
         match &self.source {
             Source::Single(get) => get(&t.vars).evaluate_into(l),

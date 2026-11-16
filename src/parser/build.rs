@@ -25,9 +25,9 @@ use crate::parser::syntax::{
     self, ActionKind, Directive, Modifier, Piece, Selector, SetVarOp, Target, UpdateBy, VarRef,
 };
 use crate::phases::Phases;
-use crate::rule::script::RuleScript;
-use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
-use crate::rule::with_operator::RuleWithOperator;
+use crate::rule::sec_rule::SecRule;
+use crate::rule::sec_rule_script::Script;
+use crate::rule::{Rule, RuleKind};
 use crate::rules_set::properties::{
     BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
     parse_octal_mode,
@@ -168,8 +168,8 @@ impl Builder<'_, '_> {
                     None => (None, None),
                 };
                 let file = self.file_name();
-                let kind = RuleWithActionsKind::Operator(RuleWithOperator::new(op, vars));
-                let rule = RuleWithActions::new(a, t, &file, line, kind);
+                let kind = RuleKind::SecRule(SecRule::new(op, vars));
+                let rule = Rule::new(a, t, &file, line, kind);
                 if !self.driver.add_sec_rule(rule) {
                     return self.failed();
                 }
@@ -177,10 +177,10 @@ impl Builder<'_, '_> {
             Directive::Action(list) => {
                 let (a, t) = split_actions(self.actions(&list)?);
                 let file = self.file_name();
-                let rule = RuleWithActions::new(Some(a), Some(t), &file, line, RuleWithActionsKind::Unconditional);
+                let rule = Rule::new(Some(a), Some(t), &file, line, RuleKind::SecAction);
                 self.driver.add_sec_action(rule);
             }
-            Directive::RuleScript { path, actions } => {
+            Directive::Script { path, actions } => {
                 if !path.quoted && !syntax::bytes(path.text).iter().all(|&c| is_path(c)) {
                     return self.fail(&format!("Invalid input: {}", string(path.text)));
                 }
@@ -194,8 +194,8 @@ impl Builder<'_, '_> {
                 });
                 let (a, t) = split_actions(self.actions(&list)?);
                 let file = self.file_name();
-                let kind = RuleWithActionsKind::Script(RuleScript::new(&script));
-                let mut r = RuleWithActions::new(Some(a), Some(t), &file, line, kind);
+                let kind = RuleKind::SecRuleScript(Script::new(&script));
+                let mut r = Rule::new(Some(a), Some(t), &file, line, kind);
                 if let Some(s) = r.as_rule_script_mut()
                     && let Err(err) = s.init()
                 {

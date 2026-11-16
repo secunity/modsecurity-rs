@@ -1,19 +1,19 @@
 //! A `SecRuleScript`: a rule that runs a Lua script.
 
 use crate::engine::lua::Lua;
+use crate::rule::Rule;
 use crate::rule::message::RuleMessage;
-use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
-pub struct RuleScript {
+pub struct Script {
     pub name: String,
     pub lua: Lua,
 }
 
-impl RuleScript {
+impl Script {
     pub fn new(name: &str) -> Self {
-        RuleScript { name: name.to_string(), lua: Lua::new() }
+        Script { name: name.to_string(), lua: Lua::new() }
     }
 
     /// Loads (compiles) the script.
@@ -24,12 +24,7 @@ impl RuleScript {
 
     /// Runs the script; the rule matches when the script's `main` returns
     /// a non empty string (or number).
-    pub fn evaluate<'a>(
-        &'a self,
-        rule: &'a RuleWithActions,
-        t: &mut Transaction<'a>,
-        rm: &mut RuleMessage<'a>,
-    ) -> bool {
+    pub fn evaluate<'a>(&'a self, rule: &'a Rule, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
         crate::ms_dbg_a!(t, 4, " Executing script: {}.", self.name);
         let contains_block = rule.execute_actions_independent_of_chained_rule_result(t, rm);
         let ret = self.lua.run(t, b"");

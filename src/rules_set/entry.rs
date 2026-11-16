@@ -1,0 +1,72 @@
+//! An entry of a rule set: a rule, or a `SecMarker` (a position in the
+//! list that `skipAfter` jumps to).
+
+use crate::phases::Phases;
+use crate::rule::Rule;
+use crate::rules_set::marker::Marker;
+use crate::transaction::Transaction;
+
+// Rules always live behind an `Arc`, so the size difference between the
+// variants does not matter.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
+pub enum Entry {
+    Marker(Marker),
+    Rule(Rule),
+}
+
+impl Entry {
+    /// Evaluates the entry. Returns whether it matched (always `true` for a
+    /// marker).
+    pub fn evaluate<'a>(&'a self, t: &mut Transaction<'a>) -> bool {
+        match self {
+            Entry::Marker(m) => m.evaluate(t),
+            Entry::Rule(r) => r.evaluate(t),
+        }
+    }
+
+    /// The phase the rule runs in; `None` for a rule with an unknown
+    /// `phase:<name>` (see `actions::phase`), which runs in none.
+    pub fn phase(&self) -> Option<Phases> {
+        match self {
+            Entry::Marker(m) => Some(m.phase),
+            Entry::Rule(r) => r.phase(),
+        }
+    }
+
+    /// How the logs refer to the rule: its id for a `SecRule`,
+    /// `file:line` otherwise.
+    pub fn reference(&self) -> String {
+        match self {
+            Entry::Marker(m) => format!("{}:{}", m.file_name, m.line_number),
+            Entry::Rule(r) => r.reference(),
+        }
+    }
+
+    pub fn is_marker(&self) -> bool {
+        matches!(self, Entry::Marker(_))
+    }
+
+    /// The rule, unless this is a marker.
+    pub fn as_rule(&self) -> Option<&Rule> {
+        match self {
+            Entry::Rule(r) => Some(r),
+            Entry::Marker(_) => None,
+        }
+    }
+
+    pub fn as_rule_mut(&mut self) -> Option<&mut Rule> {
+        match self {
+            Entry::Rule(r) => Some(r),
+            Entry::Marker(_) => None,
+        }
+    }
+
+    /// The id of a `SecRule`; `None` for any other rule.
+    pub fn sec_rule_id(&self) -> Option<i64> {
+        match self {
+            Entry::Rule(r) if r.is_sec_rule() => Some(r.rule_id),
+            _ => None,
+        }
+    }
+}

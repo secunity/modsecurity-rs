@@ -4,7 +4,7 @@
 //! request body processor; namespaces come from the rule's `xmlns`
 //! actions).
 
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 use crate::transaction::Transaction;
 use crate::variables::variable::Variable;
 use crate::variables::variable_value::VariableValue;
@@ -12,23 +12,13 @@ use crate::variables::variable_value::VariableValue;
 /// `XML:/xpath`: without libxml2 there is no document, so nothing is
 /// resolved.
 #[cfg(not(feature = "libxml2"))]
-pub(crate) fn evaluate_xpath(
-    _var: &Variable,
-    _t: &Transaction<'_>,
-    _rule: Option<&RuleWithActions>,
-    _l: &mut Vec<VariableValue>,
-) {
+pub(crate) fn evaluate_xpath(_var: &Variable, _t: &Transaction<'_>, _rule: Option<&Rule>, _l: &mut Vec<VariableValue>) {
 }
 
 /// `XML:/xpath`: the content of the nodes the expression (the variable's
 /// name) selects.
 #[cfg(feature = "libxml2")]
-pub(crate) fn evaluate_xpath(
-    var: &Variable,
-    t: &Transaction<'_>,
-    rule: Option<&RuleWithActions>,
-    l: &mut Vec<VariableValue>,
-) {
+pub(crate) fn evaluate_xpath(var: &Variable, t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
     use crate::utils::libxml2::XPathError;
 
     // Is there an XML document tree at all?

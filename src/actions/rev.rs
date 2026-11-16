@@ -1,7 +1,7 @@
 //! `rev:'1.2'` — the rule revision (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 
 #[derive(Debug)]
 pub struct Rev {
@@ -25,7 +25,7 @@ impl Action for Rev {
         Kind::Configuration
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) {
+    fn configure(&self, rule: &mut Rule) {
         rule.rev.clone_from(&self.rev);
     }
 }

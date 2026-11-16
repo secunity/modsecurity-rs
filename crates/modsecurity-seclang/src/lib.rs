@@ -71,7 +71,7 @@ pub enum Directive<'a> {
     /// `SecRule VARIABLES OPERATOR [ACTIONS]`
     Rule { variables: Vec<Target<'a>>, operator: Operator<'a>, actions: Option<Vec<Action<'a>>> },
     /// `SecRuleScript PATH [ACTIONS]`
-    RuleScript { path: Value<'a>, actions: Option<Vec<Action<'a>>> },
+    Script { path: Value<'a>, actions: Option<Vec<Action<'a>>> },
     /// `SecAction ACTIONS`
     Action(Vec<Action<'a>>),
     /// `SecDefaultAction ACTIONS`
@@ -257,7 +257,7 @@ fn directive(pair: Pair<'_, Rule>, from: usize) -> Directive<'_> {
         Rule::sec_rule_script => {
             let path = value(inner.next().expect("path"));
             let actions = inner.next().map(|a| actions(a, from));
-            Directive::RuleScript { path, actions }
+            Directive::Script { path, actions }
         }
         Rule::sec_action | Rule::sec_default_action => {
             let list = actions(inner.next().expect("actions"), from);

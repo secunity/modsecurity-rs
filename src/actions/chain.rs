@@ -2,7 +2,7 @@
 //! time).
 
 use crate::actions::action::{Action, Kind, name_of};
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 
 #[derive(Debug)]
 pub struct Chain {
@@ -24,7 +24,7 @@ impl Action for Chain {
         Kind::Configuration
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) {
+    fn configure(&self, rule: &mut Rule) {
         rule.set_chained(true);
     }
 }

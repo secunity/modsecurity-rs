@@ -4,8 +4,8 @@ use crate::actions::disruptive::allow::AllowType;
 use crate::audit_log::{AuditLogStatus, PartsChange};
 use crate::collection::Persistent;
 use crate::intervention::Intervention;
+use crate::rule::Rule;
 use crate::rule::message::{LogParts, RuleMessage};
-use crate::rule::with_actions::RuleWithActions;
 use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{RequestBodyType, Transaction};
@@ -20,18 +20,18 @@ use crate::transaction::{RequestBodyType, Transaction};
 /// transaction with [`ActionContext::engine`].)
 pub struct ActionContext<'c, 't, 'm> {
     t: &'c mut Transaction<'t>,
-    rule: &'c RuleWithActions,
+    rule: &'c Rule,
     rm: &'c mut RuleMessage<'m>,
 }
 
 impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
-    pub fn new(t: &'c mut Transaction<'t>, rule: &'c RuleWithActions, rm: &'c mut RuleMessage<'m>) -> Self {
+    pub fn new(t: &'c mut Transaction<'t>, rule: &'c Rule, rm: &'c mut RuleMessage<'m>) -> Self {
         ActionContext { t, rule, rm }
     }
 
     /// The transaction and the rule, for the actions that are part of the
     /// engine (`setvar`, `exec`, `block`).
-    pub fn engine(&mut self) -> (&mut Transaction<'t>, &'c RuleWithActions) {
+    pub fn engine(&mut self) -> (&mut Transaction<'t>, &'c Rule) {
         (self.t, self.rule)
     }
 

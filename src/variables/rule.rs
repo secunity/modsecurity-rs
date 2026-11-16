@@ -5,7 +5,7 @@
 //! (`m_chainedRuleParent`); here the ancestors of the rule being evaluated
 //! are on `Transaction::chained_rule_parents`.
 
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 use crate::transaction::Transaction;
 use crate::variables::variable::Selector;
 use crate::variables::variable_origin::VariableOrigin;
@@ -26,7 +26,7 @@ pub const RULE_MSG: &str = "msg";
 
 /// The rule of the chain whose chained child is `r`, if `r` is being
 /// evaluated as part of a chain.
-fn chained_rule_parent<'r>(t: &'r Transaction<'_>, r: &RuleWithActions) -> Option<&'r RuleWithActions> {
+fn chained_rule_parent<'r>(t: &'r Transaction<'_>, r: &Rule) -> Option<&'r Rule> {
     t.eval
         .chained_rule_parents
         .iter()
@@ -37,11 +37,7 @@ fn chained_rule_parent<'r>(t: &'r Transaction<'_>, r: &RuleWithActions) -> Optio
 
 /// Walks from `rule` up the chain parents and returns the first rule for
 /// which `has` holds.
-fn find_in_chain<'r>(
-    t: &'r Transaction<'_>,
-    rule: Option<&'r RuleWithActions>,
-    has: impl Fn(&RuleWithActions) -> bool,
-) -> Option<&'r RuleWithActions> {
+fn find_in_chain<'r>(t: &'r Transaction<'_>, rule: Option<&'r Rule>, has: impl Fn(&Rule) -> bool) -> Option<&'r Rule> {
     let mut r = rule;
     while let Some(cur) = r {
         if has(cur) {
@@ -60,7 +56,7 @@ fn add_variable_origin(key: &str, value: &[u8], l: &mut Vec<VariableValue>) {
 }
 
 /// `RULE:id`: the id of the rule or of the nearest chain parent with one.
-fn id(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
+fn id(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
     let Some(r) = find_in_chain(t, rule, |r| r.rule_id != 0) else {
         return;
     };
@@ -69,7 +65,7 @@ fn id(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableV
 
 /// `RULE:rev`: the revision of the rule or of the nearest chain parent
 /// with one.
-fn rev(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
+fn rev(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
     let Some(r) = find_in_chain(t, rule, |r| !r.rev.is_empty()) else {
         return;
     };
@@ -78,7 +74,7 @@ fn rev(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<Variable
 
 /// `RULE:severity`: the severity of the rule or of the nearest chain
 /// parent with one.
-fn severity(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
+fn severity(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
     if let Some(r) = find_in_chain(t, rule, |r| r.has_severity()) {
         add_variable_origin(RULE_SEVERITY, r.severity().to_string().as_bytes(), l);
     }
@@ -86,7 +82,7 @@ fn severity(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<Var
 
 /// `RULE:logdata`: the expanded `logdata` of the rule or of the nearest
 /// chain parent with one.
-fn log_data(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
+fn log_data(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
     if let Some(r) = find_in_chain(t, rule, |r| r.has_log_data()) {
         add_variable_origin(RULE_LOGDATA, &r.log_data(t), l);
     }
@@ -94,25 +90,20 @@ fn log_data(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<Var
 
 /// `RULE:msg`: the expanded `msg` of the rule or of the nearest chain
 /// parent with one.
-fn msg(t: &Transaction<'_>, rule: Option<&RuleWithActions>, l: &mut Vec<VariableValue>) {
+fn msg(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
     if let Some(r) = find_in_chain(t, rule, |r| r.has_msg()) {
         add_variable_origin(RULE_MSG, &r.msg(t), l);
     }
 }
 
 /// The properties in the order `RULE` lists them.
-type Property = fn(&Transaction<'_>, Option<&RuleWithActions>, &mut Vec<VariableValue>);
+type Property = fn(&Transaction<'_>, Option<&Rule>, &mut Vec<VariableValue>);
 const PROPERTIES: [(&str, Property); 5] =
     [(RULE_ID, id), (RULE_REV, rev), (RULE_SEVERITY, severity), (RULE_LOGDATA, log_data), (RULE_MSG, msg)];
 
 /// `RULE` (all the properties), `RULE:name` or `RULE:/regex/` (the first
 /// property whose name the regex matches).
-pub(crate) fn evaluate(
-    selector: &Selector,
-    t: &Transaction<'_>,
-    rule: Option<&RuleWithActions>,
-    l: &mut Vec<VariableValue>,
-) {
+pub(crate) fn evaluate(selector: &Selector, t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
     match selector {
         Selector::All => {
             for (_, property) in PROPERTIES {

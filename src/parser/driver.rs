@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use crate::phases::Phases;
 use crate::rule::Rule;
-use crate::rule::marker::RuleMarker;
-use crate::rule::with_actions::RuleWithActions;
+use crate::rules_set::entry::Entry;
+use crate::rules_set::marker::Marker;
 use crate::rules_set::phases::RulesSetPhases;
 use crate::rules_set::properties::RulesSetProperties;
 use crate::utils::system::is_file;
@@ -70,31 +70,31 @@ impl Driver {
     pub fn add_sec_marker(&mut self, marker: &str, file_name: &str, line_number: i32) -> i32 {
         // FIXME (C++): we might move this to the parser.
         for phase in Phases::ALL {
-            let mut rule = RuleMarker::new(marker, file_name, line_number);
+            let mut rule = Marker::new(marker, file_name, line_number);
             rule.phase = phase;
-            self.rules_set_phases.insert(Arc::new(Rule::Marker(rule)));
+            self.rules_set_phases.insert(Arc::new(Entry::Marker(rule)));
         }
         0
     }
 
     /// Adds a `SecAction` rule.
-    pub fn add_sec_action(&mut self, rule: RuleWithActions) -> bool {
-        self.rules_set_phases.insert(Arc::new(Rule::WithActions(rule)));
+    pub fn add_sec_action(&mut self, rule: Rule) -> bool {
+        self.rules_set_phases.insert(Arc::new(Entry::Rule(rule)));
         true
     }
 
     /// Adds a `SecRuleScript` rule.
-    pub fn add_sec_rule_script(&mut self, rule: RuleWithActions) -> bool {
-        self.rules_set_phases.insert(Arc::new(Rule::WithActions(rule)));
+    pub fn add_sec_rule_script(&mut self, rule: Rule) -> bool {
+        self.rules_set_phases.insert(Arc::new(Entry::Rule(rule)));
         true
     }
 
     /// The rule `last_rule` points to.
-    fn last_rule_mut(&mut self) -> Option<&mut RuleWithActions> {
+    fn last_rule_mut(&mut self) -> Option<&mut Rule> {
         let lr = self.last_rule?;
         let arc = self.rules_set_phases.for_phase_mut(lr.phase).get_mut(lr.index)?;
         // While parsing, the driver holds the only reference to its rules.
-        let mut r = Arc::get_mut(arc)?.as_rule_with_actions_mut()?;
+        let mut r = Arc::get_mut(arc)?.as_rule_mut()?;
         for _ in 0..lr.depth {
             r = r.chained_rule_child.as_deref_mut()?;
         }
@@ -103,7 +103,7 @@ impl Driver {
 
     /// Adds a `SecRule`, or chains it to the previous one
     /// when that one has the `chain` action.
-    pub fn add_sec_rule(&mut self, mut r: RuleWithActions) -> bool {
+    pub fn add_sec_rule(&mut self, mut r: Rule) -> bool {
         // is it a chained rule?
         if let Some(last) = self.last_rule_mut()
             && last.is_chained()
@@ -135,7 +135,7 @@ impl Driver {
         for phase in Phases::ALL {
             let rules = self.rules_set_phases.for_phase(phase);
             for lr in rules {
-                if lr.rule_with_operator_id() == Some(r.rule_id) {
+                if lr.sec_rule_id() == Some(r.rule_id) {
                     self.properties.parser_error.push_str(&format!("Rule id: {} is duplicated\n", r.rule_id));
                     return false;
                 }
@@ -145,7 +145,7 @@ impl Driver {
         // A rule without a phase (unknown `phase:<name>`) is dropped.
         let phase = r.phase();
         if let Some(phase) = phase
-            && self.rules_set_phases.insert(Arc::new(Rule::WithActions(r)))
+            && self.rules_set_phases.insert(Arc::new(Entry::Rule(r)))
         {
             let index = self.rules_set_phases.for_phase(phase).len() - 1;
             self.last_rule = Some(LastRule { phase, index, depth: 0 });

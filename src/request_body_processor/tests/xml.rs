@@ -5,7 +5,7 @@ mod tests {
     use crate::instance::ModSecurity;
     use crate::operators::operator::Operator;
     use crate::request_body_processor::multipart_tests::test_support::{log, new_rules, run};
-    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::{Rule, RuleKind};
     use crate::rules_set::properties::ParseXmlIntoArgs;
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::variables::variable_value::VariableValue;
@@ -23,7 +23,7 @@ mod tests {
             let x = XmlNS::new(&format!("xmlns:{}={}", scope, href)).unwrap();
             acts.push(RuleAction::from(x));
         }
-        let rule = RuleWithActions::new(Some(acts), None, "f", 1, RuleWithActionsKind::Unconditional);
+        let rule = Rule::new(Some(acts), None, "f", 1, RuleKind::SecAction);
         let v = new_variable("XML", VariableSelector::DictElement(expr.to_string())).unwrap();
         let mut l: Vec<VariableValue> = Vec::new();
         v.evaluate(t, Some(&rule), &mut l);

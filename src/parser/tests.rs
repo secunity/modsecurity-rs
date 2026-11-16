@@ -279,7 +279,7 @@ fn chains_and_duplicates() {
     assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
     let phase = d.rules_set_phases.for_phase(Phases::RequestBody);
     assert_eq!(phase.len(), 2);
-    let r = phase[0].as_rule_with_actions().unwrap();
+    let r = phase[0].as_rule().unwrap();
     let child = r.chained_rule_child.as_ref().unwrap();
     assert!(child.chained_rule_parent);
     assert!(child.chained_rule_child.is_some());
@@ -296,7 +296,7 @@ fn rule_lines(rules: &str) -> Vec<(i64, i32)> {
     let mut out: Vec<(i64, i32)> = crate::phases::Phases::ALL
         .iter()
         .flat_map(|&p| d.rules_set_phases.for_phase(p).iter())
-        .filter_map(|r| r.as_rule_with_actions().map(|r| (r.rule_id, r.line_number)))
+        .filter_map(|r| r.as_rule().map(|r| (r.rule_id, r.line_number)))
         .collect();
     out.sort();
     out.dedup();
@@ -433,7 +433,7 @@ fn quoted_phase_name() {
     use crate::phases::Phases;
     let mut d = Driver::new();
     assert!(d.parse("SecAction \"id:1,phase:'request',pass\"\n", "t"), "{}", d.properties.parser_error);
-    let rule = d.rules_set_phases.for_phase(Phases::RequestBody)[0].as_rule_with_actions().unwrap();
+    let rule = d.rules_set_phases.for_phase(Phases::RequestBody)[0].as_rule().unwrap();
     assert_eq!(rule.phase(), Some(Phases::RequestBody));
     assert!(!format!("{rule:?}").contains("Allow"), "{rule:?}");
     assert_eq!(load("SecAction \"id:1,phase:'phase',pass\"\n", "t").0, -1);

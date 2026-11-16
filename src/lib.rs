@@ -104,7 +104,7 @@ pub mod internal {
     pub use crate::actions::rule_action::RuleAction;
     pub use crate::actions::transformation::Transformation;
     pub use crate::operators::operator::{Operator, instantiate as instantiate_operator};
-    pub use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
+    pub use crate::rule::{Rule, RuleKind};
     pub use crate::utils::json::{JsonValue, parse_tree};
     pub use crate::utils::regex::Regex;
     pub use crate::utils::string::to_hex_if_needed;
@@ -119,7 +119,7 @@ pub mod internal {
     pub fn evaluate_operator(
         op: &dyn Operator,
         t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
+        rule: &Rule,
         input: &[u8],
         rm: &mut RuleMessage<'_>,
     ) -> bool {
@@ -127,7 +127,7 @@ pub mod internal {
     }
 
     /// A rule message for `rule`, to evaluate an operator alone.
-    pub fn new_rule_message(rule: &RuleWithActions) -> RuleMessage<'_> {
+    pub fn new_rule_message(rule: &Rule) -> RuleMessage<'_> {
         RuleMessage::new(rule)
     }
 

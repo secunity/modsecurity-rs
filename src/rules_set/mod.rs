@@ -1,6 +1,8 @@
 //! A loaded rule set: loading, merging and per-phase evaluation.
 
+pub mod entry;
 pub mod exceptions;
+pub mod marker;
 pub mod phases;
 pub mod properties;
 
@@ -159,7 +161,7 @@ impl RulesSet {
 
         let ex = &self.properties.exceptions;
         for rule in rules {
-            let rule: &'a crate::rule::Rule = rule.as_ref();
+            let rule: &'a crate::rules_set::entry::Entry = rule.as_ref();
             if t.is_inside_a_marker() && !rule.is_marker() {
                 crate::ms_dbg_a!(
                     t,
@@ -187,7 +189,7 @@ impl RulesSet {
                     rule.reference()
                 );
             } else {
-                let rwa = rule.as_rule_with_actions();
+                let rwa = rule.as_rule();
                 // FIXME (C++): Those should be treated inside the rule itself
                 if let Some(r) = rwa {
                     if ex.contains(r.rule_id as i32) {

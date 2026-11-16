@@ -3,7 +3,7 @@
 
 use crate::actions::action::{Action, Kind, name_and_payload};
 use crate::phases::Phases;
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 use crate::utils::string::stoi;
 
 #[derive(Debug)]
@@ -53,7 +53,7 @@ impl Action for Phase {
         Kind::Configuration
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) {
+    fn configure(&self, rule: &mut Rule) {
         rule.set_phase(self.phase);
     }
 }

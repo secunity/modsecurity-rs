@@ -1,7 +1,7 @@
 //! `maturity:N` — the maturity level of the rule (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 use crate::utils::string::stoi;
 
 #[derive(Debug)]
@@ -30,7 +30,7 @@ impl Action for Maturity {
         Kind::Configuration
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) {
+    fn configure(&self, rule: &mut Rule) {
         rule.maturity = self.maturity;
     }
 }

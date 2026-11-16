@@ -1,12 +1,12 @@
 //! The evaluation of a `SecAction`: a rule without an operator.
 
 use crate::rule::message::RuleMessage;
-use crate::rule::with_actions::{LogPoint, RuleWithActions};
+use crate::rule::{LogPoint, Rule};
 use crate::transaction::Transaction;
 
 /// Evaluates a `SecAction`: runs its actions and logs it. It always
 /// matches.
-pub fn evaluate<'a>(rule: &'a RuleWithActions, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
+pub fn evaluate<'a>(rule: &'a Rule, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
     rule.evaluate_base(t);
     // FIXME (C++): This needs to be removed on the runtime exception review.
 

@@ -3,17 +3,17 @@
 use std::sync::Arc;
 
 use crate::phases::{NUMBER_OF_PHASES, Phases};
-use crate::rule::Rule;
+use crate::rules_set::entry::Entry;
 
 #[derive(Debug, Default, Clone)]
 pub struct RulesSetPhases {
     /// One list per phase, plus an eighth that C++ has and `dump` prints.
-    rules_at_phase: [Vec<Arc<Rule>>; NUMBER_OF_PHASES + 1],
+    rules_at_phase: [Vec<Arc<Entry>>; NUMBER_OF_PHASES + 1],
 }
 
 impl RulesSetPhases {
     /// Adds the rule to its phase. Returns whether it has one.
-    pub fn insert(&mut self, rule: Arc<Rule>) -> bool {
+    pub fn insert(&mut self, rule: Arc<Entry>) -> bool {
         let Some(phase) = rule.phase() else {
             return false;
         };
@@ -25,17 +25,14 @@ impl RulesSetPhases {
     /// `SecRule` ids. Returns the number of appended rules. On a duplicate
     /// the phases before it stay appended (as in C++).
     pub fn append(&mut self, from: &RulesSetPhases) -> Result<usize, String> {
-        let mut ids: Vec<i64> =
-            self.rules_at_phase.iter().flatten().filter_map(|r| r.rule_with_operator_id()).collect();
+        let mut ids: Vec<i64> = self.rules_at_phase.iter().flatten().filter_map(|r| r.sec_rule_id()).collect();
         ids.sort();
         let mut amount_of_rules = 0;
         for (to, from) in self.rules_at_phase.iter_mut().zip(&from.rules_at_phase) {
             // Check the entire phase before appending any of it. Keep the
             // original destination ids throughout the merge: source ids are
             // not added to this list as earlier phases are appended.
-            if let Some(id) =
-                from.iter().filter_map(|r| r.rule_with_operator_id()).find(|id| ids.binary_search(id).is_ok())
-            {
+            if let Some(id) = from.iter().filter_map(|r| r.sec_rule_id()).find(|id| ids.binary_search(id).is_ok()) {
                 return Err(format!("Rule id: {} is duplicated\n", id));
             }
             to.extend(from.iter().cloned());
@@ -54,11 +51,11 @@ impl RulesSetPhases {
         }
     }
 
-    pub fn for_phase(&self, phase: Phases) -> &[Arc<Rule>] {
+    pub fn for_phase(&self, phase: Phases) -> &[Arc<Entry>] {
         &self.rules_at_phase[phase.index()]
     }
 
-    pub fn for_phase_mut(&mut self, phase: Phases) -> &mut [Arc<Rule>] {
+    pub fn for_phase_mut(&mut self, phase: Phases) -> &mut [Arc<Entry>] {
         &mut self.rules_at_phase[phase.index()]
     }
 }
@@ -75,7 +72,7 @@ mod tests {
     }
 
     fn ids(phases: &RulesSetPhases, phase: Phases) -> Vec<i64> {
-        phases.for_phase(phase).iter().filter_map(|r| r.rule_with_operator_id()).collect()
+        phases.for_phase(phase).iter().filter_map(|r| r.sec_rule_id()).collect()
     }
 
     #[test]

@@ -10,7 +10,7 @@
 use std::borrow::Cow;
 
 use crate::operators::operator::Operator;
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
 use crate::variables::variable_value::VariableValue;
@@ -41,7 +41,7 @@ pub struct Matched<'r> {
 
 #[derive(Debug, Clone)]
 pub struct RuleMessage<'r> {
-    pub(crate) rule: &'r RuleWithActions,
+    pub(crate) rule: &'r Rule,
     pub(crate) data: Vec<u8>,
     pub(crate) is_disruptive: bool,
     /// The last match of the rule's operator, if any (see
@@ -56,7 +56,7 @@ pub struct RuleMessage<'r> {
 }
 
 impl<'r> RuleMessage<'r> {
-    pub(crate) fn new(rule: &'r RuleWithActions) -> Self {
+    pub(crate) fn new(rule: &'r Rule) -> Self {
         let mut rm = RuleMessage {
             rule,
             data: Vec::new(),

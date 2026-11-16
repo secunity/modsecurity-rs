@@ -1,6 +1,6 @@
 //! `block` — executes the disruptive actions of the `SecDefaultAction` of
 //! the rule's phase. Rules containing it are classified by
-//! `RuleWithActions` (it is kept with the run time actions and flags the
+//! `Rule` (it is kept with the run time actions and flags the
 //! rule as containing a static block action).
 
 use crate::actions::action::{Action, name_of};
@@ -44,7 +44,7 @@ impl Action for Block {
 pub(crate) mod test_support {
     pub use crate::actions::rule_action::RuleAction;
     use crate::debug_log::test_support::CaptureLog;
-    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::{Rule, RuleKind};
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;
     use crate::transaction::Transaction;
@@ -65,8 +65,8 @@ pub(crate) mod test_support {
     }
 
     /// A `SecAction` with these actions (configuration actions applied).
-    pub fn rule(actions: Vec<RuleAction>) -> RuleWithActions {
-        RuleWithActions::new(Some(actions), None, "test.conf", 1, RuleWithActionsKind::Unconditional)
+    pub fn rule(actions: Vec<RuleAction>) -> Rule {
+        Rule::new(Some(actions), None, "test.conf", 1, RuleKind::SecAction)
     }
 
     pub fn rts(s: &str) -> RunTimeString {

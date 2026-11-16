@@ -10,7 +10,7 @@ mod common;
 
 use common::*;
 use modsecurity::internal::{
-    Capture, InjectionResult, JsonValue, RuleAction, RuleWithActions, RuleWithActionsKind, Transformation,
+    Capture, InjectionResult, JsonValue, Rule, RuleAction, RuleKind, Transformation,
     clear_libinjection_overrides_for_testing, evaluate_operator, instantiate_operator, new_rule_message,
     set_libinjection_sqli_override_for_testing, set_libinjection_xss_override_for_testing, to_hex_if_needed, tx_value,
 };
@@ -78,7 +78,7 @@ fn eval_operator(t: &UnitTest, transaction: &mut Transaction<'_>) -> (i64, Vec<u
     let _ = op.init(&t.filename);
     configure_libinjection_override(t);
     let actions = if t.capture != 0 { Some(vec![RuleAction::Capture(Capture::new("capture"))]) } else { None };
-    let rule = RuleWithActions::new(actions, None, "dummy.conf", -1, RuleWithActionsKind::Unconditional);
+    let rule = Rule::new(actions, None, "dummy.conf", -1, RuleKind::SecAction);
     let mut rm = new_rule_message(&rule);
     let matched = evaluate_operator(op.as_ref(), transaction, &rule, &t.input, &mut rm);
     let mut output = Vec::new();

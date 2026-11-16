@@ -1,7 +1,7 @@
 //! `id:N` — the rule id (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 
 #[derive(Debug)]
 pub struct RuleId {
@@ -36,7 +36,7 @@ impl Action for RuleId {
         Kind::Configuration
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) {
+    fn configure(&self, rule: &mut Rule) {
         rule.rule_id = self.rule_id as i64;
     }
 }

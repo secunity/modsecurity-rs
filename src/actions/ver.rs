@@ -1,7 +1,7 @@
 //! `ver:'...'` — the rule set version (configuration time).
 
 use crate::actions::action::{Action, Kind, name_and_payload};
-use crate::rule::with_actions::RuleWithActions;
+use crate::rule::Rule;
 
 #[derive(Debug)]
 pub struct Ver {
@@ -25,7 +25,7 @@ impl Action for Ver {
         Kind::Configuration
     }
 
-    fn configure(&self, rule: &mut RuleWithActions) {
+    fn configure(&self, rule: &mut Rule) {
         rule.ver.clone_from(&self.ver);
     }
 }

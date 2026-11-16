@@ -4,7 +4,7 @@ use crate::phases::Phases;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
-pub struct RuleMarker {
+pub struct Marker {
     pub file_name: String,
     pub line_number: i32,
     /// FIXME (C++): phase may not be needed for SecMarker.
@@ -12,14 +12,9 @@ pub struct RuleMarker {
     pub name: String,
 }
 
-impl RuleMarker {
+impl Marker {
     pub fn new(name: &str, file_name: &str, line_number: i32) -> Self {
-        RuleMarker {
-            file_name: file_name.to_string(),
-            line_number,
-            phase: Phases::RequestHeaders,
-            name: name.to_string(),
-        }
+        Marker { file_name: file_name.to_string(), line_number, phase: Phases::RequestHeaders, name: name.to_string() }
     }
 
     /// Leaves the marker section the transaction was skipping to, if this

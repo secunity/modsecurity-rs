@@ -193,13 +193,13 @@ mod tests {
     use super::variable::{KeyExclusion, Variable};
     use super::*;
     use crate::instance::ModSecurity;
-    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::{Rule, RuleKind};
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;
     use crate::transaction::Transaction;
     use crate::variables::variable_value::VariableValue;
 
-    fn eval(v: &Variable, t: &Transaction<'_>, rule: Option<&RuleWithActions>) -> Vec<(String, String)> {
+    fn eval(v: &Variable, t: &Transaction<'_>, rule: Option<&Rule>) -> Vec<(String, String)> {
         let mut l: Vec<VariableValue> = Vec::new();
         v.evaluate(t, rule, &mut l);
         l.iter()
@@ -519,16 +519,16 @@ mod tests {
     fn rule_variable_walks_the_chain() {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
-        let mut parent = RuleWithActions::new(None, None, "f", 1, RuleWithActionsKind::Unconditional);
+        let mut parent = Rule::new(None, None, "f", 1, RuleKind::SecAction);
         parent.rule_id = 10;
         parent.rev = "3".to_string();
         let sev = crate::actions::severity::Severity::new("severity:2").unwrap();
-        let mut child = RuleWithActions::new(
+        let mut child = Rule::new(
             Some(vec![crate::actions::rule_action::RuleAction::Severity(sev)]),
             None,
             "f",
             2,
-            RuleWithActionsKind::Unconditional,
+            RuleKind::SecAction,
         );
         child.rule_id = 0;
         parent.chained_rule_child = Some(Box::new(child));

@@ -393,7 +393,7 @@ mod regression_dump {
     fn xml_rules(t: &mut Transaction<'_>, lines: &[String]) {
         use crate::actions::xmlns::XmlNS;
         use crate::operators::operator::Operator;
-        use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
+        use crate::rule::{Rule, RuleKind};
 
         for l in lines {
             let Some(rest) = l.strip_prefix("SecRule XML") else {
@@ -410,7 +410,7 @@ mod regression_dump {
                     acts.push(crate::actions::rule_action::RuleAction::from(x));
                 }
             }
-            let rule = RuleWithActions::new(Some(acts), None, "x", 1, RuleWithActionsKind::Unconditional);
+            let rule = Rule::new(Some(acts), None, "x", 1, RuleKind::SecAction);
             if target != "XML" {
                 let v = crate::variables::new_variable(
                     "XML",

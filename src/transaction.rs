@@ -40,7 +40,7 @@ use crate::request_body_processor::multipart::{Multipart, MultipartPartTmpFile};
 #[cfg(feature = "libxml2")]
 use crate::request_body_processor::xml::Xml;
 use crate::rule::message::RuleMessage;
-use crate::rule::with_actions::{RuleWithActions, TransformationResults};
+use crate::rule::{Rule, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code};
 use crate::utils::decode::uri_decode;
@@ -251,7 +251,7 @@ impl TransactionAnchoredVariables {
     }
 }
 
-/// Buffers of `RuleWithOperator::evaluate`, kept in the transaction so
+/// Buffers of `SecRule::evaluate`, kept in the transaction so
 /// that evaluating a rule does not allocate them again.
 #[derive(Default)]
 pub struct EvalScratch<'a> {
@@ -332,7 +332,7 @@ pub(crate) struct EvalState<'a> {
     pub(crate) allow_type: Option<AllowType>,
     /// Chain ancestors of the rule being evaluated (replaces the C++
     /// `RuleWithActions::m_chainedRuleParent` back pointers).
-    pub(crate) chained_rule_parents: Vec<&'a RuleWithActions>,
+    pub(crate) chained_rule_parents: Vec<&'a Rule>,
     /// Matched strings, used by the `capture` action.
     pub(crate) matched: Vec<Vec<u8>>,
     /// Buffers reused by rule evaluation.

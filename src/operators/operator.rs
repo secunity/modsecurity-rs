@@ -6,8 +6,8 @@ use std::borrow::Cow;
 pub use modsecurity_operators::Param;
 use modsecurity_operators::{Context, ResourceLookup, Resources};
 
+use crate::rule::Rule;
 use crate::rule::message::RuleMessage;
-use crate::rule::with_actions::RuleWithActions;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
 
@@ -20,14 +20,14 @@ use crate::transaction::Transaction;
 /// [`MatchContext::transaction`].)
 pub struct MatchContext<'c, 't, 'm> {
     t: &'c mut Transaction<'t>,
-    rule: &'c RuleWithActions,
+    rule: &'c Rule,
     rm: &'c mut RuleMessage<'m>,
     /// The operator's parameter with its macros, when it has one.
     param: Option<&'c RunTimeString>,
 }
 
 impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
-    pub fn new(t: &'c mut Transaction<'t>, rule: &'c RuleWithActions, rm: &'c mut RuleMessage<'m>) -> Self {
+    pub fn new(t: &'c mut Transaction<'t>, rule: &'c Rule, rm: &'c mut RuleMessage<'m>) -> Self {
         MatchContext { t, rule, rm, param: None }
     }
 
@@ -192,13 +192,7 @@ impl RuleOperator {
         RuleOperator { op, param, negated: false }
     }
 
-    pub fn evaluate(
-        &self,
-        t: &mut Transaction<'_>,
-        rule: &RuleWithActions,
-        input: &[u8],
-        rm: &mut RuleMessage<'_>,
-    ) -> bool {
+    pub fn evaluate(&self, t: &mut Transaction<'_>, rule: &Rule, input: &[u8], rm: &mut RuleMessage<'_>) -> bool {
         let mut cx = MatchContext::new(t, rule, rm).with_param(self.param.as_ref());
         self.op.evaluate_negatable(self.negated, &mut cx, input)
     }
@@ -328,7 +322,7 @@ pub(crate) mod test_support {
     use super::Operator;
     use crate::instance::ModSecurity;
     use crate::rule::message::RuleMessage;
-    use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
+    use crate::rule::{Rule, RuleKind};
     use crate::rules_set::RulesSet;
     use crate::transaction::Transaction;
 
@@ -342,7 +336,7 @@ pub(crate) mod test_support {
 
     /// `op` applied to `input` in `t`, for a rule without actions.
     pub fn eval_in(op: &dyn Operator, t: &mut Transaction<'_>, input: &[u8]) -> bool {
-        let rule = RuleWithActions::new(None, None, "", 0, RuleWithActionsKind::Unconditional);
+        let rule = Rule::new(None, None, "", 0, RuleKind::SecAction);
         let mut rm = RuleMessage::new(&rule);
         op.evaluate(&mut super::MatchContext::new(t, &rule, &mut rm), input)
     }
