@@ -979,9 +979,7 @@ impl Builder<'_, '_> {
         let Some(file) = lookup.path else {
             return self.fail(&format!("Failed to locate the unicode map file from: {} {}", f, lookup.looked_at));
         };
-        if let Err(error) = ConfigUnicodeMap::load_config(&file, num, &mut self.driver.properties)
-            && !error.is_empty()
-        {
+        if let Err(error) = ConfigUnicodeMap::load_config(&file, num, &mut self.driver.properties) {
             return self.fail(&error);
         }
         Ok(())

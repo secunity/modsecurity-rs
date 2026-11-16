@@ -51,6 +51,22 @@ impl RelevantStatus {
     }
 }
 
+/// Why the audit log could not be set up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupError {
+    /// A configuration error, with its message.
+    Reported(String),
+    /// A failure C++ does not report (a storage directory name it cannot
+    /// pass to `mkdir`): the configuration is accepted without a writer.
+    Unreported,
+}
+
+impl From<String> for SetupError {
+    fn from(message: String) -> Self {
+        SetupError::Reported(message)
+    }
+}
+
 /// The audit log configuration (`SecAuditEngine`, `SecAuditLog*`) and the
 /// writer that saves the relevant transactions.
 #[derive(Debug)]
@@ -238,7 +254,7 @@ impl AuditLog {
 
     /// (Re)creates the writer for the configured type. The `Err` carries
     /// the error message.
-    pub fn init(&mut self) -> Result<(), String> {
+    pub fn init(&mut self) -> Result<(), SetupError> {
         if matches!(self.status, None | Some(AuditLogStatus::Off)) && !self.ctl_audit_engine_active {
             self.writer = None;
             return Ok(());
@@ -320,7 +336,7 @@ impl AuditLog {
 
     /// Overrides this configuration with the values set in `from`, then
     /// re-initialises the writer.
-    pub fn merge(&mut self, from: &AuditLog) -> Result<(), String> {
+    pub fn merge(&mut self, from: &AuditLog) -> Result<(), SetupError> {
         // AL_MERGE_STRING_CONF
         fn merge_string(from: &str, to: &mut String) {
             if !from.is_empty() {
@@ -488,7 +504,10 @@ mod tests {
         let mut from = AuditLog::new();
         from.set_status(AuditLogStatus::On);
         from.set_file_path1("/nonexistent-dir/x/audit.log");
-        assert_eq!(a.merge(&from).unwrap_err(), "Failed to open file: /nonexistent-dir/x/audit.log");
+        assert_eq!(
+            a.merge(&from).unwrap_err(),
+            SetupError::Reported("Failed to open file: /nonexistent-dir/x/audit.log".into())
+        );
         assert!(a.writer.is_none());
 
         // ctl:auditEngine alone enables the writer.
@@ -700,8 +719,13 @@ mod tests {
         a.set_status(AuditLogStatus::On);
         a.set_type(AuditLogType::Parallel);
         a.set_storage_dir("/nonexistent-dir/x");
-        let e = a.init().unwrap_err();
+        let SetupError::Reported(e) = a.init().unwrap_err() else {
+            panic!("an error with a message");
+        };
         assert!(e.starts_with("Not able to create directory: /nonexistent-dir/x: "), "{}", e);
+        // A name C++ cannot pass to mkdir: no message.
+        a.set_storage_dir("/tmp/a\0b");
+        assert_eq!(a.init().unwrap_err(), SetupError::Unreported);
     }
 
     /// Re-initialising with another `SecAuditLog` (a later configuration

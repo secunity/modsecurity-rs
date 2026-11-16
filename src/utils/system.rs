@@ -62,17 +62,19 @@ pub fn expand_env(var: &str, flags: i32) -> Vec<String> {
 }
 
 /// Creates the directory `dir` (`mkdir(dir, mode)`), accepting an existing
-/// one.
-pub fn create_dir(dir: &str, mode: u32) -> Result<(), String> {
+/// one. The error is the message to report, or `None` for a name with a
+/// NUL byte: C++ cannot pass one to `mkdir` and fails without a message.
+pub fn create_dir(dir: &str, mode: u32) -> Result<(), Option<String>> {
     use std::os::unix::fs::DirBuilderExt;
     if dir.contains('\0') {
-        // C++ cannot pass such a name to mkdir; it fails without a message.
-        return Err(String::new());
+        return Err(None);
     }
     match std::fs::DirBuilder::new().mode(mode).create(dir) {
         Ok(()) => Ok(()),
         Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
-        Err(e) => Err(format!("Not able to create directory: {}: {}.", dir, strerror(e.raw_os_error().unwrap_or(0)))),
+        Err(e) => {
+            Err(Some(format!("Not able to create directory: {}: {}.", dir, strerror(e.raw_os_error().unwrap_or(0)))))
+        }
     }
 }
 
@@ -199,8 +201,9 @@ mod tests {
         let deep = format!("{}/x/y", d.to_str().unwrap());
         assert_eq!(
             create_dir(&deep, 0o750),
-            Err(format!("Not able to create directory: {deep}: No such file or directory."))
+            Err(Some(format!("Not able to create directory: {deep}: No such file or directory.")))
         );
+        assert_eq!(create_dir("a\0b", 0o750), Err(None));
         std::fs::remove_dir_all(&d).unwrap();
     }
 }

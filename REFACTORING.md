@@ -887,3 +887,14 @@ rule list. So:
 
 Names only; no behavior change.
 
+## An explicit "fails without a report"
+
+Setting up the audit log could return an empty error string, which the
+rule-set merge took to mean "failed, but C++ says nothing here; accept the
+configuration" (a storage directory name with a NUL byte, which C++ cannot
+pass to `mkdir`). That is now `audit_log::SetupError::{Reported(message),
+Unreported}`, and `create_dir` returns `Option<String>` as its error. A
+check for an empty error from the unicode map loader, which never returns
+one, is gone. The other `String` errors stay strings: see "Decided
+against" in `PLAN.md`.
+

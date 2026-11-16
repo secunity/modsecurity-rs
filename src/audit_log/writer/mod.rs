@@ -6,7 +6,7 @@ pub mod serial;
 
 use std::sync::Arc;
 
-use crate::audit_log::{AuditLog, AuditLogType};
+use crate::audit_log::{AuditLog, AuditLogType, SetupError};
 use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFile;
 
@@ -32,7 +32,7 @@ pub enum Writer {
 impl Writer {
     /// Creates the writer of `SecAuditLogType` (serial when not set) and
     /// opens what it needs.
-    pub fn open(audit: &AuditLog) -> Result<Self, String> {
+    pub fn open(audit: &AuditLog) -> Result<Self, SetupError> {
         match audit.audit_type {
             Some(AuditLogType::Parallel) => parallel::open(audit),
             Some(AuditLogType::Https) => Ok(Writer::Https),

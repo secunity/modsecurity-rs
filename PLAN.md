@@ -54,14 +54,7 @@ runs Lua with the transaction); they reach it through
 
 ## What is left, in suggested order
 
-### 1. C-shaped APIs
-
-- **55 signatures return `Result<_, String>`.** Typed errors per layer.
-  The strings end up in the parser's error messages (and the regression
-  tests compare them), so typed errors must render the same text. Worth
-  doing layer by layer, or not at all.
-
-### 2. Actions in a crate (optional)
+### 1. Actions in a crate (optional)
 
 The actions that use only `ActionContext` could move to a crate, as the
 operators did. What it would take: the macro strings of 11 actions
@@ -72,6 +65,18 @@ and the engine enums they use (`Phases`, `Persistent`, `RequestBodyType`,
 `AuditLogStatus`, ...) in `modsecurity-types`. `setvar`, `exec` and
 `block` stay in the engine regardless. Most actions are a few lines, so
 the gain is small next to the work.
+
+## Decided against
+
+- **Typed errors everywhere.** 55 signatures return `Result<_, String>`.
+  No caller looks inside those strings: every one is printed as it is
+  (the parser's error message, the C API's error string), and the
+  regression tests compare the text. Enums would add types nobody
+  matches on and a risk of changing the messages. The one place a
+  string carried a signal (an empty error meaning "fails without a
+  report", in the audit log setup) is typed now: `audit_log::SetupError`.
+  The remaining `Err(String::new())` (`@ipMatch` with an invalid list)
+  is a message that happens to be empty, as in C++.
 
 ## Open items
 

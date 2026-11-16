@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::actions::rule_action::RuleAction;
-use crate::audit_log::AuditLog;
+use crate::audit_log::{AuditLog, SetupError};
 use crate::debug_log::{DebugLog, DefaultDebugLog};
 use crate::phases::NUMBER_OF_PHASES;
 use crate::rules_set::exceptions::RulesExceptions;
@@ -427,9 +427,8 @@ impl RulesSetProperties {
             to.extend(from.iter().cloned());
         }
 
-        if let Err(e) = to.audit_log.merge(&from.audit_log)
-            && !e.is_empty()
-        {
+        // A failure C++ does not report leaves the configuration accepted.
+        if let Err(SetupError::Reported(e)) = to.audit_log.merge(&from.audit_log) {
             return Err(e);
         }
 

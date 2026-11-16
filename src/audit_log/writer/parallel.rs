@@ -12,7 +12,7 @@ use crate::utils::md5::Md5;
 use std::sync::Arc;
 
 use crate::audit_log::writer::{Writer, generate_boundary};
-use crate::audit_log::{AuditLog, AuditLogFormat};
+use crate::audit_log::{AuditLog, AuditLogFormat, SetupError};
 use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFile;
 use crate::utils::system::{create_dir, strerror, strftime_local};
@@ -61,13 +61,14 @@ fn write_index(transaction: &Transaction<'_>, index: &SharedFile, file_name: &st
     index.write(&msg)
 }
 
-pub(super) fn open(audit: &AuditLog) -> Result<Writer, String> {
+pub(super) fn open(audit: &AuditLog) -> Result<Writer, SetupError> {
     let open = |path: &str| (!path.is_empty()).then(|| SharedFile::open(path)).transpose();
     let log = open(&audit.path1)?;
     let log2 = open(&audit.path2)?;
 
     if !audit.storage_dir.is_empty() {
-        create_dir(&audit.storage_dir, audit.directory_permission() as u32)?;
+        create_dir(&audit.storage_dir, audit.directory_permission() as u32)
+            .map_err(|message| message.map_or(SetupError::Unreported, SetupError::Reported))?;
     }
 
     Ok(Writer::Parallel { log, log2 })
@@ -103,11 +104,14 @@ pub(super) fn write(
     }
 
     let dir_mode = audit.directory_permission() as u32;
-    create_dir(&format!("{}{}", log_path, log_file_path(ts, YEAR_MONTH_DAY_DIRECTORY)), dir_mode)?;
+    // (Writing only needs to know that it failed.)
+    create_dir(&format!("{}{}", log_path, log_file_path(ts, YEAR_MONTH_DAY_DIRECTORY)), dir_mode)
+        .map_err(Option::unwrap_or_default)?;
     create_dir(
         &format!("{}{}", log_path, log_file_path(ts, YEAR_MONTH_DAY_DIRECTORY | YEAR_MONTH_DAY_AND_TIME_DIRECTORY)),
         dir_mode,
-    )?;
+    )
+    .map_err(Option::unwrap_or_default)?;
 
     // open(fileName, O_CREAT | O_WRONLY | O_APPEND, filePermission)
     let mut file =

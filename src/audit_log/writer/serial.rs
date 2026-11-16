@@ -5,11 +5,11 @@ use crate::audit_log::format;
 use std::sync::Arc;
 
 use crate::audit_log::writer::{Writer, generate_boundary};
-use crate::audit_log::{AuditLog, AuditLogFormat};
+use crate::audit_log::{AuditLog, AuditLogFormat, SetupError};
 use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFile;
 
-pub(super) fn open(audit: &AuditLog) -> Result<Writer, String> {
+pub(super) fn open(audit: &AuditLog) -> Result<Writer, SetupError> {
     Ok(Writer::Serial { log: SharedFile::open(&audit.path1)? })
 }
 
