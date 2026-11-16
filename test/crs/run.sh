@@ -19,7 +19,9 @@
 #   FTW            go-ftw binary (v1.0.3, as pinned by CRS CI)
 #   ALBEDO         albedo binary (v0.0.14, as pinned by CRS CI)
 # Optional: WORK_DIR (default target/crs-<name>), NAME (default "test"),
-#   PORT (default 8080), BACKEND_PORT (default 8000), FTW_ARGS (extra args).
+#   PORT (default 8080), BACKEND_PORT (default 8000), FTW_ARGS (extra args),
+#   RETRIES (default 3): how often tests that failed are run again, alone;
+#   a test fails the suite only if it fails every time (0: no reruns).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -175,10 +177,41 @@ testoverride:
 FTWCONF
 cd "$work"
 set +e
-"$FTW" run --config "$work/.ftw.yaml" -d "$CRS_DIR/tests/regression/tests" \
-    --overrides "$CRS_DIR/tests/regression/nginx-overrides.yaml" \
-    --log-file "$work/logs/error.log" ${FTW_ARGS:-} > "$work/ftw.out" 2>&1
+ftw() {
+    "$FTW" run --config "$work/.ftw.yaml" -d "$CRS_DIR/tests/regression/tests" \
+        --overrides "$CRS_DIR/tests/regression/nginx-overrides.yaml" \
+        --log-file "$work/logs/error.log" "$@"
+}
+# shellcheck disable=SC2086
+ftw ${FTW_ARGS:-} > "$work/ftw.out" 2>&1
 status=$?
-set -e
 tail -n 30 "$work/ftw.out"
+
+# The test backend sometimes closes the connection before it has read a
+# large request body (920390-1 posts 64 KB), and nginx then answers 502:
+# a failure of the setup, not of the WAF. So the failed tests are run
+# again, alone, up to RETRIES times (default 3); a test only counts as
+# failed when it fails every time. The first run's output stays in
+# ftw.out, the reruns' in ftw.retry.N.out.
+failed_ids() {
+    sed -n 's/.*failed to run: \[\(.*\)\]$/\1/p' "$1" | tr -d '"' | tr ', ' '\n\n' | sed '/^$/d'
+}
+attempt=1
+last="$work/ftw.out"
+while [ "$status" -ne 0 ] && [ "$attempt" -le "${RETRIES:-3}" ]; do
+    ids=$(failed_ids "$last")
+    # No list of failed tests: go-ftw itself failed; nothing to rerun.
+    [ -n "$ids" ] || break
+    include="^($(printf '%s' "$ids" | tr '\n' '|'))\$"
+    echo "retry $attempt: $(printf '%s' "$ids" | tr '\n' ' ')"
+    last="$work/ftw.retry.$attempt.out"
+    ftw -i "$include" > "$last" 2>&1
+    status=$?
+    tail -n 3 "$last"
+    attempt=$((attempt + 1))
+done
+set -e
+if [ "$status" -eq 0 ] && [ "$attempt" -gt 1 ]; then
+    echo "All tests successful after $((attempt - 1)) rerun(s) of the tests that failed."
+fi
 exit $status

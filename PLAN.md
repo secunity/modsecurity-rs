@@ -80,11 +80,6 @@ the gain is small next to the work.
   gives 0 on overflow and ignores a sign, where `cnum::strtoll` (and C's
   `strtol`) differ on each. Folding it in changes what odd map files
   give: compare with the C++ library first, as its own commit.
-- **CRS test 920390-1 is flaky.** The test backend resets the connection
-  on its 64 KB POST and nginx answers 502. Run alone it failed 3 of 25
-  times on `master` and 4 of 25 on a branch, so it is not caused by any
-  change here, but it fails more often than "rare". Worth fixing in
-  `test/crs/run.sh` or the backend.
 - **PCRE2 reads one byte past the subject.** Fixed on our side (commit
   `9b84875`: a padded copy when the subject ends near a page boundary;
   `crates/modsecurity-native/tests/guard_page.rs` reproduces it). It may

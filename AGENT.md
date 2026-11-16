@@ -30,7 +30,7 @@ Run for every change, before committing:
 - `cargo clippy --all-targets -- -D warnings` for the default, `--no-default-features` and `--all-features` builds, plus the nginx connector when it is affected
 - For any engine change: `test/differential/run.sh` against the C++ library. It must stay identical (outputs with and without the debug log, and the debug log itself, up to the documented differences: UTF-8 rendering, rule line numbers and `\"` in operator parameters, see `MIGRATION.md`).
 - For changes to the SecLang parser, the body processors, transformations or operators: the fuzz targets (`fuzz/README.md`), a few minutes each, and the inputs in `fuzz/regressions/`.
-- For connector changes and before merging larger work: the OWASP CRS regression suite through nginx (`test/crs/run.sh`). A rare 502 from the test backend on a large POST is a known flake; rerun before treating a failure as real.
+- For connector changes and before merging larger work: the OWASP CRS regression suite through nginx (`test/crs/run.sh`). The script reruns tests that failed, alone, up to three times (`RETRIES`), because the test backend sometimes drops a large POST and nginx answers 502 (test 920390-1); a test that fails every time is a real failure.
 
 Add focused tests for behavior that a change could affect. When replacing an implementation, compare the old and new one directly on generated inputs.
 
