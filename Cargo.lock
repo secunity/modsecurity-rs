@@ -743,6 +743,7 @@ dependencies = [
  "maxminddb",
  "md-5",
  "mlua",
+ "modsecurity-body",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-operators",
@@ -763,6 +764,15 @@ dependencies = [
  "axum",
  "modsecurity",
  "tokio",
+]
+
+[[package]]
+name = "modsecurity-body"
+version = "3.0.17"
+dependencies = [
+ "modsecurity-compat",
+ "modsecurity-native",
+ "modsecurity-transformations",
 ]
 
 [[package]]

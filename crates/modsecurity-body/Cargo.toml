@@ -1,0 +1,19 @@
+[package]
+name = "modsecurity-body"
+version = "3.0.17"
+edition = "2024"
+description = "The request body processors of ModSecurity (multipart, JSON, XML), against small context interfaces"
+license = "Apache-2.0"
+publish = false
+
+[features]
+# The XML processor (the engine's feature of the same name).
+libxml2 = ["modsecurity-native/libxml2"]
+
+[dependencies]
+# libxml2 (the XML processor) and mkstemp (uploaded files).
+modsecurity-native = { path = "../modsecurity-native" }
+# The yajl-compatible JSON reader and the byte helpers.
+modsecurity-compat = { path = "../modsecurity-compat" }
+# URL decoding (multipart `filename*`).
+modsecurity-transformations = { path = "../modsecurity-transformations" }

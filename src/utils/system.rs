@@ -5,7 +5,8 @@ use jiff::fmt::strtime;
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 
-pub use modsecurity_native::posix::{mkstemp, set_env};
+pub use modsecurity_compat::errno::strerror;
+pub use modsecurity_native::posix::set_env;
 
 /// The process CPU time in seconds.
 pub fn cpu_seconds() -> f64 {
@@ -81,14 +82,6 @@ pub fn is_file(f: &str) -> bool {
         Ok(m) => std::fs::File::open(f).is_ok() && m.is_file(),
         Err(_) => false,
     }
-}
-
-/// `strerror(errno)`: the text of an error number (through std, which
-/// uses the thread safe `strerror_r`).
-pub fn strerror(errnum: i32) -> String {
-    let text = std::io::Error::from_raw_os_error(errnum).to_string();
-    let suffix = format!(" (os error {})", errnum);
-    text.strip_suffix(&suffix).map(str::to_owned).unwrap_or(text)
 }
 
 /// `t` (seconds since the epoch) in the local time zone: `localtime_r`.
@@ -209,13 +202,5 @@ mod tests {
             Err(format!("Not able to create directory: {deep}: No such file or directory."))
         );
         std::fs::remove_dir_all(&d).unwrap();
-    }
-
-    #[test]
-    fn strerror_matches_libc() {
-        for errnum in 0..200 {
-            let c = testing::strerror(errnum);
-            assert_eq!(strerror(errnum), c, "errno {errnum}");
-        }
     }
 }

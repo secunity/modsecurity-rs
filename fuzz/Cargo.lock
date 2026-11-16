@@ -457,6 +457,7 @@ dependencies = [
  "maxminddb",
  "md-5",
  "mlua",
+ "modsecurity-body",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-operators",
@@ -466,6 +467,15 @@ dependencies = [
  "rand 0.9.5",
  "rustix",
  "sha1",
+]
+
+[[package]]
+name = "modsecurity-body"
+version = "3.0.17"
+dependencies = [
+ "modsecurity-compat",
+ "modsecurity-native",
+ "modsecurity-transformations",
 ]
 
 [[package]]

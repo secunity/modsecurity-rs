@@ -3,7 +3,7 @@
 use crate::{Context, Operator, Param};
 
 /// Not implemented by libmodsecurity either: always matches.
-/// Reference: https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual#validateHash
+/// Reference: <https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual#validateHash>
 #[derive(Debug)]
 pub struct ValidateHash {
     param: Param,

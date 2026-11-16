@@ -90,7 +90,7 @@ impl ArgumentWriter<'_> {
 #[cfg(test)]
 mod tests {
     use crate::modsecurity::ModSecurity;
-    use crate::request_body_processor::multipart::test_support::{log, new_rules};
+    use crate::request_body_processor::multipart_tests::test_support::{log, new_rules};
     use crate::transaction::Transaction;
     use crate::variable_origin::VariableOrigin;
 

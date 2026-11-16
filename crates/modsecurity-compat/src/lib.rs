@@ -20,6 +20,7 @@
 pub mod acmp;
 pub mod chars;
 pub mod cnum;
+pub mod errno;
 pub mod json;
 pub mod msc_tree;
 pub mod unordered_multimap;

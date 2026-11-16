@@ -269,15 +269,6 @@ pub fn rule_engine_state_string(i: Option<RuleEngine>) -> &'static str {
     }
 }
 
-/// The name of an optional boolean setting as the logs print it.
-pub fn config_boolean_string(i: Option<bool>) -> &'static str {
-    match i {
-        Some(true) => "True",
-        Some(false) => "False",
-        None => "Not set",
-    }
-}
-
 /// The value of the C++ `ConfigBoolean` enumerator (`True`, `False`,
 /// `NotSet`), which some debug messages print as a number.
 pub fn config_boolean_code(i: Option<bool>) -> i32 {
@@ -492,7 +483,6 @@ mod tests {
     fn c_display_values() {
         // The C++ enumerator values and texts printed in the logs.
         assert_eq!([Some(true), Some(false), None].map(config_boolean_code), [0, 1, 2]);
-        assert_eq!([Some(true), Some(false), None].map(config_boolean_string), ["True", "False", "Not set"]);
         assert_eq!(rule_engine_state_string(None), "PropertyNotSet/DetectionOnly");
         assert_eq!(config_xml_parse_xml_into_args_string(Some(ParseXmlIntoArgs::On)), "True");
     }

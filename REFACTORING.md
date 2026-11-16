@@ -465,6 +465,7 @@ the owner):
 | `modsecurity-seclang` | `crates/modsecurity-seclang` | the SecLang grammar (`seclang.pest`) and its syntax tree |
 | `modsecurity-compat` | `crates/modsecurity-compat` | what reproduces C++ behavior: ACMP, the crit-bit IP tree, the libstdc++-ordered multimap, the yajl-compatible JSON |
 | `modsecurity-operators` | `crates/modsecurity-operators` | the 33 operators that only match, against the `Context` and `Resources` traits |
+| `modsecurity-body` | `crates/modsecurity-body` | the request body processors (multipart, JSON, XML), against context traits |
 | `modsecurity-capi` | `crates/modsecurity-capi` | the `msc_*` C API: `libmodsecurity.so.3` and `libmodsecurity.a` |
 
 The engine stays at the root, so the test suites, the test data and the
@@ -582,4 +583,21 @@ and a `Matcher` wrapper runs the crate's operators behind it. The crate's
 tests run against a recording context, without a transaction. The byte and
 string helpers both sides use (`find`, `limit_to`, `to_hex_if_needed`,
 `split`, the hex digits) are in `modsecurity_compat::chars`.
+
+### The body processors crate
+
+`modsecurity-body` holds the three request body processors. Each reports
+what it parses through a trait the transaction implements
+(`transaction/body.rs`):
+
+- `multipart::Context`: `set` / `add` for the 27 variables the parser
+  reports (named by the `Flag` and `Entries` enums), the upload settings
+  (`Uploads`), the name prefix of a temporary upload file, `keep_tmp_file`
+  and the debug log;
+- `xml::Context`: the two XML settings, `add_argument` and the debug log;
+- `json`: it already took a callback for the arguments.
+
+Their tests that run a whole transaction stayed in the engine
+(`request_body_processor/tests/`). `chomp`, `lossy` and `strerror`
+(`compat::errno`) moved to `modsecurity-compat`.
 

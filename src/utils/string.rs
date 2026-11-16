@@ -5,7 +5,7 @@
 //! have `&str` conveniences.
 
 pub use modsecurity_compat::chars::{
-    find_from, is_space, limit_to, split, ssplit, ssplit_pair, string_to_hex, to_hex_if_needed,
+    find_from, is_space, limit_to, lossy, split, ssplit, ssplit_pair, string_to_hex, to_hex_if_needed,
 };
 pub use modsecurity_compat::cnum::{double_to_string, stod, strtol_int};
 
@@ -25,14 +25,6 @@ pub fn dash_if_empty(s: Option<&[u8]>) -> Vec<u8> {
 /// [`split`] for configuration strings.
 pub fn split_str(s: &str, delimiter: char) -> Vec<String> {
     split(s.as_bytes(), delimiter as u8).into_iter().map(|v| String::from_utf8_lossy(&v).into_owned()).collect()
-}
-
-/// Removes the trailing `\n` and `\r` characters of `s` (an input made of
-/// only those is left unchanged).
-pub fn chomp(s: &mut Vec<u8>) {
-    if let Some(pos) = s.iter().rposition(|&c| c != b'\n' && c != b'\r') {
-        s.truncate(pos + 1);
-    }
 }
 
 /// Removes leading and trailing spaces, leaving at least one character.
@@ -73,12 +65,6 @@ pub fn tolower(s: &[u8]) -> Vec<u8> {
 /// Upper-cases the ASCII letters of a configuration string.
 pub fn toupper_str(s: &str) -> String {
     s.to_ascii_uppercase()
-}
-
-/// Lossy view of bytes for log messages.
-#[inline]
-pub fn lossy(s: &[u8]) -> std::borrow::Cow<'_, str> {
-    String::from_utf8_lossy(s)
 }
 
 /// Parses an integer as `atoi` does: leading whitespace, optional sign,

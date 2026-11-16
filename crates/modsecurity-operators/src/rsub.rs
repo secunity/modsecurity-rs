@@ -4,7 +4,7 @@
 use crate::{Context, Operator, Param};
 
 /// Not implemented by libmodsecurity either: always matches.
-/// Reference: https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual#rsub
+/// Reference: <https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual#rsub>
 #[derive(Debug)]
 pub struct Rsub {
     param: Param,

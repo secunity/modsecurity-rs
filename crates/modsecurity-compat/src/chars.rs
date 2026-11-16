@@ -146,3 +146,17 @@ pub fn split(s: &[u8], delimiter: u8) -> Vec<Vec<u8>> {
     }
     internal
 }
+
+/// Removes the trailing `\n` and `\r` characters of `s` (an input made of
+/// only those is left unchanged).
+pub fn chomp(s: &mut Vec<u8>) {
+    if let Some(pos) = s.iter().rposition(|&c| c != b'\n' && c != b'\r') {
+        s.truncate(pos + 1);
+    }
+}
+
+/// Lossy view of bytes for log messages.
+#[inline]
+pub fn lossy(s: &[u8]) -> std::borrow::Cow<'_, str> {
+    String::from_utf8_lossy(s)
+}
