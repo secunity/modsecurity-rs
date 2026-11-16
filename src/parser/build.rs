@@ -38,6 +38,7 @@ use crate::utils::string::{atoi, parser_sanitizer, remove_brackets_if_needed, ss
 use crate::utils::system::{expand_env, find_resource};
 use crate::variables::variable::Variable;
 use crate::variables::{VariableSelector, new_variable};
+use modsecurity_operators::seclang_operator;
 
 /// The load stopped: the error is in `driver.properties.parser_error`.
 #[derive(Debug)]
@@ -318,7 +319,7 @@ impl Builder<'_, '_> {
     // -----------------------------------------------------------------------
 
     fn operator(&mut self, o: &syntax::Operator<'_>) -> Res<RuleOperator> {
-        let (name, param) = match o.name.map(operator_name) {
+        let (name, param) = match o.name.map(seclang_operator) {
             // A bare parameter is a regular expression.
             None => {
                 if o.param.is_empty() {
@@ -334,7 +335,7 @@ impl Builder<'_, '_> {
             Some(None) => {
                 return self.fail(&format!("Unknown operator: @{}", string(o.name.unwrap_or(""))));
             }
-            Some(Some(op)) if !op.param && !blank_param(o) => {
+            Some(Some(op)) if !op.takes_param && !blank_param(o) => {
                 return self.fail(&format!("The operator @{} takes no parameter.", op.name));
             }
             Some(Some(op)) => {
@@ -344,7 +345,7 @@ impl Builder<'_, '_> {
                 if op.name == "geoLookup" && !cfg!(feature = "maxmind") {
                     return self.fail("This version of ModSecurity was not compiled with GeoIP or MaxMind support.");
                 }
-                if op.param && o.param.is_empty() {
+                if op.takes_param && o.param.is_empty() {
                     return self.fail(&format!("The operator {} needs a parameter.", op.name));
                 }
                 let param = if op.name.starts_with("rx") {
@@ -1088,62 +1089,6 @@ pub(crate) fn split_actions(list: Vec<ParsedAction>) -> RuleActions {
 // ---------------------------------------------------------------------------
 // Names
 // ---------------------------------------------------------------------------
-
-/// An operator: its name for `instantiate_with_param`, whether it takes a
-/// parameter, and whether it is one the C++ library does not implement.
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct Op {
-    name: &'static str,
-    param: bool,
-    not_supported: Option<&'static str>,
-}
-
-fn operator_name(name: &str) -> Option<Op> {
-    let op = |name, param| Some(Op { name, param, not_supported: None });
-    let unsupported = |n| Some(Op { name: "", param: true, not_supported: Some(n) });
-    match name.to_ascii_lowercase().as_str() {
-        "unconditionalmatch" => op("unconditionalMatch", false),
-        "detectsqli" => op("detectSQLi", false),
-        "detectxss" => op("detectXSS", false),
-        "validateurlencoding" => op("validateUrlEncoding", false),
-        "validateutf8encoding" => op("validateUtf8Encoding", false),
-        "geolookup" => op("geoLookup", false),
-        "inspectfile" => op("inspectFile", true),
-        "fuzzyhash" => op("fuzzyHash", true),
-        "validatebyterange" => op("validateByteRange", true),
-        "validatedtd" => op("validateDTD", true),
-        "validatehash" => unsupported("ValidateHash"),
-        "validateschema" => op("validateSchema", true),
-        "verifycc" => op("verifyCC", true),
-        "verifycpf" => op("verifyCPF", true),
-        "verifyssn" => op("verifySSN", true),
-        "verifysvnr" => op("verifySVNR", true),
-        "gsblookup" => unsupported("GsbLookup"),
-        "rsub" => unsupported("Rsub"),
-        "within" => op("within", true),
-        "containsword" => op("containsWord", true),
-        "contains" => op("contains", true),
-        "endswith" => op("endsWith", true),
-        "eq" => op("eq", true),
-        "ge" => op("ge", true),
-        "gt" => op("gt", true),
-        // `@ipMatchF` is an alias of `@ipMatchFromFile`.
-        "ipmatchf" | "ipmatchfromfile" => op("ipMatchF", true),
-        "ipmatch" => op("ipMatch", true),
-        "le" => op("le", true),
-        "lt" => op("lt", true),
-        // Both `@pmf` and `@pmFromFile` build a `PmFromFile`.
-        "pmf" | "pmfromfile" => op("pmFromFile", true),
-        "pm" => op("pm", true),
-        "rbl" => op("rbl", true),
-        "rx" => op("rx", true),
-        "rxglobal" => op("rxGlobal", true),
-        "streq" => op("streq", true),
-        "strmatch" => op("strmatch", true),
-        "beginswith" => op("beginsWith", true),
-        _ => None,
-    }
-}
 
 /// The actions whose value is a string with macros.
 fn macro_action(name: &str, z: RunTimeString) -> ParsedAction {

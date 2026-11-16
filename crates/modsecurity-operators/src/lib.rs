@@ -51,6 +51,7 @@ pub mod rbl;
 pub mod rsub;
 pub mod rx;
 pub mod rx_global;
+pub mod seclang;
 pub mod str_eq;
 pub mod str_match;
 pub mod unconditional_match;
@@ -113,6 +114,8 @@ impl Param {
         String::from_utf8_lossy(&self.literal).into_owned()
     }
 }
+
+pub use seclang::{SecLangOperator, seclang_operator};
 
 /// What an operator may do while it evaluates a value.
 pub trait Context {
