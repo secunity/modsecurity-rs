@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::modsecurity::{NUMBER_OF_PHASES, Phases};
+use crate::phases::{NUMBER_OF_PHASES, Phases};
 use crate::rule::Rule;
 
 #[derive(Debug, Default, Clone)]

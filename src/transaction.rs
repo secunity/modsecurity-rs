@@ -32,8 +32,9 @@ use crate::actions::disruptive::allow::AllowType;
 use crate::actions::transformation::Transformation;
 use crate::audit_log::{self, AuditLogStatus, PartsChange};
 use crate::collection::collections::Collections;
+use crate::instance::ModSecurity;
 use crate::intervention::Intervention;
-use crate::modsecurity::{ModSecurity, Phases};
+use crate::phases::Phases;
 use crate::request_body_processor::json::Json;
 use crate::request_body_processor::multipart::{Multipart, MultipartPartTmpFile};
 #[cfg(feature = "libxml2")]

@@ -62,11 +62,11 @@ macro_rules! act_dbg {
 pub(crate) use {act_dbg, ms_dbg_a, ms_dbg_opt};
 
 pub use crate::debug_log::DebugLog;
-pub use crate::intervention::Intervention;
-pub use crate::modsecurity::{
+pub use crate::instance::{
     INCLUDE_FULL_HIGHLIGHT_LOG_PROPERTY, MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL,
     MODSECURITY_VERSION, ModSecLogCb, ModSecurity, RULE_MESSAGE_LOG_PROPERTY, ServerLogEntry, TEXT_LOG_PROPERTY,
 };
+pub use crate::intervention::Intervention;
 pub use crate::rule::message::{CLIENT_LOG_MESSAGE_INFO, ERROR_LOG_TAIL_LOG_MESSAGE_INFO, RuleMessage};
 pub use crate::rules_set::{LoadError, RulesSet};
 pub use crate::transaction::Transaction;
@@ -79,12 +79,13 @@ pub(crate) mod debug_log;
 pub(crate) mod engine;
 #[cfg(feature = "http")]
 mod http_support;
+pub(crate) mod instance;
 pub(crate) mod intervention;
 #[cfg(feature = "tower")]
 pub mod middleware;
-pub(crate) mod modsecurity;
 pub(crate) mod operators;
 pub(crate) mod parser;
+pub(crate) mod phases;
 pub(crate) mod request_body_processor;
 pub(crate) mod rule;
 pub(crate) mod rules_set;
@@ -159,7 +160,7 @@ pub mod internal {
 fn thread_safety() {
     fn send_sync<T: Send + Sync>() {}
     fn send<T: Send>() {}
-    send_sync::<modsecurity::ModSecurity>();
+    send_sync::<instance::ModSecurity>();
     send_sync::<rules_set::RulesSet>();
     send::<transaction::Transaction<'static>>();
 }

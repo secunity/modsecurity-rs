@@ -182,7 +182,7 @@ mod tests {
 
         #[cfg(feature = "maxmind")]
         {
-            use crate::modsecurity::ModSecurity;
+            use crate::instance::ModSecurity;
             use crate::rules_set::RulesSet;
 
             let db = format!("{}/test/test-cases/data/GeoIP2-City-Test.mmdb", env!("CARGO_MANIFEST_DIR"));

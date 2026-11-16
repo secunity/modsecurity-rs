@@ -97,7 +97,7 @@ impl Intervention {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rules_set::RulesSet;
 
     fn rules(conf: &str) -> RulesSet {

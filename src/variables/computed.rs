@@ -2,7 +2,7 @@
 //! `DURATION`, `MODSEC_BUILD`, `HIGHEST_SEVERITY`, `REMOTE_USER` and
 //! `WEBAPPID`.
 
-use crate::modsecurity::{MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, MODSECURITY_TAG_NUM};
+use crate::instance::{MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, MODSECURITY_TAG_NUM};
 use crate::transaction::Transaction;
 use crate::utils::system::{cpu_seconds, localtime, now, strftime_local};
 use crate::variables::variable::Variable;

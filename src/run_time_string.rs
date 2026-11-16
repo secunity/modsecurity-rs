@@ -133,7 +133,8 @@ impl RunTimeString {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modsecurity::{ModSecurity, Phases};
+    use crate::instance::ModSecurity;
+    use crate::phases::Phases;
     use crate::rules_set::RulesSet;
     use crate::variables::{VariableSelector, new_variable};
 

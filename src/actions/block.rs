@@ -89,7 +89,8 @@ mod tests {
     use crate::actions::disruptive::pass::Pass;
     use crate::actions::log::Log;
     use crate::actions::phase::Phase;
-    use crate::modsecurity::{ModSecurity, Phases};
+    use crate::instance::ModSecurity;
+    use crate::phases::Phases;
     use crate::rule::message::RuleMessage;
     use crate::transaction::Transaction;
 

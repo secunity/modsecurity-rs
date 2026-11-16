@@ -35,7 +35,7 @@ mod tests {
     use crate::actions::init_col::InitCol;
     use crate::actions::set_rsc::SetRSC;
     use crate::actions::set_uid::SetUID;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rule::message::RuleMessage;
     use crate::transaction::Transaction;
 

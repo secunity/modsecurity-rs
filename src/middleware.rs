@@ -51,7 +51,7 @@ use http_body_util::{BodyExt, Either, Full};
 use tower_layer::Layer;
 use tower_service::Service;
 
-use crate::modsecurity::ModSecurity;
+use crate::instance::ModSecurity;
 use crate::rules_set::RulesSet;
 use crate::rules_set::properties::RuleEngine;
 use crate::transaction::Transaction;

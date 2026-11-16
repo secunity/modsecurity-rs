@@ -18,13 +18,13 @@ use crate::actions::rule_action::RuleAction;
 use crate::actions::transformation::{Transformation, TransformationKind as TK};
 use crate::actions::{self, ctl, data, disruptive};
 use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
-use crate::modsecurity::Phases;
 use crate::operators::operator::{RuleOperator, instantiate_with_param};
 use crate::parser::driver::Driver;
 use crate::parser::driver::Position;
 use crate::parser::syntax::{
     self, ActionKind, Directive, Modifier, Piece, Selector, SetVarOp, Target, UpdateBy, VarRef,
 };
+use crate::phases::Phases;
 use crate::rule::script::RuleScript;
 use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
 use crate::rule::with_operator::RuleWithOperator;

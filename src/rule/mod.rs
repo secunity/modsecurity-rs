@@ -11,7 +11,7 @@ pub mod unconditional;
 pub mod with_actions;
 pub mod with_operator;
 
-use crate::modsecurity::Phases;
+use crate::phases::Phases;
 use crate::rule::marker::RuleMarker;
 use crate::rule::with_actions::RuleWithActions;
 use crate::transaction::Transaction;

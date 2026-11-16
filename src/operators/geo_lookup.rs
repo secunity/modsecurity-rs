@@ -37,7 +37,7 @@ impl Operator for GeoLookup {
 
 #[cfg(all(test, feature = "maxmind"))]
 mod tests {
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rules_set::RulesSet;
     use crate::transaction::Transaction;
 

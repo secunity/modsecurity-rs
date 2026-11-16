@@ -6,8 +6,8 @@ pub mod properties;
 
 use crate::actions::disruptive::allow::AllowType;
 use crate::debug_log::DebugLog;
-use crate::modsecurity::Phases;
 use crate::parser::driver::Driver;
+use crate::phases::Phases;
 use crate::rules_set::phases::RulesSetPhases;
 use crate::rules_set::properties::RulesSetProperties;
 use crate::transaction::Transaction;

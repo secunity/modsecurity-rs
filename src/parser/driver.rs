@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::modsecurity::Phases;
+use crate::phases::Phases;
 use crate::rule::Rule;
 use crate::rule::marker::RuleMarker;
 use crate::rule::with_actions::RuleWithActions;

@@ -1,6 +1,6 @@
 //! A `SecMarker`: the target of `skipAfter`.
 
-use crate::modsecurity::Phases;
+use crate::phases::Phases;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]

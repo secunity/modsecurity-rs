@@ -83,7 +83,7 @@ mod tests {
     use crate::actions::ctl::rule_remove_by_tag::RuleRemoveByTag;
     use crate::actions::ctl::rule_remove_target_by_id::RuleRemoveTargetById;
     use crate::actions::ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rule::message::RuleMessage;
     use crate::transaction::Transaction;
 

@@ -196,7 +196,7 @@ pub(crate) static NAMES: &[Names] = &[
 /// tables replaced their three hand-written chains).
 #[cfg(all(test, feature = "lua"))]
 mod tests {
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rules_set::RulesSet;
     use crate::transaction::Transaction;
     use crate::variables::variable::{string_match_resolve, string_match_resolve_multi};

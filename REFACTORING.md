@@ -812,3 +812,20 @@ written, lower case and mixed case, with no key, `:k`, `.k`, `:x` and
 the four kinds of selector (variable name and values), in a transaction
 where every variable has a distinct value: identical. (A flag flipped in
 the table makes it fail.) A smaller test of the differences above stays.
+
+## Engine modules grouped (PLAN.md step 5)
+
+The crate root had 25 files, one per C++ header. Four moves, each
+rewriting paths only (no code changed; the public API and
+`modsecurity::internal` are unchanged):
+
+| Was | Now |
+|---|---|
+| `rule.rs`, `rule_marker`, `rule_message`, `rule_script`, `rule_unconditional`, `rule_with_actions`, `rule_with_operator` | `rule/` (`mod`, `marker`, `message`, `script`, `unconditional`, `with_actions`, `with_operator`) |
+| `rules_set.rs`, `rules_set_phases`, `rules_set_properties`, `rules_exceptions` | `rules_set/` (`mod`, `phases`, `properties`, `exceptions`) |
+| `anchored_variable`, `anchored_set_variable`, `anchored_set_variable_translation_proxy`; the `variable_value` / `variable_origin` re-exports | `variables/` |
+| `modsecurity.rs` (`modsecurity::modsecurity`) | `instance.rs` (`ModSecurity`, the log callback types, version and log-property constants) and `phases.rs` (`Phases`, `NUMBER_OF_PHASES`) |
+
+Ten files remain at the root: `lib`, `instance`, `phases`, `transaction`,
+`intervention`, `debug_log`, `run_time_string`, `unique_id`,
+`http_support`, `middleware`.

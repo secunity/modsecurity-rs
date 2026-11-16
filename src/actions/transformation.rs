@@ -60,7 +60,7 @@ impl Action for Transformation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rules_set::RulesSet;
     use crate::rules_set::properties::UnicodeMapHolder;
     use std::sync::Arc;

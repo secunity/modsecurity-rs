@@ -269,7 +269,7 @@ fn empty_and_comments() {
 
 #[test]
 fn chains_and_duplicates() {
-    use crate::modsecurity::Phases;
+    use crate::phases::Phases;
     let rules = "SecRule ARGS \"@rx a\" \"id:1,phase:2,chain,deny\"\nSecRule ARGS \"@rx b\" \"chain\"\nSecRule ARGS \"@rx c\" \"t:none\"\nSecRule ARGS \"@rx d\" \"id:2,phase:2,pass\"\n";
     let mut d = Driver::new();
     assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
@@ -289,7 +289,7 @@ fn chains_and_duplicates() {
 fn rule_lines(rules: &str) -> Vec<(i64, i32)> {
     let mut d = Driver::new();
     assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
-    let mut out: Vec<(i64, i32)> = crate::modsecurity::Phases::ALL
+    let mut out: Vec<(i64, i32)> = crate::phases::Phases::ALL
         .iter()
         .flat_map(|&p| d.rules_set_phases.for_phase(p).iter())
         .filter_map(|r| r.as_rule_with_actions().map(|r| (r.rule_id, r.line_number)))
@@ -426,7 +426,7 @@ fn unknown_operators() {
 /// scanner's `allow` rule also matches `phase:'request'` and comes first).
 #[test]
 fn quoted_phase_name() {
-    use crate::modsecurity::Phases;
+    use crate::phases::Phases;
     let mut d = Driver::new();
     assert!(d.parse("SecAction \"id:1,phase:'request',pass\"\n", "t"), "{}", d.properties.parser_error);
     let rule = d.rules_set_phases.for_phase(Phases::RequestBody)[0].as_rule_with_actions().unwrap();

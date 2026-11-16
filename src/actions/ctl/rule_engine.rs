@@ -44,7 +44,7 @@ mod tests {
     use crate::actions::ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED;
     use crate::actions::ctl::request_body_processor_xml::RequestBodyProcessorXML;
     use crate::audit_log::{AuditLogStatus, PartsChange};
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rule::message::RuleMessage;
     use crate::rules_set::properties::ParseXmlIntoArgs as ParseXmlIntoArgsState;
     use crate::transaction::RequestBodyType;

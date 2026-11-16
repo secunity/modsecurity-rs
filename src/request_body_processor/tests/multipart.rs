@@ -2,7 +2,7 @@
 /// as the regression test harness does, with a debug log kept in memory.
 pub(crate) mod test_support {
     pub use crate::debug_log::test_support::CaptureLog;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rules_set::RulesSet;
     use crate::rules_set::properties::RulesSetProperties;
     use crate::transaction::{RequestBodyType, Transaction};
@@ -46,7 +46,7 @@ pub(crate) mod test_support {
 
 mod tests {
     use super::test_support::{log, new_rules, run};
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::request_body_processor::multipart::*;
 
     fn ct(boundary: &str) -> Vec<u8> {
@@ -309,7 +309,7 @@ Content-Disposition: form-data; name=\"f2\"; filename=\"2.txt\"\r\n\r\ntwo!\r\n\
 /// `BODYPROC_REGRESSION=<file.json>[,...] cargo test --lib regression_dump -- --ignored --nocapture`.
 mod regression_dump {
     use super::test_support::{CaptureLog, log};
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rules_set::RulesSet;
     use crate::rules_set::properties::{ParseXmlIntoArgs, RulesSetProperties, parse_config_number, parse_octal_mode};
     use crate::transaction::{RequestBodyType, Transaction};

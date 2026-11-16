@@ -353,7 +353,7 @@ impl AuditLog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rule::message::RuleMessage;
     use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;

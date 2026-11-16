@@ -192,7 +192,7 @@ mod tests {
     use super::test_support::rules_with_log;
     use super::variable::{KeyExclusion, Variable};
     use super::*;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;
     use crate::run_time_string::RunTimeString;

@@ -627,7 +627,7 @@ end
 #[cfg(all(test, feature = "lua"))]
 mod tests {
     use super::Lua;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::transaction::Transaction;
     use crate::variables::test_support::rules_with_log;
 
@@ -900,7 +900,7 @@ end
 #[cfg(all(test, not(feature = "lua")))]
 mod tests {
     use super::Lua;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::transaction::Transaction;
     use crate::variables::test_support::rules_with_log;
 

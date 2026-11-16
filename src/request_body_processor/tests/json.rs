@@ -1,5 +1,5 @@
 mod tests {
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::request_body_processor::multipart_tests::test_support::{log, new_rules, run};
     use crate::rules_set::properties::parse_config_number;
     use crate::transaction::RequestBodyType;

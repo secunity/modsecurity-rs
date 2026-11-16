@@ -326,7 +326,7 @@ impl Context for MatchContext<'_, '_, '_> {
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::Operator;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::rule::message::RuleMessage;
     use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
     use crate::rules_set::RulesSet;

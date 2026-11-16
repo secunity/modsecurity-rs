@@ -56,7 +56,7 @@ impl HttpsClient {
         use curl::easy::{Easy, List, SslVersion};
 
         let unique_id = format!("ModSec-unique-id: {}", crate::unique_id::UniqueId::unique_id());
-        let status = format!("ModSec-status: {}", crate::modsecurity::MODSECURITY_VERSION_NUM);
+        let status = format!("ModSec-status: {}", crate::instance::MODSECURITY_VERSION_NUM);
 
         let mut curl = Easy::new();
         let mut headers_chunk = List::new();

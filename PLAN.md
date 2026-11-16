@@ -112,17 +112,15 @@ Done (see `REFACTORING.md`):
 
 ### 5. Module layout of the engine
 
-The top level still has 25 flat files that mirror C++ headers.
+~~The top level had 25 flat files that mirrored C++ headers.~~ Done: 10
+remain (`lib`, `instance`, `phases`, `transaction`, `intervention`,
+`debug_log`, `run_time_string`, `unique_id`, `http_support`,
+`middleware`); the rules are `rule/`, the rule set `rules_set/`, the
+anchored variables under `variables/` (see `REFACTORING.md`).
 
-- `anchored_set_variable*`, `anchored_variable`, `variable_origin`,
-  `variable_value` belong under `variables/`.
-- `rule`, `rule_marker`, `rule_script`, `rule_unconditional`,
-  `rule_with_actions`, `rule_with_operator`, `rule_message` belong under
-  `rule/`. `RuleWithActions` still carries "Rule" and "RuleWithActions"
-  sections from the C++ class hierarchy; it could be one `Rule` with a
-  kind.
-- `rules_set*` and `rules_exceptions` belong together.
-- The module `modsecurity::modsecurity` could be named for what it holds.
+Still open: `RuleWithActions` carries "Rule" and "RuleWithActions"
+sections from the C++ class hierarchy; it could be one `Rule` with a
+kind. That changes types, not paths, and is a step of its own.
 
 ### 6. C-shaped APIs
 

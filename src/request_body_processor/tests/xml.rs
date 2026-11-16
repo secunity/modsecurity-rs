@@ -2,7 +2,7 @@
 mod tests {
     use crate::actions::rule_action::RuleAction;
     use crate::actions::xmlns::XmlNS;
-    use crate::modsecurity::ModSecurity;
+    use crate::instance::ModSecurity;
     use crate::operators::operator::Operator;
     use crate::request_body_processor::multipart_tests::test_support::{log, new_rules, run};
     use crate::rule::with_actions::{RuleWithActions, RuleWithActionsKind};
@@ -245,6 +245,6 @@ fn transaction_is_send() {
     fn send<T: Send>() {}
     send::<crate::transaction::Transaction<'static>>();
     fn shared<T: Send + Sync>() {}
-    shared::<crate::modsecurity::ModSecurity>();
+    shared::<crate::instance::ModSecurity>();
     shared::<crate::rules_set::RulesSet>();
 }
