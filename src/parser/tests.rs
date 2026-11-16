@@ -482,3 +482,400 @@ fn numbers_beyond_the_int_range() {
     assert_eq!(d.properties.settings.arguments_limit, Some(u32::MAX));
     assert_eq!(d.properties.settings.request_body_json_depth_limit, Some(u32::MAX));
 }
+
+/// One-line configurations around every setting directive and every
+/// action name: values of each shape, well and badly formed. No line opens
+/// a file outside `tmp` or downloads anything.
+fn generated_lines(tmp: &str) -> Vec<String> {
+    const SETTINGS: &[&str] = &[
+        "SecAuditLogDirMode",
+        "SecAuditLogStorageDir",
+        "SecAuditEngine",
+        "SecAuditLogFileMode",
+        "SecAuditLog2",
+        "SecAuditLogParts",
+        "SecAuditLog",
+        "SecAuditLogFormat",
+        "SecAuditLogRelevantStatus",
+        "SecAuditLogPrefix",
+        "SecAuditLogType",
+        "SecUploadKeepFiles",
+        "SecUploadFileLimit",
+        "SecUploadFileMode",
+        "SecUploadDir",
+        "SecTmpSaveUploadedFiles",
+        "SecMarker",
+        "SecRuleEngine",
+        "SecRequestBodyAccess",
+        "SecResponseBodyAccess",
+        "SecArgumentSeparator",
+        "SecComponentSignature",
+        "SecConnEngine",
+        "SecWebAppId",
+        "SecServerSignature",
+        "SecCacheTransformations",
+        "SecDisableBackendCompression",
+        "SecContentInjection",
+        "SecChrootDir",
+        "SecHashEngine",
+        "SecHashKey",
+        "SecHashParam",
+        "SecHashMethodRx",
+        "SecHashMethodPm",
+        "SecGsbLookupDb",
+        "SecGuardianLog",
+        "SecInterceptOnError",
+        "SecConnReadStateLimit",
+        "SecConnWriteStateLimit",
+        "SecSensorId",
+        "SecRuleInheritance",
+        "SecRulePerfTime",
+        "SecStreamInBodyInspection",
+        "SecStreamOutBodyInspection",
+        "SecRuleRemoveById",
+        "SecRuleRemoveByMsg",
+        "SecRuleRemoveByTag",
+        "SecDebugLog",
+        "SecDebugLogLevel",
+        "SecGeoLookupDb",
+        "SecArgumentsLimit",
+        "SecRequestBodyJsonDepthLimit",
+        "SecRequestBodyLimit",
+        "SecRequestBodyNoFilesLimit",
+        "SecRequestBodyInMemoryLimit",
+        "SecResponseBodyLimit",
+        "SecRequestBodyLimitAction",
+        "SecResponseBodyLimitAction",
+        "SecRemoteRulesFailAction",
+        "SecPcreMatchLimitRecursion",
+        "SecPcreMatchLimit",
+        "SecResponseBodyMimeType",
+        "SecResponseBodyMimeTypesClear",
+        "SecXmlExternalEntity",
+        "SecParseXmlIntoArgs",
+        "SecTmpDir",
+        "SecDataDir",
+        "SecStatusEngine",
+        "SecCookieFormat",
+        "SecCookieV0Separator",
+        "SecUnicodeMapFile",
+        "SecCollectionTimeout",
+        "SecHttpBlKey",
+        "Include",
+        "SecRemoteRules",
+        "SecNoSuchDirective",
+        "secruleengine",
+        "SECAUDITLOGPARTS",
+    ];
+    // The directives that open the file their value names: they only get
+    // names in `tmp`.
+    const OPENS: &[&str] = &["SecDebugLog", "SecAuditLog", "SecAuditLog2", "SecAuditLogStorageDir", "SecUploadDir"];
+    const VALUES: &[&str] = &[
+        "",
+        " ",
+        "x",
+        " On",
+        " on",
+        " OFF",
+        "  Off",
+        "\tOn",
+        " On # comment",
+        " On x",
+        " On\r",
+        " RelevantOnly",
+        " DetectionOnly",
+        " JSON",
+        " Native",
+        " Serial",
+        " Parallel",
+        " Concurrent",
+        " https",
+        " ProcessPartial",
+        " Reject",
+        " Abort",
+        " Warn",
+        " OnlyArgs",
+        " 0",
+        " 1",
+        " 12",
+        "  12",
+        "\t12",
+        " \"12\"",
+        " \"12",
+        " 12\"",
+        " 1x",
+        " -1",
+        " 0777",
+        " 1 2",
+        " 99999999999999999999",
+        " abc",
+        "  abc",
+        " \"abc\"",
+        " \"a b\"",
+        " a b",
+        " a,b",
+        " a|b",
+        " 'a'",
+        " \"\"",
+        " \"a\\\"b\"",
+        " \"a\\\\\"b\"",
+        " ABCZ",
+        " \"ABIJ\"",
+        " abiz",
+        " ABX",
+        " +E",
+        " x\ty",
+        " 20000 x",
+        " \\",
+        " &",
+        " \"&\"",
+        " & ",
+        " text/html text/xml",
+        " 1-5 7",
+        " \"1 2 3\"",
+        " tag-one",
+        " ^5\\d\\d$",
+        " \"^(?:5|4(?!04))\"",
+        " abc # comment",
+        " \"abc\" # comment",
+        " \"abc\" x",
+    ];
+    let mut lines = Vec::new();
+    for setting in SETTINGS {
+        if OPENS.contains(setting) {
+            for v in [
+                "".to_string(),
+                format!(" {tmp}/a.log"),
+                format!("  {tmp}/a.log"),
+                format!("\t{tmp}/a.log"),
+                format!(" \"{tmp}/a.log\""),
+                format!(" \"{tmp}/a.log"),
+                format!(" {tmp}/a.log # comment"),
+                format!(" {tmp}/a b.log"),
+                format!(" {tmp}/a.log x,y"),
+                format!(" {tmp}/a%.log"),
+            ] {
+                lines.push(format!("{setting}{v}"));
+            }
+            continue;
+        }
+        if setting.eq_ignore_ascii_case("SecRemoteRules") {
+            // Only what is refused before anything is downloaded.
+            for v in ["", " key", " key ", "  key url", "\tkey url"] {
+                lines.push(format!("{setting}{v}"));
+            }
+            continue;
+        }
+        for v in VALUES {
+            lines.push(format!("{setting}{v}"));
+        }
+        for v in [
+            format!(" {tmp}/none.conf"),
+            format!(" \"{tmp}/none.conf\""),
+            format!(" {tmp}/*.none"),
+            format!(" {tmp}/none 20127"),
+        ] {
+            lines.push(format!("{setting}{v}"));
+        }
+    }
+
+    const ACTIONS: &[&str] = &[
+        "append",
+        "deprecatevar",
+        "pause",
+        "prepend",
+        "proxy",
+        "sanitiseArg",
+        "sanitiseMatched",
+        "sanitiseMatchedBytes",
+        "sanitiseRequestHeader",
+        "sanitiseResponseHeader",
+        "auditlog",
+        "block",
+        "capture",
+        "chain",
+        "deny",
+        "drop",
+        "log",
+        "multiMatch",
+        "noauditlog",
+        "nolog",
+        "pass",
+        "allow",
+        "accuracy",
+        "maturity",
+        "exec",
+        "id",
+        "phase",
+        "rev",
+        "severity",
+        "skipAfter",
+        "skip",
+        "status",
+        "ver",
+        "xmlns",
+        "t",
+        "ctl",
+        "msg",
+        "logdata",
+        "tag",
+        "setenv",
+        "setrsc",
+        "setsid",
+        "setuid",
+        "expirevar",
+        "redirect",
+        "initcol",
+        "setvar",
+        "nosuchaction",
+        "LOG",
+        "Deny",
+        "T",
+    ];
+    const ACTION_VALUES: &[&str] = &[
+        "",
+        ":",
+        ":1",
+        ":'1'",
+        ":12",
+        ":abc",
+        ":'abc'",
+        ":''",
+        ":'a,b'",
+        ":request",
+        ":phase",
+        ":REQUEST",
+        ":2",
+        ":'2'",
+        ":logging",
+        ":'response'",
+        ":CRITICAL",
+        ":'critical'",
+        ":0",
+        ":99999999999999999999",
+        ":lowercase",
+        ":none",
+        ":urlDecodeUni",
+        ":bogus",
+        ":x'y",
+        ":'x",
+        ":/no/such/script.lua",
+        ":'/no/such/script.lua'",
+        ":403",
+        ":'403'",
+        ":%{tx.a}",
+        ":'%{tx.a}'",
+        ":soap=http://example.com/",
+        ":'soap=http://example.com/'",
+        ":ip=1",
+        ":tx.a=1",
+        ":a=b",
+        ":1.5",
+        ":-1",
+        ":END_MARKER",
+        ":https://example.com/",
+        ":OWASP_CRS/3.0",
+    ];
+    for action in ACTIONS {
+        for v in ACTION_VALUES {
+            lines.push(format!("SecAction \"id:7,phase:1,{action}{v}\""));
+            lines.push(format!("SecRule ARGS \"@streq a\" \"id:7,phase:2,pass,{action}{v},t:trim\""));
+        }
+    }
+    const CTL: &[&str] = &[
+        "auditEngine",
+        "auditLogParts",
+        "requestBodyProcessor",
+        "forceRequestBodyVariable",
+        "parseXmlIntoArgs",
+        "requestBodyAccess",
+        "ruleEngine",
+        "ruleRemoveById",
+        "ruleRemoveByTag",
+        "ruleRemoveTargetById",
+        "ruleRemoveTargetByTag",
+        "responseBodyAccess",
+        "nosuch",
+        "RULEENGINE",
+    ];
+    const CTL_VALUES: &[&str] = &[
+        "",
+        "=",
+        "=On",
+        "=on",
+        "=Off",
+        "=RelevantOnly",
+        "=DetectionOnly",
+        "=OnlyArgs",
+        "=JSON",
+        "=xml",
+        "=URLENCODED",
+        "=+E",
+        "=-FH",
+        "=|A",
+        "=+X",
+        "=E",
+        "=+",
+        "=1",
+        "=1-5",
+        "=tag/one",
+        "=1;ARGS:x",
+        "=tag;ARGS:x",
+        "=1;",
+        "=a b",
+        "='1'",
+        "=x,y",
+        "=99999999999999999999",
+        "=1-99999999999999999999",
+    ];
+    for name in CTL {
+        for v in CTL_VALUES {
+            lines.push(format!("SecAction \"id:7,phase:1,pass,ctl:{name}{v}\""));
+        }
+    }
+    lines
+}
+
+/// Writes what every configuration (the real ones and the generated lines)
+/// builds to the file `DUMP_TO`, to compare the parser before and after a
+/// change to it:
+///
+/// ```text
+/// DUMP_TO=$PWD/target/before.txt cargo test --lib parser::tests::dump_outcomes -- --ignored
+/// ```
+#[test]
+#[ignore]
+fn dump_outcomes() {
+    let Some(to) = std::env::var_os("DUMP_TO") else { return };
+    let tmp = repo().join("target/tmp/parser-dump");
+    std::fs::create_dir_all(&tmp).expect("temporary directory");
+    let tmp_name = tmp.to_string_lossy().into_owned();
+    let mut out = String::new();
+    for c in real_configs() {
+        for whole in [true, false] {
+            // These dumps are large (the whole CRS): a hash of each is
+            // enough to see a change.
+            let outcome = match run(&c.data, &c.reference, whole) {
+                Outcome::Accepted(dump) => {
+                    use std::hash::{Hash, Hasher};
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    dump.hash(&mut h);
+                    format!("accepted, {} bytes, hash {:016x}", dump.len(), h.finish())
+                }
+                Outcome::Rejected(error) => format!("rejected: {error}"),
+            };
+            let _ = writeln!(out, "### {} (whole file: {whole})\n{outcome}", c.name);
+        }
+    }
+    let lines = generated_lines(&tmp_name);
+    for line in &lines {
+        let outcome = match run(line.as_bytes(), "generated.conf", true) {
+            Outcome::Accepted(dump) => format!("accepted\n{dump}"),
+            Outcome::Rejected(error) => format!("rejected: {error}"),
+        };
+        let _ = writeln!(out, "### {line:?}\n{}", outcome.replace(&tmp_name, "<tmp>"));
+    }
+    std::fs::write(&to, out).expect("writing the dump");
+    let _ = std::fs::remove_dir_all(&tmp);
+    println!("{} generated lines", lines.len());
+}
