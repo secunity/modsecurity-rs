@@ -13,10 +13,10 @@
 //! after the keyword separates it from the value, quotes are removed by the
 //! same helpers), so that the properties and rules built are the same.
 
-use crate::actions::action::{InertAction, Kind};
+use crate::actions::action::Kind;
 use crate::actions::rule_action::RuleAction;
-use crate::actions::transformation::{Transformation, TransformationKind as TK};
-use crate::actions::{self, ctl, data, disruptive};
+use crate::actions::seclang::{ParsedAction, other, split_actions};
+use crate::actions::{self};
 use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
 use crate::operators::operator::{RuleOperator, instantiate_with_param};
 use crate::parser::driver::Driver;
@@ -379,10 +379,20 @@ impl Builder<'_, '_> {
         for a in list {
             self.at = a.offset;
             let built = match &a.kind {
-                ActionKind::Plain { name, text } => self.plain_action(name, &string(text))?,
+                ActionKind::Plain { name, text } => {
+                    let built = actions::seclang::plain(name, &string(text));
+                    // The audit log must be set up even when `SecAuditEngine`
+                    // is off.
+                    if let Ok(ParsedAction::Action(RuleAction::CtlAuditEngine(a))) = &built
+                        && a.status() != AuditLogStatus::Off
+                    {
+                        self.driver.properties.audit_log.set_ctl_audit_engine_active();
+                    }
+                    built
+                }
                 ActionKind::Macro { name, value } => {
                     let z = self.run_time_string(value)?;
-                    Ok(macro_action(name, z))
+                    Ok(actions::seclang::with_macros(name, z))
                 }
                 ActionKind::InitCol { text, value } => {
                     let z = self.run_time_string(value)?;
@@ -424,252 +434,6 @@ impl Builder<'_, '_> {
             }
         };
         Ok(Ok(ParsedAction::Action(RuleAction::SetVar(SetVar::new(var, operation)))))
-    }
-
-    /// An action other than `setvar`, `initcol` and the actions with macros:
-    /// `text` is the whole action as written (`name` or `name:value`).
-    fn plain_action(&mut self, name: &str, text: &str) -> Res<Result<ParsedAction, String>> {
-        use ParsedAction::Transformation as T;
-        let value = text.split_once(':').map(|(_, v)| v);
-        let lname = name.to_ascii_lowercase();
-        let s = text;
-        let invalid = |b: &mut Self| b.fail(&format!("Expecting an action, got: {}", text));
-        // Actions without a value.
-        let bare = |b: &mut Self| if value.is_some() { invalid(b).map(|_| ()) } else { Ok(()) };
-        let a = match lname.as_str() {
-            "append"
-            | "deprecatevar"
-            | "pause"
-            | "prepend"
-            | "proxy"
-            | "sanitisearg"
-            | "sanitisematched"
-            | "sanitisematchedbytes"
-            | "sanitiserequestheader"
-            | "sanitiseresponseheader" => {
-                bare(self)?;
-                let n = match lname.as_str() {
-                    "append" => "Append",
-                    "deprecatevar" => "DeprecateVar",
-                    "pause" => "Pause",
-                    "prepend" => "Prepend",
-                    "proxy" => "Proxy",
-                    "sanitisearg" => "SanitiseArg",
-                    "sanitisematched" => "SanitiseMatched",
-                    "sanitisematchedbytes" => "SanitiseMatchedBytes",
-                    "sanitiserequestheader" => "SanitiseRequestHeader",
-                    _ => "SanitiseResponseHeader",
-                };
-                return self.fail(&format!("Action: {} is not yet supported.", n));
-            }
-            "auditlog" => {
-                bare(self)?;
-                other(actions::audit_log::AuditLog::new(s))
-            }
-            "block" => {
-                bare(self)?;
-                ParsedAction::Action(RuleAction::Block(actions::block::Block::new(s)))
-            }
-            "capture" => {
-                bare(self)?;
-                ParsedAction::Action(RuleAction::Capture(actions::capture::Capture::new(s)))
-            }
-            "chain" => {
-                bare(self)?;
-                other(actions::chain::Chain::new(s))
-            }
-            "deny" => {
-                bare(self)?;
-                other(disruptive::deny::Deny::new(s))
-            }
-            "drop" => {
-                bare(self)?;
-                other(disruptive::drop::Drop::new(s))
-            }
-            "log" => {
-                bare(self)?;
-                other(actions::log::Log::new(s))
-            }
-            "multimatch" => {
-                bare(self)?;
-                ParsedAction::Action(RuleAction::MultiMatch(actions::multi_match::MultiMatch::new(s)))
-            }
-            "noauditlog" => {
-                bare(self)?;
-                other(actions::no_audit_log::NoAuditLog::new(s))
-            }
-            "nolog" => {
-                bare(self)?;
-                other(actions::no_log::NoLog::new(s))
-            }
-            "pass" => {
-                bare(self)?;
-                other(disruptive::pass::Pass::new(s))
-            }
-            "allow" => {
-                if let Some(v) = value
-                    && !(v.eq_ignore_ascii_case("request") || v.eq_ignore_ascii_case("phase"))
-                {
-                    return invalid(self);
-                }
-                return Ok(disruptive::allow::Allow::new(s).map(other));
-            }
-            "accuracy" | "maturity" => {
-                if value.is_none_or(|v| unquote(v).unwrap_or(v).is_empty()) {
-                    return invalid(self);
-                }
-                if lname == "accuracy" {
-                    return Ok(actions::accuracy::Accuracy::new(s).map(other));
-                }
-                return Ok(actions::maturity::Maturity::new(s).map(other));
-            }
-            "exec" => {
-                match value {
-                    Some(v) if unquote(v).is_some_and(|q| !q.is_empty()) => {}
-                    Some(v) if !v.is_empty() && !v.starts_with('\'') => {}
-                    _ => return invalid(self),
-                }
-                return Ok(actions::exec::Exec::new(s).map(other));
-            }
-            "id" => {
-                if !value.is_some_and(|v| is_number(unquote(v).unwrap_or(v))) {
-                    return invalid(self);
-                }
-                return Ok(actions::rule_id::RuleId::new(s).map(other));
-            }
-            "phase" => {
-                let v = value.unwrap_or("");
-                let p = unquote(v).unwrap_or(v);
-                let known = ["request", "response", "logging"].iter().any(|n| p.eq_ignore_ascii_case(n));
-                if value.is_none() || !(known || is_number(p)) {
-                    return invalid(self);
-                }
-                return Ok(actions::phase::Phase::new(s).map(|a| ParsedAction::Action(RuleAction::Phase(a))));
-            }
-            "rev" => {
-                let v = value.unwrap_or("");
-                let v = unquote(v).unwrap_or(v);
-                if value.is_none() || v.is_empty() || v.contains([',', '\'']) {
-                    return invalid(self);
-                }
-                other(actions::rev::Rev::new(s))
-            }
-            "severity" => {
-                let v = value.unwrap_or("");
-                let v = unquote(v).unwrap_or(v);
-                let names = ["EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"];
-                if value.is_none() || !(is_number(v) || names.iter().any(|n| v.eq_ignore_ascii_case(n))) {
-                    return invalid(self);
-                }
-                return Ok(actions::severity::Severity::new(s).map(|a| ParsedAction::Action(RuleAction::Severity(a))));
-            }
-            "skipafter" => {
-                if !value.is_some_and(|v| !v.is_empty() && !v.starts_with('\'')) {
-                    return invalid(self);
-                }
-                other(actions::skip_after::SkipAfter::new(s))
-            }
-            "skip" => {
-                if !value.is_some_and(is_number) {
-                    return invalid(self);
-                }
-                return Ok(actions::skip::Skip::new(s).map(other));
-            }
-            "status" => {
-                if !value.is_some_and(is_number) {
-                    return invalid(self);
-                }
-                return Ok(data::status::Status::new(s).map(other));
-            }
-            "ver" => {
-                if value.and_then(unquote).is_none_or(|q| q.is_empty()) {
-                    return invalid(self);
-                }
-                other(actions::ver::Ver::new(s))
-            }
-            "xmlns" => {
-                if !value.is_some_and(|v| !v.is_empty() && !v.starts_with('\'')) {
-                    return invalid(self);
-                }
-                return Ok(actions::xmlns::XmlNS::new(s).map(other));
-            }
-            "t" => match value.and_then(TK::from_name) {
-                Some(kind) => T(Transformation::new(kind, s)),
-                None => return invalid(self),
-            },
-            "ctl" => return self.ctl(text, value.unwrap_or("")),
-            _ => return invalid(self),
-        };
-        Ok(Ok(a))
-    }
-
-    /// `ctl:<option>=<value>`
-    fn ctl(&mut self, text: &str, option: &str) -> Res<Result<ParsedAction, String>> {
-        use crate::audit_log::AuditLogStatus;
-        use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
-        let invalid = |b: &mut Self| b.fail(&format!("Expecting an action, got: {}", text));
-        let Some((name, value)) = option.split_once('=') else {
-            return invalid(self);
-        };
-        // `ctl:<name>=`, what the actions with a value token are built from.
-        let head = &text[..text.len() - value.len()];
-        let is = |v: &str| value.eq_ignore_ascii_case(v);
-        let s = text;
-        let a = match name.to_ascii_lowercase().as_str() {
-            "auditengine" if is("on") => {
-                self.driver.properties.audit_log.set_ctl_audit_engine_active();
-                other(ctl::audit_engine::AuditEngine::new(AuditLogStatus::On))
-            }
-            "auditengine" if is("off") => other(ctl::audit_engine::AuditEngine::new(AuditLogStatus::Off)),
-            "auditengine" if is("relevantonly") => {
-                self.driver.properties.audit_log.set_ctl_audit_engine_active();
-                other(ctl::audit_engine::AuditEngine::new(AuditLogStatus::RelevantOnly))
-            }
-            "auditlogparts"
-                if value.len() >= 2
-                    && matches!(value.as_bytes()[0], b'+' | b'|' | b'-')
-                    && value[1..].bytes().all(is_audit_part) =>
-            {
-                other(ctl::audit_log_parts::AuditLogParts::new(s))
-            }
-            "requestbodyprocessor" if is("json") => {
-                other(ctl::request_body_processor_json::RequestBodyProcessorJSON::new(s))
-            }
-            "requestbodyprocessor" if is("xml") => {
-                other(ctl::request_body_processor_xml::RequestBodyProcessorXML::new(s))
-            }
-            "requestbodyprocessor" if is("urlencoded") => {
-                other(ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED::new(s))
-            }
-            "forcerequestbodyvariable" if is("on") || is("off") => other(InertAction::new(head)),
-            "parsexmlintoargs" if is("on") => {
-                other(ctl::parse_xml_into_args::ParseXmlIntoArgs::new(ParseXmlIntoArgs::On))
-            }
-            "parsexmlintoargs" if is("off") => {
-                other(ctl::parse_xml_into_args::ParseXmlIntoArgs::new(ParseXmlIntoArgs::Off))
-            }
-            "parsexmlintoargs" if is("onlyargs") => {
-                other(ctl::parse_xml_into_args::ParseXmlIntoArgs::new(ParseXmlIntoArgs::OnlyArgs))
-            }
-            "requestbodyaccess" if is("on") || is("off") => {
-                other(ctl::request_body_access::RequestBodyAccess::new(head, is("on")))
-            }
-            "ruleengine" if is("on") => other(ctl::rule_engine::RuleEngine::new(RuleEngine::Enabled)),
-            "ruleengine" if is("off") => other(ctl::rule_engine::RuleEngine::new(RuleEngine::Disabled)),
-            "ruleengine" if is("detectiononly") => other(ctl::rule_engine::RuleEngine::new(RuleEngine::DetectionOnly)),
-            "ruleremovebyid" | "ruleremovebytag" | "ruleremovetargetbyid" | "ruleremovetargetbytag"
-                if !value.is_empty() && value.bytes().all(is_remove_rule_by) =>
-            {
-                return Ok(match name.to_ascii_lowercase().as_str() {
-                    "ruleremovebyid" => ctl::rule_remove_by_id::RuleRemoveById::new(s).map(other),
-                    "ruleremovebytag" => ctl::rule_remove_by_tag::RuleRemoveByTag::new(s).map(other),
-                    "ruleremovetargetbyid" => ctl::rule_remove_target_by_id::RuleRemoveTargetById::new(s).map(other),
-                    _ => ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag::new(s).map(other),
-                });
-            }
-            _ => return invalid(self),
-        };
-        Ok(Ok(a))
     }
 
     /// `SecDefaultAction`
@@ -1044,65 +808,8 @@ impl Builder<'_, '_> {
 // ---------------------------------------------------------------------------
 // Actions as built
 // ---------------------------------------------------------------------------
-
-/// An action of a rule as built by the grammar: the C++ code keeps both
-/// kinds in a `std::vector<std::unique_ptr<actions::Action>>` and sorts the
-/// transformations out with `dynamic_cast` when the rule is built.
-#[derive(Debug)]
-pub(crate) enum ParsedAction {
-    Action(RuleAction),
-    Transformation(Transformation),
-}
-
-impl ParsedAction {
-    pub(crate) fn into_action(self) -> RuleAction {
-        match self {
-            ParsedAction::Action(a) => a,
-            ParsedAction::Transformation(t) => RuleAction::Transformation(t),
-        }
-    }
-}
-
-/// An action (not a transformation) as built by the grammar.
-pub(crate) fn other(a: impl Into<RuleAction>) -> ParsedAction {
-    ParsedAction::Action(a.into())
-}
-
-/// The actions and the transformations of a rule.
-pub(crate) type RuleActions = (Vec<RuleAction>, Vec<Transformation>);
-
-/// Splits the actions of a rule into actions and transformations.
-pub(crate) fn split_actions(list: Vec<ParsedAction>) -> RuleActions {
-    let mut a = Vec::new();
-    let mut t = Vec::new();
-    for i in list {
-        match i {
-            ParsedAction::Action(x) => a.push(x),
-            ParsedAction::Transformation(x) => t.push(x),
-        }
-    }
-    (a, t)
-}
-
-// ---------------------------------------------------------------------------
 // Names
 // ---------------------------------------------------------------------------
-
-/// The actions whose value is a string with macros.
-fn macro_action(name: &str, z: RunTimeString) -> ParsedAction {
-    let a = match name.to_ascii_lowercase().as_str() {
-        "expirevar" => actions::expire_var::ExpireVar::with_rts(z).into(),
-        "logdata" => RuleAction::LogData(actions::log_data::LogData::with_rts(z)),
-        "msg" => RuleAction::Msg(actions::msg::Msg::with_rts(z)),
-        "redirect" => disruptive::redirect::Redirect::with_rts(z).into(),
-        "setenv" => actions::set_env::SetENV::with_rts(z).into(),
-        "setrsc" => actions::set_rsc::SetRSC::with_rts(z).into(),
-        "setsid" => actions::set_sid::SetSID::with_rts(z).into(),
-        "setuid" => actions::set_uid::SetUID::with_rts(z).into(),
-        _ => RuleAction::Tag(actions::tag::Tag::with_rts(z)),
-    };
-    ParsedAction::Action(a)
-}
 
 /// `\"` -> `"`, reading the backslashes as the grammar does: `\\` is two
 /// characters of text (so `\\"` ends a quoted text, and `\\\"` is `\\"`).
@@ -1177,24 +884,8 @@ fn update_value(v: syntax::Value<'_>) -> String {
     parser_sanitizer(if v.quoted { format!("{}\"{}\"", lead, s) } else { lead + &s })
 }
 
-/// The text of a quoted action value (`'...'`).
-fn unquote(v: &str) -> Option<&str> {
-    v.strip_prefix('\'')?.strip_suffix('\'')
-}
-
-fn is_number(v: &str) -> bool {
-    !v.is_empty() && v.bytes().all(|c| c.is_ascii_digit())
-}
-
 fn is_audit_part(c: u8) -> bool {
     b"ABCDEFGHJKIZ".contains(&c)
-}
-
-/// Whether `c` may appear in the value of a `ctl:ruleRemoveById`,
-/// `ctl:ruleRemoveByTag`, `ctl:ruleRemoveTargetById` or
-/// `ctl:ruleRemoveTargetByTag` action.
-fn is_remove_rule_by(c: u8) -> bool {
-    c.is_ascii_alphanumeric() || b"_-.*/:;$@=()[]'".contains(&c)
 }
 
 /// Whether `c` may appear in an unquoted path (`SecRuleScript`, and the

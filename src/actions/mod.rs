@@ -24,6 +24,7 @@ pub mod phase;
 pub mod rev;
 pub mod rule_action;
 pub mod rule_id;
+pub mod seclang;
 pub mod set_env;
 pub mod set_rsc;
 pub mod set_sid;

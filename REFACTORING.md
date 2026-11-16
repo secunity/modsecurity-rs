@@ -999,3 +999,25 @@ unchanged, checked three ways:
   identical traces. (That comparison was a scratch test; it is not in the
   repository, since it needs the old code.)
 - The differential test against C++ and the `body` fuzz target.
+
+## The actions by name, in the actions family
+
+The parser built the actions with a plain value in a 173-line `match` of
+its builder (`plain_action`, with `ctl` and `macro_action` next to it): the
+last name table that was not with its family. It is
+`actions::seclang` now:
+
+- `PLAIN` is a table: for each action name, the values it takes (`bare`,
+  `number`, `quoted_text`, `word`, ...: the token shapes of the C++
+  scanner, each a small function) and how it is built.
+- `plain(name, text)` and `with_macros(name, string)` return the action or
+  the message to report. `ParsedAction` and `split_actions` moved with
+  them.
+- `ctl:auditEngine=On|RelevantOnly` makes the audit log set itself up even
+  when `SecAuditEngine` is off. The parser still does that, from the
+  action built (`AuditEngine::status`), where the table used to reach into
+  the parser's properties.
+
+Compared with `parser::tests::dump_outcomes` (see its documentation): the
+real configurations and 9915 generated lines build the same, byte for
+byte, before and after.

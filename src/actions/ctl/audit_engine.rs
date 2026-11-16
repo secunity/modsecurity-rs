@@ -14,6 +14,11 @@ impl AuditEngine {
     pub fn new(status: AuditLogStatus) -> Self {
         AuditEngine { status }
     }
+
+    /// The setting the action gives the transaction.
+    pub fn status(&self) -> AuditLogStatus {
+        self.status
+    }
 }
 
 impl Action for AuditEngine {
