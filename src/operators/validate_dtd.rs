@@ -4,8 +4,6 @@
 //! not valid.
 
 use crate::operators::operator::{MatchContext, Operator, Param};
-#[cfg(feature = "libxml2")]
-use crate::transaction::Transaction;
 
 #[derive(Debug)]
 pub struct ValidateDTD {
@@ -59,15 +57,12 @@ impl Operator for ValidateDTD {
 
         let dtd = Dtd::load(&self.resource);
 
-        // (The C++ code needed a transaction: it dereferenced it.)
-        let t: &Transaction<'_> = cx.transaction_ref();
-
         let Some(dtd) = dtd else {
             crate::op_dbg!(cx, 4, "XML: Failed to load DTD: {}", self.resource);
             return true;
         };
 
-        let Some((doc, well_formed)) = t.body.xml.as_ref().and_then(|x| Some((x.document()?, x.well_formed()))) else {
+        let Some((doc, well_formed)) = cx.xml_document() else {
             crate::op_dbg!(cx, 4, "XML document tree could not be found for DTD validation.");
             return true;
         };

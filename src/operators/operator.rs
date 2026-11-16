@@ -118,6 +118,19 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
         );
     }
 
+    /// `SecHttpBlKey` (empty when not set), for `@rbl`.
+    pub fn httpbl_key(&self) -> &[u8] {
+        self.t.rules.properties.httpbl_key.as_deref().unwrap_or_default().as_bytes()
+    }
+
+    /// The document the XML request body processor parsed and its
+    /// well-formedness flag (1 when well formed), for `@validateDTD` and
+    /// `@validateSchema`; `None` without a document.
+    #[cfg(feature = "libxml2")]
+    pub fn xml_document(&self) -> Option<(&crate::utils::libxml2::Document, u32)> {
+        self.t.body.xml.as_ref().and_then(|x| Some((x.document()?, x.well_formed())))
+    }
+
     /// The transaction, for the operators that are part of the engine.
     pub fn transaction(&mut self) -> &mut Transaction<'t> {
         self.t
