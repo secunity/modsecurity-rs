@@ -1120,3 +1120,28 @@ keeps it.
 Severities, status codes and skip counts stay `i32`: the directives
 accept any `int` for them, as in C++, so a narrower type would change
 what is accepted.
+
+## The nginx connector: handlers as safe code
+
+The connector was the C module transcribed: each handler was one `unsafe`
+block reading and writing nginx's structures through raw pointers. Now:
+
+- `connectors/nginx/src/nginx.rs` is nginx as the handlers see it:
+  `Request` (made from the pointer nginx gives a handler; the connection,
+  the request line and headers, the request body, the response headers
+  nginx will send, the module's configuration and context slots), `Log`
+  and `Buffers` (the buffers of a chain). Every access to an nginx
+  structure is in a method there, with its `SAFETY` comment.
+- The handlers are an `extern "C"` entry point that makes the `Request`
+  and finds the context, and safe functions for the work:
+  `process_request_line_and_headers`, `next_step`, `inspect_body`,
+  `inspect_headers`, `process_intervention`.
+- The access handler no longer holds a reference to the context while
+  nginx reads the request body: that call can run
+  `ngx_http_modsecurity_request_read`, which reads the context.
+- `Ctx::create` and `Ctx::find` replace the two free functions; the
+  context no longer keeps the request pointer (nothing read it).
+
+The directives, the phases and what is sent to ModSecurity, in which
+order, are unchanged. The number of `unsafe` blocks is not lower (they
+are smaller, one per nginx access): what changed is where they are.

@@ -25,6 +25,8 @@
 //! | `ngx_http_modsecurity_body_filter.c` | [`ngx_http_modsecurity_body_filter`] |
 //! | `ngx_http_modsecurity_log.c` | [`ngx_http_modsecurity_log`] |
 
+pub mod intervention;
+pub mod nginx;
 pub mod ngx_http_modsecurity_access;
 pub mod ngx_http_modsecurity_body_filter;
 pub mod ngx_http_modsecurity_common;

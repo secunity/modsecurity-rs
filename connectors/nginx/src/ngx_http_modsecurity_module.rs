@@ -7,24 +7,24 @@ use core::ptr;
 
 use modsecurity::{
     LoadError, MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, ModSecurity, RulesSet, ServerLogEntry,
-    Transaction,
 };
 use nginx_sys::{
-    NGX_CONF_1MORE, NGX_CONF_FLAG, NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_CONF_UNSET, NGX_HTTP_INTERNAL_SERVER_ERROR,
-    NGX_HTTP_LOC_CONF, NGX_HTTP_LOC_CONF_OFFSET, NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE, NGX_HTTP_SRV_CONF, NGX_LOG_ERR,
-    NGX_LOG_NOTICE, NGX_OK, ngx_array_push, ngx_command_t, ngx_conf_set_flag_slot, ngx_conf_t, ngx_flag_t,
-    ngx_http_compile_complex_value, ngx_http_compile_complex_value_t, ngx_http_complex_value, ngx_http_complex_value_t,
-    ngx_http_conf_ctx_t, ngx_http_core_main_conf_t, ngx_http_core_module, ngx_http_handler_pt, ngx_http_module_t,
-    ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_http_phases_NGX_HTTP_LOG_PHASE, ngx_http_request_t, ngx_int_t,
-    ngx_list_push, ngx_module_t, ngx_palloc, ngx_pnalloc, ngx_pool_cleanup_add, ngx_str_t, ngx_table_elt_t, ngx_uint_t,
+    NGX_CONF_1MORE, NGX_CONF_FLAG, NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_CONF_UNSET, NGX_HTTP_LOC_CONF,
+    NGX_HTTP_LOC_CONF_OFFSET, NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE, NGX_HTTP_SRV_CONF, NGX_LOG_INFO, NGX_LOG_NOTICE,
+    NGX_OK, ngx_array_push, ngx_command_t, ngx_conf_set_flag_slot, ngx_conf_t, ngx_flag_t,
+    ngx_http_compile_complex_value, ngx_http_compile_complex_value_t, ngx_http_complex_value_t, ngx_http_conf_ctx_t,
+    ngx_http_core_main_conf_t, ngx_http_core_module, ngx_http_handler_pt, ngx_http_module_t,
+    ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_http_phases_NGX_HTTP_LOG_PHASE, ngx_int_t, ngx_module_t, ngx_palloc,
+    ngx_pnalloc, ngx_str_t, ngx_uint_t,
 };
 use ngx::core::Pool;
 
+use crate::nginx::Log;
 use crate::ngx_http_modsecurity_access::ngx_http_modsecurity_access_handler;
 use crate::ngx_http_modsecurity_body_filter::ngx_http_modsecurity_body_filter_init;
-use crate::ngx_http_modsecurity_common::{Ctx, LocConf, MODSECURITY_NGINX_WHOAMI, MainConf, NgxLog, log_error};
+use crate::ngx_http_modsecurity_common::{LocConf, MODSECURITY_NGINX_WHOAMI, MainConf};
 use crate::ngx_http_modsecurity_header_filter::ngx_http_modsecurity_header_filter_init;
-use crate::ngx_http_modsecurity_log::{ngx_http_modsecurity_log, ngx_http_modsecurity_log_handler, process_logging};
+use crate::ngx_http_modsecurity_log::ngx_http_modsecurity_log_handler;
 
 /// `NGX_CONF_UNSET_PTR`
 const NGX_CONF_UNSET_PTR: *mut ngx_http_complex_value_t = usize::MAX as *mut ngx_http_complex_value_t;
@@ -36,24 +36,6 @@ const NGX_CONF_ERROR: *mut c_char = usize::MAX as *mut c_char;
 // ---------------------------------------------------------------------------
 // Configuration access helpers (the ngx_http_get_module_*_conf macros)
 // ---------------------------------------------------------------------------
-
-/// `ngx_http_get_module_loc_conf(r, ngx_http_modsecurity_module)`
-///
-/// # Safety
-/// `r` must be a valid request.
-pub unsafe fn loc_conf(r: *mut ngx_http_request_t) -> *mut LocConf {
-    // SAFETY: loc_conf has an entry for every HTTP module's ctx_index.
-    unsafe { *(*r).loc_conf.add((*ptr::addr_of!(ngx_http_modsecurity_module)).ctx_index) as *mut LocConf }
-}
-
-/// `ngx_http_get_module_main_conf(r, ngx_http_modsecurity_module)`
-///
-/// # Safety
-/// `r` must be a valid request.
-pub unsafe fn main_conf(r: *mut ngx_http_request_t) -> *mut MainConf {
-    // SAFETY: as above.
-    unsafe { *(*r).main_conf.add((*ptr::addr_of!(ngx_http_modsecurity_module)).ctx_index) as *mut MainConf }
-}
 
 /// `ngx_http_conf_get_module_main_conf(cf, module)`
 ///
@@ -93,225 +75,6 @@ unsafe fn pool_cstr(pool: *mut nginx_sys::ngx_pool_t, s: &str) -> *mut c_char {
         ptr::copy_nonoverlapping(bytes.as_ptr(), p, end);
         *p.add(end) = 0;
         p as *mut c_char
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Interventions
-// ---------------------------------------------------------------------------
-
-/// `ngx_http_modsecurity_process_intervention`: applies a pending
-/// intervention to the request. Returns the HTTP status to finalize with
-/// (> 0), 0 when there is nothing to do, or -1 when the response headers
-/// were already sent.
-///
-/// The C function takes the transaction and fetches the context again; the
-/// transaction always is the context's, so the context is passed instead.
-///
-/// # Safety
-/// `r` must be a valid request and `ctx` its context.
-pub unsafe fn ngx_http_modsecurity_process_intervention(
-    ctx: &mut Ctx,
-    r: *mut ngx_http_request_t,
-    early_log: bool,
-) -> ngx_int_t {
-    let Some(it) = ctx.modsec_transaction.intervention() else {
-        return 0;
-    };
-
-    // SAFETY: valid request per the contract.
-    let mcf = unsafe { loc_conf(r) };
-    if mcf.is_null() {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t;
-    }
-
-    // logging to nginx error log can be disable by setting
-    // `modsecurity_use_error_log` to off
-    // SAFETY: mcf checked above; r->connection->log is valid.
-    unsafe {
-        if (*mcf).use_error_log != 0 {
-            let log = it.log.as_deref().map_or(&b"(no log message was specified)"[..], str::as_bytes);
-            log_error(NGX_LOG_ERR as ngx_uint_t, (*(*r).connection).log, log);
-        }
-    }
-
-    // The C connector reads the url as a C string: up to its first NUL.
-    let url = it.url.as_deref().map(|u| u.split(|&c| c == 0).next().unwrap_or_default());
-    let status = it.status;
-
-    if let Some(url) = url {
-        // SAFETY: valid request; the header is allocated from its pool.
-        unsafe {
-            if (*r).header_sent() != 0 {
-                return -1;
-            }
-
-            // Not sure if it sane to do this indepent of the phase but,
-            // here we go... This code cames from
-            // http/ngx_http_special_response.c (ngx_http_send_error_page);
-            // src/http/ngx_http_core_module.c shows that location->hash
-            // should be set to 1.
-            ngx_http_clear_location(r);
-
-            let data = ngx_pnalloc((*r).pool, url.len()) as *mut u8;
-            let location = ngx_list_push(&mut (*r).headers_out.headers) as *mut ngx_table_elt_t;
-            if data.is_null() || location.is_null() {
-                return NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t;
-            }
-            ptr::copy_nonoverlapping(url.as_ptr(), data, url.len());
-            ptr::write_bytes(location, 0, 1);
-            (*location).key = ngx_str_t { len: 8, data: c"Location".as_ptr() as *mut u8 };
-            (*location).value = ngx_str_t { len: url.len(), data };
-            (*r).headers_out.location = location;
-            (*(*r).headers_out.location).hash = 1;
-
-            #[cfg(feature = "sanity-checks")]
-            crate::ngx_http_modsecurity_header_filter::ngx_http_modsecurity_store_ctx_header(
-                ctx,
-                r,
-                &(*location).key,
-                &(*location).value,
-            );
-        }
-        return status as ngx_int_t;
-    }
-
-    if status != 200 {
-        // FIXME (C): this will bring proper response code to audit log in
-        // case when e.g. error_page redirect was triggered, but there still
-        // won't be another required pieces like response headers etc.
-        ctx.modsec_transaction.update_status_code(status);
-
-        if early_log {
-            process_logging(ctx);
-            ctx.logged = true;
-        }
-
-        // SAFETY: valid request.
-        if unsafe { (*r).header_sent() } != 0 {
-            return -1;
-        }
-        return status as ngx_int_t;
-    }
-    0
-}
-
-/// The bytes of a C string owned by the intervention (None for NULL).
-/// `ngx_http_clear_location(r)`
-///
-/// # Safety
-/// `r` must be a valid request.
-unsafe fn ngx_http_clear_location(r: *mut ngx_http_request_t) {
-    // SAFETY: valid request.
-    unsafe {
-        if !(*r).headers_out.location.is_null() {
-            (*(*r).headers_out.location).hash = 0;
-            (*r).headers_out.location = ptr::null_mut();
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Request context
-// ---------------------------------------------------------------------------
-
-/// `ngx_http_modsecurity_cleanup`: request pool cleanup releasing the
-/// context (and with it the transaction).
-///
-/// # Safety
-/// Called by nginx with the context pointer registered in `create_ctx`.
-pub unsafe extern "C" fn ngx_http_modsecurity_cleanup(data: *mut c_void) {
-    if !data.is_null() {
-        // SAFETY: data is the Box<Ctx> leaked by create_ctx, released once.
-        drop(unsafe { Box::from_raw(data as *mut Ctx) });
-    }
-}
-
-/// The cleanup handler as registered on request pools. Requests are
-/// recognised by this exact value (see `ngx_http_modsecurity_get_module_ctx`),
-/// so it is taken from one static rather than from the function item at each
-/// use (Rust does not guarantee a function has a single address).
-static CLEANUP_HANDLER: unsafe extern "C" fn(*mut c_void) = ngx_http_modsecurity_cleanup;
-
-/// `ngx_http_modsecurity_create_ctx`
-///
-/// # Safety
-/// `r` must be a valid request of a location where the module is enabled.
-pub unsafe fn ngx_http_modsecurity_create_ctx(r: *mut ngx_http_request_t) -> *mut Ctx {
-    // SAFETY: valid request; the configurations belong to the current cycle.
-    unsafe {
-        let mmcf = main_conf(r);
-        let mcf = loc_conf(r);
-
-        // SAFETY (lifetime): the ModSecurity instance and the rule set live
-        // in nginx's configuration pool, which outlives every request served
-        // with that configuration (the C module relies on the same
-        // guarantee with raw pointers). The transaction is dropped by the
-        // request pool cleanup below, before the configuration can go away.
-        let ms: &'static ModSecurity = &*ptr::addr_of!((*mmcf).modsec);
-        let rules: &'static RulesSet = &*ptr::addr_of!((*mcf).rules_set);
-        let log = Some(Box::new(NgxLog((*(*r).connection).log)) as Box<dyn core::any::Any + Send>);
-
-        let transaction = if !(*mcf).transaction_id.is_null() {
-            let mut s = ngx_str_t::empty();
-            if ngx_http_complex_value(r, (*mcf).transaction_id, &mut s) != NGX_OK as ngx_int_t {
-                return ptr::null_mut();
-            }
-            let id = String::from_utf8_lossy(s.as_bytes()).into_owned();
-            Transaction::with_id(ms, rules, &id, log)
-        } else {
-            Transaction::new(ms, rules, log)
-        };
-
-        let ctx = Box::into_raw(Box::new(Ctx {
-            r,
-            modsec_transaction: transaction,
-            #[cfg(feature = "sanity-checks")]
-            sanity_headers_out: Vec::with_capacity(12),
-            waiting_more_body: false,
-            body_requested: false,
-            processed: false,
-            logged: false,
-            intervention_triggered: false,
-            request_body_processed: false,
-        }));
-
-        let cln = ngx_pool_cleanup_add((*r).pool, 0);
-        if cln.is_null() {
-            drop(Box::from_raw(ctx));
-            return ptr::null_mut();
-        }
-        (*cln).handler = Some(CLEANUP_HANDLER);
-        (*cln).data = ctx as *mut c_void;
-
-        // ngx_http_set_ctx(r, ctx, ngx_http_modsecurity_module)
-        *(*r).ctx.add((*ptr::addr_of!(ngx_http_modsecurity_module)).ctx_index) = ctx as *mut c_void;
-        ctx
-    }
-}
-
-/// `ngx_http_modsecurity_get_module_ctx`
-///
-/// # Safety
-/// `r` must be a valid request.
-pub unsafe fn ngx_http_modsecurity_get_module_ctx(r: *mut ngx_http_request_t) -> *mut Ctx {
-    // SAFETY: valid request.
-    unsafe {
-        let ctx = *(*r).ctx.add((*ptr::addr_of!(ngx_http_modsecurity_module)).ctx_index) as *mut Ctx;
-        if !ctx.is_null() {
-            return ctx;
-        }
-        // refer <nginx>/src/http/modules/ngx_http_realip_module.c: if module
-        // context was reset, the original address can still be found in the
-        // cleanup handler.
-        let mut cln = (*(*r).pool).cleanup;
-        while !cln.is_null() {
-            if (*cln).handler.is_some_and(|h| core::ptr::fn_addr_eq(h, CLEANUP_HANDLER)) {
-                return (*cln).data as *mut Ctx;
-            }
-            cln = (*cln).next;
-        }
-        ptr::null_mut()
     }
 }
 
@@ -558,10 +321,11 @@ unsafe extern "C" fn ngx_http_modsecurity_create_main_conf(cf: *mut ngx_conf_t) 
     // Provide our connector information to LibModSecurity
     modsec.set_connector_information(MODSECURITY_NGINX_WHOAMI);
     modsec.set_server_log_cb(Box::new(|data, entry| {
-        let log = data.and_then(|d| d.downcast_ref::<NgxLog>()).map(|l| l.0);
+        // The rule message goes to the error log of the request being
+        // processed, at `info` level.
+        let log = data.and_then(|d| d.downcast_ref::<Log>());
         if let (Some(log), ServerLogEntry::Text(msg)) = (log, entry) {
-            // SAFETY: the log belongs to the request being processed.
-            unsafe { ngx_http_modsecurity_log(log, msg) };
+            log.error(NGX_LOG_INFO as ngx_uint_t, msg.as_bytes());
         }
     }));
     let conf = MainConf { pool: pool.as_ptr(), modsec, rules_inline: 0, rules_file: 0, rules_remote: 0 };
@@ -574,9 +338,8 @@ unsafe extern "C" fn ngx_http_modsecurity_init_main_conf(cf: *mut ngx_conf_t, co
     let mmcf = conf as *mut MainConf;
     // SAFETY: called by nginx with our main conf.
     unsafe {
-        log_error(
+        Log::new((*cf).log).error(
             NGX_LOG_NOTICE as ngx_uint_t,
-            (*cf).log,
             format!(
                 "{} (rules loaded inline/local/remote: {}/{}/{})",
                 MODSECURITY_NGINX_WHOAMI,
@@ -586,9 +349,8 @@ unsafe extern "C" fn ngx_http_modsecurity_init_main_conf(cf: *mut ngx_conf_t, co
             )
             .as_bytes(),
         );
-        log_error(
+        Log::new((*cf).log).error(
             NGX_LOG_NOTICE as ngx_uint_t,
-            (*cf).log,
             format!("libmodsecurity3 version {}.{}.{}", MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL)
                 .as_bytes(),
         );
