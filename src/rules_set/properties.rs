@@ -14,7 +14,7 @@ use crate::audit_log::{AuditLog, SetupError};
 use crate::debug_log::{DebugLog, DefaultDebugLog};
 use crate::phases::NUMBER_OF_PHASES;
 use crate::rules_set::exceptions::RulesExceptions;
-use crate::utils::geo_lookup::GeoDb;
+use modsecurity_operators::geo_lookup::GeoDb;
 
 /// Numeric configuration values (`ConfigInt`, `ConfigUnsignedInt`,
 /// `ConfigUnsignedLong` in C++), with the range of the C++ specialisation.

@@ -1150,3 +1150,20 @@ The files are named after what they hold, not after the C files:
 `module.rs`, `context.rs`, `access.rs`, `header_filter.rs`,
 `body_filter.rs`, `log.rs`, `intervention.rs`, `nginx.rs`. The exported
 `ngx_http_modsecurity_module` symbol keeps its name.
+
+## `@geoLookup` in the operators crate
+
+`@geoLookup` stayed in the engine when the operators were extracted,
+because it reads the rule set's database and fills the transaction's
+`GEO` collection. It is in `modsecurity-operators` now
+(`geo_lookup.rs`), with the database type (`GeoDb`, was
+`utils::geo_lookup`) and a `maxmind` feature that the engine's feature of
+the same name enables. The operator's `Context` has two more methods:
+`geo_db`, the database of `SecGeoLookupDb`, and `set_geo`. The rule set
+still owns the database (the parser opens it, merged rule sets share
+it); the tests of that are with the directive, in `parser/settings.rs`.
+
+The engine's `Operator` is a matcher of the crate or `@inspectFile`,
+which stays: its Lua half runs the engine's Lua binding with the
+transaction. The engine no longer depends on `maxminddb` and
+`dns-lookup` itself.

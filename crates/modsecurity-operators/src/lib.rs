@@ -1,5 +1,5 @@
-//! The SecLang operators that only match: `@rx`, `@pm`, `@contains`,
-//! `@detectSQLi`, `@ipMatch`, `@rbl`, `@validateSchema`, ... (36 of them).
+//! The SecLang operators: `@rx`, `@pm`, `@contains`, `@detectSQLi`,
+//! `@ipMatch`, `@rbl`, `@validateSchema`, `@geoLookup`, ... (37 of them).
 //!
 //! An [`Operator`] is built from its [`Param`] by [`instantiate`], prepared
 //! once with [`Operator::init`] (which may load files through
@@ -7,9 +7,9 @@
 //! while matching is the [`Context`] it is given: read its parameter for
 //! the transaction at hand, record captures and match positions, write to
 //! the debug log. Nothing here knows about rules or transactions; the
-//! ModSecurity engine implements [`Context`] and [`Resources`]. (`@geoLookup`
-//! and `@inspectFile` are part of the engine: they fill the `GEO`
-//! collection and run Lua with the transaction.)
+//! ModSecurity engine implements [`Context`] and [`Resources`].
+//! (`@inspectFile` is part of the engine: it runs Lua with the
+//! transaction.)
 
 #![forbid(unsafe_code)]
 
@@ -27,6 +27,7 @@ pub mod ends_with;
 pub mod eq;
 pub mod fuzzy_hash;
 pub mod ge;
+pub mod geo_lookup;
 pub mod gsblookup;
 pub mod gt;
 pub mod ip_match;
@@ -127,6 +128,13 @@ pub trait Context: DebugSink {
 
     /// Records the position of a match in the input.
     fn offset(&mut self, offset: usize, len: usize);
+
+    /// The database of `SecGeoLookupDb`, for `@geoLookup`; `None` when
+    /// there is none.
+    fn geo_db(&self) -> Option<std::sync::Arc<geo_lookup::GeoDb>>;
+
+    /// Sets `GEO:<name>`, for `@geoLookup`.
+    fn set_geo(&mut self, name: &[u8], value: &[u8]);
 
     /// `SecPcreMatchLimit` (0 when not set).
     fn pcre_match_limit(&self) -> u64;
@@ -232,6 +240,7 @@ pub fn instantiate(name: &str, param: Param) -> Option<Box<dyn Operator>> {
         "eq" => Box::new(eq::Eq::new(param)),
         "fuzzyhash" => Box::new(fuzzy_hash::FuzzyHash::new(param)),
         "ge" => Box::new(ge::Ge::new(param)),
+        "geolookup" => Box::new(geo_lookup::GeoLookup::new()),
         "gsblookup" => Box::new(gsblookup::GsbLookup::new(param)),
         "gt" => Box::new(gt::Gt::new(param)),
         "ipmatch" => Box::new(ip_match::IpMatch::new(param)),
@@ -277,6 +286,9 @@ pub(crate) mod test_support {
         pub matched: Vec<Vec<u8>>,
         pub offsets: Vec<(usize, usize)>,
         pub httpbl_key: Vec<u8>,
+        pub geo_db: Option<std::sync::Arc<geo_lookup::GeoDb>>,
+        /// The `GEO` entries set.
+        pub geo: Vec<(Vec<u8>, Vec<u8>)>,
     }
 
     impl DebugSink for TestContext {
@@ -301,6 +313,12 @@ pub(crate) mod test_support {
         }
         fn offset(&mut self, offset: usize, len: usize) {
             self.offsets.push((offset, len));
+        }
+        fn geo_db(&self) -> Option<std::sync::Arc<geo_lookup::GeoDb>> {
+            self.geo_db.clone()
+        }
+        fn set_geo(&mut self, name: &[u8], value: &[u8]) {
+            self.geo.push((name.to_vec(), value.to_vec()));
         }
         fn pcre_match_limit(&self) -> u64 {
             0

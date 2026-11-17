@@ -5,8 +5,7 @@
 //! grammar differs from `Operator::instantiate`: `@pmf` is `@pmFromFile`
 //! (not the `PmF` operator), `@noMatch` is not a SecLang operator, and
 //! `@validateHash`, `@gsbLookup` and `@rsub` are recognised but rejected.
-//! It also names the two operators the engine implements (`@geoLookup`,
-//! `@inspectFile`).
+//! It also names the operator the engine implements (`@inspectFile`).
 
 /// An operator of the SecLang grammar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +74,7 @@ mod tests {
     use super::*;
 
     /// Every operator the grammar accepts can be built, by this crate or
-    /// (`@geoLookup`, `@inspectFile`) by the engine.
+    /// (`@inspectFile`) by the engine.
     #[test]
     fn grammar_operators_are_built_by_instantiate() {
         let names = [
@@ -122,7 +121,7 @@ mod tests {
         for n in names {
             let op = seclang_operator(n).unwrap_or_else(|| panic!("{n}"));
             assert_eq!(seclang_operator(&n.to_ascii_uppercase()), Some(op));
-            if op.not_supported.is_some() || ["geoLookup", "inspectFile"].contains(&op.name) {
+            if op.not_supported.is_some() || op.name == "inspectFile" {
                 continue;
             }
             assert!(crate::instantiate(op.name, crate::Param::from_text("1")).is_some(), "{n}");

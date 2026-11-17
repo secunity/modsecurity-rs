@@ -14,6 +14,8 @@ libxml2 = ["modsecurity-native/libxml2"]
 ssdeep = ["modsecurity-native/ssdeep"]
 regex-dollar-endonly = []
 pm-aho-corasick = ["dep:aho-corasick"]
+# @geoLookup with MaxMind databases (without it no database opens).
+maxmind = ["dep:maxminddb"]
 
 [dependencies]
 # The debug log interface (DebugSink, ms_dbg).
@@ -26,5 +28,9 @@ modsecurity-compat = { path = "../modsecurity-compat" }
 libinjection = { path = "../../others/libinjection" }
 aho-corasick = { version = "1", optional = true }
 # @rbl: the DNS lookup of the block list, with the platform getaddrinfo as
-# in C++.
+# in C++. @geoLookup: the same function, to read an address as
+# libmaxminddb does.
 dns-lookup = "4.0.2"
+# The getaddrinfo flags of @geoLookup.
+libc = "0.2"
+maxminddb = { version = "0.32", optional = true }

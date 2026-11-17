@@ -7,7 +7,6 @@ use std::borrow::Cow;
 pub use modsecurity_operators::Param;
 use modsecurity_operators::{Context, ResourceLookup, Resources};
 
-use crate::operators::geo_lookup::GeoLookup;
 use crate::operators::inspect_file::InspectFile;
 use crate::rule::Rule;
 use crate::rule::message::RuleMessage;
@@ -16,8 +15,8 @@ use crate::transaction::Transaction;
 
 /// What a matcher may do while it evaluates a value: read its parameter
 /// for this transaction, record what it matched, and write to the debug
-/// log. Matchers see the transaction only through this. (`@geoLookup` and
-/// `@inspectFile` are given the transaction.)
+/// log. Matchers see the transaction only through this. (`@inspectFile`
+/// is given the transaction.)
 pub struct MatchContext<'c, 't, 'm> {
     t: &'c mut Transaction<'t>,
     rule: &'c Rule,
@@ -124,12 +123,11 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
 
 /// A SecRule operator (`@rx`, `@pm`, ...): one of the matchers of the
 /// `modsecurity-operators` crate, which see the [`MatchContext`] through
-/// that crate's `Context`, or one of the two operators that need the
-/// transaction itself.
+/// that crate's `Context`, or `@inspectFile`, which needs the transaction
+/// itself.
 #[derive(Debug)]
 pub enum Operator {
     Matcher(Box<dyn modsecurity_operators::Operator>),
-    GeoLookup(GeoLookup),
     InspectFile(InspectFile),
 }
 
@@ -139,7 +137,6 @@ impl Operator {
     pub fn name(&self) -> &'static str {
         match self {
             Operator::Matcher(op) => op.name(),
-            Operator::GeoLookup(_) => "GeoLookup",
             Operator::InspectFile(_) => "InspectFile",
         }
     }
@@ -148,7 +145,6 @@ impl Operator {
     pub fn param(&self) -> Option<&Param> {
         match self {
             Operator::Matcher(op) => op.param(),
-            Operator::GeoLookup(_) => None,
             Operator::InspectFile(op) => Some(op.param()),
         }
     }
@@ -158,7 +154,6 @@ impl Operator {
     pub fn init(&mut self, file: &str) -> Result<(), String> {
         match self {
             Operator::Matcher(op) => op.init(file, &EngineResources),
-            Operator::GeoLookup(_) => Ok(()),
             Operator::InspectFile(op) => op.init(file),
         }
     }
@@ -167,7 +162,6 @@ impl Operator {
     pub fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         match self {
             Operator::Matcher(op) => op.evaluate(cx, input),
-            Operator::GeoLookup(op) => op.evaluate(cx.t, input),
             Operator::InspectFile(op) => op.evaluate(cx.t, input),
         }
     }
@@ -235,7 +229,6 @@ pub fn instantiate(op: &str, param_str: &str) -> Option<Operator> {
 pub fn instantiate_with_param(op: &str, param: &RunTimeString) -> Option<Operator> {
     let param = Param::new(param.evaluate_static(), param.contains_macro());
     Some(match op.to_ascii_lowercase().as_str() {
-        "geolookup" => Operator::GeoLookup(GeoLookup),
         "inspectfile" => Operator::InspectFile(InspectFile::new(param)),
         name => Operator::Matcher(modsecurity_operators::instantiate(name, param)?),
     })
@@ -282,6 +275,12 @@ impl Context for MatchContext<'_, '_, '_> {
     }
     fn offset(&mut self, offset: usize, len: usize) {
         MatchContext::offset(self, offset, len)
+    }
+    fn geo_db(&self) -> Option<std::sync::Arc<modsecurity_operators::geo_lookup::GeoDb>> {
+        self.t.rules.properties.settings.geo_db.clone()
+    }
+    fn set_geo(&mut self, name: &[u8], value: &[u8]) {
+        self.t.vars.geo.set(name, value, 0);
     }
     fn pcre_match_limit(&self) -> u64 {
         MatchContext::pcre_match_limit(self)

@@ -1,7 +1,6 @@
 //! Helpers of the engine: digests, random numbers, files, the HTTPS client
 //! and the GeoIP database.
 
-pub mod geo_lookup;
 pub mod https_client;
 pub mod md5;
 pub mod random;

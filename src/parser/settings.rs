@@ -466,7 +466,7 @@ impl Builder<'_, '_> {
         let Some(file) = lookup.path else {
             return self.fail(&format!("Failed to load locate the GeoDB file from: {} {}", v, lookup.looked_at));
         };
-        match crate::utils::geo_lookup::GeoDb::open(&file) {
+        match modsecurity_operators::geo_lookup::GeoDb::open(&file) {
             Ok(db) => self.driver.properties.settings.geo_db = Some(std::sync::Arc::new(db)),
             // A database opened before stays in use, as in C++.
             Err(_) if self.driver.properties.settings.geo_db.is_some() => {}
@@ -551,5 +551,72 @@ impl Builder<'_, '_> {
         };
         let idx = self.driver.add_filename(url.to_string());
         load(self.driver, content, idx)
+    }
+}
+
+/// `SecGeoLookupDb`: which rule set has which database.
+#[cfg(all(test, feature = "maxmind"))]
+mod geo_lookup_db_tests {
+    use crate::instance::ModSecurity;
+    use crate::rules_set::RulesSet;
+    use crate::transaction::Transaction;
+
+    fn db() -> String {
+        format!("{}/test/test-cases/data/GeoIP2-City-Test.mmdb", env!("CARGO_MANIFEST_DIR"))
+    }
+
+    /// `REMOTE_ADDR` 200.249.12.31 (Brazil in the test database) matched
+    /// against `@geoLookup`.
+    const RULE: &str = "SecRuleEngine On\nSecRule REMOTE_ADDR \"@geoLookup\" \"id:1,phase:1,deny,status:403\"\n";
+
+    fn denied(rules: &RulesSet) -> bool {
+        let ms = ModSecurity::new();
+        let mut t = Transaction::new(&ms, rules, None);
+        t.process_connection("200.249.12.31", 12345, "127.0.0.1", 80);
+        t.process_uri(b"/", b"GET", b"1.1");
+        t.process_request_headers();
+        t.intervention().is_some_and(|it| it.status == 403)
+    }
+
+    #[test]
+    fn each_rule_set_has_its_own_database() {
+        let mut with_db = RulesSet::new();
+        with_db.load(&format!("SecGeoLookupDb {}\n{}", db(), RULE)).unwrap();
+        assert!(with_db.properties.settings.geo_db.is_some());
+        assert!(denied(&with_db));
+
+        // C++ would use the database another rule set loaded.
+        let mut without_db = RulesSet::new();
+        without_db.load(RULE).unwrap();
+        assert!(without_db.properties.settings.geo_db.is_none());
+        assert!(!denied(&without_db));
+
+        // Merged rule sets inherit it (nginx locations from their parents).
+        let mut parent = RulesSet::new();
+        parent.load(&format!("SecGeoLookupDb {}\n", db())).unwrap();
+        let mut child = RulesSet::new();
+        child.load(RULE).unwrap();
+        child.merge(&mut parent).unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            child.properties.settings.geo_db.as_ref().unwrap(),
+            parent.properties.settings.geo_db.as_ref().unwrap()
+        ));
+        assert!(denied(&child));
+    }
+
+    #[test]
+    fn a_failed_database_after_one_that_opened() {
+        // A file that is not a database.
+        let bad = format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR"));
+        // The database that opened stays in use, as in C++.
+        let mut rules = RulesSet::new();
+        let conf = format!("SecGeoLookupDb {}\nSecGeoLookupDb {}\n{}", db(), bad, RULE);
+        rules.load(&conf).unwrap();
+        assert!(denied(&rules));
+
+        // Alone, it is an error.
+        let mut rules = RulesSet::new();
+        let err = rules.load(&format!("SecGeoLookupDb {}\n", bad)).unwrap_err();
+        assert!(err.message().contains(&format!("Failed to load the GeoDB from: {}. Can't open: ", bad)), "{err}");
     }
 }

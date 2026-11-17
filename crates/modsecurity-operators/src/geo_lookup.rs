@@ -1,12 +1,14 @@
-//! The geolocation database of `SecGeoLookupDb`, used by `@geoLookup`.
+//! `@geoLookup`, and the geolocation database it reads ([`GeoDb`], opened
+//! by `SecGeoLookupDb`).
 //!
-//! Each rule set owns the database its configuration names (C++ keeps one
-//! database per process). MaxMind databases are read with the `maxminddb`
-//! crate when the `maxmind` feature is enabled (C++ `WITH_MAXMIND`). The
-//! legacy GeoIP library is not available, so this behaves like a C++ build
-//! without `WITH_GEOIP`.
+//! Whoever loads the configuration owns the database and hands it to the
+//! operator through [`Context::geo_db`]: the ModSecurity engine keeps one
+//! per rule set (C++ keeps one per process). MaxMind databases are read
+//! with the `maxminddb` crate when the `maxmind` feature is enabled (C++
+//! `WITH_MAXMIND`). The legacy GeoIP library is not available, so this
+//! behaves like a C++ build without `WITH_GEOIP`.
 
-use crate::transaction::Transaction;
+use crate::{Context, Operator, ms_dbg};
 
 /// An open geolocation database.
 #[derive(Debug)]
@@ -37,24 +39,44 @@ impl GeoDb {
         Err(err)
     }
 
-    /// Looks `target` up and fills the `GEO` collection of the transaction.
-    /// Debug messages are only emitted with a transaction (the C++ code
-    /// passes no debug callback without one).
-    pub fn lookup(&self, target: &[u8], trans: Option<&mut Transaction<'_>>) -> bool {
+    /// Looks `target` (an address) up and gives what the database knows
+    /// about it to `cx` ([`Context::set_geo`]); whether it was found.
+    pub fn lookup(&self, target: &[u8], cx: &mut dyn Context) -> bool {
         #[cfg(feature = "maxmind")]
-        return maxmind_lookup(&self.reader, target, trans);
+        return maxmind_lookup(&self.reader, target, cx);
         #[cfg(not(feature = "maxmind"))]
         {
             // No database can be opened without a library.
-            let _ = (target, trans);
+            let _ = (target, cx);
             false
         }
     }
+}
 
-    /// `lookup` without a database (no `SecGeoLookupDb`).
-    pub fn not_loaded(trans: &Transaction<'_>) -> bool {
-        crate::ms_dbg!(trans, 4, "Database is not open. Use: SecGeoLookupDb directive.");
-        false
+/// `@geoLookup`: fills the `GEO` collection with what the database of
+/// `SecGeoLookupDb` knows about the address.
+#[derive(Debug, Default)]
+pub struct GeoLookup;
+
+impl GeoLookup {
+    pub fn new() -> Self {
+        GeoLookup
+    }
+}
+
+impl Operator for GeoLookup {
+    fn name(&self) -> &'static str {
+        "GeoLookup"
+    }
+
+    fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
+        match cx.geo_db() {
+            Some(db) => db.lookup(input, cx),
+            None => {
+                ms_dbg!(cx, 4, "Database is not open. Use: SecGeoLookupDb directive.");
+                false
+            }
+        }
     }
 }
 
@@ -95,26 +117,20 @@ fn parse_numeric_host(target: &[u8]) -> Result<std::net::IpAddr, String> {
 }
 
 #[cfg(feature = "maxmind")]
-fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], trans: Option<&mut Transaction<'_>>) -> bool {
+fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], cx: &mut dyn Context) -> bool {
     use maxminddb::PathElement::Key;
 
     let ip = match parse_numeric_host(target) {
         Ok(ip) => ip,
         Err(msg) => {
-            crate::ms_dbg_opt!(
-                trans.as_deref(),
-                4,
-                "MaxMind: Error from getaddrinfo for: {}. {}",
-                String::from_utf8_lossy(target),
-                msg
-            );
+            ms_dbg!(cx, 4, "MaxMind: Error from getaddrinfo for: {}. {}", String::from_utf8_lossy(target), msg);
             return false;
         }
     };
 
     if ip.is_ipv6() && reader.metadata().ip_version == 4 {
-        crate::ms_dbg_opt!(
-            trans.as_deref(),
+        ms_dbg!(
+            cx,
             4,
             "MaxMind: Got an error from libmaxminddb: You attempted to look up an IPv6 address in an IPv4-only database"
         );
@@ -124,11 +140,7 @@ fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], trans: Opt
     let r = match reader.lookup(ip) {
         Ok(r) => r,
         Err(_) => {
-            crate::ms_dbg_opt!(
-                trans.as_deref(),
-                4,
-                "MaxMind: Got an error from libmaxminddb: The MaxMind DB file's search tree is corrupt"
-            );
+            ms_dbg!(cx, 4, "MaxMind: Got an error from libmaxminddb: The MaxMind DB file's search tree is corrupt");
             return false;
         }
     };
@@ -136,11 +148,6 @@ fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], trans: Opt
     if !r.has_data() {
         return false;
     }
-
-    // The C++ code dereferences the transaction unconditionally here.
-    let Some(t) = trans else {
-        return true;
-    };
 
     let strings: [(&[u8], &[maxminddb::PathElement<'_>]); 5] = [
         (b"COUNTRY_CODE", &[Key("country"), Key("iso_code")]),
@@ -151,7 +158,7 @@ fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], trans: Opt
     ];
     for (name, path) in strings {
         if let Ok(Some(v)) = r.decode_path::<String>(path) {
-            t.vars.geo.set(name, v.as_bytes(), 0);
+            cx.set_geo(name, v.as_bytes());
         }
     }
 
@@ -160,7 +167,7 @@ fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], trans: Opt
     for (name, path) in doubles {
         if let Ok(Some(v)) = r.decode_path::<f64>(path) {
             // std::to_string(double)
-            t.vars.geo.set(name, format!("{:.6}", v).as_bytes(), 0);
+            cx.set_geo(name, format!("{:.6}", v).as_bytes());
         }
     }
 
@@ -170,6 +177,7 @@ fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], trans: Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestContext;
 
     #[test]
     fn open_and_lookup() {
@@ -182,23 +190,39 @@ mod tests {
 
         #[cfg(feature = "maxmind")]
         {
-            use crate::instance::ModSecurity;
-            use crate::rules_set::RulesSet;
+            let db = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test/test-cases/data/GeoIP2-City-Test.mmdb");
+            let g = GeoDb::open(db).unwrap();
 
-            let db = format!("{}/test/test-cases/data/GeoIP2-City-Test.mmdb", env!("CARGO_MANIFEST_DIR"));
-            let g = GeoDb::open(&db).unwrap();
-
-            let ms = ModSecurity::new();
-            let rules = RulesSet::new();
-            let mut t = Transaction::new(&ms, &rules, None);
-            assert!(g.lookup(b"200.249.12.31", Some(&mut t)));
-            let mut l = Vec::new();
-            t.vars.geo.resolve(&mut l);
-            let get = |k: &[u8]| l.iter().find(|v| v.key() == k).map(|v| v.value().to_vec());
+            let mut cx = TestContext::default();
+            assert!(g.lookup(b"200.249.12.31", &mut cx));
+            let get = |k: &[u8]| cx.geo.iter().find(|(name, _)| name == k).map(|(_, v)| v.clone());
             assert_eq!(get(b"COUNTRY_NAME"), Some(b"Brazil".to_vec()));
             assert_eq!(get(b"COUNTRY_CODE"), Some(b"BR".to_vec()));
-            assert!(!g.lookup(b"www.modsecurity.org", None));
-            assert!(!g.lookup(b"127.0.0.1", None));
+
+            let mut cx = TestContext::default();
+            assert!(!g.lookup(b"www.modsecurity.org", &mut cx));
+            assert!(!g.lookup(b"127.0.0.1", &mut cx));
+            assert!(cx.geo.is_empty());
+        }
+    }
+
+    /// The operator asks its context for the database.
+    #[test]
+    fn the_operator() {
+        let op = GeoLookup::new();
+        assert_eq!((op.name(), op.param().is_none()), ("GeoLookup", true));
+        // No `SecGeoLookupDb`.
+        let mut cx = TestContext::default();
+        assert!(!op.evaluate(&mut cx, b"200.249.12.31"));
+
+        #[cfg(feature = "maxmind")]
+        {
+            let db = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test/test-cases/data/GeoIP2-City-Test.mmdb");
+            let mut cx =
+                TestContext { geo_db: Some(std::sync::Arc::new(GeoDb::open(db).unwrap())), ..Default::default() };
+            assert!(op.evaluate(&mut cx, b"200.249.12.31"));
+            assert!(cx.geo.contains(&(b"COUNTRY_CODE".to_vec(), b"BR".to_vec())));
+            assert!(!op.evaluate(&mut cx, b"127.0.0.1"));
         }
     }
 
