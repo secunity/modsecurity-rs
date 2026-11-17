@@ -1058,3 +1058,31 @@ planted change in one setting changes 147 lines of it.
   from three crates: their users name the crates.
 - The layout table of `MIGRATION.md` described the tree as first ported;
   it shows where the C++ code is now.
+
+## Request body processing in steps
+
+`Transaction::process_request_body` was one function of 202 lines: it
+chose a processor, ran it, reported its result in four copies of the same
+few lines, checked whether the rules get the body, and set the body
+variables. It is 20 lines now, and `transaction/body.rs` has the steps:
+
+- `request_body_processor` says which `Processor` parses the body (`Xml`,
+  `Json`, `Multipart`, `UrlEncoded`, `Missing` for a known type without a
+  processor, `None`);
+- `parse_xml_body` and `parse_json_body` return `Result<(), String>`, and
+  `set_reqbody_result` reports any of them (`REQBODY_ERROR`,
+  `REQBODY_PROCESSOR_ERROR` and their messages); `parse_multipart_body`
+  also reports form data over `SecRequestBodyNoFilesLimit`;
+- `request_body_access` and `set_request_body_variables` are the two
+  steps after parsing.
+
+The XML and multipart processors write to the transaction while they read
+the body, so the body was copied for them. It is taken out of the
+transaction for the call and put back instead (nothing reads it
+meanwhile).
+
+Checked by running the old function (kept as a test-only method for the
+comparison, then removed) and the new one on the body fuzz corpus as each
+of six content types and none, with the body limit and body access
+settings and `ctl:requestBodyAccess` varied: 76,636 requests with the
+same debug log at level 9 and the same intervention.

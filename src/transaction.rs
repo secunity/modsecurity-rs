@@ -46,7 +46,7 @@ use crate::variables::anchored_variable::AnchoredVariable;
 use crate::variables::variable::Variable;
 use crate::variables::variable_value::VariableValue;
 use modsecurity_body::json::Json;
-use modsecurity_body::multipart::{Multipart, MultipartPartTmpFile};
+use modsecurity_body::multipart::MultipartPartTmpFile;
 #[cfg(feature = "libxml2")]
 use modsecurity_body::xml::Xml;
 use modsecurity_transformations::url::uri_decode;
@@ -737,194 +737,12 @@ impl<'a> Transaction<'a> {
             self.vars.inbound_data_error.set(b"0", 0);
         }
 
-        // Process the request body even if there is nothing to be done.
-        let a = self.vars.request_headers.resolve_first(b"Content-Type");
-        let props = &self.rules.properties;
-
-        let mut request_body_no_files_limit_exceeded = false;
-        if (self.body.request_body_type == RequestBodyType::WWWFormUrlEncoded
-            || self.body.request_body_processor == RequestBodyType::JSONRequestBody
-            || self.body.request_body_processor == RequestBodyType::XMLRequestBody)
-            && let Some(limit) = props.settings.request_body_no_files_limit
-            && self.http.request_body.len() as u64 > limit
-        {
-            self.vars.reqbody_error.set(b"1", 0);
-            self.vars.reqbody_error_msg.set(b"Request body excluding files is bigger than the maximum expected.", 0);
-            let off = self.vars.offset;
-            self.vars.inbound_data_error.set(b"1", off);
-            crate::ms_dbg!(
-                self,
-                5,
-                "Request body excluding files is bigger than the maximum expected. Limit: {}",
-                limit
-            );
-            request_body_no_files_limit_exceeded = true;
-        }
-
-        let set_error = |t: &mut Self, prefix: &str, error: &str, both_msgs: bool| {
-            let off = t.vars.offset;
-            let msg = format!("{}{}", prefix, error);
-            t.vars.reqbody_error.set(b"1", off);
-            t.vars.reqbody_processor_error.set(b"1", off);
-            t.vars.reqbody_error_msg.set(msg.as_bytes(), off);
-            if both_msgs {
-                t.vars.reqbody_processor_error_msg.set(msg.as_bytes(), off);
-            }
-        };
-        let set_ok = |t: &mut Self| {
-            let off = t.vars.offset;
-            t.vars.reqbody_error.set(b"0", off);
-            t.vars.reqbody_processor_error.set(b"0", off);
-        };
-
-        #[allow(unused_mut)]
-        let mut handled = false;
-        #[cfg(feature = "libxml2")]
-        if self.body.request_body_processor == RequestBodyType::XMLRequestBody {
-            handled = true;
-            // large size might cause issues in the parsing itself; omit if
-            // exceeded
-            if !request_body_no_files_limit_exceeded {
-                let body = self.http.request_body.clone();
-                let mut xml = self.body.xml.take().unwrap_or_else(|| Box::new(Xml::new()));
-                let mut error = None;
-                if xml.init(self) {
-                    // The error of `complete` replaces that of `process_chunk`.
-                    error = xml.process_chunk(self, &body).err();
-                    error = xml.complete(self).err().or(error);
-                }
-                self.body.xml = Some(xml);
-                if let Some(error) = error {
-                    set_error(self, "XML parsing error: ", &error, true);
-                } else {
-                    set_ok(self);
-                }
-            }
-        }
-        if handled {
-            // done
-        } else if self.body.request_body_processor == RequestBodyType::JSONRequestBody {
-            if !request_body_no_files_limit_exceeded {
-                if let Some(depth) = self.rules.properties.settings.request_body_json_depth_limit {
-                    self.body.json.set_max_depth(depth);
-                }
-                let mut arguments = ArgumentWriter {
-                    vars: &mut self.vars,
-                    combined_size: &mut self.http.args_combined_size_double,
-                    rules: self.rules,
-                    id: &self.id,
-                    uri: &self.http.uri,
-                };
-                let result =
-                    self.body.json.parse(&self.http.request_body, |key, value| arguments.add("JSON", key, value, 0));
-                if let Err(error) = result
-                    && !self.http.request_body.is_empty()
-                {
-                    set_error(self, "JSON parsing error: ", &error, true);
-                } else {
-                    set_ok(self);
-                }
-            }
-        } else if self.body.request_body_type == RequestBodyType::MultiPartRequestBody {
-            let body = self.http.request_body.clone();
-            let mut error = None;
-            let mut reqbody_no_files_length: u64 = 0;
-            if let Some(a) = &a {
-                let mut m = Multipart::new(a);
-                if m.init(self) {
-                    let off = self.vars.offset;
-                    m.process(self, &body, off);
-                }
-                reqbody_no_files_length = m.reqbody_no_files_length as u64;
-                m.multipart_complete(self);
-                error = m.error().map(str::to_owned);
-            }
-            let limit = self.rules.properties.settings.request_body_no_files_limit;
-            if let Some(error) = error {
-                set_error(self, "Multipart parsing error: ", &error, true);
-            } else if let Some(limit) = limit
-                && reqbody_no_files_length > limit
-            {
-                self.vars.reqbody_error.set(b"1", 0);
-                self.vars
-                    .reqbody_error_msg
-                    .set(b"Request body excluding files is bigger than the maximum expected.", 0);
-                let off = self.vars.offset;
-                self.vars.inbound_data_error.set(b"1", off);
-                crate::ms_dbg!(
-                    self,
-                    5,
-                    "Request body excluding files is bigger than the maximum expected. Limit: {}",
-                    limit
-                );
-            } else {
-                set_ok(self);
-            }
-        } else if self.body.request_body_type == RequestBodyType::WWWFormUrlEncoded {
-            self.vars.offset += 1;
-            if !request_body_no_files_limit_exceeded {
-                let off = self.vars.offset;
-                ArgumentWriter {
-                    vars: &mut self.vars,
-                    combined_size: &mut self.http.args_combined_size_double,
-                    rules: self.rules,
-                    id: &self.id,
-                    uri: &self.http.uri,
-                }
-                .extract("POST", &self.http.request_body, off);
-            }
-        } else if self.body.request_body_type != RequestBodyType::UnknownFormat {
-            let error = a.as_ref().map(|a| String::from_utf8_lossy(a).into_owned()).unwrap_or_default();
-            set_error(self, "Unknown request body processor: ", &error, true);
-        } else {
-            set_ok(self);
-        }
-
-        let props = &self.rules.properties;
-        if props.settings.sec_request_body_access == Some(false) {
-            if self.ctl.request_body_access != Some(true) {
-                crate::ms_dbg!(self, 4, "Request body processing is disabled");
-                return;
-            } else {
-                crate::ms_dbg!(
-                    self,
-                    4,
-                    "Request body processing is disabled, but enabled to this transaction due to ctl:requestBodyAccess action"
-                );
-            }
-        } else if self.ctl.request_body_access == Some(false) {
-            crate::ms_dbg!(
-                self,
-                4,
-                "Request body processing is enabled, but disabled to this transaction due to ctl:requestBodyAccess action"
-            );
+        // The body is parsed even when the rules are not given it.
+        self.parse_request_body();
+        if !self.request_body_access() {
             return;
         }
-
-        // FULL_REQUEST
-        let mut full_request: Vec<u8> = Vec::new();
-        let mut l: Vec<VariableValue> = Vec::new();
-        self.vars.request_headers.resolve(&mut l);
-        for h in &l {
-            full_request.extend_from_slice(h.key());
-            full_request.extend_from_slice(b": ");
-            full_request.extend_from_slice(h.value());
-            full_request.push(b'\n');
-        }
-        full_request.extend_from_slice(b"\n\n");
-        full_request.extend_from_slice(&self.http.request_body);
-        let off = self.vars.offset;
-        self.vars.full_request.set(&full_request, off);
-        self.vars.full_request_length.set(full_request.len().to_string().as_bytes(), off);
-
-        if !self.http.request_body.is_empty() {
-            self.vars.request_body.set(&self.http.request_body, off);
-            self.vars.request_body_length.set_with_len(
-                self.http.request_body.len().to_string().as_bytes(),
-                off,
-                self.http.request_body.len(),
-            );
-        }
+        self.set_request_body_variables();
 
         self.evaluate_phase(Phases::RequestBody);
     }
