@@ -1,5 +1,5 @@
-//! Port of `src/ngx_http_modsecurity_module.c`: module definition,
-//! directives, configuration, request context and intervention handling.
+//! The nginx module: its definition, its directives and configuration, and
+//! the registration of its handlers and filters.
 
 use core::ffi::{c_char, c_void};
 use core::mem::offset_of;
@@ -19,12 +19,12 @@ use nginx_sys::{
 };
 use ngx::core::Pool;
 
+use crate::access::ngx_http_modsecurity_access_handler;
+use crate::body_filter::ngx_http_modsecurity_body_filter_init;
+use crate::context::{LocConf, MODSECURITY_NGINX_WHOAMI, MainConf};
+use crate::header_filter::ngx_http_modsecurity_header_filter_init;
+use crate::log::ngx_http_modsecurity_log_handler;
 use crate::nginx::Log;
-use crate::ngx_http_modsecurity_access::ngx_http_modsecurity_access_handler;
-use crate::ngx_http_modsecurity_body_filter::ngx_http_modsecurity_body_filter_init;
-use crate::ngx_http_modsecurity_common::{LocConf, MODSECURITY_NGINX_WHOAMI, MainConf};
-use crate::ngx_http_modsecurity_header_filter::ngx_http_modsecurity_header_filter_init;
-use crate::ngx_http_modsecurity_log::ngx_http_modsecurity_log_handler;
 
 /// `NGX_CONF_UNSET_PTR`
 const NGX_CONF_UNSET_PTR: *mut ngx_http_complex_value_t = usize::MAX as *mut ngx_http_complex_value_t;

@@ -2,8 +2,8 @@
 
 use nginx_sys::{NGX_OK, ngx_http_request_t, ngx_int_t};
 
+use crate::context::Ctx;
 use crate::nginx::Request;
-use crate::ngx_http_modsecurity_common::Ctx;
 
 /// The logging step shared by the log phase handler and early logging on
 /// interventions (`msc_process_logging`).

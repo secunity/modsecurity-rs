@@ -6,9 +6,9 @@ use nginx_sys::{
     ngx_http_request_t, ngx_int_t,
 };
 
+use crate::context::{Ctx, loc_conf};
 use crate::intervention::process_intervention;
 use crate::nginx::Request;
-use crate::ngx_http_modsecurity_common::{Ctx, loc_conf};
 
 /// Post handler of `ngx_http_read_client_request_body`; resumes the phases
 /// once the body is read (`ngx_http_modsecurity_request_read`).

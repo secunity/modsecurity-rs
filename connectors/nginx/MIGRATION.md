@@ -6,12 +6,13 @@ Source: ModSecurity-nginx v1.0.4 (commit `28bfa42`).
 
 | C | Rust |
 |---|---|
-| `src/ngx_http_modsecurity_common.h` | `src/ngx_http_modsecurity_common.rs` (versions, `Ctx`, `MainConf`, `LocConf`) |
-| `src/ngx_http_modsecurity_module.c` | `src/ngx_http_modsecurity_module.rs` (module, directives, configuration, request context, interventions) |
-| `src/ngx_http_modsecurity_access.c` | `src/ngx_http_modsecurity_access.rs` |
-| `src/ngx_http_modsecurity_header_filter.c` | `src/ngx_http_modsecurity_header_filter.rs` |
-| `src/ngx_http_modsecurity_body_filter.c` | `src/ngx_http_modsecurity_body_filter.rs` |
-| `src/ngx_http_modsecurity_log.c` | `src/ngx_http_modsecurity_log.rs` |
+| `src/ngx_http_modsecurity_common.h` | `src/context.rs` (versions, `Ctx`, `MainConf`, `LocConf`) |
+| `src/ngx_http_modsecurity_module.c` | `src/module.rs` (module, directives, configuration), `src/context.rs` (the request context), `src/intervention.rs` |
+| `src/ngx_http_modsecurity_access.c` | `src/access.rs` |
+| `src/ngx_http_modsecurity_header_filter.c` | `src/header_filter.rs` |
+| `src/ngx_http_modsecurity_body_filter.c` | `src/body_filter.rs` |
+| `src/ngx_http_modsecurity_log.c` | `src/log.rs` |
+| the accesses to nginx's structures, throughout the C files | `src/nginx.rs` (`Request`, `Log`, `Buffers`) |
 | `config` (nginx build glue) | `Cargo.toml` + `build.rs` (ngx-rust / nginx-sys) |
 | `src/ddebug.h` | the `ddebug` cargo feature (rule set dumps while merging) |
 

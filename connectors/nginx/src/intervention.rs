@@ -2,9 +2,9 @@
 
 use nginx_sys::{NGX_HTTP_INTERNAL_SERVER_ERROR, NGX_LOG_ERR, ngx_int_t, ngx_uint_t};
 
+use crate::context::{Ctx, loc_conf};
+use crate::log::process_logging;
 use crate::nginx::Request;
-use crate::ngx_http_modsecurity_common::{Ctx, loc_conf};
-use crate::ngx_http_modsecurity_log::process_logging;
 
 /// Applies a pending intervention to the request
 /// (`ngx_http_modsecurity_process_intervention`). Returns the HTTP status
@@ -42,7 +42,7 @@ pub fn process_intervention(ctx: &mut Ctx, request: &Request<'_>, early_log: boo
             return NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t;
         };
         #[cfg(feature = "sanity-checks")]
-        crate::ngx_http_modsecurity_header_filter::store_header(ctx, request, _location.0, _location.1);
+        crate::header_filter::store_header(ctx, request, _location.0, _location.1);
         return status as ngx_int_t;
     }
 

@@ -7,10 +7,10 @@ use nginx_sys::{
     ngx_http_top_body_filter, ngx_int_t,
 };
 
+use crate::context::Ctx;
 use crate::intervention::process_intervention;
+use crate::module::ngx_http_modsecurity_module;
 use crate::nginx::{Buffers, Request};
-use crate::ngx_http_modsecurity_common::Ctx;
-use crate::ngx_http_modsecurity_module::ngx_http_modsecurity_module;
 
 static mut NGX_HTTP_NEXT_BODY_FILTER: ngx_http_output_body_filter_pt = None;
 
@@ -58,7 +58,7 @@ fn headers_not_inspected(request: &Request<'_>, ctx: &Ctx) -> usize {
 fn inspect_body(request: &Request<'_>, ctx: &mut Ctx, buffers: Buffers<'_>) -> Outcome {
     #[cfg(feature = "sanity-checks")]
     {
-        let enabled = crate::ngx_http_modsecurity_common::loc_conf(request)
+        let enabled = crate::context::loc_conf(request)
             .is_some_and(|conf| conf.sanity_checks_enabled != nginx_sys::NGX_CONF_UNSET as nginx_sys::ngx_flag_t);
         if enabled && headers_not_inspected(request, ctx) > 0 {
             return Outcome::Finalize(NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t);

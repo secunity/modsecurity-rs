@@ -9,8 +9,8 @@ use modsecurity::RulesSet;
 use modsecurity::Transaction;
 use nginx_sys::{ngx_flag_t, ngx_http_complex_value_t, ngx_pool_t, ngx_uint_t};
 
+use crate::module::ngx_http_modsecurity_module;
 use crate::nginx::Request;
-use crate::ngx_http_modsecurity_module::ngx_http_modsecurity_module;
 
 /// TAG_NUM:
 ///

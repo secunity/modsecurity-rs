@@ -5,10 +5,10 @@ use core::ptr;
 
 use nginx_sys::{ngx_http_output_header_filter_pt, ngx_http_request_t, ngx_http_top_header_filter, ngx_int_t};
 
+use crate::context::Ctx;
 use crate::intervention::process_intervention;
+use crate::module::ngx_http_modsecurity_module;
 use crate::nginx::Request;
-use crate::ngx_http_modsecurity_common::Ctx;
-use crate::ngx_http_modsecurity_module::ngx_http_modsecurity_module;
 
 static mut NGX_HTTP_NEXT_HEADER_FILTER: ngx_http_output_header_filter_pt = None;
 
@@ -25,11 +25,10 @@ fn add_header(request: &Request<'_>, ctx: &mut Ctx, name: &[u8], value: &[u8]) {
 /// (`ngx_http_modsecurity_store_ctx_header`).
 #[cfg(feature = "sanity-checks")]
 pub fn store_header(ctx: &mut Ctx, request: &Request<'_>, name: &[u8], value: &[u8]) {
-    let enabled = crate::ngx_http_modsecurity_common::loc_conf(request)
+    let enabled = crate::context::loc_conf(request)
         .is_some_and(|conf| conf.sanity_checks_enabled != nginx_sys::NGX_CONF_UNSET as nginx_sys::ngx_flag_t);
     if enabled {
-        ctx.sanity_headers_out
-            .push(crate::ngx_http_modsecurity_common::Header { name: name.to_vec(), value: value.to_vec() });
+        ctx.sanity_headers_out.push(crate::context::Header { name: name.to_vec(), value: value.to_vec() });
     }
 }
 

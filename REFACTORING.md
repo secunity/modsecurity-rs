@@ -1145,3 +1145,8 @@ block reading and writing nginx's structures through raw pointers. Now:
 The directives, the phases and what is sent to ModSecurity, in which
 order, are unchanged. The number of `unsafe` blocks is not lower (they
 are smaller, one per nginx access): what changed is where they are.
+
+The files are named after what they hold, not after the C files:
+`module.rs`, `context.rs`, `access.rs`, `header_filter.rs`,
+`body_filter.rs`, `log.rs`, `intervention.rs`, `nginx.rs`. The exported
+`ngx_http_modsecurity_module` symbol keeps its name.
