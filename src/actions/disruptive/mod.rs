@@ -1,4 +1,4 @@
-//! `actions::disruptive` (mirrors `src/actions/disruptive/`).
+//! The disruptive actions: `allow`, `deny`, `drop`, `pass`, `redirect`.
 
 pub mod allow;
 pub mod deny;

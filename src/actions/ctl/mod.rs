@@ -1,4 +1,4 @@
-//! `actions::ctl` (mirrors `src/actions/ctl/`).
+//! The `ctl:` actions: settings changed for one transaction.
 
 pub mod audit_engine;
 pub mod audit_log_parts;

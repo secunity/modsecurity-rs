@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use crate::request_body_processor::multipart::{self, Entries, Flag, MultipartPartTmpFile, Uploads};
 use crate::transaction::Transaction;
+use modsecurity_body::multipart::{self, Entries, Flag, MultipartPartTmpFile, Uploads};
 
 impl multipart::Context for Transaction<'_> {
     fn offset(&self) -> usize {
@@ -92,14 +92,14 @@ impl Transaction<'_> {
 }
 
 #[cfg(feature = "libxml2")]
-impl crate::request_body_processor::xml::Context for Transaction<'_> {
+impl modsecurity_body::xml::Context for Transaction<'_> {
     fn external_entities(&self) -> bool {
         self.rules.properties.settings.sec_xml_external_entity == Some(true)
     }
 
-    fn args_mode(&self) -> crate::request_body_processor::xml::IntoArgs {
-        use crate::request_body_processor::xml::IntoArgs;
+    fn args_mode(&self) -> modsecurity_body::xml::IntoArgs {
         use crate::rules_set::properties::ParseXmlIntoArgs;
+        use modsecurity_body::xml::IntoArgs;
         match self.ctl.parse_xml_into_args {
             Some(ParseXmlIntoArgs::On) => IntoArgs::On,
             Some(ParseXmlIntoArgs::OnlyArgs) => IntoArgs::OnlyArgs,
@@ -110,4 +110,13 @@ impl crate::request_body_processor::xml::Context for Transaction<'_> {
     fn add_argument(&mut self, name: &[u8], value: &[u8]) -> bool {
         Transaction::add_argument(self, "XML", name, value, 0)
     }
+}
+
+/// The body processors through a transaction (each is tested alone in the
+/// `modsecurity-body` crate).
+#[cfg(test)]
+pub(crate) mod tests {
+    mod json;
+    pub(crate) mod multipart;
+    mod xml;
 }

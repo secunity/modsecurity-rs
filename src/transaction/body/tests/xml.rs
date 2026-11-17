@@ -4,9 +4,9 @@ mod tests {
     use crate::actions::xmlns::XmlNS;
     use crate::instance::ModSecurity;
     use crate::operators::operator::Operator;
-    use crate::request_body_processor::multipart_tests::test_support::{log, new_rules, run};
     use crate::rule::{Rule, RuleKind};
     use crate::rules_set::properties::ParseXmlIntoArgs;
+    use crate::transaction::body::tests::multipart::test_support::{log, new_rules, run};
     use crate::transaction::{RequestBodyType, Transaction};
     use crate::variables::variable_value::VariableValue;
     use crate::variables::{VariableSelector, new_variable};

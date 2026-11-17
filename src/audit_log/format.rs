@@ -7,8 +7,8 @@ use crate::rule::message::LogParts;
 use crate::rules_set::properties::rule_engine_state_string;
 use crate::transaction::Transaction;
 use crate::unique_id::UniqueId;
-use crate::utils::json::JsonGen;
 use crate::utils::string::{asc_time, dash_if_empty, double_to_string, to_hex_if_needed};
+use modsecurity_compat::json::JsonGen;
 
 /// The index line of the native audit log format for an entry stored
 /// in its own file (`SecAuditLogType Concurrent`).

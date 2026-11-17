@@ -130,12 +130,12 @@ fn sorted_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
 
 /// The rules of each test of the regression JSON files.
 fn regression_configs() -> Vec<Config> {
-    use crate::utils::json::JsonValue;
+    use modsecurity_compat::json::JsonValue;
     let dir = repo().join("test/test-cases/regression");
     let mut out = Vec::new();
     for f in sorted_files(&dir, "json") {
         let Ok(bytes) = std::fs::read(&f) else { continue };
-        let Ok(v) = crate::utils::json::parse_tree(&bytes) else {
+        let Ok(v) = modsecurity_compat::json::parse_tree(&bytes) else {
             continue;
         };
         let tests = match v {

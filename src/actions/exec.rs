@@ -2,7 +2,7 @@
 
 use crate::actions::action::{Action, name_and_payload};
 use crate::actions::context::ActionContext;
-use crate::engine::lua::Lua;
+use crate::lua::Lua;
 use crate::utils::system::find_resource;
 
 #[derive(Debug)]

@@ -138,7 +138,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
 dependencies = [
  "memchr",
- "regex-automata",
  "serde_core",
 ]
 
@@ -731,7 +730,6 @@ name = "modsecurity"
 version = "3.0.17"
 dependencies = [
  "bitflags",
- "bstr",
  "bytes",
  "curl",
  "dns-lookup",
@@ -740,7 +738,6 @@ dependencies = [
  "http-body-util",
  "jiff",
  "libc",
- "libinjection",
  "maxminddb",
  "md-5",
  "mlua",

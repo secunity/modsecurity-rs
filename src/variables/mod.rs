@@ -22,7 +22,7 @@ pub mod xml;
 /// The resolved values and their origin (the `modsecurity-types` crate).
 pub(crate) use modsecurity_types::{variable_origin, variable_value};
 
-use crate::utils::regex::Regex;
+use modsecurity_native::regex::Regex;
 use variable::{CollectionKey, Source, Variable, regex_name};
 
 /// How a variable is selected in a rule target: `ARGS`, `ARGS:foo`,

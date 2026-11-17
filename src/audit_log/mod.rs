@@ -6,7 +6,7 @@ pub mod writer;
 
 use crate::audit_log::writer::Writer;
 use crate::transaction::Transaction;
-use crate::utils::regex::Regex;
+use modsecurity_native::regex::Regex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditLogType {

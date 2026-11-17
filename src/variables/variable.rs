@@ -9,7 +9,6 @@
 use crate::rule::Rule;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{Transaction, TransactionAnchoredVariables};
-use crate::utils::regex::Regex;
 use crate::utils::string::toupper_str;
 use crate::variables::anchored_set_variable::AnchoredSetVariable;
 use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
@@ -18,6 +17,7 @@ use crate::variables::computed::Computed;
 use crate::variables::persistent::Persistent;
 use crate::variables::variable_value::VariableValue;
 use crate::variables::{VariableSelector, env, rule, xml};
+use modsecurity_native::regex::Regex;
 
 pub use modsecurity_types::key_exclusions::{KeyExclusion, KeyExclusions};
 

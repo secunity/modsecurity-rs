@@ -4,27 +4,27 @@ Source: libmodsecurity v3.0.17 (`ModSecurity` repository, commit `1ebdc390`).
 
 ## Layout
 
-The module tree follows the C++ tree: a `.h`/`.cc` pair is usually one `.rs`
-file with the same name (hyphens become underscores). Where the C++ files
-only existed to hold one class each, they were folded together (see the
-table and "How C++ constructs were expressed").
+The port started as the C++ tree file by file. It has been reorganized
+since (`REFACTORING.md` has each step); this is where the C++ code is now:
 
 | C++ | Rust |
 |---|---|
-| `headers/modsecurity/*.h` (public API) | `src/*.rs` (crate root): `instance` (`ModSecurity`), `phases`, `transaction`, `rules_set/` (`mod`: `RulesSet`; `properties`, `phases`, `exceptions`), `rule/` (`mod`: `Rule`; `with_actions`, `with_operator`, `unconditional`, `script`, `marker`, `message`), `intervention`; `variables/` (`anchored_*`; `variable_value`, `variable_origin` from the `modsecurity-types` crate) |
-| `headers/modsecurity/actions/action.h` | `src/actions/action.rs` |
-| `headers/modsecurity/collection/*.h` | `src/collection/{mod,collections}.rs` |
-| `headers/modsecurity/audit_log.h`, `debug_log.h` | `src/audit_log/mod.rs`, `src/debug_log.rs` |
-| `src/actions/{,ctl,data,disruptive,transformations}/` | `src/actions/...` (same subdirectories) |
-| `src/operators/` | `src/operators/` |
-| `src/variables/*.h` (one header per variable) | `src/variables/`: `variable.rs` (the target type), `mod.rs` (the table of variables), and `persistent`, `rule`, `env`, `xml`, `computed` for the ones with logic of their own |
-| `src/actions/transformations/*.cc` | `src/actions/transformations/` (one `Transformation` type; the functions keep their files) |
-| `src/audit_log/writer/`, `src/collection/backend/` | same paths |
-| `src/request_body_processor/`, `src/engine/lua.cc` | same paths |
-| `src/parser/seclang-scanner.ll`, `seclang-parser.yy`, `driver.cc` | `src/parser/seclang_scanner.rs`, `seclang_parser.rs`, `driver.rs` |
-| `src/utils/` | `src/utils/` (+ `json.rs`, `unordered_multimap.rs`, see below) |
+| `headers/modsecurity/*.h` (public API) | the `modsecurity` crate (`src/`): `instance` (`ModSecurity`), `transaction`, `rules_set/` (`RulesSet`; `properties`, `exceptions`, `entry`, `marker`), `rule/` (`Rule`; `sec_rule`, `sec_action`, `sec_rule_script`, `message`), `intervention`, `phases` |
+| the C API (`msc_*`) | `crates/modsecurity-capi` (`libmodsecurity.so.3`) |
+| `headers/modsecurity/actions/action.h`, `src/actions/{,ctl,data,disruptive}/` | `src/actions/` (same subdirectories; `rule_action.rs` is the closed set of actions, `seclang.rs` builds them by name) |
+| `src/actions/transformations/` | `crates/modsecurity-transformations` |
+| `src/operators/` | `crates/modsecurity-operators`; `@geoLookup` and `@inspectFile` in `src/operators/` |
+| `src/variables/*.h` (one header per variable) | `src/variables/`: `variable.rs` (the target type), `names.rs` (the table of variables), and `persistent`, `rule`, `env`, `xml`, `computed` for the ones with logic of their own; `VariableValue` and `VariableOrigin` in `crates/modsecurity-types` |
+| `headers/modsecurity/collection/*.h`, `src/collection/` | `crates/modsecurity-collections` |
+| `headers/modsecurity/audit_log.h`, `src/audit_log/` | `src/audit_log/` |
+| `headers/modsecurity/debug_log.h` | `src/debug_log.rs` |
+| `src/request_body_processor/` | `crates/modsecurity-body` |
+| `src/engine/lua.cc` | `src/lua.rs` |
+| `src/parser/seclang-scanner.ll`, `seclang-parser.yy` | `crates/modsecurity-seclang` (a `pest` grammar, and the shapes of directive values) and `src/parser/` (`build.rs`, `settings.rs`: what the directives mean) |
+| `src/parser/driver.cc` | `src/parser/driver.rs` |
+| `src/utils/` | `src/utils/` (files, the HTTPS client, GeoIP, digests); string and number helpers, ACMP and the IP tree in `crates/modsecurity-compat`; PCRE2 in `crates/modsecurity-native` |
 | `others/libinjection` (C submodule) | `others/libinjection` (pure Rust crate) |
-| `others/mbedtls` | `md-5` / `sha1` crates; base64 hand-ported in `src/utils/base64.rs` |
+| `others/mbedtls` | `md-5` / `sha1` crates; base64 in `crates/modsecurity-transformations` |
 | `test/regression`, `test/unit`, `test/common` | `test/regression`, `test/unit`, `test/common` (+ `test/suites.rs` for `cargo test`) |
 | `tools/rules-check` | `tools/rules-check` |
 | ModSecurity-nginx v1.0.4 (separate repository) | `connectors/nginx` (workspace member; see its MIGRATION.md) |

@@ -19,7 +19,7 @@ pub(crate) fn evaluate_xpath(_var: &Variable, _t: &Transaction<'_>, _rule: Optio
 /// name) selects.
 #[cfg(feature = "libxml2")]
 pub(crate) fn evaluate_xpath(var: &Variable, t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
-    use crate::utils::libxml2::XPathError;
+    use modsecurity_native::libxml2::XPathError;
 
     // Is there an XML document tree at all?
     let Some(doc) = t.body.xml.as_ref().and_then(|x| x.document()) else {

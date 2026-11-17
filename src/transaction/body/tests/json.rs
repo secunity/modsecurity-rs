@@ -1,8 +1,8 @@
 mod tests {
     use crate::instance::ModSecurity;
-    use crate::request_body_processor::multipart_tests::test_support::{log, new_rules, run};
     use crate::rules_set::properties::parse_config_number;
     use crate::transaction::RequestBodyType;
+    use crate::transaction::body::tests::multipart::test_support::{log, new_rules, run};
 
     fn args(body: &[u8], depth: Option<&str>, limit: Option<&str>) -> (Vec<(String, String)>, String) {
         let ms = ModSecurity::new();

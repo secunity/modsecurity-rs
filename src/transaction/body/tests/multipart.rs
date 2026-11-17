@@ -47,7 +47,7 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::{log, new_rules, run};
     use crate::instance::ModSecurity;
-    use crate::request_body_processor::multipart::*;
+    use modsecurity_body::multipart::*;
 
     fn ct(boundary: &str) -> Vec<u8> {
         format!("multipart/form-data; boundary={}", boundary).into_bytes()
@@ -313,7 +313,7 @@ mod regression_dump {
     use crate::rules_set::RulesSet;
     use crate::rules_set::properties::{ParseXmlIntoArgs, RulesSetProperties, parse_config_number, parse_octal_mode};
     use crate::transaction::{RequestBodyType, Transaction};
-    use crate::utils::json::{JsonValue, parse_tree};
+    use modsecurity_compat::json::{JsonValue, parse_tree};
 
     const PREFIXES: &[&str] = &[
         "Multipart",

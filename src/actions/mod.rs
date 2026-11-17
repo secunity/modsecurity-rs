@@ -1,4 +1,6 @@
-//! `actions` (mirrors `src/actions/`).
+//! The SecLang actions: one module per action, the closed set of them
+//! ([`rule_action::RuleAction`]), what an action may do ([`context`]) and
+//! how the parser builds one by name ([`seclang`]).
 
 pub mod accuracy;
 pub mod action;

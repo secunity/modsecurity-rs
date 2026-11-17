@@ -45,17 +45,16 @@ pub(crate) mod audit_log;
 /// The collections (the `modsecurity-collections` crate).
 pub(crate) use modsecurity_collections as collection;
 pub(crate) mod debug_log;
-pub(crate) mod engine;
 #[cfg(feature = "http")]
 mod http_support;
 pub(crate) mod instance;
 pub(crate) mod intervention;
+pub(crate) mod lua;
 #[cfg(feature = "tower")]
 pub mod middleware;
 pub(crate) mod operators;
 pub(crate) mod parser;
 pub(crate) mod phases;
-pub(crate) mod request_body_processor;
 pub(crate) mod rule;
 pub(crate) mod rules_set;
 pub(crate) mod run_time_string;
@@ -74,9 +73,9 @@ pub mod internal {
     pub use crate::actions::transformation::Transformation;
     pub use crate::operators::operator::{Operator, instantiate as instantiate_operator};
     pub use crate::rule::{Rule, RuleKind};
-    pub use crate::utils::json::{JsonValue, parse_tree};
-    pub use crate::utils::regex::Regex;
     pub use crate::utils::string::to_hex_if_needed;
+    pub use modsecurity_compat::json::{JsonValue, parse_tree};
+    pub use modsecurity_native::regex::Regex;
     pub use modsecurity_operators::libinjection_adapter::{
         InjectionResult, clear_libinjection_overrides_for_testing, set_libinjection_sqli_override_for_testing,
         set_libinjection_xss_override_for_testing,

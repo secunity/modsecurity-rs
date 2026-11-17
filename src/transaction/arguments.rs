@@ -5,8 +5,8 @@
 
 use super::TransactionAnchoredVariables;
 use crate::rules_set::RulesSet;
-use crate::utils::decode::urldecode_nonstrict_inplace;
 use crate::utils::string::{double_to_string, ssplit_pair};
+use modsecurity_transformations::url::urldecode_nonstrict_inplace;
 
 pub(super) struct ArgumentWriter<'a> {
     pub vars: &'a mut TransactionAnchoredVariables,
@@ -91,8 +91,8 @@ impl ArgumentWriter<'_> {
 #[cfg(test)]
 mod tests {
     use crate::instance::ModSecurity;
-    use crate::request_body_processor::multipart_tests::test_support::{log, new_rules};
     use crate::transaction::Transaction;
+    use crate::transaction::body::tests::multipart::test_support::{log, new_rules};
     use crate::variables::variable_origin::VariableOrigin;
 
     #[test]

@@ -85,7 +85,7 @@ impl ModSecurity {
         // audit log boundaries; those now come from the `rand` crate, see
         // `audit_log::writer::generate_boundary`.)
         // (A no-op without libxml2.)
-        crate::request_body_processor::xml::init_parser();
+        modsecurity_body::xml::init_parser();
         ModSecurity {
             global_collection: new_collection("GLOBAL"),
             resource_collection: new_collection("RESOURCE"),
@@ -193,8 +193,8 @@ impl ModSecurity {
     /// one).
     pub fn process_content_offset(content: &[u8], match_string: &str) -> Result<Vec<u8>, String> {
         use crate::actions::transformation::Transformation;
-        use crate::utils::json::JsonGen;
-        use crate::utils::regex::Regex;
+        use modsecurity_compat::json::JsonGen;
+        use modsecurity_native::regex::Regex;
 
         // The regex captures contain decimal digits, so general C++ prefix
         // parsing (whitespace, signs, trailing text) is unnecessary here.

@@ -35,21 +35,21 @@ use crate::collection::collections::Collections;
 use crate::instance::ModSecurity;
 use crate::intervention::Intervention;
 use crate::phases::Phases;
-use crate::request_body_processor::json::Json;
-use crate::request_body_processor::multipart::{Multipart, MultipartPartTmpFile};
-#[cfg(feature = "libxml2")]
-use crate::request_body_processor::xml::Xml;
 use crate::rule::message::RuleMessage;
 use crate::rule::{Rule, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code};
-use crate::utils::decode::uri_decode;
 use crate::utils::string::{double_to_string, is_space, split, ssplit, tolower};
 use crate::variables::anchored_set_variable::AnchoredSetVariable;
 use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::variables::anchored_variable::AnchoredVariable;
 use crate::variables::variable::Variable;
 use crate::variables::variable_value::VariableValue;
+use modsecurity_body::json::Json;
+use modsecurity_body::multipart::{Multipart, MultipartPartTmpFile};
+#[cfg(feature = "libxml2")]
+use modsecurity_body::xml::Xml;
+use modsecurity_transformations::url::uri_decode;
 
 /// Types of request body that ModSecurity may give a special treatment for
 /// the data.

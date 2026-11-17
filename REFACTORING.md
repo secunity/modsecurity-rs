@@ -1045,3 +1045,16 @@ patterns of its value, the `Effect` enum (60 variants), and two long
 
 `parser::tests::dump_outcomes` is byte-identical before and after; a
 planted change in one setting changes 147 lines of it.
+
+## Leftovers of the extractions
+
+- The engine's manifest listed `bstr` and `libinjection`, which nothing
+  in it uses any more.
+- Three modules were shells. `engine/` held only Lua: it is `src/lua.rs`.
+  `request_body_processor/` re-exported the `modsecurity-body` crate and
+  held the tests through a transaction: the engine names the crate, and
+  the tests are `transaction/body/tests/`. `utils` re-exported `regex`,
+  `libxml2`, `base64`, the URL decoder, `json` and `unordered_multimap`
+  from three crates: their users name the crates.
+- The layout table of `MIGRATION.md` described the tree as first ported;
+  it shows where the C++ code is now.

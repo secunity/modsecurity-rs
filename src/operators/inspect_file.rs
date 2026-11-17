@@ -1,12 +1,12 @@
 //! The `@inspectFile` operator: checks the value with a script or an
 //! external program.
 //!
-//! The parameter is either a Lua script (run through `engine::lua::Lua`) or
+//! The parameter is either a Lua script (run through `lua::Lua`) or
 //! an external program that receives the value as its only argument; the
 //! program "matches" when it exits successfully and its output does not
 //! start with `1` (and is longer than one byte).
 
-use crate::engine::lua::Lua;
+use crate::lua::Lua;
 use crate::operators::operator::Param;
 use crate::transaction::Transaction;
 use crate::utils::system::find_resource;

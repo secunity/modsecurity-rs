@@ -87,7 +87,7 @@ fn remote_user(t: &Transaction<'_>) -> Option<(VariableValue, Vec<u8>)> {
     let header = headers.into_iter().next()?;
     let value = header.value();
     let base64: &[u8] = if value.starts_with(b"Basic ") { &value[6..] } else { b"" };
-    let decoded = crate::utils::base64::Base64::decode(base64)?;
+    let decoded = modsecurity_transformations::base64::Base64::decode(base64)?;
     let pos = decoded.iter().position(|&c| c == b':')?;
     let user = decoded[..pos].to_vec();
     Some((header, user))

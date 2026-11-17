@@ -9,9 +9,9 @@
 //! The RESOURCE regex naming quirk is retained; the SESSION deletion quirk
 //! is handled by the writable target in `variable.rs`.
 
-use crate::utils::regex::Regex;
 use crate::variables::VariableSelector;
 use crate::variables::variable::{CollectionKey, Source, Variable};
+use modsecurity_native::regex::Regex;
 
 pub use crate::collection::Persistent;
 

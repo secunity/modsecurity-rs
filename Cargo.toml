@@ -111,13 +111,9 @@ modsecurity-native = { path = "crates/modsecurity-native" }
 modsecurity-transformations = { path = "crates/modsecurity-transformations" }
 # libc constants (errno values, address families).
 libc = "0.2"
-# Byte-string helpers: request data is arbitrary bytes, not UTF-8.
-bstr = "1.13"
 # Replace mbedtls' md5/sha1.
 md-5 = "0.11"
 sha1 = "0.11"
-# Pure-Rust libinjection (SQLi fingerprinting / XSS detection), vendored.
-libinjection = { path = "others/libinjection" }
 mlua = { version = "0.12", features = ["lua54", "vendored"], optional = true }
 maxminddb = { version = "0.32", optional = true }
 # libcurl binding (SecRemoteRules, HTTPS audit log writer, remote pm/ip files).
