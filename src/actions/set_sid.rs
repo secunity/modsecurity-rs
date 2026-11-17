@@ -59,14 +59,17 @@ mod tests {
         assert!(has_log(&t, "RESOURCE initiated with value: 'r1'."));
 
         for (col, field) in [("ip", 0), ("global", 1), ("resource", 2)] {
-            let a = InitCol::with_rts(&format!("initcol:{}=", col), rts("k")).unwrap();
+            let a = InitCol::with_rts("initcol", &format!("{}=", col), rts("k")).unwrap();
             a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
             let c = &t.collections;
             let key = [&c.ip.key, &c.global.key, &c.resource.key][field];
             assert_eq!(key, b"k");
             assert!(has_log(&t, &format!("Collection `{}' initialized with value: k", col)));
         }
-        let e = |a: &str| InitCol::with_rts(a, rts("x")).unwrap_err();
+        let e = |a: &str| {
+            let (name, payload) = crate::actions::action::name_and_payload(a);
+            InitCol::with_rts(name, payload, rts("x")).unwrap_err()
+        };
         assert_eq!(e("initcol:i"), "Something wrong with initcol format: too small");
         assert_eq!(e("initcol:ip"), "Something wrong with initcol format: missing equals sign");
         assert_eq!(

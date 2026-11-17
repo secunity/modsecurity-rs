@@ -2,7 +2,7 @@
 //! `application/x-www-form-urlencoded`. (Unlike the JSON and XML variants
 //! C++ sets the request body *type* here, not the processor; kept.)
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::transaction::RequestBodyType;
 
@@ -12,8 +12,8 @@ pub struct RequestBodyProcessorURLENCODED {
 }
 
 impl RequestBodyProcessorURLENCODED {
-    pub fn new(action: &str) -> Self {
-        RequestBodyProcessorURLENCODED { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        RequestBodyProcessorURLENCODED { name: name.to_string() }
     }
 }
 

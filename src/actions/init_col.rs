@@ -1,7 +1,7 @@
 //! `initcol:ip=%{REMOTE_ADDR}` — selects the record (key) of a persistent
 //! collection for this transaction.
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::collection::Persistent;
 use crate::run_time_string::RunTimeString;
@@ -16,8 +16,7 @@ pub struct InitCol {
 
 impl InitCol {
     /// `action` is `initcol:<collection>=`; `z` is the value.
-    pub fn with_rts(action: &str, z: RunTimeString) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn with_rts(name: &str, payload: &str, z: RunTimeString) -> Result<Self, String> {
         if payload.len() < 2 {
             return Err("Something wrong with initcol format: too small".to_string());
         }

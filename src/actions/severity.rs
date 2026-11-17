@@ -1,6 +1,6 @@
 //! `severity:N` or `severity:'CRITICAL'` — the severity of the rule match.
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::utils::string::stoi;
 
@@ -12,8 +12,7 @@ pub struct Severity {
 
 impl Severity {
     /// The payload is a severity name or its number.
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         let a = payload.to_ascii_lowercase();
         let severity = match a.as_str() {
             "emergency" => 0,
@@ -59,7 +58,12 @@ mod tests {
     use crate::transaction::Transaction;
 
     fn sev(p: &str) -> Result<i32, String> {
-        Severity::new(&format!("severity:{}", p)).map(|s| s.severity)
+        {
+            let text = format!("severity:{}", p);
+            let (name, payload) = crate::actions::action::name_and_payload(&text);
+            Severity::new(name, payload)
+        }
+        .map(|s| s.severity)
     }
 
     #[test]
@@ -75,7 +79,7 @@ mod tests {
     fn evaluate() {
         let ms = ModSecurity::new();
         let rules = rules();
-        let s = Severity::new("severity:2").unwrap();
+        let s = Severity::new("severity", "2").unwrap();
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
@@ -84,7 +88,7 @@ mod tests {
         assert_eq!(rm.severity, 2);
         assert_eq!(t.outcome.highest_severity_action, 2.min(before));
         assert!(has_log(&t, &format!("This rule severity is: 2 current transaction is: {}", before)));
-        let s5 = Severity::new("severity:5").unwrap();
+        let s5 = Severity::new("severity", "5").unwrap();
         s5.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(rm.severity, 5);
         assert_eq!(t.outcome.highest_severity_action, 2.min(before));

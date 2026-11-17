@@ -1,7 +1,7 @@
 //! `skipAfter:MARKER` — skips the rules up to (and including) the
 //! `SecMarker` of that name.
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -11,8 +11,7 @@ pub struct SkipAfter {
 }
 
 impl SkipAfter {
-    pub fn new(action: &str) -> Self {
-        let (name, skip_name) = name_and_payload(action);
+    pub fn new(name: &str, skip_name: &str) -> Self {
         SkipAfter { name: name.to_string(), skip_name: skip_name.to_string() }
     }
 }

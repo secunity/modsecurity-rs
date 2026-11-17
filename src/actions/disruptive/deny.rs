@@ -1,7 +1,7 @@
 //! `deny` — stops the transaction with the configured status (403 by
 //! default).
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -10,8 +10,8 @@ pub struct Deny {
 }
 
 impl Deny {
-    pub fn new(action: &str) -> Self {
-        Deny { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        Deny { name: name.to_string() }
     }
 }
 
@@ -66,13 +66,13 @@ mod tests {
         assert_eq!(t.outcome.intervention, crate::intervention::Intervention::default());
 
         // A status set before is kept.
-        let s = Status::new("status:404").unwrap();
+        let s = Status::new("status", "404").unwrap();
         s.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         Drop::new("drop").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Running action drop [executing deny instead of drop.]"));
         assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (404, true));
         assert!(t.outcome.intervention.log.is_some());
 
-        assert_eq!(Status::new("status:abc").unwrap_err(), "Not a valid number: abc");
+        assert_eq!(Status::new("status", "abc").unwrap_err(), "Not a valid number: abc");
     }
 }

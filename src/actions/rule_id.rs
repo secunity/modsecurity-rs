@@ -1,6 +1,6 @@
 //! `id:N` — the rule id (configuration time).
 
-use crate::actions::action::{Action, Kind, name_and_payload};
+use crate::actions::action::{Action, Kind};
 use crate::rule::Rule;
 
 #[derive(Debug)]
@@ -10,8 +10,7 @@ pub struct RuleId {
 }
 
 impl RuleId {
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, a) = name_and_payload(action);
+    pub fn new(name: &str, a: &str) -> Result<Self, String> {
         // `std::stod`; whatever it accepts must also print back as the very
         // same text, so a stricter parser yields the same verdicts.
         match a.parse::<f64>() {
@@ -47,7 +46,11 @@ mod tests {
     use crate::actions::block::test_support::{RuleAction, rule};
 
     fn id(p: &str) -> Result<i64, String> {
-        let a = RuleId::new(&format!("id:{}", p))?;
+        let a = {
+            let text = format!("id:{}", p);
+            let (name, payload) = crate::actions::action::name_and_payload(&text);
+            RuleId::new(name, payload)
+        }?;
         Ok(rule(vec![RuleAction::from(a)]).rule_id)
     }
 

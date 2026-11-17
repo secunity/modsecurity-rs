@@ -1,7 +1,7 @@
 //! `noauditlog` — the rule match does not make the transaction relevant for
 //! the audit log.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -10,8 +10,8 @@ pub struct NoAuditLog {
 }
 
 impl NoAuditLog {
-    pub fn new(action: &str) -> Self {
-        NoAuditLog { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        NoAuditLog { name: name.to_string() }
     }
 }
 

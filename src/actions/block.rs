@@ -3,7 +3,7 @@
 //! `Rule` (it is kept with the run time actions and flags the
 //! rule as containing a static block action).
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -12,8 +12,8 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn new(action: &str) -> Self {
-        Block { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        Block { name: name.to_string() }
     }
 }
 
@@ -101,7 +101,7 @@ mod tests {
         let defaults = &mut rules.properties.default_actions[Phases::RequestBody.index()];
         defaults.push(Arc::new(Log::new("log").into()));
         defaults.push(Arc::new(Deny::new("deny").into()));
-        let phase = Phase::new("phase:2").unwrap();
+        let phase = Phase::new("phase", "2").unwrap();
         let r = rule(vec![RuleAction::Phase(phase), RuleAction::Block(Block::new("block"))]);
         assert!(r.has_block_action());
 

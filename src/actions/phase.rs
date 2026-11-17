@@ -1,7 +1,7 @@
 //! `phase:N` (or `request`/`response`/`logging`) — the phase in which the
 //! rule runs (configuration time).
 
-use crate::actions::action::{Action, Kind, name_and_payload};
+use crate::actions::action::{Action, Kind};
 use crate::phases::Phases;
 use crate::rule::Rule;
 use crate::utils::string::stoi;
@@ -18,8 +18,7 @@ pub struct Phase {
 impl Phase {
     /// The payload is a phase number (0..5) or `request`, `response` or
     /// `logging`.
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         // `std::stoi` throws for non numbers and for values out of the
         // `int` range.
         let (phase, sec_rules_phase) = match stoi(payload.as_bytes()) {
@@ -69,7 +68,11 @@ mod tests {
     use crate::actions::block::test_support::{RuleAction, rule};
 
     fn phase(p: &str) -> Result<(Option<Phases>, i32), String> {
-        let a = Phase::new(&format!("phase:{}", p))?;
+        let a = {
+            let text = format!("phase:{}", p);
+            let (name, payload) = crate::actions::action::name_and_payload(&text);
+            Phase::new(name, payload)
+        }?;
         let r = (a.phase, a.sec_rules_phase);
         assert_eq!(rule(vec![RuleAction::Phase(a)]).phase(), r.0);
         Ok(r)

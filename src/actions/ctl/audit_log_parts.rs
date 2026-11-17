@@ -1,7 +1,7 @@
 //! `ctl:auditLogParts=+E` / `=-E` — adds or removes audit log parts for
 //! the transaction.
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::audit_log::{Parts, PartsChange};
 
@@ -14,8 +14,7 @@ pub struct AuditLogParts {
 
 impl AuditLogParts {
     /// The payload is `auditLogParts=<+|-><parts>`.
-    pub fn new(action: &str) -> Self {
-        let (name, p) = name_and_payload(action);
+    pub fn new(name: &str, p: &str) -> Self {
         let sign = p.get(14..15).unwrap_or("");
         AuditLogParts {
             name: name.to_string(),

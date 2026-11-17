@@ -406,7 +406,8 @@ mod regression_dump {
             let mut acts: Vec<crate::actions::rule_action::RuleAction> = Vec::new();
             for a in actions.split(',') {
                 if a.starts_with("xmlns:") {
-                    let x = XmlNS::new(a).unwrap();
+                    let (name, payload) = crate::actions::action::name_and_payload(a);
+                    let x = XmlNS::new(name, payload).unwrap();
                     acts.push(crate::actions::rule_action::RuleAction::from(x));
                 }
             }

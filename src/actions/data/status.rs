@@ -1,6 +1,6 @@
 //! `status:N` — the HTTP status code used by the disruptive actions.
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::utils::string::stoi;
 
@@ -11,8 +11,7 @@ pub struct Status {
 }
 
 impl Status {
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         // `std::stoi`: no digits or out of `int` range -> error.
         let status = stoi(payload.as_bytes()).ok_or_else(|| format!("Not a valid number: {}", payload))?;
         Ok(Status { name: name.to_string(), status })

@@ -1,6 +1,6 @@
 //! `ctl:requestBodyProcessor=XML` — parses the request body as XML.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::transaction::RequestBodyType;
 
@@ -10,8 +10,8 @@ pub struct RequestBodyProcessorXML {
 }
 
 impl RequestBodyProcessorXML {
-    pub fn new(action: &str) -> Self {
-        RequestBodyProcessorXML { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        RequestBodyProcessorXML { name: name.to_string() }
     }
 }
 

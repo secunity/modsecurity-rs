@@ -1,7 +1,7 @@
 //! `xmlns:prefix=http://...` — declares an XML namespace for the `XML`
 //! variable's XPath expressions (read by that variable).
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 
 #[derive(Debug)]
 pub struct XmlNS {
@@ -12,8 +12,7 @@ pub struct XmlNS {
 
 impl XmlNS {
     /// The payload is `<prefix>=<href>`.
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         let Some((scope, href)) = payload.split_once('=') else {
             return Err("XMLS: Bad format, missing equals sign.".to_string());
         };
@@ -50,7 +49,12 @@ mod tests {
     use super::*;
 
     fn ns(p: &str) -> Result<(String, String), String> {
-        XmlNS::new(&format!("xmlns:{}", p)).map(|a| (a.scope, a.href))
+        {
+            let text = format!("xmlns:{}", p);
+            let (name, payload) = crate::actions::action::name_and_payload(&text);
+            XmlNS::new(name, payload)
+        }
+        .map(|a| (a.scope, a.href))
     }
 
     #[test]

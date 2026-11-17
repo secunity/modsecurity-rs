@@ -1,6 +1,6 @@
 //! `ctl:requestBodyProcessor=JSON` — parses the request body as JSON.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::transaction::RequestBodyType;
 
@@ -10,8 +10,8 @@ pub struct RequestBodyProcessorJSON {
 }
 
 impl RequestBodyProcessorJSON {
-    pub fn new(action: &str) -> Self {
-        RequestBodyProcessorJSON { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        RequestBodyProcessorJSON { name: name.to_string() }
     }
 }
 

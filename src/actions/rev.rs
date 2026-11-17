@@ -1,6 +1,6 @@
 //! `rev:'1.2'` — the rule revision (configuration time).
 
-use crate::actions::action::{Action, Kind, name_and_payload};
+use crate::actions::action::{Action, Kind};
 use crate::rule::Rule;
 
 #[derive(Debug)]
@@ -10,8 +10,7 @@ pub struct Rev {
 }
 
 impl Rev {
-    pub fn new(action: &str) -> Self {
-        let (name, rev) = name_and_payload(action);
+    pub fn new(name: &str, rev: &str) -> Self {
         Rev { name: name.to_string(), rev: rev.to_string() }
     }
 }

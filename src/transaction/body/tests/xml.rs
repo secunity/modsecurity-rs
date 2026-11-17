@@ -20,7 +20,12 @@ mod tests {
     fn xpath(t: &Transaction<'_>, expr: &str, ns: Option<(&str, &str)>) -> Vec<String> {
         let mut acts: Vec<RuleAction> = Vec::new();
         if let Some((scope, href)) = ns {
-            let x = XmlNS::new(&format!("xmlns:{}={}", scope, href)).unwrap();
+            let x = {
+                let text = format!("xmlns:{}={}", scope, href);
+                let (name, payload) = crate::actions::action::name_and_payload(&text);
+                XmlNS::new(name, payload)
+            }
+            .unwrap();
             acts.push(RuleAction::from(x));
         }
         let rule = Rule::new(Some(acts), None, "f", 1, RuleKind::SecAction);

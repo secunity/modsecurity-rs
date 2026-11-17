@@ -1,6 +1,6 @@
 //! `skip:N` — skips the next N rules (or chains) when the rule matches.
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::utils::string::stoi;
 
@@ -11,8 +11,7 @@ pub struct Skip {
 }
 
 impl Skip {
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         // `std::stoi`: no digits or out of `int` range -> error.
         let skip_next =
             stoi(payload.as_bytes()).ok_or_else(|| format!("Skip: The input \"{}\" is not a number.", payload))?;
@@ -42,18 +41,18 @@ mod tests {
 
     #[test]
     fn skip_and_skip_after() {
-        assert_eq!(Skip::new("skip:a").unwrap_err(), "Skip: The input \"a\" is not a number.");
+        assert_eq!(Skip::new("skip", "a").unwrap_err(), "Skip: The input \"a\" is not a number.");
         let ms = ModSecurity::new();
         let rules = rules();
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
-        let s = Skip::new("skip:2").unwrap();
+        let s = Skip::new("skip", "2").unwrap();
         s.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.eval.skip_next, 2);
         assert!(has_log(&t, "Skipping the next 2 rules."));
 
-        SkipAfter::new("skipAfter:END_HOST_CHECK").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
+        SkipAfter::new("skipAfter", "END_HOST_CHECK").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.eval.marker.as_deref(), Some("END_HOST_CHECK"));
         assert!(has_log(&t, "Setting skipAfter for: END_HOST_CHECK"));
     }

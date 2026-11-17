@@ -1,6 +1,6 @@
 //! `accuracy:N` — the accuracy level of the rule (configuration time).
 
-use crate::actions::action::{Action, Kind, name_and_payload};
+use crate::actions::action::{Action, Kind};
 use crate::rule::Rule;
 use crate::utils::string::stoi;
 
@@ -11,8 +11,7 @@ pub struct Accuracy {
 }
 
 impl Accuracy {
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         // `std::stoi`: no digits or out of `int` range -> error.
         let accuracy =
             stoi(payload.as_bytes()).ok_or_else(|| format!("Accuracy: The input \"{}\" is not a number.", payload))?;
@@ -46,10 +45,10 @@ mod tests {
     /// Configuration actions: accuracy, maturity, rev, ver, chain.
     #[test]
     fn configuration_actions() {
-        let a = Accuracy::new("accuracy:'8'").unwrap();
-        let m = Maturity::new("maturity:9").unwrap();
-        let rev = Rev::new("rev:'2.1.3'");
-        let ver = Ver::new("ver:'CRS/3'");
+        let a = Accuracy::new("accuracy", "8").unwrap();
+        let m = Maturity::new("maturity", "9").unwrap();
+        let rev = Rev::new("rev", "2.1.3");
+        let ver = Ver::new("ver", "CRS/3");
         let c = Chain::new("chain");
         for x in [&a as &dyn Action, &m, &rev, &ver, &c] {
             assert_eq!(x.kind(), Kind::Configuration);
@@ -68,7 +67,7 @@ mod tests {
         assert_eq!(r.ver, "CRS/3");
         assert!(r.is_chained());
 
-        assert_eq!(Accuracy::new("accuracy:x").unwrap_err(), "Accuracy: The input \"x\" is not a number.");
-        assert_eq!(Maturity::new("maturity:").unwrap_err(), "Maturity: The input \"\" is not a number.");
+        assert_eq!(Accuracy::new("accuracy", "x").unwrap_err(), "Accuracy: The input \"x\" is not a number.");
+        assert_eq!(Maturity::new("maturity", "").unwrap_err(), "Maturity: The input \"\" is not a number.");
     }
 }

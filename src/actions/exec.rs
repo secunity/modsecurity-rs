@@ -1,6 +1,6 @@
 //! `exec:/path/to/script.lua` — runs a Lua script when the rule matches.
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::lua::Lua;
 use crate::utils::system::find_resource;
@@ -14,8 +14,7 @@ pub struct Exec {
 
 impl Exec {
     /// Finds and loads the script named by the payload.
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         let lookup = find_resource(payload, "");
         let Some(script) = lookup.path else {
             return Err(format!("exec: Script not found: {}", lookup.looked_at));
@@ -43,7 +42,7 @@ mod tests {
 
     #[test]
     fn script_not_found() {
-        let err = Exec::new("exec:/nonexistent/msrs-script.lua").unwrap_err();
+        let err = Exec::new("exec", "/nonexistent/msrs-script.lua").unwrap_err();
         assert!(err.starts_with("exec: Script not found: Looking at: '/nonexistent/msrs-script.lua'"), "{}", err);
     }
 }

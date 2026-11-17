@@ -4,7 +4,7 @@
 use modsecurity_transformations::Context;
 pub use modsecurity_transformations::Transformation as TransformationKind;
 
-use crate::actions::action::{Action, Kind, name_of};
+use crate::actions::action::{Action, Kind};
 use crate::transaction::Transaction;
 
 /// A transformation (`t:xxx`): an action of kind
@@ -18,8 +18,8 @@ pub struct Transformation {
 }
 
 impl Transformation {
-    pub fn new(kind: TransformationKind, action: &str) -> Self {
-        Transformation { name: name_of(action), kind }
+    pub fn new(kind: TransformationKind, name: &str) -> Self {
+        Transformation { name: name.to_string(), kind }
     }
 
     /// The transformation named `a` (`t:<name>`), looked up as the C++

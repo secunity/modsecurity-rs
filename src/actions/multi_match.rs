@@ -1,7 +1,7 @@
 //! `multiMatch` — a marker: `Rule` records its presence and then
 //! runs the operator against every intermediate transformation result.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 
 #[derive(Debug)]
 pub struct MultiMatch {
@@ -9,8 +9,8 @@ pub struct MultiMatch {
 }
 
 impl MultiMatch {
-    pub fn new(action: &str) -> Self {
-        MultiMatch { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        MultiMatch { name: name.to_string() }
     }
 }
 

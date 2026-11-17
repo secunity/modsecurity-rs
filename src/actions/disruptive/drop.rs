@@ -1,6 +1,6 @@
 //! `drop` — meant to close the connection; executes `deny` instead.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -9,8 +9,8 @@ pub struct Drop {
 }
 
 impl Drop {
-    pub fn new(action: &str) -> Self {
-        Drop { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        Drop { name: name.to_string() }
     }
 }
 

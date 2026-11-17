@@ -1,7 +1,7 @@
 //! `ctl:requestBodyAccess=On|Off` — overrides `SecRequestBodyAccess` for
 //! the transaction.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -12,8 +12,8 @@ pub struct RequestBodyAccess {
 
 impl RequestBodyAccess {
     /// `action` is the `ctl:requestBodyAccess=` text of the rule.
-    pub fn new(action: &str, request_body_access: bool) -> Self {
-        RequestBodyAccess { name: name_of(action), request_body_access }
+    pub fn new(name: &str, request_body_access: bool) -> Self {
+        RequestBodyAccess { name: name.to_string(), request_body_access }
     }
 }
 

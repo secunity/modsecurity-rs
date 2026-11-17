@@ -43,11 +43,6 @@ pub fn name_and_payload(data: &str) -> (&str, &str) {
     (&data[..pos], payload)
 }
 
-/// The name part of [`name_and_payload`].
-pub fn name_of(data: &str) -> String {
-    name_and_payload(data).0.to_string()
-}
-
 /// A SecLang action (`phase:2`, `deny`, `setvar:...`, `t:lowercase`, ...).
 ///
 /// Actions are built from their rule text by constructors that parse and
@@ -86,8 +81,8 @@ pub struct InertAction {
 }
 
 impl InertAction {
-    pub fn new(action: &str) -> Self {
-        InertAction { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        InertAction { name: name.to_string() }
     }
 }
 

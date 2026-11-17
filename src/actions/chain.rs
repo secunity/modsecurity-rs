@@ -1,7 +1,7 @@
 //! `chain` — chains the rule with the one that follows (configuration
 //! time).
 
-use crate::actions::action::{Action, Kind, name_of};
+use crate::actions::action::{Action, Kind};
 use crate::rule::Rule;
 
 #[derive(Debug)]
@@ -10,8 +10,8 @@ pub struct Chain {
 }
 
 impl Chain {
-    pub fn new(action: &str) -> Self {
-        Chain { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        Chain { name: name.to_string() }
     }
 }
 

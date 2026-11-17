@@ -1,7 +1,7 @@
 //! `pass` — continues with the next rule; discards any pending
 //! intervention.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -10,8 +10,8 @@ pub struct Pass {
 }
 
 impl Pass {
-    pub fn new(action: &str) -> Self {
-        Pass { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        Pass { name: name.to_string() }
     }
 }
 

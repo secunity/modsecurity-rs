@@ -1,7 +1,7 @@
 //! `ctl:ruleRemoveTargetByTag=TAG;VARIABLE` — removes a target from the
 //! rules carrying a tag for the rest of the transaction.
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::utils::string::split_str;
 
@@ -14,8 +14,7 @@ pub struct RuleRemoveTargetByTag {
 
 impl RuleRemoveTargetByTag {
     /// The payload is `ruleRemoveTargetByTag=<tag>;<variable>`.
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         let Some((_, what)) = payload.split_once('=') else {
             return Err(format!("{} is not a valid 'TAG;VARIABLE'", payload));
         };

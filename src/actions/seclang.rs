@@ -5,7 +5,7 @@
 //! [`with_macros`] the ones whose value is a string with macros. `setvar`
 //! and `initcol` have a grammar of their own and are built by the parser.
 
-use crate::actions::action::InertAction;
+use crate::actions::action::{InertAction, name_and_payload};
 use crate::actions::rule_action::RuleAction;
 use crate::actions::transformation::{Transformation, TransformationKind};
 use crate::actions::{self, ctl, data, disruptive};
@@ -79,9 +79,10 @@ pub(crate) fn with_macros(name: &str, z: RunTimeString) -> ParsedAction {
 /// name alone). These are the token shapes of the C++ scanner.
 type Accepts = fn(Option<&str>) -> bool;
 
-/// Builds the action from its whole text (`name` or `name:value`, quotes
-/// included); the error is the message to report.
-type Build = fn(&str) -> Result<ParsedAction, String>;
+/// Builds the action from its name as written and its payload (the value
+/// without its quotes, see [`name_and_payload`]); the error is the message
+/// to report.
+type Build = fn(&str, &str) -> Result<ParsedAction, String>;
 
 /// The text of a quoted value (`'...'`).
 fn unquote(v: &str) -> Option<&str> {
@@ -142,52 +143,56 @@ fn unsupported(name: &'static str) -> Result<ParsedAction, String> {
 /// The actions with a plain value: the name (lower case), the values it
 /// takes and how it is built.
 const PLAIN: &[(&str, Accepts, Build)] = &[
-    ("accuracy", text, |s| actions::accuracy::Accuracy::new(s).map(other)),
+    ("accuracy", text, |n, p| actions::accuracy::Accuracy::new(n, p).map(other)),
     (
         "allow",
         |v| v.is_none_or(|v| v.eq_ignore_ascii_case("request") || v.eq_ignore_ascii_case("phase")),
-        |s| disruptive::allow::Allow::new(s).map(other),
+        |n, p| disruptive::allow::Allow::new(n, p).map(other),
     ),
-    ("append", bare, |_| unsupported("Append")),
-    ("auditlog", bare, |s| Ok(other(actions::audit_log::AuditLog::new(s)))),
-    ("block", bare, |s| Ok(other(actions::block::Block::new(s)))),
-    ("capture", bare, |s| Ok(other(actions::capture::Capture::new(s)))),
-    ("chain", bare, |s| Ok(other(actions::chain::Chain::new(s)))),
-    ("deny", bare, |s| Ok(other(disruptive::deny::Deny::new(s)))),
-    ("deprecatevar", bare, |_| unsupported("DeprecateVar")),
-    ("drop", bare, |s| Ok(other(disruptive::drop::Drop::new(s)))),
-    ("exec", |v| quoted_text(v) || word(v), |s| actions::exec::Exec::new(s).map(other)),
-    ("id", number_or_quoted, |s| actions::rule_id::RuleId::new(s).map(other)),
-    ("log", bare, |s| Ok(other(actions::log::Log::new(s)))),
-    ("maturity", text, |s| actions::maturity::Maturity::new(s).map(other)),
-    ("multimatch", bare, |s| Ok(other(actions::multi_match::MultiMatch::new(s)))),
-    ("noauditlog", bare, |s| Ok(other(actions::no_audit_log::NoAuditLog::new(s)))),
-    ("nolog", bare, |s| Ok(other(actions::no_log::NoLog::new(s)))),
-    ("pass", bare, |s| Ok(other(disruptive::pass::Pass::new(s)))),
-    ("pause", bare, |_| unsupported("Pause")),
-    ("phase", |v| number_or_name(v, &["request", "response", "logging"]), |s| actions::phase::Phase::new(s).map(other)),
-    ("prepend", bare, |_| unsupported("Prepend")),
-    ("proxy", bare, |_| unsupported("Proxy")),
+    ("append", bare, |_, _| unsupported("Append")),
+    ("auditlog", bare, |n, _| Ok(other(actions::audit_log::AuditLog::new(n)))),
+    ("block", bare, |n, _| Ok(other(actions::block::Block::new(n)))),
+    ("capture", bare, |n, _| Ok(other(actions::capture::Capture::new(n)))),
+    ("chain", bare, |n, _| Ok(other(actions::chain::Chain::new(n)))),
+    ("deny", bare, |n, _| Ok(other(disruptive::deny::Deny::new(n)))),
+    ("deprecatevar", bare, |_, _| unsupported("DeprecateVar")),
+    ("drop", bare, |n, _| Ok(other(disruptive::drop::Drop::new(n)))),
+    ("exec", |v| quoted_text(v) || word(v), |n, p| actions::exec::Exec::new(n, p).map(other)),
+    ("id", number_or_quoted, |n, p| actions::rule_id::RuleId::new(n, p).map(other)),
+    ("log", bare, |n, _| Ok(other(actions::log::Log::new(n)))),
+    ("maturity", text, |n, p| actions::maturity::Maturity::new(n, p).map(other)),
+    ("multimatch", bare, |n, _| Ok(other(actions::multi_match::MultiMatch::new(n)))),
+    ("noauditlog", bare, |n, _| Ok(other(actions::no_audit_log::NoAuditLog::new(n)))),
+    ("nolog", bare, |n, _| Ok(other(actions::no_log::NoLog::new(n)))),
+    ("pass", bare, |n, _| Ok(other(disruptive::pass::Pass::new(n)))),
+    ("pause", bare, |_, _| unsupported("Pause")),
+    (
+        "phase",
+        |v| number_or_name(v, &["request", "response", "logging"]),
+        |n, p| actions::phase::Phase::new(n, p).map(other),
+    ),
+    ("prepend", bare, |_, _| unsupported("Prepend")),
+    ("proxy", bare, |_, _| unsupported("Proxy")),
     (
         "rev",
         |v| text(v) && !v.is_some_and(|v| unquoted(v).contains([',', '\''])),
-        |s| Ok(other(actions::rev::Rev::new(s))),
+        |n, p| Ok(other(actions::rev::Rev::new(n, p))),
     ),
-    ("sanitisearg", bare, |_| unsupported("SanitiseArg")),
-    ("sanitisematched", bare, |_| unsupported("SanitiseMatched")),
-    ("sanitisematchedbytes", bare, |_| unsupported("SanitiseMatchedBytes")),
-    ("sanitiserequestheader", bare, |_| unsupported("SanitiseRequestHeader")),
-    ("sanitiseresponseheader", bare, |_| unsupported("SanitiseResponseHeader")),
+    ("sanitisearg", bare, |_, _| unsupported("SanitiseArg")),
+    ("sanitisematched", bare, |_, _| unsupported("SanitiseMatched")),
+    ("sanitisematchedbytes", bare, |_, _| unsupported("SanitiseMatchedBytes")),
+    ("sanitiserequestheader", bare, |_, _| unsupported("SanitiseRequestHeader")),
+    ("sanitiseresponseheader", bare, |_, _| unsupported("SanitiseResponseHeader")),
     (
         "severity",
         |v| number_or_name(v, &["EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"]),
-        |s| actions::severity::Severity::new(s).map(other),
+        |n, p| actions::severity::Severity::new(n, p).map(other),
     ),
-    ("skip", number, |s| actions::skip::Skip::new(s).map(other)),
-    ("skipafter", word, |s| Ok(other(actions::skip_after::SkipAfter::new(s)))),
-    ("status", number, |s| data::status::Status::new(s).map(other)),
-    ("ver", quoted_text, |s| Ok(other(actions::ver::Ver::new(s)))),
-    ("xmlns", word, |s| actions::xmlns::XmlNS::new(s).map(other)),
+    ("skip", number, |n, p| actions::skip::Skip::new(n, p).map(other)),
+    ("skipafter", word, |n, p| Ok(other(actions::skip_after::SkipAfter::new(n, p)))),
+    ("status", number, |n, p| data::status::Status::new(n, p).map(other)),
+    ("ver", quoted_text, |n, p| Ok(other(actions::ver::Ver::new(n, p)))),
+    ("xmlns", word, |n, p| actions::xmlns::XmlNS::new(n, p).map(other)),
 ];
 
 /// An action other than `setvar`, `initcol` and the actions with macros:
@@ -197,15 +202,18 @@ const PLAIN: &[(&str, Accepts, Build)] = &[
 pub(crate) fn plain(name: &str, text: &str) -> Result<ParsedAction, String> {
     let value = text.split_once(':').map(|(_, v)| v);
     let invalid = || format!("Expecting an action, got: {}", text);
+    // The name as the action keeps it (`t:lowercase` for a transformation)
+    // and the value without its quotes.
+    let (written, payload) = name_and_payload(text);
     let name = name.to_ascii_lowercase();
     match name.as_str() {
         "t" => {
             let kind = value.and_then(TransformationKind::from_name).ok_or_else(invalid)?;
-            Ok(ParsedAction::Transformation(Transformation::new(kind, text)))
+            Ok(ParsedAction::Transformation(Transformation::new(kind, written)))
         }
-        "ctl" => ctl_action(text, value.unwrap_or("")).ok_or_else(invalid)?,
+        "ctl" => ctl_action(written, payload, value.unwrap_or("")).ok_or_else(invalid)?,
         _ => match PLAIN.iter().find(|(n, ..)| *n == name) {
-            Some((_, accepts, build)) if accepts(value) => build(text),
+            Some((_, accepts, build)) if accepts(value) => build(written, payload),
             _ => Err(invalid()),
         },
     }
@@ -219,11 +227,10 @@ fn is_remove_rule_by(c: u8) -> bool {
 }
 
 /// `ctl:<option>`, where `option` is `<name>=<value>`; `None` when the
-/// name is not a `ctl` option or does not take the value.
-fn ctl_action(text: &str, option: &str) -> Option<Result<ParsedAction, String>> {
+/// name is not a `ctl` option or does not take the value. `ctl` is the
+/// action name as written, `payload` the option as the actions read it.
+fn ctl_action(ctl: &str, payload: &str, option: &str) -> Option<Result<ParsedAction, String>> {
     let (name, value) = option.split_once('=')?;
-    // `ctl:<name>=`, what the actions with a value token are built from.
-    let head = &text[..text.len() - value.len()];
     let is = |v: &str| value.eq_ignore_ascii_case(v);
     let on_off = || is("on") || is("off");
     let a = match name.to_ascii_lowercase().as_str() {
@@ -241,18 +248,18 @@ fn ctl_action(text: &str, option: &str) -> Option<Result<ParsedAction, String>> 
                 && matches!(value.as_bytes()[0], b'+' | b'|' | b'-')
                 && value[1..].bytes().all(is_audit_part) =>
         {
-            other(ctl::audit_log_parts::AuditLogParts::new(text))
+            other(ctl::audit_log_parts::AuditLogParts::new(ctl, payload))
         }
         "requestbodyprocessor" if is("json") => {
-            other(ctl::request_body_processor_json::RequestBodyProcessorJSON::new(text))
+            other(ctl::request_body_processor_json::RequestBodyProcessorJSON::new(ctl))
         }
         "requestbodyprocessor" if is("xml") => {
-            other(ctl::request_body_processor_xml::RequestBodyProcessorXML::new(text))
+            other(ctl::request_body_processor_xml::RequestBodyProcessorXML::new(ctl))
         }
         "requestbodyprocessor" if is("urlencoded") => {
-            other(ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED::new(text))
+            other(ctl::request_body_processor_urlencoded::RequestBodyProcessorURLENCODED::new(ctl))
         }
-        "forcerequestbodyvariable" if on_off() => other(InertAction::new(head)),
+        "forcerequestbodyvariable" if on_off() => other(InertAction::new(ctl)),
         "parsexmlintoargs" => other(ctl::parse_xml_into_args::ParseXmlIntoArgs::new(if is("on") {
             ParseXmlIntoArgs::On
         } else if is("off") {
@@ -262,7 +269,7 @@ fn ctl_action(text: &str, option: &str) -> Option<Result<ParsedAction, String>> 
         } else {
             return None;
         })),
-        "requestbodyaccess" if on_off() => other(ctl::request_body_access::RequestBodyAccess::new(head, is("on"))),
+        "requestbodyaccess" if on_off() => other(ctl::request_body_access::RequestBodyAccess::new(ctl, is("on"))),
         "ruleengine" => other(ctl::rule_engine::RuleEngine::new(if is("on") {
             RuleEngine::Enabled
         } else if is("off") {
@@ -276,10 +283,12 @@ fn ctl_action(text: &str, option: &str) -> Option<Result<ParsedAction, String>> 
             if !value.is_empty() && value.bytes().all(is_remove_rule_by) =>
         {
             return Some(match by {
-                "ruleremovebyid" => ctl::rule_remove_by_id::RuleRemoveById::new(text).map(other),
-                "ruleremovebytag" => ctl::rule_remove_by_tag::RuleRemoveByTag::new(text).map(other),
-                "ruleremovetargetbyid" => ctl::rule_remove_target_by_id::RuleRemoveTargetById::new(text).map(other),
-                _ => ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag::new(text).map(other),
+                "ruleremovebyid" => ctl::rule_remove_by_id::RuleRemoveById::new(ctl, payload).map(other),
+                "ruleremovebytag" => ctl::rule_remove_by_tag::RuleRemoveByTag::new(ctl, payload).map(other),
+                "ruleremovetargetbyid" => {
+                    ctl::rule_remove_target_by_id::RuleRemoveTargetById::new(ctl, payload).map(other)
+                }
+                _ => ctl::rule_remove_target_by_tag::RuleRemoveTargetByTag::new(ctl, payload).map(other),
             });
         }
         _ => return None,

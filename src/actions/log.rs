@@ -1,6 +1,6 @@
 //! `log` — the rule match is to be logged.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -9,8 +9,8 @@ pub struct Log {
 }
 
 impl Log {
-    pub fn new(action: &str) -> Self {
-        Log { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        Log { name: name.to_string() }
     }
 }
 

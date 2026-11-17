@@ -1086,3 +1086,18 @@ comparison, then removed) and the new one on the body fuzz corpus as each
 of six content types and none, with the body limit and body access
 settings and `ctl:requestBodyAccess` varied: 76,636 requests with the
 same debug log at level 9 and the same intervention.
+
+## Actions are given their name and payload
+
+The text of an action was split twice: the parser's table checked the
+shape of `name:value`, then each action's constructor split the same text
+again (`name_and_payload` or `name_of`, in about 50 constructors). The
+constructors now take what they need: `Skip::new(name, payload)`,
+`Deny::new(name)`, `InitCol::with_rts(name, payload, string)`. The text is
+split in two places, `actions::seclang::plain` and the parser's `initcol`;
+`name_of` is gone.
+
+An action still keeps its name as written (`DENY` stays `DENY`): the
+debug log prints it, and `block` and `setvar` are recognised by it.
+
+`parser::tests::dump_outcomes` is byte-identical before and after.

@@ -78,26 +78,26 @@ mod tests {
         assert!(has_log(&t, "Setting SecParseXmlIntoArgs to OnlyArgs as requested by a ctl:parseXmlIntoArgs action"));
 
         // The name keeps the spelling of the rule.
-        let access = RequestBodyAccess::new("CTL:requestBodyAccess=", false);
+        let access = RequestBodyAccess::new("CTL", false);
         assert_eq!(access.name(), "CTL");
         run(&access, &mut t);
         assert_eq!(t.ctl.request_body_access, Some(false));
-        run(&RequestBodyAccess::new("ctl:requestBodyAccess=", true), &mut t);
+        run(&RequestBodyAccess::new("ctl", true), &mut t);
         assert_eq!(t.ctl.request_body_access, Some(true));
 
-        run(&AuditLogParts::new("ctl:auditLogParts=+E"), &mut t);
-        run(&AuditLogParts::new("ctl:auditLogParts=-HK"), &mut t);
+        run(&AuditLogParts::new("ctl", "auditLogParts=+E"), &mut t);
+        run(&AuditLogParts::new("ctl", "auditLogParts=-HK"), &mut t);
         assert_eq!(
             t.ctl.audit_log_modifier,
             vec![(PartsChange::Add, Parts::E), (PartsChange::Remove, Parts::H | Parts::K)]
         );
 
-        run(&RequestBodyProcessorJSON::new("ctl:requestBodyProcessor=JSON"), &mut t);
+        run(&RequestBodyProcessorJSON::new("ctl"), &mut t);
         assert_eq!(t.body.request_body_processor, RequestBodyType::JSONRequestBody);
         assert_eq!(t.vars.reqbody_processor.evaluate(), b"JSON");
-        run(&RequestBodyProcessorXML::new("ctl:requestBodyProcessor=XML"), &mut t);
+        run(&RequestBodyProcessorXML::new("ctl"), &mut t);
         assert_eq!(t.body.request_body_processor, RequestBodyType::XMLRequestBody);
-        run(&RequestBodyProcessorURLENCODED::new("ctl:requestBodyProcessor=URLENCODED"), &mut t);
+        run(&RequestBodyProcessorURLENCODED::new("ctl"), &mut t);
         assert_eq!(t.body.request_body_type, RequestBodyType::WWWFormUrlEncoded);
         assert_eq!(t.vars.reqbody_processor.evaluate(), b"URLENCODED");
     }

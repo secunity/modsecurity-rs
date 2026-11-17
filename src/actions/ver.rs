@@ -1,6 +1,6 @@
 //! `ver:'...'` — the rule set version (configuration time).
 
-use crate::actions::action::{Action, Kind, name_and_payload};
+use crate::actions::action::{Action, Kind};
 use crate::rule::Rule;
 
 #[derive(Debug)]
@@ -10,8 +10,7 @@ pub struct Ver {
 }
 
 impl Ver {
-    pub fn new(action: &str) -> Self {
-        let (name, ver) = name_and_payload(action);
+    pub fn new(name: &str, ver: &str) -> Self {
         Ver { name: name.to_string(), ver: ver.to_string() }
     }
 }

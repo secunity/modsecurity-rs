@@ -1,6 +1,6 @@
 //! `nolog` — the rule match is not to be logged.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -9,8 +9,8 @@ pub struct NoLog {
 }
 
 impl NoLog {
-    pub fn new(action: &str) -> Self {
-        NoLog { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        NoLog { name: name.to_string() }
     }
 }
 

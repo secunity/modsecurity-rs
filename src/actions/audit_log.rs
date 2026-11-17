@@ -1,6 +1,6 @@
 //! `auditlog` — marks the transaction for audit logging.
 
-use crate::actions::action::{Action, name_of};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
@@ -9,8 +9,8 @@ pub struct AuditLog {
 }
 
 impl AuditLog {
-    pub fn new(action: &str) -> Self {
-        AuditLog { name: name_of(action) }
+    pub fn new(name: &str) -> Self {
+        AuditLog { name: name.to_string() }
     }
 }
 

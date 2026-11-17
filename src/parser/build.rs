@@ -387,7 +387,9 @@ impl Builder<'_, '_> {
                 }
                 ActionKind::InitCol { text, value } => {
                     let z = self.run_time_string(value)?;
-                    actions::init_col::InitCol::with_rts(&string(text), z).map(other)
+                    let text = string(text);
+                    let (name, payload) = actions::action::name_and_payload(&text);
+                    actions::init_col::InitCol::with_rts(name, payload, z).map(other)
                 }
                 ActionKind::SetVar { unset, collection, key, op } => self.setvar(*unset, collection, key, op)?,
             };

@@ -522,7 +522,7 @@ mod tests {
         let mut parent = Rule::new(None, None, "f", 1, RuleKind::SecAction);
         parent.rule_id = 10;
         parent.rev = "3".to_string();
-        let sev = crate::actions::severity::Severity::new("severity:2").unwrap();
+        let sev = crate::actions::severity::Severity::new("severity", "2").unwrap();
         let mut child = Rule::new(
             Some(vec![crate::actions::rule_action::RuleAction::Severity(sev)]),
             None,

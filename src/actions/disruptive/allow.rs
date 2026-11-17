@@ -1,7 +1,7 @@
 //! `allow`, `allow:phase`, `allow:request` — stops the evaluation of the
 //! rules (from now on, for the current phase, or for the request phases).
 
-use crate::actions::action::{Action, name_and_payload};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 
 /// What an `allow` action lets through.
@@ -23,8 +23,7 @@ pub struct Allow {
 
 impl Allow {
     /// `allow`, `allow:phase` or `allow:request`.
-    pub fn new(action: &str) -> Result<Self, String> {
-        let (name, payload) = name_and_payload(action);
+    pub fn new(name: &str, payload: &str) -> Result<Self, String> {
         let allow_type = match payload.to_ascii_lowercase().as_str() {
             "phase" => AllowType::Phase,
             "request" => AllowType::Request,
@@ -74,7 +73,10 @@ mod tests {
 
     #[test]
     fn allow() {
-        let ty = |a: &str| Allow::new(a).map(|x| x.allow_type);
+        let ty = |a: &str| {
+            let (name, payload) = crate::actions::action::name_and_payload(a);
+            Allow::new(name, payload).map(|x| x.allow_type)
+        };
         assert_eq!(ty("allow"), Ok(AllowType::FromNowOn));
         assert_eq!(ty("allow:phase"), Ok(AllowType::Phase));
         assert_eq!(ty("allow:REQUEST"), Ok(AllowType::Request));
@@ -85,7 +87,7 @@ mod tests {
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
-        let a = Allow::new("allow:phase").unwrap();
+        let a = Allow::new("allow", "phase").unwrap();
         a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.eval.allow_type, Some(AllowType::Phase));
         assert!(has_log(&t, "Dropping the evaluation of upcoming rules in favor of an `allow' action of type: Phase"));
