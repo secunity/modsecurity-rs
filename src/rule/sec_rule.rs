@@ -106,7 +106,7 @@ impl SecRule {
             if t.ctl
                 .rule_remove_target_by_id
                 .iter()
-                .any(|(id, target)| *id as i64 == rule.rule_id && target.eq_ignore_ascii_case(variable.full_name()))
+                .any(|(id, target)| rule.rule_id.is(*id) && target.eq_ignore_ascii_case(variable.full_name()))
             {
                 continue;
             }
@@ -135,14 +135,14 @@ impl SecRule {
         rule.evaluate_base(t);
 
         for &i in &t.ctl.rule_remove_by_id {
-            if rule.rule_id != i as i64 {
+            if !rule.rule_id.is(i) {
                 continue;
             }
             crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
             return true;
         }
         for &(a, b) in &t.ctl.rule_remove_by_id_range {
-            if !(a as i64 <= rule.rule_id && b as i64 >= rule.rule_id) {
+            if !rule.rule_id.is_within(a, b) {
                 continue;
             }
             crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
@@ -208,7 +208,7 @@ impl SecRule {
                     || t.ctl
                         .rule_remove_target_by_id
                         .iter()
-                        .any(|(id, target)| *id as i64 == rule.rule_id && target.as_bytes() == v.key_with_collection())
+                        .any(|(id, target)| rule.rule_id.is(*id) && target.as_bytes() == v.key_with_collection())
                 {
                     continue;
                 }

@@ -296,7 +296,7 @@ fn rule_lines(rules: &str) -> Vec<(i64, i32)> {
     let mut out: Vec<(i64, i32)> = crate::phases::Phases::ALL
         .iter()
         .flat_map(|&p| d.rules_set_phases.for_phase(p).iter())
-        .filter_map(|r| r.as_rule().map(|r| (r.rule_id, r.line_number)))
+        .filter_map(|r| r.as_rule().map(|r| (r.rule_id.get(), r.line_number)))
         .collect();
     out.sort();
     out.dedup();

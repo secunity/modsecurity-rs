@@ -175,7 +175,7 @@ impl<'r> RuleMessage<'r> {
 
     /// The `id` of the rule (0 for rules without one).
     pub fn rule_id(&self) -> i64 {
-        self.rule.rule_id
+        self.rule.rule_id.get()
     }
 
     /// The SecLang phase number (1..5) of the rule.

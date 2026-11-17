@@ -8,10 +8,13 @@
 //! evaluation (the `RULE` variable walks it). (In C++ these are the class
 //! `RuleWithActions` and its three subclasses.)
 
+mod id;
 pub mod message;
 pub mod sec_action;
 pub mod sec_rule;
 pub mod sec_rule_script;
+
+pub use id::Id;
 
 use crate::actions::action::{Action, Kind};
 use crate::actions::context::ActionContext;
@@ -84,7 +87,7 @@ pub struct Rule {
     pub ver: String,
     pub accuracy: i32,
     pub maturity: i32,
-    pub rule_id: i64,
+    pub rule_id: Id,
     pub chained_rule_child: Option<Box<Rule>>,
     pub chained_rule_parent: bool,
 
@@ -125,7 +128,7 @@ impl Rule {
             ver: String::new(),
             accuracy: 0,
             maturity: 0,
-            rule_id: 0,
+            rule_id: Id::default(),
             chained_rule_child: None,
             chained_rule_parent: false,
             disruptive_action: None,

@@ -520,7 +520,7 @@ mod tests {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
         let mut parent = Rule::new(None, None, "f", 1, RuleKind::SecAction);
-        parent.rule_id = 10;
+        parent.rule_id = crate::rule::Id::from_number(10.0);
         parent.rev = "3".to_string();
         let sev = crate::actions::severity::Severity::new("severity", "2").unwrap();
         let mut child = Rule::new(
@@ -530,7 +530,7 @@ mod tests {
             2,
             RuleKind::SecAction,
         );
-        child.rule_id = 0;
+        child.rule_id = crate::rule::Id::default();
         parent.chained_rule_child = Some(Box::new(child));
         let child = parent.chained_rule_child.as_deref().unwrap();
 

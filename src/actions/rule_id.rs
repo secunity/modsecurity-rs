@@ -36,7 +36,7 @@ impl Action for RuleId {
     }
 
     fn configure(&self, rule: &mut Rule) {
-        rule.rule_id = self.rule_id as i64;
+        rule.rule_id = crate::rule::Id::from_number(self.rule_id);
     }
 }
 
@@ -51,7 +51,7 @@ mod tests {
             let (name, payload) = crate::actions::action::name_and_payload(&text);
             RuleId::new(name, payload)
         }?;
-        Ok(rule(vec![RuleAction::from(a)]).rule_id)
+        Ok(rule(vec![RuleAction::from(a)]).rule_id.get())
     }
 
     #[test]

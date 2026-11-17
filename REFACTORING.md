@@ -1101,3 +1101,22 @@ An action still keeps its name as written (`DENY` stays `DENY`): the
 debug log prints it, and `block` and `setvar` are recognised by it.
 
 `parser::tests::dump_outcomes` is byte-identical before and after.
+
+## A type for rule ids
+
+A rule's id was an `i64` compared in five places with the `i32` ids of
+the `ctl:` actions through `as i64`, looked up as an `f64` for the
+`SecRuleUpdate...ById` directives, and narrowed with an unexplained `as
+i32` for `SecRuleRemoveById`. `rule::Id` wraps the `i64` and has each of
+those comparisons as a method that says what C++ does there (`is`,
+`is_within`, `as_number`, `narrowed`). Its `Debug` and `Display` print
+the number, so logs and dumps are unchanged.
+
+The narrowing is C++ behavior (`RulesExceptions::contains(int)` is given
+the 64 bit id): rule 4294967297 is removed by `SecRuleRemoveById 1`, but
+not by `ctl:ruleRemoveById=1`. Checked against the C++ library; a test
+keeps it.
+
+Severities, status codes and skip counts stay `i32`: the directives
+accept any `int` for them, as in C++, so a narrower type would change
+what is accepted.

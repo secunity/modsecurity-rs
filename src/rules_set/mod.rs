@@ -192,7 +192,7 @@ impl RulesSet {
                 let rwa = rule.as_rule();
                 // FIXME (C++): Those should be treated inside the rule itself
                 if let Some(r) = rwa {
-                    if ex.contains(r.rule_id as i32) {
+                    if ex.contains(r.rule_id.narrowed()) {
                         crate::ms_dbg!(
                             t,
                             9,

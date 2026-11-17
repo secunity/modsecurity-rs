@@ -65,7 +65,7 @@ impl Entry {
     /// The id of a `SecRule`; `None` for any other rule.
     pub fn sec_rule_id(&self) -> Option<i64> {
         match self {
-            Entry::Rule(r) if r.is_sec_rule() => Some(r.rule_id),
+            Entry::Rule(r) if r.is_sec_rule() => Some(r.rule_id.get()),
             _ => None,
         }
     }

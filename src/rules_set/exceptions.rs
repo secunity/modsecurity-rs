@@ -49,8 +49,8 @@ impl<V: Clone> IdMultimap<V> {
     /// The entries for the rule with id `rule_id`, in container order. An
     /// entry applies when its id (a `double`, as parsed by `std::stod`)
     /// equals the rule id converted to `double`, as in C++.
-    pub fn for_rule(&self, rule_id: i64) -> &[V] {
-        self.by_id.get(&id_key(rule_id as f64)).map_or(&[], Vec::as_slice)
+    pub fn for_rule(&self, rule_id: crate::rule::Id) -> &[V] {
+        self.by_id.get(&id_key(rule_id.as_number())).map_or(&[], Vec::as_slice)
     }
 
     /// Emplaces the entries of `from`, walking each id's entries in
@@ -221,18 +221,18 @@ mod tests {
         m.emplace(1.0, "a");
         m.emplace(2.0, "x");
         m.emplace(1.0, "b");
-        assert_eq!(m.for_rule(1), ["b", "a"]);
-        assert_eq!(m.for_rule(2), ["x"]);
-        assert!(m.for_rule(3).is_empty());
+        assert_eq!(m.for_rule(crate::rule::Id::from_number(1.0)), ["b", "a"]);
+        assert_eq!(m.for_rule(crate::rule::Id::from_number(2.0)), ["x"]);
+        assert!(m.for_rule(crate::rule::Id::from_number(3.0)).is_empty());
         let mut n = IdMultimap::default();
         n.emplace(1.0, "c");
         n.merge_from(&m);
         // A merge walks the entries in container order, emplacing each in
         // front: it reverses them (as with libstdc++).
-        assert_eq!(n.for_rule(1), ["a", "b", "c"]);
+        assert_eq!(n.for_rule(crate::rule::Id::from_number(1.0)), ["a", "b", "c"]);
         // -0.0 and 0.0 are the same id.
         m.emplace(-0.0, "z");
-        assert_eq!(m.for_rule(0), ["z"]);
+        assert_eq!(m.for_rule(crate::rule::Id::from_number(0.0)), ["z"]);
     }
 
     #[test]
