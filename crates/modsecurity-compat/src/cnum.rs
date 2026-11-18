@@ -1,5 +1,5 @@
 //! The number conversions of C and C++ that the C++ library relies on
-//! (`strtoll`, `atoi`, `std::stoi`, `std::stod`),
+//! (`strtoll`, `atoi`, `std::stoi`),
 //! with their corner cases: what counts as white space, where parsing
 //! stops, and what overflow gives.
 
@@ -91,73 +91,6 @@ pub fn strtol_int(s: &str, base: u32) -> i32 {
     strtoll(s.as_bytes(), base).value as i32
 }
 
-/// Parses the longest floating point prefix (after leading white space) as
-/// `std::stod` does; fails when nothing can be converted or on overflow.
-pub fn stod(s: &str) -> Option<f64> {
-    let b = s.as_bytes();
-    let mut i = 0;
-    while i < b.len() && is_space(b[i]) {
-        i += 1;
-    }
-    let start = i;
-    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-        i += 1;
-    }
-    let rest = &s[i..];
-    let lower = rest.to_ascii_lowercase();
-    if lower.starts_with("inf") || lower.starts_with("nan") {
-        let n = if lower.starts_with("infinity") { 8 } else { 3 };
-        return s[start..i + n].parse::<f64>().ok();
-    }
-    if lower.starts_with("0x") {
-        // Hexadecimal floating point numbers: only the integer part is
-        // supported here.
-        let digits: String = rest[2..].chars().take_while(|c| c.is_ascii_hexdigit()).collect();
-        if digits.is_empty() {
-            return Some(0.0);
-        }
-        let v = u128::from_str_radix(&digits, 16).map(|v| v as f64).unwrap_or(f64::INFINITY);
-        let neg = b.get(start) == Some(&b'-');
-        return if v.is_infinite() { None } else { Some(if neg { -v } else { v }) };
-    }
-    let mut digits = 0;
-    let mut nonzero = false;
-    while i < b.len() && b[i].is_ascii_digit() {
-        nonzero |= b[i] != b'0';
-        digits += 1;
-        i += 1;
-    }
-    if i < b.len() && b[i] == b'.' {
-        i += 1;
-        while i < b.len() && b[i].is_ascii_digit() {
-            nonzero |= b[i] != b'0';
-            digits += 1;
-            i += 1;
-        }
-    }
-    if digits == 0 {
-        return None;
-    }
-    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
-        let mut j = i + 1;
-        if j < b.len() && (b[j] == b'+' || b[j] == b'-') {
-            j += 1;
-        }
-        if j < b.len() && b[j].is_ascii_digit() {
-            while j < b.len() && b[j].is_ascii_digit() {
-                j += 1;
-            }
-            i = j;
-        }
-    }
-    let v: f64 = s[start..i].parse().ok()?;
-    if v.is_infinite() || (v == 0.0 && nonzero) {
-        // ERANGE: std::out_of_range
-        return None;
-    }
-    Some(v)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,13 +140,5 @@ mod tests {
                 assert_eq!((n.value, n.overflow), (value, erange), "{:?} base {base}", String::from_utf8_lossy(&text));
             }
         }
-    }
-
-    #[test]
-    fn floating_point() {
-        assert_eq!(stod("12"), Some(12.0));
-        assert_eq!(stod(" 1.5e3x"), Some(1500.0));
-        assert_eq!(stod("abc"), None);
-        assert_eq!(stod("1e999"), None);
     }
 }

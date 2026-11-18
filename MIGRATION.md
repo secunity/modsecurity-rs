@@ -304,6 +304,18 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **The id of `SecRuleUpdateTargetById` and `SecRuleUpdateActionById`,
+  and the code page of `SecUnicodeMapFile`.** *C++:* each is read with
+  `std::stod`: the longest floating point prefix of the text, so
+  `SecRuleUpdateTargetById 942100abc`, `9.421e5`, `942100.0` and `0xE6014`
+  all name the rule 942100, and `SecUnicodeMapFile unicode.mapping 20127x`
+  is the code page 20127. *Here:* a decimal integer, as the `id` action
+  takes it (the code page: up to 4294967295); anything else is a
+  configuration error. *Why:* approved by the owner; an id is an integer,
+  and a typo in one is better reported than guessed. No test of the
+  original ModSecurity depends on it. Regression tests:
+  `rule::id::tests::the_id_of_an_update_directive`,
+  `parser::settings::unicode_map_tests::code_page`.
 - **Time formatting** (audit/error log timestamps, the JSON `time_stamp`,
   parallel audit log and upload directory names) always uses the C locale's
   formats and English names. C++'s `strftime` follows the process `LC_TIME`

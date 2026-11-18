@@ -255,13 +255,9 @@ fn load(rules: &str, reference: &str) -> (i32, String) {
 
 #[test]
 fn c_conversions() {
-    use crate::utils::string::{stod, strtol_int};
+    use crate::utils::string::strtol_int;
     assert_eq!(strtol_int(" 0750", 8), 0o750);
     assert_eq!(strtol_int("\"0750\"", 8), 0);
-    assert_eq!(stod("12"), Some(12.0));
-    assert_eq!(stod(" 1.5e3x"), Some(1500.0));
-    assert_eq!(stod("abc"), None);
-    assert_eq!(stod("1e999"), None);
 }
 
 #[test]

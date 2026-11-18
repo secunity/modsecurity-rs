@@ -26,7 +26,7 @@ use crate::rule::sec_rule::SecRule;
 use crate::rule::sec_rule_script::Script;
 use crate::rule::{Rule, RuleKind};
 use crate::run_time_string::RunTimeString;
-use crate::utils::string::{parser_sanitizer, stod};
+use crate::utils::string::parser_sanitizer;
 use crate::variables::variable::Variable;
 use crate::variables::{VariableSelector, new_variable};
 use modsecurity_operators::seclang_operator;
@@ -208,7 +208,7 @@ impl Builder<'_, '_> {
                     UpdateBy::Tag => ex.load_update_target_by_tag(&v, vars),
                     UpdateBy::Msg => ex.load_update_target_by_msg(&v, vars),
                     UpdateBy::Id => {
-                        let Some(rule_id) = stod(&v) else {
+                        let Some(rule_id) = crate::rule::Id::parse(&v) else {
                             return self.fail(&format!(
                                 "SecRuleUpdateTargetById: failed to load:The input \"{}\" does not seems to be a valid rule id.. ",
                                 v
@@ -220,7 +220,7 @@ impl Builder<'_, '_> {
             }
             Directive::UpdateAction { id, actions } => {
                 let v = update_value(id);
-                let Some(rule_id) = stod(&v) else {
+                let Some(rule_id) = crate::rule::Id::parse(&v) else {
                     return self.fail(&format!(
                         "SecRuleUpdateActionById: failed to load:The input \"{}\" does not seems to be a valid rule id.. ",
                         v

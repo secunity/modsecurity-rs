@@ -1247,3 +1247,11 @@ an `i64` parsed by the standard library; `format_g` is gone. Which ids
 are accepted changes at the edges: see "Intentional deviations from C++"
 in `MIGRATION.md`.
 
+## One way to read a rule id
+
+`rule::Id::parse` reads an id for the `id` action,
+`SecRuleUpdateTargetById` and `SecRuleUpdateActionById`; the two
+directives kept a C++ `double` (`cnum::stod`), and their tables were keyed
+by its bit pattern. They are keyed by `rule::Id` now, the code page of
+`SecUnicodeMapFile` is a `u32`, and `stod` is gone. See "Intentional
+deviations from C++" in `MIGRATION.md`.

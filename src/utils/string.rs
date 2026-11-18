@@ -7,7 +7,7 @@
 pub use modsecurity_compat::chars::{
     find_from, is_space, limit_to, split, ssplit, ssplit_pair, string_to_hex, to_hex_if_needed,
 };
-pub use modsecurity_compat::cnum::{atoi, stod, stoi, strtol_int};
+pub use modsecurity_compat::cnum::{atoi, stoi, strtol_int};
 
 /// The bytes of `s`, or `-` when it is missing or empty.
 pub fn dash_if_empty(s: Option<&[u8]>) -> Vec<u8> {

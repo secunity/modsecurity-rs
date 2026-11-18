@@ -17,7 +17,7 @@ use crate::rules_set::properties::{
     parse_octal_mode,
 };
 use crate::utils::https_client::HttpsClient;
-use crate::utils::string::{atoi, ssplit, stod, strtol_int};
+use crate::utils::string::{atoi, ssplit, strtol_int};
 use crate::utils::system::{expand_env, find_resource};
 
 /// The value of a setting directive, as its effect gets it.
@@ -483,7 +483,7 @@ impl Builder<'_, '_> {
             return self.fail(&format!("Failed to process unicode map, missing parameter: {} ", v));
         }
         let last = param.pop().unwrap_or_default();
-        let Some(num) = stod(&last) else {
+        let Some(num) = last.parse::<u32>().ok().filter(|_| last.bytes().all(|c| c.is_ascii_digit())) else {
             return self
                 .fail(&format!("Failed to process unicode map, last parameter is expected to be a number: {} ", last));
         };
@@ -549,6 +549,28 @@ impl Builder<'_, '_> {
         let content = modsecurity_compat::chars::c_str(&c.content);
         let idx = self.driver.add_filename(url.to_string());
         load(self.driver, content, idx)
+    }
+}
+
+/// `SecUnicodeMapFile`: the code page is a decimal integer.
+#[cfg(test)]
+mod unicode_map_tests {
+    use crate::rules_set::RulesSet;
+
+    #[test]
+    fn code_page() {
+        let load = |code_page: &str| {
+            let mut rules = RulesSet::new();
+            let file = concat!(env!("CARGO_MANIFEST_DIR"), "/unicode.mapping");
+            rules
+                .load(&format!("SecUnicodeMapFile {file} {code_page}\n"))
+                .map(|_| rules.properties.unicode_map_table.unicode_code_page)
+        };
+        assert_eq!(load("20127").ok(), Some(20127));
+        // C++ reads the longest floating point prefix of each of these.
+        for code_page in ["20127x", "20127.0", "2.0127e4", "+20127", "-1", "0x4e9f", "4294967296"] {
+            assert!(load(code_page).is_err(), "{code_page}");
+        }
     }
 }
 

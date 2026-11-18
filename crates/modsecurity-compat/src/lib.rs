@@ -11,7 +11,7 @@
 //!   does;
 //! - [`chars`]: the byte classes and string helpers the others share;
 //! - [`cnum`]: the number conversions of C and C++ (`strtoll`, `atoi`,
-//!   `std::stoi`, `std::stod`).
+//!   `std::stoi`).
 
 #![forbid(unsafe_code)]
 

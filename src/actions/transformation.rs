@@ -41,7 +41,7 @@ impl Transformation {
     pub fn transform(&self, value: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
         let unicode_map = t.and_then(|t| {
             let config = &t.rules.properties.unicode_map_table;
-            if config.set && config.unicode_code_page > 0.0 { config.unicode_map_table.as_deref() } else { None }
+            if config.set && config.unicode_code_page > 0 { config.unicode_map_table.as_deref() } else { None }
         });
         self.kind.apply(value, &Context { unicode_map })
     }
@@ -84,7 +84,7 @@ mod tests {
         table.change(0x0391, i32::from(b'A'));
         let config = &mut rules.properties.unicode_map_table;
         config.set = true;
-        config.unicode_code_page = 20127.0;
+        config.unicode_code_page = 20127;
         config.unicode_map_table = Some(Arc::new(table));
         let tfn = Transformation::from_name("t:urlDecodeUni");
         {
@@ -99,7 +99,7 @@ mod tests {
         }
 
         // Without a code page the map is ignored.
-        rules.properties.unicode_map_table.unicode_code_page = 0.0;
+        rules.properties.unicode_map_table.unicode_code_page = 0;
         let t = Transaction::new(&ms, &rules, None);
         let mut v = b"%u0391".to_vec();
         assert!(tfn.transform(&mut v, Some(&t)));

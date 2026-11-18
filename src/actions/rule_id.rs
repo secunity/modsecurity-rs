@@ -6,16 +6,15 @@ use crate::rule::Rule;
 #[derive(Debug)]
 pub struct RuleId {
     name: String,
-    rule_id: i64,
+    rule_id: crate::rule::Id,
 }
 
 impl RuleId {
     /// The id `a`: a decimal number, up to the largest 64 bit integer.
     pub fn new(name: &str, a: &str) -> Result<Self, String> {
-        let digits = !a.is_empty() && a.bytes().all(|c| c.is_ascii_digit());
-        match a.parse::<i64>() {
-            Ok(rule_id) if digits => Ok(RuleId { name: name.to_string(), rule_id }),
-            _ => Err(format!("The input \"{}\" does not seems to be a valid rule id.", a)),
+        match crate::rule::Id::parse(a) {
+            Some(rule_id) => Ok(RuleId { name: name.to_string(), rule_id }),
+            None => Err(format!("The input \"{}\" does not seems to be a valid rule id.", a)),
         }
     }
 }
@@ -30,7 +29,7 @@ impl Action for RuleId {
     }
 
     fn configure(&self, rule: &mut Rule) {
-        rule.rule_id = crate::rule::Id::new(self.rule_id);
+        rule.rule_id = self.rule_id;
     }
 }
 

@@ -135,7 +135,7 @@ pub use modsecurity_transformations::UnicodeMap as UnicodeMapHolder;
 #[derive(Debug, Clone, Default)]
 pub struct ConfigUnicodeMap {
     pub set: bool,
-    pub unicode_code_page: f64,
+    pub unicode_code_page: u32,
     pub unicode_map_table: Option<Arc<UnicodeMapHolder>>,
 }
 
@@ -153,7 +153,7 @@ impl ConfigUnicodeMap {
 
     /// Loads the mapping for `code_page` from a `unicode.mapping` file
     /// into `driver`.
-    pub fn load_config(f: &str, config_code_page: f64, driver: &mut RulesSetProperties) -> Result<(), String> {
+    pub fn load_config(f: &str, config_code_page: u32, driver: &mut RulesSetProperties) -> Result<(), String> {
         driver.unicode_map_table.set = true;
         driver.unicode_map_table.unicode_code_page = config_code_page;
         let mut table = UnicodeMapHolder::default();
@@ -180,7 +180,7 @@ impl ConfigUnicodeMap {
         let buf = modsecurity_compat::chars::c_str(&buf);
         for p in buf.split(|c| CODEPAGE_SEPARATORS.contains(c)).filter(|t| !t.is_empty()) {
             let codepage = crate::utils::string::atoi(p) as u32;
-            if codepage as f64 == config_code_page {
+            if codepage == config_code_page {
                 found = true;
             }
             let has_colon = p.contains(&b':');
@@ -471,7 +471,7 @@ mod tests {
         let table = |entries: &str| {
             std::fs::write(&file, format!("9999 (test)\n{entries}\n\n")).unwrap();
             let mut properties = RulesSetProperties::new();
-            ConfigUnicodeMap::load_config(file.to_str().unwrap(), 9999.0, &mut properties).unwrap();
+            ConfigUnicodeMap::load_config(file.to_str().unwrap(), 9999, &mut properties).unwrap();
             properties.unicode_map_table.unicode_map_table.unwrap()
         };
         let at = |entries: &str, code: usize| table(entries).at(code);

@@ -2,11 +2,11 @@
 //! `SecRuleUpdate*`.
 //!
 //! The C++ class keeps the "update target/action by id" tables in
-//! `std::unordered_multimap<double, ...>`. Every consumer looks those
-//! tables up by rule id, so the only observable property of the container
-//! is the relative order of entries sharing an id: libstdc++ inserts a new
-//! element in front of its equivalents. [`IdMultimap`] reproduces exactly
-//! that. The tag/msg tables are keyed by freshly allocated
+//! `std::unordered_multimap`. Every consumer looks those tables up by rule
+//! id, so the only observable property of the container is the relative
+//! order of entries sharing an id: libstdc++ inserts a new element in
+//! front of its equivalents. [`IdMultimap`] reproduces exactly that. The
+//! tag/msg tables are keyed by freshly allocated
 //! `shared_ptr<std::string>` (every entry is a distinct key, ordered by
 //! pointer hash); they are kept in insertion order here.
 
@@ -15,20 +15,15 @@ use std::sync::Arc;
 
 use crate::actions::action::Kind;
 use crate::actions::rule_action::RuleAction;
+use crate::rule::Id;
 use crate::utils::string::{parser_sanitizer, ssplit, stoi};
 use crate::variables::variable::Variable;
 
 /// Multimap keyed by rule id where a new entry goes in front of the existing
 /// entries with the same id (libstdc++ `unordered_multimap::emplace`).
-///
-/// The ids of the entries are C++ `double`s (`SecRuleUpdateTargetById 1.5e3`
-/// is accepted), and that is deliberately kept: the key is the bit pattern
-/// of the `f64` (with `-0.0` folded into `0.0`), which gives the same
-/// equality as comparing the numbers (ids are never NaN). Lookups take the
-/// integer id of a rule.
 #[derive(Debug)]
 pub struct IdMultimap<V> {
-    by_id: HashMap<u64, Vec<V>>,
+    by_id: HashMap<Id, Vec<V>>,
 }
 
 impl<V> Default for IdMultimap<V> {
@@ -37,20 +32,14 @@ impl<V> Default for IdMultimap<V> {
     }
 }
 
-fn id_key(id: f64) -> u64 {
-    if id == 0.0 { 0.0f64.to_bits() } else { id.to_bits() }
-}
-
 impl<V: Clone> IdMultimap<V> {
-    pub fn emplace(&mut self, id: f64, value: V) {
-        self.by_id.entry(id_key(id)).or_default().insert(0, value);
+    pub fn emplace(&mut self, id: Id, value: V) {
+        self.by_id.entry(id).or_default().insert(0, value);
     }
 
-    /// The entries for the rule with id `rule_id`, in container order. An
-    /// entry applies when its id (a `double`, as parsed by `std::stod`)
-    /// equals the rule id converted to `double`, as in C++.
-    pub fn for_rule(&self, rule_id: crate::rule::Id) -> &[V] {
-        self.by_id.get(&id_key(rule_id.as_number())).map_or(&[], Vec::as_slice)
+    /// The entries for the rule with id `rule_id`, in container order.
+    pub fn for_rule(&self, rule_id: Id) -> &[V] {
+        self.by_id.get(&rule_id).map_or(&[], Vec::as_slice)
     }
 
     /// Emplaces the entries of `from`, walking each id's entries in
@@ -85,7 +74,7 @@ impl RulesExceptions {
 
     /// `SecRuleUpdateActionById`: adds the run time actions to the rule
     /// `id`, to run before or after the match according to their kind.
-    pub fn load_update_action_by_id(&mut self, id: f64, actions: Vec<RuleAction>) {
+    pub fn load_update_action_by_id(&mut self, id: Id, actions: Vec<RuleAction>) {
         for a in actions {
             match a.kind() {
                 Kind::Configuration => {
@@ -131,7 +120,7 @@ impl RulesExceptions {
     }
 
     /// `SecRuleUpdateTargetById`: changes the targets of the rule `id`.
-    pub fn load_update_target_by_id(&mut self, id: f64, vars: Vec<Variable>) {
+    pub fn load_update_target_by_id(&mut self, id: Id, vars: Vec<Variable>) {
         for v in vars {
             self.variable_update_target_by_id.emplace(id, Arc::from(v));
         }
@@ -218,21 +207,18 @@ mod tests {
     #[test]
     fn id_multimap_front_insertion() {
         let mut m = IdMultimap::default();
-        m.emplace(1.0, "a");
-        m.emplace(2.0, "x");
-        m.emplace(1.0, "b");
-        assert_eq!(m.for_rule(crate::rule::Id::new(1)), ["b", "a"]);
-        assert_eq!(m.for_rule(crate::rule::Id::new(2)), ["x"]);
-        assert!(m.for_rule(crate::rule::Id::new(3)).is_empty());
+        m.emplace(Id::new(1), "a");
+        m.emplace(Id::new(2), "x");
+        m.emplace(Id::new(1), "b");
+        assert_eq!(m.for_rule(Id::new(1)), ["b", "a"]);
+        assert_eq!(m.for_rule(Id::new(2)), ["x"]);
+        assert!(m.for_rule(Id::new(3)).is_empty());
         let mut n = IdMultimap::default();
-        n.emplace(1.0, "c");
+        n.emplace(Id::new(1), "c");
         n.merge_from(&m);
         // A merge walks the entries in container order, emplacing each in
         // front: it reverses them (as with libstdc++).
-        assert_eq!(n.for_rule(crate::rule::Id::new(1)), ["a", "b", "c"]);
-        // -0.0 and 0.0 are the same id.
-        m.emplace(-0.0, "z");
-        assert_eq!(m.for_rule(crate::rule::Id::new(0)), ["z"]);
+        assert_eq!(n.for_rule(Id::new(1)), ["a", "b", "c"]);
     }
 
     #[test]
