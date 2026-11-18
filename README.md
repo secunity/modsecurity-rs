@@ -34,7 +34,6 @@ options; all are on by default:
 | `curl` | `WITH_CURL` | system libcurl (`SecRemoteRules`, HTTPS audit log, remote `@pmFromFile`/`@ipMatchFromFile`) |
 | `regex-dollar-endonly` | `MODSEC_REGEX_DOLLAR_ENDONLY` | — (off by default) |
 | `pm-aho-corasick` | — (not in C++) | `aho-corasick` crate; off by default, see below |
-| `ipmatch-prefix-trie` | — (not in C++) | `prefix-trie` and `ipnet` crates; off by default, see below |
 
 `pm-aho-corasick` matches `@pm`/`@pmFromFile`/`@pmf` phrases with the
 `aho-corasick` crate instead of the port of the C++ ACMP parser. ACMP misses
@@ -43,13 +42,12 @@ the feature, every occurrence is found and `TX:0`/log messages show the
 pattern that matched. This changes results compared with C++, so it is off by
 default.
 
-`ipmatch-prefix-trie` stores the networks of `@ipMatch`/`@ipMatchFromFile`/
-`@ipMatchF` in a prefix trie instead of the port of the C++ crit-bit tree.
-When a list holds several overlapping networks, the C++ tree misses some
-addresses that lie in one of them (`@ipMatch 10.0.49.87/16,10.0.42.94/18`
-does not match `10.0.70.67`); with the feature, an address matches whenever
-any listed network contains it. Entries are parsed and rejected exactly as
-in C++. This changes results compared with C++, so it is off by default.
+`@ipMatch`, `@ipMatchFromFile` and `@ipMatchF` differ from C++ on purpose:
+an address matches whenever a listed network contains it. The C++ tree
+misses some addresses when a list holds overlapping networks (`@ipMatch
+10.0.49.87/16,10.0.42.94/18` does not match `10.0.70.67` there). Entries are
+parsed and rejected exactly as in C++. See "Intentional deviations from C++"
+in `MIGRATION.md`.
 
 PCRE2 is required (linked through `pcre2-sys`). `cargo build --no-default-features`
 builds the core without the optional components.

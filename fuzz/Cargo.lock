@@ -21,6 +21,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "array-const-fn-init"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bcb85e548c05d407fa6faff46b750ba287714ef32afc0f5e15b4641ffd6affb"
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -225,6 +231,12 @@ checksum = "27f864f10dfb56725ce5ce5472bc52252c8f93a4ab86327122cebf62c5f59a17"
 dependencies = [
  "typenum",
 ]
+
+[[package]]
+name = "ipnet"
+version = "2.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
 
 [[package]]
 name = "ipnetwork"
@@ -449,10 +461,8 @@ version = "3.0.17"
 dependencies = [
  "bitflags",
  "curl",
- "dns-lookup",
  "jiff",
  "libc",
- "maxminddb",
  "md-5",
  "mlua",
  "modsecurity-body",
@@ -517,10 +527,14 @@ name = "modsecurity-operators"
 version = "3.0.17"
 dependencies = [
  "dns-lookup",
+ "ipnet",
+ "libc",
  "libinjection",
+ "maxminddb",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-types",
+ "prefix-trie",
 ]
 
 [[package]]
@@ -753,6 +767,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
+]
+
+[[package]]
+name = "prefix-trie"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77fe9ec8fb906114b52bc2e9aa142ac11817d0fcd33a32fb2feb94d823ad9a4d"
+dependencies = [
+ "array-const-fn-init",
+ "either",
+ "ipnet",
+ "num-traits",
+ "smallvec",
 ]
 
 [[package]]

@@ -89,12 +89,6 @@ regex-dollar-endonly = ["modsecurity-operators/regex-dollar-endonly"]
 # ACMP's missed and misreported matches. Changes detection results and
 # TX:0/log contents compared with C++ (see src/operators/pm.rs).
 pm-aho-corasick = ["modsecurity-operators/pm-aho-corasick"]
-# Not a C++ option (off by default): store @ipMatch/@ipMatchFromFile/@ipMatchF
-# networks in a prefix trie (prefix-trie + ipnet crates) instead of the port of
-# the C++ crit-bit tree, fixing its missed matches when a list holds several
-# networks. Changes detection results compared with C++ (see
-# src/utils/msc_tree.rs).
-ipmatch-prefix-trie = ["modsecurity-compat/ipmatch-prefix-trie"]
 # Not a C++ option (off by default): feed `http` crate requests and
 # responses into a transaction (`Transaction::process_request_head`, ...)
 # and turn an intervention into an `http::Response`.

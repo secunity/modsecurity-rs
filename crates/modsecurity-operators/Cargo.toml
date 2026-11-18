@@ -31,6 +31,16 @@ aho-corasick = { version = "1", optional = true }
 # in C++. @geoLookup: the same function, to read an address as
 # libmaxminddb does.
 dns-lookup = "4.0.2"
+# The networks of an @ipMatch list: a set with longest-prefix lookups, in
+# place of the C++ crit-bit tree, which misses addresses when networks
+# overlap.
+prefix-trie = { version = "0.10", default-features = false, features = ["ipnet"] }
+ipnet = "2"
 # The getaddrinfo flags of @geoLookup.
 libc = "0.2"
 maxminddb = { version = "0.32", optional = true }
+
+[dev-dependencies]
+# inet_pton, which the address parsers of @ipMatch are compared with.
+modsecurity-native = { path = "../modsecurity-native", features = ["testing"] }
+rand = "0.9"

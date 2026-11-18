@@ -1,14 +1,14 @@
 //! The `@ipMatch` operator: matches when the input is an IP address in one
 //! of the listed addresses or networks.
 
-use crate::ip_tree::IpTree;
+use crate::ip_set::IpSet;
 use crate::{Context, Operator, Param, Resources};
 
 #[derive(Debug)]
 pub struct IpMatch {
     name: &'static str,
     pub(crate) param: Param,
-    pub(crate) tree: IpTree,
+    pub(crate) tree: IpSet,
 }
 
 impl IpMatch {
@@ -19,7 +19,7 @@ impl IpMatch {
     /// An operator named `name` in messages: used by `@ipMatchFromFile` /
     /// `@ipMatchF`.
     pub fn with_name(name: &'static str, param: Param) -> Self {
-        IpMatch { name, param, tree: IpTree::new() }
+        IpMatch { name, param, tree: IpSet::new() }
     }
 }
 

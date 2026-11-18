@@ -796,10 +796,8 @@ dependencies = [
 name = "modsecurity-compat"
 version = "3.0.17"
 dependencies = [
- "ipnet",
  "libc",
  "modsecurity-native",
- "prefix-trie",
  "rand 0.9.5",
 ]
 
@@ -828,12 +826,15 @@ version = "3.0.17"
 dependencies = [
  "aho-corasick",
  "dns-lookup",
+ "ipnet",
  "libc",
  "libinjection",
  "maxminddb",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-types",
+ "prefix-trie",
+ "rand 0.9.5",
 ]
 
 [[package]]

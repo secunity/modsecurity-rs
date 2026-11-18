@@ -24,7 +24,6 @@ ssdeep = ["engine/ssdeep"]
 curl = ["engine/curl"]
 regex-dollar-endonly = ["engine/regex-dollar-endonly"]
 pm-aho-corasick = ["engine/pm-aho-corasick"]
-ipmatch-prefix-trie = ["engine/ipmatch-prefix-trie"]
 
 [dependencies]
 # The engine, under another name: this crate's library is also called

@@ -32,7 +32,7 @@ pub mod gsblookup;
 pub mod gt;
 pub mod ip_match;
 pub mod ip_match_from_file;
-pub mod ip_tree;
+pub mod ip_set;
 pub mod le;
 pub mod libinjection_adapter;
 pub mod libinjection_utils;

@@ -1167,3 +1167,19 @@ The engine's `Operator` is a matcher of the crate or `@inspectFile`,
 which stays: its Lua half runs the engine's Lua binding with the
 transaction. The engine no longer depends on `maxminddb` and
 `dns-lookup` itself.
+
+## `@ipMatch` without the C++ crit-bit tree
+
+The port of the C++ crit-bit tree (`modsecurity_compat::msc_tree`, about
+650 lines) is gone, and with it the `ipmatch-prefix-trie` feature that
+offered the alternative: the prefix tries are the only implementation.
+This changes which addresses match a list of overlapping networks (the
+tree missed some): see "Intentional deviations from C++" in
+`MIGRATION.md`.
+
+The set is `modsecurity_operators::ip_set::IpSet`, in the crate of its
+only user, and holds what `ip_tree::IpTree` and `msc_tree::TreeRoot` did.
+`prefix-trie` and `ipnet` are dependencies of the operators crate; the
+compat crate has no dependency left. The seven functions that read an
+entry (four of them public, for the two implementations in two crates)
+are three private ones: `parse_entry`, `parse_v4`, `parse_v6`.
