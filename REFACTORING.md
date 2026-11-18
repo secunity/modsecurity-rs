@@ -1216,3 +1216,24 @@ only phrase matcher of `@pm`, `@pmFromFile` and `@pmf`, and a required
 dependency of the operators crate. This changes which phrases are found
 and reported: see "Intentional deviations from C++" in `MIGRATION.md`.
 
+
+## Helpers that were one standard call
+
+Helper functions that only called one standard function under another
+name are gone, and their callers call the standard one:
+`valid_hex` (`u8::is_ascii_hexdigit`, 20 calls), `lossy`
+(`String::from_utf8_lossy`, 41), `tolower` and `toupper_str`
+(`to_ascii_lowercase` / `to_ascii_uppercase`, 8), `double_to_string`
+(`format!("{:.6}", x)`, 3), `asc_time` (`strftime_local(t, "%c")`), and
+`random_number` / `generate_transaction_unique_id` (one `random_range`
+call; `utils/random.rs` is gone).
+
+`utils/md5.rs` and `utils/sha1.rs`, where MD5 was defined in terms of a
+generic type of the SHA-1 file, are `utils/hash.rs` with two functions,
+`md5_hex` and `sha1_hex`.
+
+Kept, because they are not a standard call: `isodigit` (the standard
+`is_ascii_octdigit` is not stable), `is_space` (C's `isspace` includes
+the vertical tab, `is_ascii_whitespace` does not), `find` / `find_from`
+(a search in bytes), `x2c`, `hex2dec`, `chomp`, `limit_to`, and the C
+number conversions of `cnum`.

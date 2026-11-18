@@ -19,7 +19,6 @@ use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::Transaction;
-use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct Msg {
@@ -43,7 +42,7 @@ impl Action for Msg {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let msg = cx.expand(&self.string);
-        crate::ms_dbg!(cx, 9, "Saving msg: {}", lossy(&msg));
+        crate::ms_dbg!(cx, 9, "Saving msg: {}", String::from_utf8_lossy(&msg));
         cx.set_message(msg);
     }
 }

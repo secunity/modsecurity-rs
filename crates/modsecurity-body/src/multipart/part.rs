@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use modsecurity_compat::chars::{chomp, is_space, lossy};
+use modsecurity_compat::chars::{chomp, is_space};
 use modsecurity_types::ms_dbg;
 
 use super::{Context, MULTIPART_BUF_SIZE, Multipart, MultipartPartTmpFile, c_at, c_str, find};
@@ -179,7 +179,11 @@ impl Multipart {
             return self.fail(
                 cx,
                 1,
-                format!("Multipart: Invalid Content-Disposition header ({}): {}", rc, lossy(&header_value)),
+                format!(
+                    "Multipart: Invalid Content-Disposition header ({}): {}",
+                    rc,
+                    String::from_utf8_lossy(&header_value)
+                ),
             );
         }
 
@@ -247,7 +251,13 @@ impl Multipart {
         value.extend_from_slice(&continuation);
         let value = value.clone();
 
-        ms_dbg!(cx, 9, "Multipart: Continued folder header \"{}\" with \"{}\"", lossy(&name), lossy(&line[data..]));
+        ms_dbg!(
+            cx,
+            9,
+            "Multipart: Continued folder header \"{}\" with \"{}\"",
+            String::from_utf8_lossy(&name),
+            String::from_utf8_lossy(&line[data..])
+        );
 
         if value.len() > MULTIPART_BUF_SIZE {
             return self.fail(cx, 1, "Multipart: Part header too long.");
@@ -261,7 +271,11 @@ impl Multipart {
         mpp.finish_header_line(offset);
 
         let Some(colon) = line.iter().position(|&c| c == b':') else {
-            return self.fail(cx, 1, format!("Multipart: Invalid part header (colon missing): {}", lossy(line)));
+            return self.fail(
+                cx,
+                1,
+                format!("Multipart: Invalid part header (colon missing): {}", String::from_utf8_lossy(line)),
+            );
         };
 
         let name = &line[..colon];
@@ -285,13 +299,19 @@ impl Multipart {
         // error if the name already exists
         if mpp.header(name).is_some() {
             self.flags.duplicate_part_header = true;
-            ms_dbg!(cx, 1, "Multipart: Duplicate part header: {}.", lossy(name));
+            ms_dbg!(cx, 1, "Multipart: Duplicate part header: {}.", String::from_utf8_lossy(name));
             return;
         }
 
         mpp.last_header_name = name.to_vec();
 
-        ms_dbg!(cx, 9, "Multipart: Added part header \"{}\" \"{}\".", lossy(name), lossy(&value));
+        ms_dbg!(
+            cx,
+            9,
+            "Multipart: Added part header \"{}\" \"{}\".",
+            String::from_utf8_lossy(name),
+            String::from_utf8_lossy(&value)
+        );
         mpp.headers.push((name.to_vec(), (offset.wrapping_sub(line.len()).wrapping_add(data), value)));
 
         // The line without its line break.
@@ -340,7 +360,7 @@ impl Multipart {
                 let d = [self.reserve, buf].concat();
                 mpp.length = mpp.length.wrapping_add(d.len() as u32);
 
-                ms_dbg!(cx, 9, "Multipart: Added data to variable: {}", lossy(&d));
+                ms_dbg!(cx, 9, "Multipart: Added data to variable: {}", String::from_utf8_lossy(&d));
                 mpp.value_parts.push((d, self.buf_offset));
             }
         }

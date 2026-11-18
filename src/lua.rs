@@ -73,7 +73,7 @@ mod with_lua {
 
     use super::Transaction;
     use crate::actions::transformation;
-    use crate::utils::string::{to_hex_if_needed, toupper_str};
+    use crate::utils::string::to_hex_if_needed;
     use crate::variables::variable::{string_match_resolve, string_match_resolve_multi};
 
     // Lua callbacks share a temporary borrow of the transaction. Borrow only
@@ -553,7 +553,7 @@ end
             );
             return Ok(());
         };
-        let collection = toupper_str(&lossy(&var_name[..pos]));
+        let collection = lossy(&var_name[..pos]).to_ascii_uppercase();
         let variable_name = &var_name[pos + 1..];
 
         let mut t = t.borrow_mut();

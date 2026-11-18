@@ -5,7 +5,7 @@
 
 use super::TransactionAnchoredVariables;
 use crate::rules_set::RulesSet;
-use crate::utils::string::{double_to_string, ssplit_pair};
+use crate::utils::string::ssplit_pair;
 use modsecurity_transformations::url::urldecode_nonstrict_inplace;
 
 pub(super) struct ArgumentWriter<'a> {
@@ -53,7 +53,7 @@ impl ArgumentWriter<'_> {
             _ => {}
         }
         *self.combined_size += (key.len() + value.len()) as f64;
-        let size = double_to_string(*self.combined_size);
+        let size = format!("{:.6}", *self.combined_size);
         self.vars.args_combined_size.set_with_len(size.as_bytes(), offset - key.len() - 1, key.len());
         self.vars.args_combined_size.set_with_len(size.as_bytes(), offset, value.len());
         true

@@ -7,7 +7,7 @@ use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt;
 
-use crate::utils::md5::Md5;
+use crate::utils::hash::md5_hex;
 
 use std::sync::Arc;
 
@@ -55,7 +55,7 @@ pub fn log_file_path(t: i64, part: i32) -> String {
 
 /// Writes the index line of an entry into `index`.
 fn write_index(transaction: &Transaction<'_>, index: &SharedFile, file_name: &str, log: &[u8]) -> Result<(), String> {
-    let log_md5 = Md5::hexdigest(log);
+    let log_md5 = md5_hex(log);
 
     let msg = format::native_index_line(transaction, file_name, log.len() as f64, &log_md5);
     index.write(&msg)

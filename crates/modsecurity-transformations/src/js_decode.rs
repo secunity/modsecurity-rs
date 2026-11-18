@@ -1,6 +1,6 @@
 //! The `t:jsDecode` transformation: decodes JavaScript escape sequences.
 
-use crate::chars::{isodigit, valid_hex, x2c};
+use crate::chars::{isodigit, x2c};
 
 fn inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();
@@ -16,10 +16,10 @@ fn inplace(input: &mut Vec<u8>) -> bool {
 
             if i + 5 < input_len
                 && input[i + 1] == b'u'
-                && valid_hex(input[i + 2])
-                && valid_hex(input[i + 3])
-                && valid_hex(input[i + 4])
-                && valid_hex(input[i + 5])
+                && input[i + 2].is_ascii_hexdigit()
+                && input[i + 3].is_ascii_hexdigit()
+                && input[i + 4].is_ascii_hexdigit()
+                && input[i + 5].is_ascii_hexdigit()
             {
                 // \uHHHH
 
@@ -38,7 +38,11 @@ fn inplace(input: &mut Vec<u8>) -> bool {
                 d += 1;
                 i += 6;
                 changed = true;
-            } else if i + 3 < input_len && input[i + 1] == b'x' && valid_hex(input[i + 2]) && valid_hex(input[i + 3]) {
+            } else if i + 3 < input_len
+                && input[i + 1] == b'x'
+                && input[i + 2].is_ascii_hexdigit()
+                && input[i + 3].is_ascii_hexdigit()
+            {
                 // \xHH
                 input[d] = x2c(&input[i + 2..i + 4]);
                 d += 1;

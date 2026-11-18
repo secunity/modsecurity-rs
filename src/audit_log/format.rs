@@ -7,7 +7,8 @@ use crate::rule::message::LogParts;
 use crate::rules_set::properties::rule_engine_state_string;
 use crate::transaction::Transaction;
 use crate::unique_id::UniqueId;
-use crate::utils::string::{asc_time, dash_if_empty, double_to_string, to_hex_if_needed};
+use crate::utils::string::{dash_if_empty, to_hex_if_needed};
+use crate::utils::system::strftime_local;
 use modsecurity_compat::chars::c_str;
 use modsecurity_compat::json::JsonGen;
 
@@ -47,7 +48,7 @@ pub(crate) fn native_index_line(t: &Transaction<'_>, filename: &str, size: f64, 
     ss.extend_from_slice(filename.as_bytes());
     ss.push(b' ');
     ss.extend_from_slice(b"0 ");
-    ss.extend_from_slice(double_to_string(size).as_bytes());
+    ss.extend_from_slice(format!("{:.6}", size).as_bytes());
     ss.push(b' ');
     ss.extend_from_slice(b"md5:");
     ss.extend_from_slice(md5.as_bytes());
@@ -167,7 +168,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
 
 /// The audit log entry in the JSON format, with the given parts.
 pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
-    let ts = asc_time(t.time_stamp);
+    let ts = strftime_local(t.time_stamp, "%c");
     let unique_id = UniqueId::unique_id();
     let mut g = JsonGen::new();
 

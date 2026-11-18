@@ -1,7 +1,7 @@
 //! The `t:sqlHexDecode` transformation: decodes SQL hex literals
 //! (`0xHHHH...`).
 
-use crate::chars::{valid_hex, x2c};
+use crate::chars::x2c;
 
 #[inline]
 fn mytolower(ch: u8) -> u8 {
@@ -23,15 +23,15 @@ fn inplace(value: &mut Vec<u8>) -> bool {
         if data + 3 < end
             && value[data] == b'0'
             && mytolower(value[data + 1]) == b'x'
-            && valid_hex(value[data + 2])
-            && valid_hex(value[data + 3])
+            && value[data + 2].is_ascii_hexdigit()
+            && value[data + 3].is_ascii_hexdigit()
         {
             data += 2; // skip '0x'
             loop {
                 value[d] = x2c(&value[data..data + 2]);
                 d += 1;
                 data += 2;
-                if !(data + 1 < end && valid_hex(value[data]) && valid_hex(value[data + 1])) {
+                if !(data + 1 < end && value[data].is_ascii_hexdigit() && value[data + 1].is_ascii_hexdigit()) {
                     break;
                 }
             }

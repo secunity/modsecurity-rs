@@ -5,14 +5,9 @@
 //! have `&str` conveniences.
 
 pub use modsecurity_compat::chars::{
-    find_from, is_space, limit_to, lossy, split, ssplit, ssplit_pair, string_to_hex, to_hex_if_needed,
+    find_from, is_space, limit_to, split, ssplit, ssplit_pair, string_to_hex, to_hex_if_needed,
 };
-pub use modsecurity_compat::cnum::{atoi, double_to_string, stod, stoi, strtol_int};
-
-/// The local time `t` formatted by `strftime("%c")`.
-pub fn asc_time(t: i64) -> String {
-    crate::utils::system::strftime_local(t, "%c")
-}
+pub use modsecurity_compat::cnum::{atoi, stod, stoi, strtol_int};
 
 /// The bytes of `s`, or `-` when it is missing or empty.
 pub fn dash_if_empty(s: Option<&[u8]>) -> Vec<u8> {
@@ -29,16 +24,6 @@ pub fn split_str(s: &str, delimiter: char) -> Vec<String> {
 
 // The helpers that clean a configuration value are part of the syntax.
 pub use modsecurity_seclang::value::sanitize as parser_sanitizer;
-
-/// Lowercases every byte (C locale `::tolower`).
-pub fn tolower(s: &[u8]) -> Vec<u8> {
-    s.to_ascii_lowercase()
-}
-
-/// Upper-cases the ASCII letters of a configuration string.
-pub fn toupper_str(s: &str) -> String {
-    s.to_ascii_uppercase()
-}
 
 #[cfg(test)]
 mod tests {

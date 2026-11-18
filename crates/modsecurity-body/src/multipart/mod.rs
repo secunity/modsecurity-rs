@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use modsecurity_compat::chars::{c_str, is_space, lossy};
+use modsecurity_compat::chars::{c_str, is_space};
 use modsecurity_types::{DebugSink, ms_dbg, ms_dbg_opt};
 
 mod content_disposition;
@@ -497,7 +497,7 @@ impl Multipart {
         let crlf = at(end) == b'\r' && at(end + 1) == b'\n' && at(end + 2) == 0;
         if !lf && !crlf {
             self.flags.error = true;
-            self.fail(cx, 4, format!("Multipart: Invalid boundary: {}", lossy(line)));
+            self.fail(cx, 4, format!("Multipart: Invalid boundary: {}", String::from_utf8_lossy(line)));
             return None;
         }
         if lf {
@@ -553,7 +553,7 @@ impl Multipart {
             // transaction collection
             for (off, line) in &mpp.header_lines {
                 cx.add(Entries::MultipartPartHeaders, &mpp.name, line, *off);
-                ms_dbg!(cx, 9, "Multipart: Added part header line:{}", lossy(line));
+                ms_dbg!(cx, 9, "Multipart: Added part header line:{}", String::from_utf8_lossy(line));
             }
 
             if mpp.type_ == PartType::File {
@@ -591,8 +591,8 @@ impl Multipart {
                         cx,
                         9,
                         "Multipart: Added file part to the list: name \"{}\" file name \"{}\" (offset {}, length {})",
-                        lossy(&mpp.name),
-                        lossy(fname),
+                        String::from_utf8_lossy(&mpp.name),
+                        String::from_utf8_lossy(fname),
                         mpp.offset,
                         mpp.length
                     );
@@ -601,7 +601,7 @@ impl Multipart {
                         cx,
                         9,
                         "Multipart: Added part to the list: name \"{}\" (offset {}, length {})",
-                        lossy(&mpp.name),
+                        String::from_utf8_lossy(&mpp.name),
                         mpp.offset,
                         mpp.length
                     );
@@ -762,8 +762,8 @@ impl Multipart {
                     cx,
                     4,
                     "Adding request argument (BODY): name \"{}\", value \"{}\"",
-                    lossy(&m.name),
-                    lossy(&m.value)
+                    String::from_utf8_lossy(&m.name),
+                    String::from_utf8_lossy(&m.value)
                 );
                 let offset = (cx.offset() + 1).wrapping_add(m.value_offset);
                 cx.add(Entries::Args, &m.name, &m.value, offset);

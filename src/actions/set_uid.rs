@@ -3,7 +3,6 @@
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
-use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct SetUID {
@@ -23,7 +22,12 @@ impl Action for SetUID {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let col_name_expanded = cx.expand(&self.string);
-        crate::ms_dbg!(cx, 8, "User collection initiated with value: '{}'.", lossy(&col_name_expanded));
+        crate::ms_dbg!(
+            cx,
+            8,
+            "User collection initiated with value: '{}'.",
+            String::from_utf8_lossy(&col_name_expanded)
+        );
         cx.set_user_id(col_name_expanded);
     }
 }

@@ -12,7 +12,7 @@
 //! keys (a new element is placed in front of its equivalents, a new bucket at
 //! the front of the list).
 //!
-//! [`my_hash`] sums `tolower(c)` over the key's `char`s and [`my_equal`]
+//! [`my_hash`] sums `c.to_ascii_lowercase()` over the key's `char`s and [`my_equal`]
 //! compares with `tolower`. Because `char` is signed on some targets (x86_64)
 //! and unsigned on others (aarch64 Linux), the hash of non-ASCII keys follows
 //! the target's `c_char`, as the C++ build does.
@@ -399,7 +399,7 @@ pub fn my_hash(key: &[u8]) -> usize {
     let mut h: usize = 0;
     for &b in key {
         let c = b as c_char;
-        // tolower() in the C locale only changes 'A'..='Z'; negative values
+        // ().to_ascii_lowercase() in the C locale only changes 'A'..='Z'; negative values
         // (signed char targets) are returned unchanged.
         let lc: i64 = if b.is_ascii_uppercase() { (b + 32) as i64 } else { c as i64 };
         h = h.wrapping_add(lc as usize);

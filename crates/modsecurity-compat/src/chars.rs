@@ -1,12 +1,6 @@
 //! Byte classes, hexadecimal conversions and the small string helpers of
 //! the C++ library (`std::string::find`, the log escaping and truncation).
 
-/// Whether `x` is a hexadecimal digit.
-#[inline]
-pub fn valid_hex(x: u8) -> bool {
-    x.is_ascii_hexdigit()
-}
-
 /// Whether `x` is an octal digit.
 #[inline]
 pub fn isodigit(x: u8) -> bool {
@@ -164,10 +158,4 @@ pub fn c_str(s: &[u8]) -> &[u8] {
         Some(end) => &s[..end],
         None => s,
     }
-}
-
-/// Lossy view of bytes for log messages.
-#[inline]
-pub fn lossy(s: &[u8]) -> std::borrow::Cow<'_, str> {
-    String::from_utf8_lossy(s)
 }

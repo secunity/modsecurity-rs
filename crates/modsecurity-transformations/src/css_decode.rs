@@ -1,6 +1,6 @@
 //! The `t:cssDecode` transformation: decodes CSS escape sequences.
 
-use crate::chars::{is_space, valid_hex, x2c, xsingle2c};
+use crate::chars::{is_space, x2c, xsingle2c};
 
 /// Decode a string that contains CSS-escaped characters.
 ///
@@ -22,7 +22,7 @@ fn css_decode_inplace(input: &mut Vec<u8>) -> bool {
 
                 // Check for 1-6 hex characters following the backslash
                 let mut j = 0usize;
-                while j < 6 && i + j < input_len && valid_hex(input[i + j]) {
+                while j < 6 && i + j < input_len && input[i + j].is_ascii_hexdigit() {
                     j += 1;
                 }
 

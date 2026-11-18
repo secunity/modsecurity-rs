@@ -5,7 +5,7 @@ use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::collection::Persistent;
 use crate::run_time_string::RunTimeString;
-use crate::utils::string::{atoi, lossy};
+use crate::utils::string::atoi;
 
 #[derive(Debug)]
 pub struct ExpireVar {
@@ -72,7 +72,13 @@ impl Action for ExpireVar {
         }
 
         // Logged even for an invalid collection (as in C++).
-        crate::ms_dbg!(cx, 9, "Setting variable `{}' to expire in {} seconds.", lossy(variable_name), expiry_seconds);
+        crate::ms_dbg!(
+            cx,
+            9,
+            "Setting variable `{}' to expire in {} seconds.",
+            String::from_utf8_lossy(variable_name),
+            expiry_seconds
+        );
     }
 }
 

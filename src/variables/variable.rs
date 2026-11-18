@@ -9,7 +9,6 @@
 use crate::rule::Rule;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{Transaction, TransactionAnchoredVariables};
-use crate::utils::string::toupper_str;
 use crate::variables::anchored_set_variable::AnchoredSetVariable;
 use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::variables::anchored_variable::AnchoredVariable;
@@ -136,7 +135,7 @@ impl Variable {
     pub(crate) fn new(name: &str, source: Source) -> Self {
         let (collection_name, short, full_name) = match name.find(':').or_else(|| name.find('.')) {
             Some(a) => {
-                let collection = toupper_str(&name[..a]);
+                let collection = name[..a].to_ascii_uppercase();
                 let short = &name[a + 1..];
                 let full = format!("{}:{}", collection, short);
                 (collection, short.to_string(), full)

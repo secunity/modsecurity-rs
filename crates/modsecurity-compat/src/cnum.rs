@@ -91,12 +91,6 @@ pub fn strtol_int(s: &str, base: u32) -> i32 {
     strtoll(s.as_bytes(), base).value as i32
 }
 
-/// Formats `d` in fixed notation with six decimals, as
-/// `std::to_string(double)` does.
-pub fn double_to_string(d: f64) -> String {
-    format!("{:.6}", d)
-}
-
 /// Parses the longest floating point prefix (after leading white space) as
 /// `std::stod` does; fails when nothing can be converted or on overflow.
 pub fn stod(s: &str) -> Option<f64> {
@@ -245,7 +239,6 @@ mod tests {
         assert_eq!(stod(" 1.5e3x"), Some(1500.0));
         assert_eq!(stod("abc"), None);
         assert_eq!(stod("1e999"), None);
-        assert_eq!(double_to_string(1.5), "1.500000");
         assert_eq!(format_g(1e-5, 6), "1e-05");
         assert_eq!(format_g(123456789.0, 6), "1.23457e+08");
         assert_eq!(format_g(-0.0, 40), "-0");

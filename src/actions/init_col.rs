@@ -5,7 +5,6 @@ use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::collection::Persistent;
 use crate::run_time_string::RunTimeString;
-use crate::utils::string::lossy;
 
 #[derive(Debug)]
 pub struct InitCol {
@@ -48,7 +47,7 @@ impl Action for InitCol {
             5,
             "Collection `{}' initialized with value: {}",
             self.collection.name().to_ascii_lowercase(),
-            lossy(cx.collection_key(self.collection))
+            String::from_utf8_lossy(cx.collection_key(self.collection))
         );
     }
 }

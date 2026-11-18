@@ -39,7 +39,7 @@ use crate::rule::message::RuleMessage;
 use crate::rule::{Rule, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code};
-use crate::utils::string::{double_to_string, is_space, split, ssplit, tolower};
+use crate::utils::string::{is_space, split, ssplit};
 use crate::variables::anchored_set_variable::AnchoredSetVariable;
 use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::variables::anchored_variable::AnchoredVariable;
@@ -378,7 +378,7 @@ pub struct Transaction<'a> {
 fn transaction_id(id: Option<&str>, timestamp: i64) -> String {
     match id {
         Some(id) => id.to_string(),
-        None => format!("{}{}", timestamp, double_to_string(crate::utils::random::generate_transaction_unique_id())),
+        None => format!("{}{:.6}", timestamp, rand::Rng::random_range(&mut rand::rng(), 0.0..100.0)),
     }
 }
 
@@ -663,7 +663,7 @@ impl<'a> Transaction<'a> {
         let off = self.vars.offset;
         self.vars.request_headers.set(key, value, off);
 
-        let keyl = tolower(key);
+        let keyl = key.to_ascii_lowercase();
         if keyl == b"authorization" {
             let ty = split(value, b' ');
             self.vars.auth_type.set(&ty[0], off);
@@ -705,7 +705,7 @@ impl<'a> Transaction<'a> {
         }
 
         if keyl == b"content-type" {
-            let l = tolower(value);
+            let l = value.to_ascii_lowercase();
             if l.starts_with(b"multipart/form-data") {
                 self.body.request_body_type = RequestBodyType::MultiPartRequestBody;
                 self.vars.reqbody_processor.set(b"MULTIPART", off);
@@ -831,7 +831,7 @@ impl<'a> Transaction<'a> {
         let off = self.vars.offset;
         self.vars.response_headers_names.set(key, key, off);
         self.vars.response_headers.set(key, value, off);
-        if tolower(key) == b"content-type" {
+        if key.eq_ignore_ascii_case(b"content-type") {
             // Removes the charset=...
             let val = split(value, b';');
             if let Some(v) = val.first() {
@@ -842,7 +842,7 @@ impl<'a> Transaction<'a> {
 
     fn response_type_is_inspected(&self) -> bool {
         let bi = &self.rules.properties.response_body_type_to_be_inspected.value;
-        let ct = String::from_utf8_lossy(&tolower(&self.vars.response_content_type.value)).into_owned();
+        let ct = String::from_utf8_lossy(&self.vars.response_content_type.value.to_ascii_lowercase()).into_owned();
         bi.contains(&ct)
     }
 

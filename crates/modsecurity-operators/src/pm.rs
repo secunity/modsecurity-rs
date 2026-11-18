@@ -2,7 +2,6 @@
 //! phrases (case insensitive).
 
 use crate::{Context, Operator, Param, Resources};
-use modsecurity_compat::chars::valid_hex;
 
 /// Strips optional surrounding quotes and decodes the `|hex|` blocks and
 /// the `\:`, `\;`, `\\` and `\"` escapes. On any invalid sequence the
@@ -36,7 +35,7 @@ pub fn parse_pm_content(op_parm: &[u8]) -> Vec<u8> {
         } else if !esc && s == b'\\' {
             esc = true;
         } else if bin {
-            if valid_hex(s) {
+            if s.is_ascii_hexdigit() {
                 bin_parm[bin_offset] = s;
                 bin_offset += 1;
                 if bin_offset == 2 {

@@ -3,7 +3,7 @@
 //! one is configured.
 
 use crate::UnicodeMap;
-use crate::chars::{valid_hex, x2c};
+use crate::chars::x2c;
 
 fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
     let mut changed = false;
@@ -21,10 +21,10 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
                 // IIS-specific %u encoding.
                 if i + 5 < input_len {
                     // We have at least 4 data bytes.
-                    if valid_hex(input[i + 2])
-                        && valid_hex(input[i + 3])
-                        && valid_hex(input[i + 4])
-                        && valid_hex(input[i + 5])
+                    if input[i + 2].is_ascii_hexdigit()
+                        && input[i + 3].is_ascii_hexdigit()
+                        && input[i + 4].is_ascii_hexdigit()
+                        && input[i + 5].is_ascii_hexdigit()
                     {
                         if let Some(map) = map {
                             let mut code: usize = 0;
@@ -94,7 +94,7 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
                     let c1 = input[i + 1];
                     let c2 = input[i + 2];
 
-                    if valid_hex(c1) && valid_hex(c2) {
+                    if c1.is_ascii_hexdigit() && c2.is_ascii_hexdigit() {
                         input[d] = x2c(&input[i + 1..i + 3]);
                         d += 1;
                         i += 3;

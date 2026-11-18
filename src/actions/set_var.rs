@@ -5,7 +5,7 @@
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
-use crate::utils::string::{lossy, stoi};
+use crate::utils::string::stoi;
 use crate::variables::variable::Variable;
 
 /// Each operation owns exactly the operand it needs. Bare assignment and
@@ -91,8 +91,8 @@ impl Action for SetVar {
             8,
             "Saving variable: {}:{} with value: {}",
             self.variable.collection_name(),
-            lossy(&variable_name_expanded),
-            lossy(&target_value)
+            String::from_utf8_lossy(&variable_name_expanded),
+            String::from_utf8_lossy(&target_value)
         );
 
         if let Some(target) = target {

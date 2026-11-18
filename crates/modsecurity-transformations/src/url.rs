@@ -1,6 +1,6 @@
 //! URL (percent) decoding.
 
-use crate::chars::{hex2dec, valid_hex, x2c};
+use crate::chars::{hex2dec, x2c};
 
 /// Decodes `val` in place, turning `+` into a space; returns whether the
 /// value changed and the number of invalid `%` encodings.
@@ -22,7 +22,7 @@ pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool, i
             if s + 2 < e {
                 let c1 = val[s + 1];
                 let c2 = val[s + 2];
-                if valid_hex(c1) && valid_hex(c2) {
+                if c1.is_ascii_hexdigit() && c2.is_ascii_hexdigit() {
                     let uni = x2c(&[c1, c2]);
                     val[d] = uni;
                     d += 1;

@@ -1,7 +1,6 @@
 //! The Content-Disposition header of a part: `form-data; name="a";
 //! filename="b"; filename*=UTF-8'en'c`.
 
-use modsecurity_compat::chars::lossy;
 use modsecurity_types::ms_dbg;
 
 use super::part::MultipartPart;
@@ -65,7 +64,13 @@ impl Multipart {
         }
         for &c in data {
             if c == b'\'' {
-                ms_dbg!(cx, 9, "Multipart: Invalid quoting detected: {} length {} bytes", lossy(data), data.len());
+                ms_dbg!(
+                    cx,
+                    9,
+                    "Multipart: Invalid quoting detected: {} length {} bytes",
+                    String::from_utf8_lossy(data),
+                    data.len()
+                );
                 self.flags.invalid_quoting = true;
             }
         }
@@ -147,7 +152,7 @@ impl Multipart {
                                 cx,
                                 9,
                                 "Multipart: Invalid quoting detected: {} length {} bytes",
-                                lossy(&cd[c.p..]),
+                                String::from_utf8_lossy(&cd[c.p..]),
                                 cd.len() - c.p
                             );
                             self.flags.invalid_quoting = true;
@@ -205,7 +210,12 @@ impl Multipart {
         }
         mpp.filename_charset = charset.to_vec();
         mpp.filename_charset_offset = offset.wrapping_add(c.p - charset.len());
-        ms_dbg!(cx, 4, "Multipart: Content-Disposition filename* charset: {}.", lossy(&mpp.filename_charset));
+        ms_dbg!(
+            cx,
+            4,
+            "Multipart: Content-Disposition filename* charset: {}.",
+            String::from_utf8_lossy(&mpp.filename_charset)
+        );
         c.p += 1;
 
         let language = c.take_while(|b| b != b'\'');
@@ -215,7 +225,12 @@ impl Multipart {
         }
         mpp.filename_language = language.to_vec();
         mpp.filename_language_offset = offset.wrapping_add(c.p - language.len());
-        ms_dbg!(cx, 4, "Multipart: Content-Disposition filename* language: {}.", lossy(&mpp.filename_language));
+        ms_dbg!(
+            cx,
+            4,
+            "Multipart: Content-Disposition filename* language: {}.",
+            String::from_utf8_lossy(&mpp.filename_language)
+        );
         c.p += 1;
 
         // Now read what should be the actual filename
@@ -301,12 +316,12 @@ impl Multipart {
                         cx,
                         4,
                         "Multipart: Warning: Duplicate Content-Disposition name: {}. Previously: {}",
-                        lossy(&value),
-                        lossy(&mpp.name)
+                        String::from_utf8_lossy(&value),
+                        String::from_utf8_lossy(&mpp.name)
                     );
                     return Err(-14);
                 }
-                ms_dbg!(cx, 9, "Multipart: Content-Disposition name: {}.", lossy(&value));
+                ms_dbg!(cx, 9, "Multipart: Content-Disposition name: {}.", String::from_utf8_lossy(&value));
                 mpp.name = value;
                 mpp.name_offset = value_offset;
             }
@@ -315,11 +330,16 @@ impl Multipart {
                 // already (and not the filename_star)
                 if !mpp.filename.is_empty() {
                     self.flags.duplicate_part_header = true;
-                    ms_dbg!(cx, 4, "Multipart: Warning: Duplicate Content-Disposition filename: {}.", lossy(&value));
+                    ms_dbg!(
+                        cx,
+                        4,
+                        "Multipart: Warning: Duplicate Content-Disposition filename: {}.",
+                        String::from_utf8_lossy(&value)
+                    );
                     return Err(-15);
                 }
                 self.validate_quotes(cx, &value, quote);
-                ms_dbg!(cx, 9, "Multipart: Content-Disposition filename: {}.", lossy(&value));
+                ms_dbg!(cx, 9, "Multipart: Content-Disposition filename: {}.", String::from_utf8_lossy(&value));
                 mpp.filename = value;
                 mpp.filename_offset = value_offset;
             }
@@ -328,7 +348,12 @@ impl Multipart {
                 // already (and not the filename)
                 if !mpp.filename_star.is_empty() {
                     self.flags.duplicate_part_header = true;
-                    ms_dbg!(cx, 4, "Multipart: Warning: Duplicate Content-Disposition filename*: {}.", lossy(&value));
+                    ms_dbg!(
+                        cx,
+                        4,
+                        "Multipart: Warning: Duplicate Content-Disposition filename*: {}.",
+                        String::from_utf8_lossy(&value)
+                    );
                     return Err(-15);
                 }
 
@@ -344,7 +369,12 @@ impl Multipart {
                 }
                 mpp.filename_star = decoded_value;
                 mpp.filename_star_offset = value_offset;
-                ms_dbg!(cx, 9, "Multipart: Content-Disposition filename*: {}.", lossy(&mpp.filename_star));
+                ms_dbg!(
+                    cx,
+                    9,
+                    "Multipart: Content-Disposition filename*: {}.",
+                    String::from_utf8_lossy(&mpp.filename_star)
+                );
             }
             _ => return Err(-11),
         }

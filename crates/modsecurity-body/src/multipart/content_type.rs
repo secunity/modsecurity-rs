@@ -1,6 +1,6 @@
 //! The boundary, from the Content-Type header of the request.
 
-use modsecurity_compat::chars::{is_space, lossy};
+use modsecurity_compat::chars::is_space;
 use modsecurity_types::ms_dbg;
 
 use super::{Context, Multipart, c_at, c_str, find};
@@ -166,7 +166,7 @@ impl Multipart {
             9,
             "Multipart: Boundary{}: {}",
             if self.flags.boundary_quoted { " (quoted)" } else { "" },
-            lossy(&self.boundary)
+            String::from_utf8_lossy(&self.boundary)
         );
 
         if self.boundary.is_empty() {
