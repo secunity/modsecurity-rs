@@ -1113,7 +1113,8 @@ debug[9] Multipart: Added part header "Content-Disposition" "form-data; name="b"
 add MultipartName b = b @2117
 debug[9] Multipart: Content-Disposition name: b.
 debug[9] Multipart: Added data to variable: -- XyZ
-debug[4] Multipart: Invalid boundary: --XyZ
+debug[4] Multipart: Invalid boundary: --XyZ 
+
 process -> false
 set MultipartUnmatchedBoundary = 2 @1000
 set MultipartDataBefore = 0 @1000
@@ -1927,16 +1928,9 @@ complete -> true
 error: Some("Multipart: Invalid boundary in C-T (characters).")
 no files length: 0
 === header: nul byte
-debug[9] Multipart: Boundary: XyZ
-init -> true
-debug[9] Multipart: Added part header "Content-Disposition" "form-data; name="a"".
-add MultipartName a = a @2046
-debug[9] Multipart: Content-Disposition name: a.
-debug[9] Multipart: Added data to variable: 1
-add MultipartPartHeaders a = Content-Disposition: form-data; name=\x22a\x22 @2011
-debug[9] Multipart: Added part header line:Content-Disposition: form-data; name="a"
-debug[9] Multipart: Added part to the list: name "a" (offset 51, length 1)
-set MultipartUnmatchedBoundary = 2 @1000
+debug[4] Multipart: Invalid boundary in C-T (characters).
+init -> false
+set MultipartUnmatchedBoundary = 0 @1000
 set MultipartDataBefore = 0 @1000
 set MultipartDataAfter = 0 @1000
 set MultipartDuplicatePartHeader = 0 @1000
@@ -1949,14 +1943,11 @@ set MultipartMissingSemicolon = 0 @1000
 set MultipartInvalidQuoting = 0 @1000
 set MultipartInvalidPart = 0 @1000
 set MultipartInvalidHeaderFolding = 0 @1000
-set MultipartStrictError = 0 @1000
-debug[4] Adding request argument (BODY): name "a", value "1"
-add Args a = 1 @1052
-add ArgsPost a = 1 @1052
+set MultipartStrictError = 1 @1000
 debug[4] Multipart: Cleanup started (keep files set to Not set)
 complete -> true
-error: None
-no files length: 45
+error: Some("Multipart: Invalid boundary in C-T (characters).")
+no files length: 0
 === header: mixed case type
 debug[9] Multipart: Boundary: XyZ
 init -> true

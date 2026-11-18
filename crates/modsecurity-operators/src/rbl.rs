@@ -7,7 +7,6 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use crate::{Context, Operator, Param};
-use modsecurity_compat::chars::c_str;
 
 /// The block list service, recognized from the parameter. It decides
 /// whether an access key is needed and how an answer is logged.
@@ -33,7 +32,6 @@ pub struct Rbl {
 /// The four numbers of a dotted quad, parsed like
 /// `sscanf(s, "%d.%d.%d.%d", ...) == 4`.
 fn scan_dotted_quad(s: &[u8]) -> Option<[i32; 4]> {
-    let s = c_str(s);
     let mut pos = 0usize;
     let mut out = [0i32; 4];
     for (n, slot) in out.iter_mut().enumerate() {
@@ -206,7 +204,7 @@ enum Resolved {
 /// `getaddrinfo(host, NULL, NULL, &info)` and the family/address of the
 /// first returned entry.
 fn resolve(host: &[u8]) -> Resolved {
-    let Ok(host) = std::str::from_utf8(c_str(host)) else {
+    let Ok(host) = std::str::from_utf8(host) else {
         return Resolved::Failed;
     };
     let first = dns_lookup::getaddrinfo(Some(host), None, None).ok().and_then(|mut entries| entries.next());

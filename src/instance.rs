@@ -219,8 +219,6 @@ impl ModSecurity {
         let ops = operators.search_all(match_string.as_bytes());
         let mut trans = transformations.search_all(match_string.as_bytes());
 
-        // `content` is read as a C string.
-        let content = modsecurity_compat::chars::c_str(content);
         let len = content.len();
 
         let mut g = JsonGen::new();
@@ -411,10 +409,11 @@ mod process_content_offset_tests {
     }
 
     #[test]
-    fn ranges_are_bytes_and_content_stops_at_nul() {
-        let output = ModSecurity::process_content_offset(b"a\xffz\0ignored", "v1,99v0,1").unwrap();
+    fn ranges_are_bytes_and_a_nul_is_one() {
+        let output = ModSecurity::process_content_offset(b"a\xffz\0more", "v1,99v0,1").unwrap();
         assert!(output.windows(2).any(|bytes| bytes == b"\xffz"));
-        assert!(!output.windows(7).any(|bytes| bytes == b"ignored"));
-        assert_eq!(pco("abc\0ignored", "v3,0v0,1").unwrap_err(), "Offset is out of the content limits.");
+        // C++ reads the content up to its first NUL byte.
+        assert!(output.windows(4).any(|bytes| bytes == b"more"));
+        assert!(pco("abc\0more", "v4,4v0,1").unwrap().contains("\"value\":\"more\""));
     }
 }

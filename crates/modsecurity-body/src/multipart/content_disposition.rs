@@ -4,7 +4,7 @@
 use modsecurity_types::ms_dbg;
 
 use super::part::MultipartPart;
-use super::{Context, Entries, Multipart, c_at, c_str};
+use super::{Context, Entries, Multipart};
 
 const MIME_CHARSET_SPECIAL: &[u8] = b"!#$%&+-^_`{}~";
 const ATTR_CHAR_SPECIAL: &[u8] = b"!#$&+-.^_`~";
@@ -13,40 +13,36 @@ const ATTR_CHAR_SPECIAL: &[u8] = b"!#$&+-.^_`~";
 /// which the error message shows.
 type Code = i32;
 
-/// A position in the header value, read as a C string: past its end
-/// there is the NUL terminator.
+/// A position in the header value.
 struct Cursor<'a> {
     s: &'a [u8],
     p: usize,
 }
 
 impl<'a> Cursor<'a> {
-    /// The byte at the position.
-    fn at(&self) -> u8 {
-        c_at(self.s, self.p)
+    /// The byte at the position, if not at the end.
+    fn at(&self) -> Option<u8> {
+        self.ahead(0)
     }
 
-    /// The byte `n` after the position.
-    fn ahead(&self, n: usize) -> u8 {
-        c_at(self.s, self.p + n)
+    /// The byte `n` after the position, if there is one.
+    fn ahead(&self, n: usize) -> Option<u8> {
+        self.s.get(self.p + n).copied()
     }
 
     fn at_end(&self) -> bool {
-        self.at() == 0
+        self.at().is_none()
     }
 
     /// Goes over spaces and tabs.
     fn skip_blanks(&mut self) {
-        while self.at() == b'\t' || self.at() == b' ' {
-            self.p += 1;
-        }
+        self.take_while(|c| c == b'\t' || c == b' ');
     }
 
-    /// Goes over the bytes `wanted` accepts (never the end), and gives
-    /// them.
+    /// Goes over the bytes `wanted` accepts, and gives them.
     fn take_while(&mut self, wanted: impl Fn(u8) -> bool) -> &'a [u8] {
         let start = self.p;
-        while !self.at_end() && wanted(self.at()) {
+        while self.at().is_some_and(&wanted) {
             self.p += 1;
         }
         &self.s[start..self.p]
@@ -85,7 +81,7 @@ impl Multipart {
         c_d_value: &[u8],
         offset: usize,
     ) -> Result<(), Code> {
-        let cd = c_str(c_d_value);
+        let cd = c_d_value;
 
         // accept only what we understand
         if !cd.starts_with(b"form-data") {
@@ -98,7 +94,7 @@ impl Multipart {
         if c.at_end() {
             return Ok(()); // this is OK
         }
-        if c.at() != b';' {
+        if c.at() != Some(b';') {
             return Err(-2);
         }
         c.p += 1;
@@ -119,7 +115,7 @@ impl Multipart {
             if c.at_end() {
                 return Err(-5);
             }
-            if c.at() != b'=' {
+            if c.at() != Some(b'=') {
                 return Err(-13);
             }
             c.p += 1;
@@ -131,7 +127,7 @@ impl Multipart {
 
             let (value, quote) = if name == b"filename*" {
                 (self.extended_value(cx, mpp, &mut c, offset)?, 0)
-            } else if c.at() == b'"' || c.at() == b'\'' {
+            } else if c.at() == Some(b'"') || c.at() == Some(b'\'') {
                 self.quoted_value(&mut c)?
             } else {
                 (c.take_while(Self::is_token_char).to_vec(), 0)
@@ -145,9 +141,9 @@ impl Multipart {
             if !c.at_end() {
                 c.skip_blanks();
                 if !c.at_end() {
-                    if c.at() != b';' {
+                    if c.at() != Some(b';') {
                         c.p -= 1;
-                        if c.at() == b'\'' || c.at() == b'"' {
+                        if c.at() == Some(b'\'') || c.at() == Some(b'"') {
                             ms_dbg!(
                                 cx,
                                 9,
@@ -203,7 +199,7 @@ impl Multipart {
         offset: usize,
     ) -> Result<Vec<u8>, Code> {
         let charset = c.take_while(|b| b.is_ascii_alphanumeric() || MIME_CHARSET_SPECIAL.contains(&b));
-        if c.at() != b'\'' || charset.is_empty() {
+        if c.at() != Some(b'\'') || charset.is_empty() {
             // Must be at least one legit char before ' for start of
             // language
             return Err(-16);
@@ -219,7 +215,7 @@ impl Multipart {
         c.p += 1;
 
         let language = c.take_while(|b| b != b'\'');
-        if c.at() != b'\'' {
+        if c.at() != Some(b'\'') {
             self.flags.invalid_quoting = true;
             return Err(-17); // Single quote for end-of-language not found
         }
@@ -235,13 +231,13 @@ impl Multipart {
 
         // Now read what should be the actual filename
         let start = c.p;
-        while !c.at_end() && c.at() != b';' {
-            if c.at() == b'%' {
-                if !c.ahead(1).is_ascii_hexdigit() || !c.ahead(2).is_ascii_hexdigit() {
+        while !c.at_end() && c.at() != Some(b';') {
+            if c.at() == Some(b'%') {
+                if !(1..=2).all(|n| c.ahead(n).is_some_and(|b| b.is_ascii_hexdigit())) {
                     return Err(-18);
                 }
                 c.p += 3;
-            } else if c.at().is_ascii_alphanumeric() || ATTR_CHAR_SPECIAL.contains(&c.at()) {
+            } else if c.at().is_some_and(|b| b.is_ascii_alphanumeric() || ATTR_CHAR_SPECIAL.contains(&b)) {
                 c.p += 1;
             } else {
                 return Err(-19);
@@ -255,7 +251,7 @@ impl Multipart {
     /// invalid: `MULTIPART_INVALID_QUOTING` is set so that the rules can
     /// deal with it.
     fn quoted_value(&mut self, c: &mut Cursor<'_>) -> Result<(Vec<u8>, u8), Code> {
-        let quote = c.at();
+        let quote = c.at().unwrap_or_default();
         if quote == b'\'' {
             self.flags.invalid_quoting = true;
         }
@@ -266,27 +262,28 @@ impl Multipart {
         }
 
         let mut value = Vec::new();
-        while !c.at_end() {
-            if c.at() == b'\\' {
-                if c.ahead(1) == 0 {
+        while let Some(mut b) = c.at() {
+            if b == b'\\' {
+                let Some(escaped) = c.ahead(1) else {
                     // improper escaping
                     return Err(-8);
-                }
+                };
                 // Only the quote and \ can be escaped. Anything else is
                 // improper escaping, allowed because IE sends improperly
                 // escaped content and there is nothing we can do about it.
-                if c.ahead(1) == quote || c.ahead(1) == b'\\' {
+                if escaped == quote || escaped == b'\\' {
                     c.p += 1;
+                    b = escaped;
                 }
-            } else if c.at() == quote {
+            } else if b == quote {
                 break;
             }
 
-            value.push(c.at());
+            value.push(b);
             c.p += 1;
         }
 
-        if c.at() != quote {
+        if c.at() != Some(quote) {
             self.flags.invalid_quoting = true;
             return Err(-15); // closing quote not found
         }

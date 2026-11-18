@@ -98,7 +98,6 @@ fn mmdb_open_strerror(e: &maxminddb::MaxMindDbError) -> &'static str {
 fn parse_numeric_host(target: &[u8]) -> Result<std::net::IpAddr, String> {
     use dns_lookup::{AddrInfoHints, SockType, getaddrinfo};
 
-    let target = modsecurity_compat::chars::c_str(target);
     // A name that is not text cannot be a numeric address.
     let host = std::str::from_utf8(target).unwrap_or("\u{fffd}");
     let hints = AddrInfoHints {

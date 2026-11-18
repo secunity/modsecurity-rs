@@ -9,7 +9,6 @@ use crate::transaction::Transaction;
 use crate::unique_id::UniqueId;
 use crate::utils::string::{dash_if_empty, to_hex_if_needed};
 use crate::utils::system::strftime_local;
-use modsecurity_compat::chars::c_str;
 use modsecurity_compat::json::JsonGen;
 
 /// The index line of the native audit log format for an entry stored
@@ -30,7 +29,7 @@ pub(crate) fn native_index_line(t: &Transaction<'_>, filename: &str, size: f64, 
     ss.push(b'"');
     ss.extend_from_slice(&dash_if_empty(Some(t.vars.request_method.evaluate())));
     ss.push(b' ');
-    ss.extend_from_slice(c_str(&t.http.uri));
+    ss.extend_from_slice(&t.http.uri);
     ss.push(b' ');
     ss.extend_from_slice(b"HTTP/");
     ss.extend_from_slice(t.http.http_version.as_bytes());
@@ -85,7 +84,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
         a.extend_from_slice(p);
         a.extend_from_slice(&dash_if_empty(Some(t.vars.request_method.evaluate())));
         a.push(b' ');
-        a.extend_from_slice(c_str(&t.http.uri));
+        a.extend_from_slice(&t.http.uri);
         a.extend_from_slice(b" HTTP/");
         line(&mut a, t.http.http_version.as_bytes());
         let mut l = Vec::new();
@@ -93,9 +92,9 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
         for h in &l {
             let pos = "REQUEST_HEADERS:".len();
             a.extend_from_slice(p);
-            a.extend_from_slice(c_str(&h.key_with_collection()[pos.min(h.key_with_collection().len())..]));
+            a.extend_from_slice(&h.key_with_collection()[pos.min(h.key_with_collection().len())..]);
             a.extend_from_slice(b": ");
-            line(&mut a, c_str(h.value()));
+            line(&mut a, h.value());
         }
         line(&mut a, p);
     }
@@ -127,9 +126,9 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
         t.vars.response_headers.resolve(&mut l);
         for h in &l {
             a.extend_from_slice(p);
-            a.extend_from_slice(c_str(h.key()));
+            a.extend_from_slice(h.key());
             a.extend_from_slice(b": ");
-            line(&mut a, c_str(h.value()));
+            line(&mut a, h.value());
         }
     }
     line(&mut a, p);
@@ -204,7 +203,7 @@ pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
         let mut l = Vec::new();
         t.vars.request_headers.resolve(&mut l);
         for h in &l {
-            g.string(to_hex_if_needed(c_str(h.key()), false).as_bytes());
+            g.string(to_hex_if_needed(h.key(), false).as_bytes());
             g.string(to_hex_if_needed(h.value(), false).as_bytes());
         }
         g.map_close();
@@ -224,7 +223,7 @@ pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
         let mut l = Vec::new();
         t.vars.response_headers.resolve(&mut l);
         for h in &l {
-            g.string(c_str(h.key()));
+            g.string(h.key());
             g.string(h.value());
         }
         g.map_close();

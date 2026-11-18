@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use modsecurity_compat::chars::{c_str, is_space};
+use modsecurity_compat::chars::is_space;
 use modsecurity_types::{DebugSink, ms_dbg, ms_dbg_opt};
 
 mod content_disposition;
@@ -39,19 +39,10 @@ pub const MULTIPART_BUF_SIZE: usize = 4096;
 // C string helpers
 // ---------------------------------------------------------------------------
 
-/// The byte at `i` of a C string: reading at (or past) the end yields the
-/// NUL terminator.
-#[inline]
-fn c_at(s: &[u8], i: usize) -> u8 {
-    s.get(i).copied().unwrap_or(0)
-}
-
-/// Whether `s` has `needle` at `from`, as
-/// `strncmp(s + from, needle, strlen(needle)) == 0` for a `needle` without
-/// NUL bytes: the comparison stops at the first difference (a NUL byte in
-/// `s` is always a difference).
-fn c_starts_with(s: &[u8], from: usize, needle: &[u8]) -> bool {
-    needle.iter().enumerate().all(|(k, &n)| c_at(s, from + k) == n)
+/// Whether `s` has `needle` at `from` (never past its end, except for an
+/// empty `needle`).
+fn has_at(s: &[u8], from: usize, needle: &[u8]) -> bool {
+    s[from.min(s.len())..].starts_with(needle)
 }
 
 /// The position of the first `needle` in `haystack`, as
@@ -444,16 +435,13 @@ impl Multipart {
     /// must not be one here. `None`: it is a malformed one, an error that
     /// ends the parsing.
     fn boundary_line(&mut self, cx: &mut dyn Context, buf: &[u8]) -> Option<bool> {
-        let line = c_str(buf);
-        let at = |i: usize| c_at(buf, i);
+        let line = buf;
 
         // Do we have something that looks like a boundary?
         if line.len() <= 3 || !line.starts_with(b"--") {
             // We do not think so. Look into the buffer to see if there's
             // anything there that resembles a boundary.
-            let resembles = |i: usize| {
-                buf[i] == b'-' && at(i + 1) == b'-' && i + 1 < buf.len() && c_starts_with(buf, i + 2, &self.boundary)
-            };
+            let resembles = |i: usize| has_at(buf, i, b"--") && has_at(buf, i + 2, &self.boundary);
             if (0..buf.len()).any(resembles) {
                 self.flags.unmatched_boundary = 1;
             }
@@ -461,7 +449,7 @@ impl Multipart {
         }
 
         // Does it match our boundary?
-        if line.len() < self.boundary.len() + 2 || !c_starts_with(buf, 2, &self.boundary) {
+        if line.len() < self.boundary.len() + 2 || !has_at(buf, 2, &self.boundary) {
             return self.unmatched_boundary_line(cx, buf, line.len());
         }
 
@@ -482,7 +470,7 @@ impl Multipart {
 
         // Is this the final boundary?
         let mut end = 2 + self.boundary.len();
-        let is_final = at(end) == b'-' && at(end + 1) == b'-';
+        let is_final = has_at(buf, end, b"--");
         if is_final {
             end += 2;
             if self.is_complete {
@@ -493,8 +481,7 @@ impl Multipart {
         }
 
         // Allow for CRLF and LF line endings.
-        let lf = at(end) == b'\n' && at(end + 1) == 0;
-        let crlf = at(end) == b'\r' && at(end + 1) == b'\n' && at(end + 2) == 0;
+        let (lf, crlf) = (&buf[end..] == b"\n", &buf[end..] == b"\r\n");
         if !lf && !crlf {
             self.flags.error = true;
             self.fail(cx, 4, format!("Multipart: Invalid boundary: {}", String::from_utf8_lossy(line)));
@@ -522,7 +509,7 @@ impl Multipart {
         if self.flags.boundary_quoted
             && len >= self.boundary.len() + 3
             && buf[2] == b'"'
-            && c_starts_with(buf, 3, &self.boundary)
+            && has_at(buf, 3, &self.boundary)
         {
             self.flags.error = true;
             self.fail(cx, 4, "Multipart: Invalid boundary (quotes).");
@@ -531,10 +518,10 @@ impl Multipart {
 
         // Check the beginning of the boundary for whitespace.
         let mut p = 2;
-        while is_space(c_at(buf, p)) {
+        while buf.get(p).is_some_and(|&c| is_space(c)) {
             p += 1;
         }
-        if p != 2 && c_starts_with(buf, p, &self.boundary) {
+        if p != 2 && has_at(buf, p, &self.boundary) {
             self.flags.error = true;
             self.fail(cx, 4, "Multipart: Invalid boundary (whitespace).");
             return None;
@@ -849,16 +836,5 @@ impl Drop for Multipart {
     /// `multipart_complete` was not called.
     fn drop(&mut self) {
         self.cleanup(None);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn c_string_prefixes() {
-        assert!(c_starts_with(b"--ab\0", 2, b"ab"));
-        assert!(!c_starts_with(b"--a\0b", 2, b"ab"));
     }
 }

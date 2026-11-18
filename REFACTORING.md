@@ -1255,3 +1255,13 @@ directives kept a C++ `double` (`cnum::stod`), and their tables were keyed
 by its bit pattern. They are keyed by `rule::Id` now, the code page of
 `SecUnicodeMapFile` is a `u32`, and `stod` is gone. See "Intentional
 deviations from C++" in `MIGRATION.md`.
+
+## A NUL byte is a byte
+
+`chars::c_str` (cut at the first NUL byte) is left only where a value
+goes to C as a C string or where a test of the original suite expects
+the cut (`t:base64Decode`). The multipart parser no longer reads its
+lines and headers as C strings: `c_at` and `c_starts_with` are gone, the
+cursor of the Content-Disposition parser gives `Option<u8>`, and "the end
+of the line" is the end of the slice. See "Intentional deviations from
+C++" in `MIGRATION.md`.

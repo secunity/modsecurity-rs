@@ -30,25 +30,6 @@ const SHARED_COLLECTIONS_PATH: &CStr = c"./modsec-shared-collections";
 /// The code of a failure to open the environment.
 const NO_ENVIRONMENT: Code = -1;
 
-/// Whether `key` starts with `var` (up to a NUL byte in `var`), as the C++
-/// `strncmp(var.c_str(), key, var.size()) == 0`.
-///
-/// Deviation: the C++ code reads past the end of a key shorter than `var`
-/// (into the LMDB page); such keys never match here.
-fn key_matches_prefix(var: &[u8], key: &[u8]) -> bool {
-    for (i, &c) in var.iter().enumerate() {
-        match key.get(i) {
-            Some(&k) if k == c => {
-                if c == 0 {
-                    return true;
-                }
-            }
-            _ => return false,
-        }
-    }
-    true
-}
-
 /// Describes an LMDB failure on stdout (compiled out, as in C++, unless
 /// `LMDB_STDOUT_COUT` is set).
 fn lmdb_debug(rc: c_int, op: &str, scope: &str) {
@@ -286,7 +267,7 @@ impl Collection for Lmdb {
             });
         } else {
             self.walk("resolveMultiMatches", |k, d| {
-                if key_matches_prefix(var, k) {
+                if k.starts_with(var) {
                     l.push(VariableValue::with_collection(name, k, d));
                 }
             });
@@ -324,15 +305,6 @@ mod tests {
 
     fn keys(l: &[VariableValue]) -> Vec<Vec<u8>> {
         l.iter().map(|v| v.key().to_vec()).collect()
-    }
-
-    #[test]
-    fn prefix_match() {
-        assert!(key_matches_prefix(b"ab", b"abc"));
-        assert!(key_matches_prefix(b"abc", b"abc"));
-        assert!(!key_matches_prefix(b"abcd", b"abc"));
-        assert!(!key_matches_prefix(b"abd", b"abc"));
-        assert!(key_matches_prefix(b"a\0z", b"a\0c"));
     }
 
     #[test]

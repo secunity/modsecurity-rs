@@ -252,13 +252,17 @@ impl Regex {
         }
         let mut errornumber: i32 = 0;
         let mut erroroffset: usize = 0;
-        // The C++ code passes the pattern as a NUL terminated C string, so a
-        // pattern stops at its first NUL byte.
-        let len = crate::c_str(&pattern).len();
-        // SAFETY: pattern points to `len` readable bytes; out-params are
-        // valid; a null compile context selects defaults.
+        // SAFETY: pattern points to `pattern.len()` readable bytes;
+        // out-params are valid; a null compile context selects defaults.
         let pc = unsafe {
-            pcre2_compile_8(pattern.as_ptr(), len, options, &mut errornumber, &mut erroroffset, ptr::null_mut())
+            pcre2_compile_8(
+                pattern.as_ptr(),
+                pattern.len(),
+                options,
+                &mut errornumber,
+                &mut erroroffset,
+                ptr::null_mut(),
+            )
         };
         let pcje = if pc.is_null() {
             -1
@@ -544,6 +548,15 @@ mod tests {
         let mut g = Vec::new();
         assert_eq!(r.search_global(b"aab", &mut g, 0), Ok(()));
         assert_eq!(g[0].offset, 0);
+    }
+
+    /// A NUL byte in a pattern is a byte to match (C++ compiles the
+    /// pattern up to it).
+    #[test]
+    fn nul_byte_in_a_pattern() {
+        let r = Regex::new("a\0b");
+        assert!(r.is_match(b"xa\0bx"));
+        assert!(!r.is_match(b"a"));
     }
 
     #[test]

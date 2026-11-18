@@ -176,8 +176,6 @@ impl ConfigUnicodeMap {
         }
         let mut found = false;
         let mut processing = false;
-        // The C++ code reads the file as a C string: it ends at a NUL byte.
-        let buf = modsecurity_compat::chars::c_str(&buf);
         for p in buf.split(|c| CODEPAGE_SEPARATORS.contains(c)).filter(|t| !t.is_empty()) {
             let codepage = crate::utils::string::atoi(p) as u32;
             if codepage == config_code_page {
@@ -497,8 +495,8 @@ mod tests {
         assert_eq!(at("41:", 0x41), 0);
         // Only colons (C++ crashes): ignored.
         assert_eq!(at("::: 0041:42", 0x41), 0x42);
-        // The file ends at a NUL byte, as a C string.
-        assert_eq!(at("0041:42\0 0043:44", 0x43), -1);
+        // A NUL byte does not end the file (it does in C++).
+        assert_eq!(at("0041:42\0 0043:44", 0x43), 0x44);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

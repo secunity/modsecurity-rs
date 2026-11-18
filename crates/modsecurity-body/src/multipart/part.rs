@@ -6,7 +6,7 @@ use std::sync::Arc;
 use modsecurity_compat::chars::{chomp, is_space};
 use modsecurity_types::ms_dbg;
 
-use super::{Context, MULTIPART_BUF_SIZE, Multipart, MultipartPartTmpFile, c_at, c_str, find};
+use super::{Context, MULTIPART_BUF_SIZE, Multipart, MultipartPartTmpFile, find};
 
 /// Whether a part is a form field or a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,7 +198,7 @@ impl Multipart {
             //
             // also we need to check if any of the filename or filename*
             // is present
-            let hv = c_str(&header_value);
+            let hv = &header_value;
             if find(hv, b"filename=").is_none() && find(hv, b"filename*=").is_none() {
                 return self.fail(cx, 1, "Multipart: Invalid Content-Disposition header (filename).");
             }
@@ -232,7 +232,7 @@ impl Multipart {
 
         // locate the beginning of data
         let mut data = 0;
-        while is_space(c_at(line, data)) {
+        while line.get(data).is_some_and(|&c| is_space(c)) {
             // Flag invalid header folding if an invalid RFC-2557 character
             // is used anywhere in the folding prefix.
             if line[data] != b'\t' && line[data] != b' ' {
@@ -290,7 +290,7 @@ impl Multipart {
 
         // The value, after the colon and blanks.
         let mut data = colon + 1;
-        while c_at(line, data) == b'\t' || c_at(line, data) == b' ' {
+        while matches!(line.get(data), Some(b'\t' | b' ')) {
             data += 1;
         }
         let mut value = line[data..].to_vec();

@@ -545,10 +545,8 @@ impl Builder<'_, '_> {
                 _ => return Ok(()),
             }
         }
-        // The C++ code reads what it downloaded as a C string.
-        let content = modsecurity_compat::chars::c_str(&c.content);
         let idx = self.driver.add_filename(url.to_string());
-        load(self.driver, content, idx)
+        load(self.driver, &c.content, idx)
     }
 }
 

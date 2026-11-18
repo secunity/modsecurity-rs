@@ -3,7 +3,7 @@
 use modsecurity_compat::chars::is_space;
 use modsecurity_types::ms_dbg;
 
-use super::{Context, Multipart, c_at, c_str, find};
+use super::{Context, Multipart, find};
 
 /// Why a Content-Type header was refused: with the message to report, or
 /// silently (an empty boundary, which C++ refuses without a word).
@@ -26,7 +26,6 @@ impl Multipart {
     /// Whether the boundary only uses the characters RFC 2046 allows (a
     /// space only before the last character).
     pub fn boundary_characters_valid(boundary: &[u8]) -> bool {
-        let boundary = c_str(boundary);
         boundary.iter().enumerate().all(|(i, &c)| {
             // Check against allowed list defined in RFC2046 page 22
             c.is_ascii_alphanumeric()
@@ -40,7 +39,7 @@ impl Multipart {
     /// appears, case insensitively.
     pub fn count_boundary_params(str_header_value: &[u8]) -> usize {
         let lower = str_header_value.to_ascii_lowercase();
-        let mut s = c_str(&lower);
+        let mut s = &lower[..];
         let mut count = 0;
         while let Some(p) = find(s, b"boundary") {
             s = &s[p + 8..];
@@ -61,8 +60,7 @@ impl Multipart {
             return Err(Some("Multipart: Invalid boundary in C-T (length)."));
         }
 
-        // The checks below work on the header as a C string.
-        let header = c_str(&self.header).to_vec();
+        let header = self.header.clone();
 
         if header.len() < 19 || !header[..19].eq_ignore_ascii_case(b"multipart/form-data") {
             return Err(Some("Multipart: Invalid MIME type."));
@@ -120,7 +118,7 @@ impl Multipart {
         let len = value.len();
 
         // Flag for whitespace before parameter value.
-        if is_space(c_at(value, 0)) {
+        if value.first().is_some_and(|&c| is_space(c)) {
             self.flags.boundary_whitespace = true;
         }
 
@@ -133,7 +131,7 @@ impl Multipart {
             self.flags.boundary_quoted = true;
         } else {
             // Test for partial quoting.
-            if c_at(value, 0) == b'"' || (len >= 2 && value[len - 1] == b'"') {
+            if value.first() == Some(&b'"') || (len >= 2 && value[len - 1] == b'"') {
                 return Err(Some("Multipart: Invalid boundary in C-T (quote)."));
             }
             self.boundary = value.to_vec();

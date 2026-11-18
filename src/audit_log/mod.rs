@@ -612,6 +612,25 @@ mod tests {
         );
     }
 
+    /// What follows a NUL byte in a header is logged (C++ writes the
+    /// header up to it).
+    #[test]
+    fn nul_byte_in_a_header() {
+        let d = temp_dir("nul");
+        let native = p(&d, "nul.log");
+        let rules = rules_with(|a| {
+            a.set_type(AuditLogType::Serial);
+            a.set_file_path1(&native);
+        });
+        run(&rules, "id-nul", |t| {
+            t.add_request_header(b"X-Request", b"before\0after");
+            t.add_response_header(b"X-Response", b"before\0after");
+        });
+        let out = std::fs::read(&native).unwrap();
+        let has = |line: &[u8]| out.windows(line.len()).any(|w| w == line);
+        assert!(has(b"X-Request: before\0after\n") && has(b"X-Response: before\0after\n"));
+    }
+
     /// Checks the entry file of a parallel writer and returns its path.
     fn check_parallel_entry(storage: &Path, id: &str, t: i64, mode: u32) -> String {
         let day = crate::utils::system::strftime_local(t, "%Y%m%d");

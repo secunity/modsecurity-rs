@@ -304,6 +304,40 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **NUL bytes elsewhere.** *C++:* many values pass through a C string
+  and so end at their first NUL byte. *Here:* in the places below a NUL
+  byte is a byte like another. *Why:* approved by the owner; what follows
+  a NUL byte should not be hidden from a rule or a log. No test of the
+  original ModSecurity depends on any of them.
+  - *Audit log* (native: the request line, request and response header
+    names and values; JSON: header names): written whole. C++ logs
+    `X: before` for the header `X: before\0after`. Regression test:
+    `audit_log::tests::nul_byte_in_a_header`.
+  - *Multipart, the Content-Type header:* a NUL byte is a character of
+    the header, so `boundary=XyZ\0abc` is refused ("Invalid boundary in
+    C-T (characters)"); C++ parses the body with the boundary `XyZ`.
+  - *Multipart, a line of the body:* a line is a boundary line only if
+    it is one whole; `--XyZ\0junk` is not the boundary `XyZ` (in C++
+    the line ends at the NUL byte), and a line that starts with `--`
+    then has a NUL byte counts for `MULTIPART_UNMATCHED_BOUNDARY`.
+    (A NUL byte in a part header was and is an error.) Regression test:
+    the cases `nul bytes` and `header: nul byte` of
+    `crates/modsecurity-body/tests/multipart.rs`. On 60,000 mutated
+    bodies the parser gives the same result as before for all 45,909
+    without a NUL byte, and differs for 1,941 of the 14,091 with one.
+  - *Regular expressions:* a pattern with a NUL byte is compiled whole
+    (C++: up to it). Regression test:
+    `regex::tests::nul_byte_in_a_pattern`.
+  - *`@geoLookup` and `@rbl`:* a value with a NUL byte is not an address
+    or a host name (C++ looks up what precedes it).
+  - *Read or sent whole:* a `SecUnicodeMapFile`, the rules downloaded
+    by `SecRemoteRules`, the audit log entry posted by the HTTPS writer,
+    the content given to `ModSecurity::process_content_offset`, and the
+    names looked up in an LMDB collection.
+  - *Kept:* `t:base64Decode` still stops at a NUL byte (a test of the
+    original suite expects it), and so do the values handed to C
+    libraries and the system as C strings (libxml2, ssdeep, the
+    argument of `@inspectFile`, the C API, the nginx connector).
 - **The id of `SecRuleUpdateTargetById` and `SecRuleUpdateActionById`,
   and the code page of `SecUnicodeMapFile`.** *C++:* each is read with
   `std::stod`: the longest floating point prefix of the text, so

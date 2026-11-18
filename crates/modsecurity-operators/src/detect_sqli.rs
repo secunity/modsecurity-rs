@@ -32,8 +32,6 @@ impl Operator for DetectSQLi {
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
         let mut fingerprint = Vec::new();
         let sqli_result = run_libinjection_sqli(input, &mut fingerprint);
-        // The C++ fingerprint is a NUL terminated char array.
-        fingerprint.truncate(modsecurity_compat::chars::c_str(&fingerprint).len());
 
         match sqli_result {
             InjectionResult::True => {
