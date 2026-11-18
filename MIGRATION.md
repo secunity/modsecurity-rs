@@ -222,9 +222,7 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   and an address matches whenever a listed network contains it. *Why:* an
   allow or block list that silently misses addresses is a security bug,
   and nothing can depend on which addresses the tree happens to miss.
-  Entry parsing (`TreeAddIP`: `atoi` CIDRs, rejected `/0` and explicit
-  IPv6 `/128`, platform `inet_pton`) is unchanged, so the same lists load
-  or fail. The port of the tree was compared with the tries before it was
+  (Which entries a list accepts is the next item.) The port of the tree was compared with the tries before it was
   removed, on 24,000 generated lists and 288,000 lookups: identical for
   lists of addresses, of disjoint networks and of nested networks; for
   overlapping networks the only differences were 1,303 lookups that the
@@ -234,6 +232,28 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   tries were the opt-in `ipmatch-prefix-trie` feature, which no longer
   exists. Regression test: `ip_set::tests::overlapping_networks` and
   `matches_cidr_containment` in `modsecurity-operators`.
+- **The entries of an `@ipMatch`, `@ipMatchFromFile` or `@ipMatchF` list.**
+  *C++ (`TreeAddIP`):* the prefix length is read with `atoi` and 0 is
+  refused, the entry is copied to a buffer of 32 bytes (IPv4) or 128
+  (IPv6), and an IPv6 entry keeps its `/128` when the address is parsed.
+  So `1.2.3.4/0` and `::1/128` are refused, `1.2.3.4/24abc`, `1.2.3.4/+8`
+  and `1.2.3.4/24/5` are accepted as `/24`, `/8` and `/24`, and a longer
+  entry is cut. *Here:* an entry is an address, or `address/length` with
+  a length of decimal digits from 0 to 32 (IPv4) or 128 (IPv6), whatever
+  its size. `/0` is every address of the family and `::1/128` is `::1`;
+  a length with anything but digits is refused, and the rule does not
+  load. *Why:* the owner does not want the accidents of the C code kept;
+  the C++ regression and unit tests only list plain addresses and `/32`.
+  Unchanged: the address syntax (that of `inet_pton`: no leading zeros,
+  no short forms, no spaces), a netmask written as an address is refused
+  (`/255.0.0.0`), an empty length is refused, and entries and values end
+  at a NUL byte. Compared with the C++-compatible reader before it was
+  removed, on 60,504 generated entries: 57,556 read the same, none read
+  as another network; 586 newly accepted (`/0`, an explicit IPv6 `/128`,
+  entries longer than the C buffers) and 2,267 newly refused (text after
+  or before the digits of the length). Regression tests:
+  `ip_set::tests::entry_parsing` and `everything` in
+  `modsecurity-operators`.
 - **Time formatting** (audit/error log timestamps, the JSON `time_stamp`,
   parallel audit log and upload directory names) always uses the C locale's
   formats and English names. C++'s `strftime` follows the process `LC_TIME`

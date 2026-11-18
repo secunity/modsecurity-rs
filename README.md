@@ -45,9 +45,9 @@ default.
 `@ipMatch`, `@ipMatchFromFile` and `@ipMatchF` differ from C++ on purpose:
 an address matches whenever a listed network contains it. The C++ tree
 misses some addresses when a list holds overlapping networks (`@ipMatch
-10.0.49.87/16,10.0.42.94/18` does not match `10.0.70.67` there). Entries are
-parsed and rejected exactly as in C++. See "Intentional deviations from C++"
-in `MIGRATION.md`.
+10.0.49.87/16,10.0.42.94/18` does not match `10.0.70.67` there). An entry is
+an address or `address/length`; unlike C++, `/0` and `::1/128` are accepted
+and `/24abc` is not. See "Intentional deviations from C++" in `MIGRATION.md`.
 
 PCRE2 is required (linked through `pcre2-sys`). `cargo build --no-default-features`
 builds the core without the optional components.

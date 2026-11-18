@@ -1,27 +1,27 @@
 //! The addresses and networks of an `@ipMatch` list ([`IpSet`]), used by
 //! `@ipMatch`, `@ipMatchFromFile` and `@ipMatchF`.
 //!
-//! The entries of a list are read as the C++ code reads them
-//! (`TreeAddIP`, see [`parse_entry`]: `atoi` CIDRs, a rejected `/0` and
-//! explicit IPv6 `/128`, and the address syntax of `inet_pton`), so the same
-//! lists load or fail.
+//! An entry of a list is an address or `address/length` ([`parse_entry`]),
+//! with the address syntax of `inet_pton`. The networks are kept in prefix
+//! tries (the `prefix-trie` and `ipnet` crates), and an address matches
+//! whenever a listed network contains it.
 //!
-//! The networks are kept in prefix tries (the `prefix-trie` and `ipnet`
-//! crates), and an address matches whenever a listed network contains it.
-//! C++ keeps them in a crit-bit tree inherited from ModSecurity v2 that
-//! misses addresses of a listed network when overlapping networks are
-//! listed with it: an intentional deviation, see `MIGRATION.md`.
+//! Both differ from C++ on purpose (see "Intentional deviations from C++"
+//! in `MIGRATION.md`): C++ keeps the networks in a crit-bit tree inherited
+//! from ModSecurity v2 that misses addresses when networks overlap, and
+//! reads entries with C habits (`atoi`, fixed buffers) that refuse `/0`
+//! and `::1/128` and accept `/24abc`.
 
 use std::io::Read;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 
-use modsecurity_compat::cnum::atoi;
+use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 
 /// The addresses and networks of an `@ipMatch` list.
 #[derive(Debug, Default)]
 pub struct IpSet {
-    v4: prefix_trie::PrefixSet<ipnet::Ipv4Net>,
-    v6: prefix_trie::PrefixSet<ipnet::Ipv6Net>,
+    v4: prefix_trie::PrefixSet<Ipv4Net>,
+    v6: prefix_trie::PrefixSet<Ipv6Net>,
 }
 
 impl IpSet {
@@ -77,22 +77,13 @@ impl IpSet {
         c_str(entries).split(|&c| c == b',').filter(|entry| !entry.is_empty()).all(|entry| self.add_entry(entry))
     }
 
-    /// Adds an address or a network; `false` when it is invalid. An entry
-    /// with a colon is an IPv6 one.
+    /// Adds an address or a network; `false` when it is invalid.
     fn add_entry(&mut self, entry: &[u8]) -> bool {
-        if entry.contains(&b':') {
-            let Some((address, cidr)) = parse_entry(entry, b':', parse_v6) else {
-                return false;
-            };
-            // `parse_entry` only gives CIDRs 1..=128.
-            self.v6.insert(ipnet::Ipv6Net::new_assert(address.into(), cidr).trunc());
-        } else {
-            let Some((address, cidr)) = parse_entry(entry, b'.', parse_v4) else {
-                return false;
-            };
-            // `parse_entry` only gives CIDRs 1..=32.
-            self.v4.insert(ipnet::Ipv4Net::new_assert(address.into(), cidr).trunc());
-        }
+        match parse_entry(entry) {
+            Some(IpNet::V4(net)) => self.v4.insert(net),
+            Some(IpNet::V6(net)) => self.v6.insert(net),
+            None => return false,
+        };
         true
     }
 
@@ -100,11 +91,10 @@ impl IpSet {
     /// of the networks, of the set. Text that is not an address is in no
     /// set.
     pub fn contains(&self, ip: &[u8]) -> bool {
-        let ip = c_str(ip);
-        if ip.contains(&b':') {
-            parse_v6(ip).is_some_and(|a| self.v6.get_spm(&ipnet::Ipv6Net::new_assert(a.into(), 128)).is_some())
-        } else {
-            parse_v4(ip).is_some_and(|a| self.v4.get_spm(&ipnet::Ipv4Net::new_assert(a.into(), 32)).is_some())
+        match parse_address(c_str(ip)) {
+            Some(IpAddr::V4(a)) => self.v4.get_spm(&Ipv4Net::from(a)).is_some(),
+            Some(IpAddr::V6(a)) => self.v6.get_spm(&Ipv6Net::from(a)).is_some(),
+            None => false,
         }
     }
 }
@@ -115,53 +105,28 @@ fn c_str(s: &[u8]) -> &[u8] {
     &s[..end]
 }
 
-/// Parses an IPv4 address as `inet_pton(AF_INET, ..)` does: strict dotted
-/// decimal (no leading zeros, no short forms), which is also what `Ipv4Addr`
-/// parses.
-fn parse_v4(src: &[u8]) -> Option<[u8; 4]> {
-    std::str::from_utf8(src).ok()?.parse::<Ipv4Addr>().ok().map(|a| a.octets())
+/// An IPv4 or IPv6 address, written as `inet_pton` reads them: strict
+/// dotted decimal (no leading zeros, no short forms), and the forms of
+/// RFC 4291 for IPv6. That is what the standard library parses.
+fn parse_address(text: &[u8]) -> Option<IpAddr> {
+    std::str::from_utf8(text).ok()?.parse().ok()
 }
 
-/// Parses an IPv6 address as `inet_pton(AF_INET6, ..)` does.
-fn parse_v6(src: &[u8]) -> Option<[u8; 16]> {
-    std::str::from_utf8(src).ok()?.parse::<Ipv6Addr>().ok().map(|a| a.octets())
-}
-
-/// The address (of `N` bytes, read by `address`) and the CIDR of an entry
-/// of a list, `address` or `address/cidr`, as the C++ `TreeAddIP` reads
-/// it; `None` when the entry is invalid. `separator` is the separator of
-/// the address family (`.` or `:`).
-///
-/// What C++ accepts decides which configurations load, so its ways are
-/// kept:
-/// - the entry is cut to the size of the C buffer: 31 bytes for IPv4, 127
-///   for IPv6;
-/// - the CIDR is read with `atoi` (`/24abc` is 24, `/abc` and `/` are 0),
-///   and 0 is refused, as is a CIDR beyond the size of an address;
-/// - a netmask written as an address (`/255.0.0.0`) is refused;
-/// - an IPv6 entry with `/128` is refused (C++ leaves the `/128` in the
-///   address it parses).
-fn parse_entry<const N: usize>(
-    entry: &[u8],
-    separator: u8,
-    address: fn(&[u8]) -> Option<[u8; N]>,
-) -> Option<([u8; N], u8)> {
-    let bits = N * 8;
-    let entry = c_str(entry);
-    let entry = &entry[..entry.len().min(bits - 1)];
+/// An entry of a list: `address`, or `address/length` for the network of
+/// the addresses that share the first `length` bits (0 to 32 for IPv4, 0
+/// to 128 for IPv6, in decimal digits). `None` when the entry is neither.
+fn parse_entry(entry: &[u8]) -> Option<IpNet> {
     let Some(slash) = entry.iter().position(|&c| c == b'/') else {
-        return Some((address(entry)?, bits as u8));
+        return parse_address(entry).map(IpNet::from);
     };
-
-    let mask = &entry[slash + 1..];
-    if mask.contains(&separator) {
+    let address = parse_address(&entry[..slash])?;
+    let length = &entry[slash + 1..];
+    if length.is_empty() || !length.iter().all(u8::is_ascii_digit) {
         return None;
     }
-    let cidr = usize::try_from(atoi(mask)).ok().filter(|cidr| (1..=bits).contains(cidr))?;
-    if cidr == 128 {
-        return None;
-    }
-    Some((address(&entry[..slash])?, cidr as u8))
+    let length = std::str::from_utf8(length).ok()?.parse().ok()?;
+    // The address of the network: the host bits of the entry are dropped.
+    IpNet::new(address, length).ok().map(|net| net.trunc())
 }
 
 // The tests compare with the C library (`inet_pton`).
@@ -170,8 +135,8 @@ mod tests {
     use super::*;
     use modsecurity_native::testing::c_inet_pton;
 
-    /// The std parsers accept exactly what `inet_pton` accepts, on valid
-    /// addresses and on mutations of them.
+    /// An address is what `inet_pton` accepts, on valid addresses and on
+    /// mutations of them.
     #[test]
     fn address_parsing_matches_inet_pton() {
         let mut seed = 0x2545_f491_4f6c_dd1du64;
@@ -231,8 +196,13 @@ mod tests {
             cases.push(s);
         }
         for c in &cases {
-            assert_eq!(parse_v4(c.as_bytes()).map(|a| a.to_vec()), c_inet_pton(libc::AF_INET, c.as_bytes()), "{c:?}");
-            assert_eq!(parse_v6(c.as_bytes()).map(|a| a.to_vec()), c_inet_pton(libc::AF_INET6, c.as_bytes()), "{c:?}");
+            let (v4, v6) = match parse_address(c.as_bytes()) {
+                Some(IpAddr::V4(a)) => (Some(a.octets().to_vec()), None),
+                Some(IpAddr::V6(a)) => (None, Some(a.octets().to_vec())),
+                None => (None, None),
+            };
+            assert_eq!(v4, c_inet_pton(libc::AF_INET, c.as_bytes()), "{c:?}");
+            assert_eq!(v6, c_inet_pton(libc::AF_INET6, c.as_bytes()), "{c:?}");
         }
     }
 
@@ -248,28 +218,44 @@ mod tests {
 
     #[test]
     fn entry_parsing() {
-        let v4 = |e: &str| parse_entry(e.as_bytes(), b'.', parse_v4);
-        let v6 = |e: &str| parse_entry(e.as_bytes(), b':', parse_v6);
-        assert_eq!(v4("1.2.3.4"), Some(([1, 2, 3, 4], 32)));
-        assert_eq!(v4("1.2.3.4/24"), Some(([1, 2, 3, 4], 24)));
-        assert_eq!(v4("1.2.3.4/32"), Some(([1, 2, 3, 4], 32)));
-        // `atoi`: digits, then anything.
-        assert_eq!(v4("1.2.3.4/24abc"), Some(([1, 2, 3, 4], 24)));
-        assert_eq!(v4("1.2.3.4/+8"), Some(([1, 2, 3, 4], 8)));
-        for refused in
-            ["1.2.3.4/0", "1.2.3.4/33", "1.2.3.4/", "1.2.3.4/abc", "1.2.3.4/-1", "1.2.3.4/255.0.0.0", "1.2.3"]
-        {
-            assert_eq!(v4(refused), None, "{refused}");
-        }
-        // An entry is cut at 31 bytes: this CIDR is read as 2.
-        assert_eq!(v4("100.100.100.100/0000000000000024").map(|(_, cidr)| cidr), Some(2));
-        assert_eq!(v4("100.100.100.100/000000000000024").map(|(_, cidr)| cidr), Some(24));
+        let net = |e: &str| parse_entry(e.as_bytes()).map(|n| n.to_string());
+        let is = |n: &str| Some(n.to_string());
+        assert_eq!(net("1.2.3.4"), is("1.2.3.4/32"));
+        assert_eq!(net("1.2.3.4/32"), is("1.2.3.4/32"));
+        // The host bits are dropped.
+        assert_eq!(net("1.2.3.4/24"), is("1.2.3.0/24"));
+        assert_eq!(net("1.2.3.4/024"), is("1.2.3.0/24"));
+        assert_eq!(net("1.2.3.4/0"), is("0.0.0.0/0"));
+        assert_eq!(net("::1"), is("::1/128"));
+        assert_eq!(net("::1/128"), is("::1/128"));
+        assert_eq!(net("2001:db8::1/64"), is("2001:db8::/64"));
+        assert_eq!(net("::/0"), is("::/0"));
+        // However long the entry is.
+        assert_eq!(
+            net("0000:0000:0000:0000:0000:0000:0000:0001/0000000000000000000000000000000000000128"),
+            is("::1/128")
+        );
 
-        assert_eq!(v6("::1"), Some((std::net::Ipv6Addr::LOCALHOST.octets(), 128)));
-        assert_eq!(v6("::1/64").map(|(_, cidr)| cidr), Some(64));
-        assert_eq!(v6("::1/127").map(|(_, cidr)| cidr), Some(127));
-        for refused in ["::1/128", "::1/129", "::1/0", "::1/ffff::", "::1/"] {
-            assert_eq!(v6(refused), None, "{refused}");
+        for refused in [
+            "",
+            "1.2.3",
+            "01.2.3.4",
+            " 1.2.3.4",
+            "1.2.3.4 ",
+            "1.2.3.4/",
+            "1.2.3.4/33",
+            "1.2.3.4/abc",
+            "1.2.3.4/24abc",
+            "1.2.3.4/+8",
+            "1.2.3.4/-1",
+            "1.2.3.4/ 8",
+            "1.2.3.4/255.0.0.0",
+            "1.2.3.4/24/5",
+            "::1/129",
+            "::1/ffff::",
+            "fe80::1%eth0",
+        ] {
+            assert_eq!(net(refused), None, "{refused:?}");
         }
     }
 
@@ -294,12 +280,26 @@ mod tests {
 
     #[test]
     fn invalid_entries() {
-        assert!(set("1.2.3.4/0").is_none());
+        assert!(set("1.2.3.4/33").is_none());
         assert!(set("1.2.3").is_none());
-        // "/128" is not stripped from IPv6 entries.
-        assert!(set("::1/128").is_none());
+        // The entries before an invalid one are not kept by the operator:
+        // the rule does not load.
+        assert!(set("1.2.3.4,nonsense").is_none());
         // Empty tokens are skipped.
         assert!(set(",1.2.3.4,,").is_some());
+    }
+
+    /// `/0` is every address of the family, and of that family only.
+    #[test]
+    fn everything() {
+        let t = tree("0.0.0.0/0");
+        assert!(t.contains(b"1.2.3.4") && t.contains(b"255.255.255.255"));
+        assert!(!t.contains(b"::1"));
+        let t = tree("::/0,10.0.0.1");
+        assert!(t.contains(b"::1") && t.contains(b"2001:db8::1") && t.contains(b"10.0.0.1"));
+        assert!(!t.contains(b"10.0.0.2"));
+        // A whole network and one of its addresses, in either order.
+        assert!(tree("::1/128,::/0").contains(b"::2"));
     }
 
     #[test]

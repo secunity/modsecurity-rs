@@ -1183,3 +1183,9 @@ only user, and holds what `ip_tree::IpTree` and `msc_tree::TreeRoot` did.
 compat crate has no dependency left. The seven functions that read an
 entry (four of them public, for the two implementations in two crates)
 are three private ones: `parse_entry`, `parse_v4`, `parse_v6`.
+
+The entries of a list are no longer read as C++ reads them either: an
+entry is an address or `address/length`, parsed with the standard library
+and `ipnet` (`parse_address`, `parse_entry`). Which lists load changes
+with that (`/0` and `::1/128` are accepted, `/24abc` is not): the second
+`@ipMatch` item of "Intentional deviations from C++" in `MIGRATION.md`.
