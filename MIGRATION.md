@@ -245,15 +245,33 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   load. *Why:* the owner does not want the accidents of the C code kept;
   the C++ regression and unit tests only list plain addresses and `/32`.
   Unchanged: the address syntax (that of `inet_pton`: no leading zeros,
-  no short forms, no spaces), a netmask written as an address is refused
-  (`/255.0.0.0`), an empty length is refused, and entries and values end
-  at a NUL byte. Compared with the C++-compatible reader before it was
+  no short forms), a netmask written as an address is refused
+  (`/255.0.0.0`), and an empty length is refused. Compared with the C++-compatible reader before it was
   removed, on 60,504 generated entries: 57,556 read the same, none read
   as another network; 586 newly accepted (`/0`, an explicit IPv6 `/128`,
   entries longer than the C buffers) and 2,267 newly refused (text after
   or before the digits of the length). Regression tests:
   `ip_set::tests::entry_parsing` and `everything` in
   `modsecurity-operators`.
+- **Whitespace around `@ipMatch` entries.** *C++:* an entry is what is
+  between two commas (and, in a file, the start of the line and a `#`),
+  so `@ipMatch 1.2.3.4, 5.6.7.8`, a file line `127.0.0.1 # comment` and
+  a file with CRLF line endings have an entry that is not an address,
+  and the rule does not load. *Here:* the ASCII whitespace around an
+  entry is not part of it, and those load. Whitespace inside an entry
+  (`1.2.3.4 /8`) is still an error. *Why:* approved by the owner; it
+  only makes lists load that did not. Regression test:
+  `ip_set::tests::whitespace_around_entries`.
+- **NUL bytes and `@ipMatch`.** *C++:* the list and the value are C
+  strings, so both end at their first NUL byte: `@ipMatch 1.2.3.4`
+  matches the value `1.2.3.4\0junk`, and what follows a NUL byte in a
+  list is ignored. *Here:* a NUL byte is a byte like another: a value
+  with one is not an address and matches no list, and an entry with one
+  is invalid (the rule does not load). *Why:* approved by the owner; a
+  value is an address or it is not. Note for rules on client-supplied
+  values (a forwarded-for header): a value followed by a NUL byte no
+  longer matches the address before it. Regression test:
+  `ip_set::tests::nul_bytes`.
 - **Time formatting** (audit/error log timestamps, the JSON `time_stamp`,
   parallel audit log and upload directory names) always uses the C locale's
   formats and English names. C++'s `strftime` follows the process `LC_TIME`

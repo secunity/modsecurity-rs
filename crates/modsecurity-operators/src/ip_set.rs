@@ -30,9 +30,11 @@ impl IpSet {
         Self::default()
     }
 
-    /// Adds the entries of `buffer`: one or more comma separated entries
-    /// per line, `#` starts a comment. Returns `false` if an entry
-    /// is invalid; there is no error message (the C code never fills one).
+    /// Adds the entries of `buffer`: any number of comma separated entries
+    /// per line, with or without spaces around them; `#` starts a comment,
+    /// and lines may end with a carriage return. Returns `false` if an
+    /// entry is invalid; there is no error message (the C code never fills
+    /// one).
     pub fn add_from_buffer(&mut self, buffer: &[u8]) -> bool {
         // std::getline: a trailing newline does not produce an extra line.
         let mut lines: Vec<&[u8]> = buffer.split(|&c| c == b'\n').collect();
@@ -70,11 +72,15 @@ impl IpSet {
         Self::loaded(self.add_from_buffer(content))
     }
 
-    /// Adds the comma separated entries of `entries` (up to a NUL byte);
-    /// `false` when one is invalid: the ones before it stay.
+    /// Adds the comma separated entries of `entries`, without the
+    /// whitespace around each (empty ones are skipped); `false` when one
+    /// is invalid: the ones before it stay.
     fn add_entries(&mut self, entries: &[u8]) -> bool {
-        // strtok_r(..., ",") skips empty tokens.
-        c_str(entries).split(|&c| c == b',').filter(|entry| !entry.is_empty()).all(|entry| self.add_entry(entry))
+        entries
+            .split(|&c| c == b',')
+            .map(<[u8]>::trim_ascii)
+            .filter(|entry| !entry.is_empty())
+            .all(|entry| self.add_entry(entry))
     }
 
     /// Adds an address or a network; `false` when it is invalid.
@@ -87,22 +93,15 @@ impl IpSet {
         true
     }
 
-    /// Whether `ip` (up to a NUL byte) is one of the addresses, or in one
-    /// of the networks, of the set. Text that is not an address is in no
-    /// set.
+    /// Whether `ip` is one of the addresses, or in one of the networks, of
+    /// the set. Text that is not exactly an address is in no set.
     pub fn contains(&self, ip: &[u8]) -> bool {
-        match parse_address(c_str(ip)) {
+        match parse_address(ip) {
             Some(IpAddr::V4(a)) => self.v4.get_spm(&Ipv4Net::from(a)).is_some(),
             Some(IpAddr::V6(a)) => self.v6.get_spm(&Ipv6Net::from(a)).is_some(),
             None => false,
         }
     }
-}
-
-/// The C string view of `s` (up to its first NUL byte).
-fn c_str(s: &[u8]) -> &[u8] {
-    let end = s.iter().position(|&c| c == 0).unwrap_or(s.len());
-    &s[..end]
 }
 
 /// An IPv4 or IPv6 address, written as `inet_pton` reads them: strict
@@ -374,15 +373,41 @@ mod tests {
     #[test]
     fn buffer_with_comments_and_lines() {
         let mut t = IpSet::new();
-        // The space before the comment is kept: not a valid address.
-        assert!(!t.add_from_buffer(b"# comment\n127.0.0.1 # x\n10.0.0.0/8,::1\n\n"));
-        let mut t = IpSet::new();
-        assert!(t.add_from_buffer(b"# comment\n127.0.0.1#x\n10.0.0.0/8,::1\n\n"));
+        assert!(t.add_from_buffer(b"# comment\n127.0.0.1 # x\n10.0.0.0/8,::1\n\n"));
         assert!(t.contains(b"127.0.0.1"));
         assert!(t.contains(b"10.1.2.3"));
         assert!(t.contains(b"::1"));
         assert!(!t.contains(b"::2"));
         assert!(!t.contains(b"garbage"));
+    }
+
+    /// Whitespace around an entry is not part of it: after a comma, before
+    /// a comment, at the end of a line of a file with CRLF line endings.
+    #[test]
+    fn whitespace_around_entries() {
+        let t = tree(" 1.2.3.4 ,\t10.0.0.0/8 , ,::1\t");
+        assert!(t.contains(b"1.2.3.4") && t.contains(b"10.9.9.9") && t.contains(b"::1"));
+        let mut t = IpSet::new();
+        assert!(t.add_from_buffer(b"127.0.0.1\r\n  10.0.0.0/8   # office\r\n\r\n# all\r\n::1\r\n"));
+        assert!(t.contains(b"127.0.0.1") && t.contains(b"10.1.2.3") && t.contains(b"::1"));
+        // Inside an entry it is an error.
+        assert!(set("1.2.3.4 /8").is_none());
+        assert!(set("1.2.3.4/ 8").is_none());
+        assert!(set("1.2. 3.4").is_none());
+    }
+
+    /// A NUL byte is not the end of the text: an entry with one is not an
+    /// entry, and a value with one is not an address.
+    #[test]
+    fn nul_bytes() {
+        assert!(set("1.2.3.4\0").is_none());
+        assert!(set("1.2.3.4\0,5.6.7.8").is_none());
+        let t = tree("1.2.3.4");
+        assert!(t.contains(b"1.2.3.4"));
+        assert!(!t.contains(b"1.2.3.4\0"));
+        assert!(!t.contains(b"1.2.3.4\0junk"));
+        // Nor is whitespace around a value ignored.
+        assert!(!t.contains(b" 1.2.3.4"));
     }
 
     #[test]
