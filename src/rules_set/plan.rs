@@ -343,6 +343,27 @@ mod tests {
         assert!(two.default_actions.is_empty() && two.block_actions.is_empty() && two.update_actions.is_empty());
     }
 
+    /// `SecRuleUpdateActionById` replaces the rule's disruptive action
+    /// only with another one. (In C++ any action it adds, a `tag` for
+    /// instance, switches the rule's disruptive action off.)
+    #[test]
+    fn an_update_replaces_the_disruptive_action_only_with_another() {
+        let status = |update: &str| {
+            let rules = rules(&format!(
+                "SecRuleEngine On\nSecRule REQUEST_URI \"@contains x\" \"id:1,phase:1,deny,status:403\"\n{update}"
+            ));
+            let ms = crate::ModSecurity::new();
+            let mut t = crate::Transaction::new(&ms, &rules, None);
+            t.process_uri(b"/x", b"GET", b"1.1");
+            t.process_request_headers();
+            t.intervention().map(|it| it.status)
+        };
+        assert_eq!(status(""), Some(403));
+        assert_eq!(status("SecRuleUpdateActionById 1 \"tag:'extra'\""), Some(403));
+        assert_eq!(status("SecRuleUpdateActionById 1 \"setvar:tx.seen=1,logdata:'x'\""), Some(403));
+        assert_eq!(status("SecRuleUpdateActionById 1 \"pass\""), None);
+    }
+
     #[test]
     fn a_new_load_makes_a_new_plan() {
         let mut rules = rules(r#"SecRule ARGS "@rx x" "id:1,phase:1,pass""#);

@@ -304,6 +304,16 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`SecRuleUpdateActionById` with an action that is not disruptive
+  keeps the rule's disruptive action.** *C++:* any action the directive
+  adds to a rule switches off the rule's own disruptive action (and its
+  `block`): after `SecRuleUpdateActionById 942100 "tag:'reviewed'"`, rule
+  942100 no longer denies anything. *Here:* the rule's disruptive action
+  is replaced only when the directive brings a disruptive action (`pass`,
+  `deny`, `redirect`, ...) or a `block`. *Why:* adding a tag or a
+  `setvar` to a rule should not disarm it. This makes the engine block
+  where C++ does not. Regression test:
+  `rules_set::plan::tests::an_update_replaces_the_disruptive_action_only_with_another`.
 - **Directives that select rules by tag or message match them as
   written.** `SecRuleRemoveByTag`, `SecRuleRemoveByMsg`,
   `SecRuleUpdateTargetByTag` and `SecRuleUpdateTargetByMsg` name a tag or

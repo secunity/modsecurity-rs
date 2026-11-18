@@ -372,9 +372,9 @@ impl Rule {
         for a in &link.update_actions {
             self.execute_action(link, t, rm, a, false);
         }
-        // Any action of a SecRuleUpdateActionById takes the place of the
-        // rule's disruptive action and of its `block`.
-        let updated = !link.update_actions.is_empty();
+        // A disruptive action (or a `block`) of a SecRuleUpdateActionById
+        // takes the place of the rule's own.
+        let updated = link.update_actions.iter().any(|a| a.is_disruptive() || matches!(**a, RuleAction::Block(_)));
 
         self.describe_match(t, rm);
         for a in &self.actions_runtime_pos {
