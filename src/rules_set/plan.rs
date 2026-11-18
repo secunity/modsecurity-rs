@@ -16,6 +16,7 @@
 use std::sync::Arc;
 
 use crate::actions::action::{Action, Kind};
+use crate::actions::rule_action::RuleAction;
 use crate::actions::transformation::Transformation;
 use crate::phases::{NUMBER_OF_PHASES, Phases};
 use crate::rule::Rule;
@@ -79,6 +80,14 @@ pub struct Link {
     pub(crate) added_targets: Vec<Arc<Variable>>,
     /// The `!TARGET`s of `SecRuleUpdateTarget...` directives.
     excluded_targets: Vec<Arc<Variable>>,
+    /// The actions of the phase's `SecDefaultAction` that run when the
+    /// rule matches: all but the disruptive one.
+    pub(crate) default_actions: Vec<Arc<RuleAction>>,
+    /// What `block` does: the disruptive action of the phase's
+    /// `SecDefaultAction`.
+    pub(crate) block_actions: Vec<Arc<RuleAction>>,
+    /// The actions that `SecRuleUpdateActionById` adds to the rule.
+    pub(crate) update_actions: Vec<Arc<RuleAction>>,
 }
 
 impl Plan {
@@ -137,7 +146,21 @@ impl Link {
         let excluded = |v: &Variable| excluded_targets.iter().filter_map(|e| e.exclusion_base()).any(|e| v.same_as(e));
         let targets = (0..own.len()).filter(|&i| !excluded(&own[i])).collect();
 
-        Link { transformations, transformation_path, targets, added_targets, excluded_targets }
+        let defaults = rule.phase().map_or(&[][..], |p| &rules.properties.default_actions[p.index()]);
+        let on_match = defaults.iter().filter(|a| a.kind() == Kind::RunTimeOnlyIfMatch);
+        let (block_actions, default_actions) = on_match.cloned().partition(|a| a.is_disruptive());
+        let update_actions = ex.action_pos_update_target_by_id.for_rule(rule.rule_id).to_vec();
+
+        Link {
+            transformations,
+            transformation_path,
+            targets,
+            added_targets,
+            excluded_targets,
+            default_actions,
+            block_actions,
+            update_actions,
+        }
     }
 
     fn transformations(rule: &Rule, rules: &RulesSet) -> Vec<Transformation> {
@@ -292,6 +315,32 @@ mod tests {
             SecRuleRemoveByTag -xss
         "#;
         assert_eq!(phase1(&rules(conf)), ["[] ", "[] ARGS", "removed by a SecRuleRemoveByTag"]);
+    }
+
+    #[test]
+    fn actions_of_the_rule_set() {
+        let rules = rules(
+            r#"
+            SecDefaultAction "phase:1,log,auditlog,deny,status:403,t:lowercase"
+            SecRule ARGS "@rx x" "id:1,phase:1,block"
+            SecRule ARGS "@rx x" "id:2,phase:2,block"
+            SecRuleUpdateActionById 1 "pass,tag:'updated',t:trim"
+            "#,
+        );
+        let names = |list: &[Arc<RuleAction>]| list.iter().map(|a| a.name().to_string()).collect::<Vec<_>>();
+        let link = |phase| match &rules.plan().for_phase(phase)[0] {
+            Step::Rule { chain, .. } => &chain[0],
+            _ => panic!("a rule"),
+        };
+        let one = link(Phases::RequestHeaders);
+        assert_eq!(names(&one.default_actions), ["log", "auditlog", "status"]);
+        assert_eq!(names(&one.block_actions), ["deny"]);
+        // The transformation is with the transformations.
+        assert_eq!(names(&one.update_actions), ["pass", "tag"]);
+        assert_eq!(one.transformation_path, "t:lowercase,t:trim");
+        // Phase 2 has no SecDefaultAction.
+        let two = link(Phases::RequestBody);
+        assert!(two.default_actions.is_empty() && two.block_actions.is_empty() && two.update_actions.is_empty());
     }
 
     #[test]

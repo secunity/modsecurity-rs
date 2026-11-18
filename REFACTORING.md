@@ -1284,7 +1284,14 @@ compiles it the first time a transaction needs it and a new load or merge
 discards it. The evaluation follows the plan and only looks at what a
 transaction can change (`ctl:` actions).
 
-Not in the plan yet: the actions of a rule (the `SecDefaultAction` ones
-that run on a match and the `SecRuleUpdateActionById` ones are still
-looked up during the evaluation), and the variables and operators
-themselves.
+Step 2 added what the rule set contributes to a rule's actions: a `Link`
+also holds the `SecDefaultAction` actions that run on a match, the
+disruptive one (which is what `block` runs: `Block` has no behavior of
+its own any more, the rule runs `Link::block_actions`), and the actions
+`SecRuleUpdateActionById` adds. Whether a rule "contains block" is the
+rule's own flag: the code that looked for a `block` among the
+transformations that `SecRuleUpdateActionById` adds could never find one
+and is gone.
+
+Not in the plan: the rule's own actions stay in the rule, in the slots
+`Rule::new` sorts them into, and the variables and operators themselves.

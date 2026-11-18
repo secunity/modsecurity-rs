@@ -304,8 +304,8 @@ impl Rule {
     ) -> bool {
         match &self.kind {
             RuleKind::SecRule(o) => o.evaluate(self, chain, t, rm),
-            RuleKind::SecAction => crate::rule::sec_action::evaluate(self, t, rm),
-            RuleKind::SecRuleScript(s) => s.evaluate(self, t, rm),
+            RuleKind::SecAction => crate::rule::sec_action::evaluate(self, &chain[0], t, rm),
+            RuleKind::SecRuleScript(s) => s.evaluate(self, &chain[0], t, rm),
         }
     }
 
@@ -316,82 +316,29 @@ impl Rule {
     }
 
     /// Runs the actions that do not depend on the result of the chain:
-    /// `setvar` (including the ones added by `SecRuleUpdateActionById`)
-    /// and, for a `multiMatch` rule that is not a chain child, `severity`,
-    /// `logdata`, `msg` and `tag`. Returns whether a
-    /// `SecRuleUpdateActionById` added a `block` action to the rule.
+    /// `setvar` and, for a `multiMatch` rule that is not a chain child,
+    /// `severity`, `logdata`, `msg` and `tag`.
     pub fn execute_actions_independent_of_chained_rule_result<'a>(
         &'a self,
         t: &mut Transaction<'a>,
         rm: &mut RuleMessage<'a>,
-    ) -> bool {
-        let mut contains_block = false;
+    ) {
         for a in &self.actions_set_var {
             crate::ms_dbg!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
             a.evaluate(&mut ActionContext::new(t, self, rm));
         }
 
-        let rules = t.rules;
-        for a in rules.properties.exceptions.action_pre_update_target_by_id.for_rule(self.rule_id) {
-            if a.is_disruptive() && a.name() == "block" {
-                crate::ms_dbg!(t, 9, "Rule contains a `block' action");
-                contains_block = true;
-            } else if a.name() == "setvar" {
-                crate::ms_dbg!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
-                a.evaluate(&mut ActionContext::new(t, self, rm));
-            }
-        }
-
         if self.contains_multi_match_action && !self.chained_rule_parent {
-            if let Some(s) = &self.severity {
-                s.evaluate(&mut ActionContext::new(t, self, rm));
-            }
-            if let Some(l) = &self.log_data {
-                l.evaluate(&mut ActionContext::new(t, self, rm));
-            }
-            if let Some(m) = &self.msg {
-                m.evaluate(&mut ActionContext::new(t, self, rm));
-            }
+            self.describe_match(t, rm);
             for a in &self.actions_tag {
                 a.evaluate(&mut ActionContext::new(t, self, rm));
             }
         }
-        contains_block
     }
 
-    /// Runs the actions of a rule whose chain matched: the
-    /// `SecDefaultAction` ones that run on a match, `tag`, the ones added
-    /// by `SecRuleUpdateActionById`, `severity`, `logdata`, `msg`, the
-    /// other run time actions and last the disruptive action.
-    pub fn execute_actions_after_full_match<'a>(
-        &'a self,
-        t: &mut Transaction<'a>,
-        contains_block: bool,
-        rm: &mut RuleMessage<'a>,
-    ) {
-        let mut disruptive_already_executed = false;
-        let rules = t.rules;
-        if let Some(defaults) = self.phase.map(|p| &rules.properties.default_actions[p.index()]) {
-            for a in defaults {
-                if a.kind() != Kind::RunTimeOnlyIfMatch {
-                    continue;
-                }
-                if !a.is_disruptive() {
-                    self.execute_action(t, contains_block, rm, a, true);
-                }
-            }
-        }
-
-        for a in &self.actions_tag {
-            crate::ms_dbg!(t, 4, "Running (non-disruptive) action: {}", a.name());
-            a.evaluate(&mut ActionContext::new(t, self, rm));
-        }
-
-        for a in rules.properties.exceptions.action_pos_update_target_by_id.for_rule(self.rule_id) {
-            self.execute_action(t, contains_block, rm, a, false);
-            disruptive_already_executed = true;
-        }
-
+    /// Runs `severity`, `logdata` and `msg`: what the rule says about a
+    /// match.
+    fn describe_match<'a>(&'a self, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) {
         if let Some(s) = &self.severity {
             s.evaluate(&mut ActionContext::new(t, self, rm));
         }
@@ -401,46 +348,84 @@ impl Rule {
         if let Some(m) = &self.msg {
             m.evaluate(&mut ActionContext::new(t, self, rm));
         }
+    }
+
+    /// Runs the actions of a rule whose chain matched, with what the rule
+    /// set adds to them (`link`): the `SecDefaultAction` ones, `tag`, the
+    /// `SecRuleUpdateActionById` ones, `severity`, `logdata`, `msg`, the
+    /// other run time actions and last the disruptive action.
+    pub fn execute_actions_after_full_match<'a>(
+        &'a self,
+        link: &'a Link,
+        t: &mut Transaction<'a>,
+        rm: &mut RuleMessage<'a>,
+    ) {
+        for a in &link.default_actions {
+            self.execute_action(link, t, rm, a, true);
+        }
+
+        for a in &self.actions_tag {
+            crate::ms_dbg!(t, 4, "Running (non-disruptive) action: {}", a.name());
+            a.evaluate(&mut ActionContext::new(t, self, rm));
+        }
+
+        for a in &link.update_actions {
+            self.execute_action(link, t, rm, a, false);
+        }
+        // Any action of a SecRuleUpdateActionById takes the place of the
+        // rule's disruptive action and of its `block`.
+        let updated = !link.update_actions.is_empty();
+
+        self.describe_match(t, rm);
         for a in &self.actions_runtime_pos {
-            // Neither disruptive, nor a `block` once a disruptive action ran.
-            if !(a.is_disruptive() || disruptive_already_executed && matches!(a, RuleAction::Block(_))) {
-                self.execute_action(t, contains_block, rm, a, false);
+            if !(updated && matches!(a, RuleAction::Block(_))) {
+                self.execute_action(link, t, rm, a, false);
             }
         }
-        if !disruptive_already_executed && let Some(d) = &self.disruptive_action {
-            self.execute_action(t, contains_block, rm, d, false);
+        if !updated && let Some(d) = &self.disruptive_action {
+            self.execute_action(link, t, rm, d, false);
         }
     }
 
     /// Runs one action. A disruptive action (or `block`) runs only when
-    /// the rule engine is `On`, and one from `SecDefaultAction`
-    /// (`default_context`) only when the rule contains `block`.
-    pub fn execute_action<'a>(
+    /// the rule engine is `On`, and a `block` of `SecDefaultAction`
+    /// (`default_context`) only when the rule has one too.
+    fn execute_action<'a>(
         &'a self,
+        link: &'a Link,
         t: &mut Transaction<'a>,
-        contains_block: bool,
         rm: &mut RuleMessage<'a>,
         a: &RuleAction,
         default_context: bool,
     ) {
         if !a.is_disruptive() && a.name() != "block" {
             crate::ms_dbg!(t, 9, "Running action: {}", a.name());
-            a.evaluate(&mut ActionContext::new(t, self, rm));
-            return;
-        }
-
-        if default_context && !contains_block {
+        } else if default_context && !self.contains_static_block_action {
             crate::ms_dbg!(t, 4, "Ignoring action: {} (rule does not cotains block)", a.name());
             return;
-        }
-
-        if t.rule_engine_state() == Some(RuleEngine::Enabled) {
+        } else if t.rule_engine_state() == Some(RuleEngine::Enabled) {
             crate::ms_dbg!(t, 4, "Running (disruptive)     action: {}.", a.name());
-            a.evaluate(&mut ActionContext::new(t, self, rm));
+        } else {
+            crate::ms_dbg!(
+                t,
+                4,
+                "Not running any disruptive action (or block): {}. SecRuleEngine is not On.",
+                a.name()
+            );
             return;
         }
 
-        crate::ms_dbg!(t, 4, "Not running any disruptive action (or block): {}. SecRuleEngine is not On.", a.name());
+        let mut cx = ActionContext::new(t, self, rm);
+        match a {
+            // `block` is the disruptive action of SecDefaultAction.
+            RuleAction::Block(_) => {
+                crate::ms_dbg!(cx, 8, "Marking request as disruptive.");
+                for a in &link.block_actions {
+                    a.evaluate(&mut cx);
+                }
+            }
+            a => a.evaluate(&mut cx),
+        }
     }
 
     /// Applies `chain` (the transformations of the rule's [`Link`]) to
@@ -513,14 +498,12 @@ impl Rule {
 
     /// The `(prefix, href)` of the rule's `xmlns` actions, including the
     /// ones added by `SecRuleUpdateActionById`: the run time actions, then
-    /// the updates before and after the match. An action counts when its
+    /// the added ones. An action counts when its
     /// name as written is `xmlns` (a transformation never is: its name
     /// starts with `t:`).
     pub fn xml_namespaces<'s>(&'s self, t: &'s Transaction<'_>) -> Vec<(&'s str, &'s str)> {
         let ex = &t.rules.properties.exceptions;
-        let updates = ex.action_pre_update_target_by_id.for_rule(self.rule_id).iter().map(|a| a.as_ref());
-        let updates =
-            updates.chain(ex.action_pos_update_target_by_id.for_rule(self.rule_id).iter().map(|a| a.as_ref()));
+        let updates = ex.action_pos_update_target_by_id.for_rule(self.rule_id).iter().map(|a| a.as_ref());
         self.actions_runtime_pos
             .iter()
             .chain(updates)

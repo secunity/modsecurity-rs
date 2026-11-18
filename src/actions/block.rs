@@ -1,10 +1,9 @@
-//! `block` — executes the disruptive actions of the `SecDefaultAction` of
-//! the rule's phase. Rules containing it are classified by
-//! `Rule` (it is kept with the run time actions and flags the
-//! rule as containing a static block action).
+//! `block`: does what the `SecDefaultAction` of the rule's phase says to
+//! do with a request (`deny`, `pass`, ...). What that is belongs to the
+//! rule set, so the action has no behavior of its own: the rule runs the
+//! `block_actions` of its plan (`Rule::execute_action`).
 
 use crate::actions::action::Action;
-use crate::actions::context::ActionContext;
 
 #[derive(Debug)]
 pub struct Block {
@@ -20,20 +19,6 @@ impl Block {
 impl Action for Block {
     fn name(&self) -> &str {
         &self.name
-    }
-
-    fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        crate::ms_dbg!(cx, 8, "Marking request as disruptive.");
-        let (t, rule) = cx.engine();
-        let rules = t.rules;
-        if let Some(defaults) = rule.phase().map(|p| &rules.properties.default_actions[p.index()]) {
-            for a in defaults {
-                if !a.is_disruptive() {
-                    continue;
-                }
-                a.evaluate(cx);
-            }
-        }
     }
 }
 
@@ -81,46 +66,32 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::test_support::*;
-    use super::*;
-    use crate::actions::disruptive::deny::Deny;
-    use crate::actions::disruptive::pass::Pass;
-    use crate::actions::log::Log;
-    use crate::actions::phase::Phase;
     use crate::instance::ModSecurity;
-    use crate::phases::Phases;
-    use crate::rule::message::RuleMessage;
     use crate::transaction::Transaction;
 
+    /// `block` runs the disruptive action of the phase's
+    /// `SecDefaultAction`, and nothing else of it.
     #[test]
     fn block_runs_default_disruptive_actions() {
-        let ms = ModSecurity::new();
-        let mut rules = rules();
-        let defaults = &mut rules.properties.default_actions[Phases::RequestBody.index()];
-        defaults.push(Arc::new(Log::new("log").into()));
-        defaults.push(Arc::new(Deny::new("deny").into()));
-        let phase = Phase::new("phase", "2").unwrap();
-        let r = rule(vec![RuleAction::Phase(phase), RuleAction::Block(Block::new("block"))]);
-        assert!(r.has_block_action());
+        let run = |conf: &str| {
+            let ms = ModSecurity::new();
+            let mut rules = rules();
+            rules.load(&format!("SecRuleEngine On\n{conf}")).unwrap();
+            let mut t = Transaction::new(&ms, &rules, None);
+            t.process_uri(b"/", b"GET", b"1.1");
+            t.process_request_headers();
+            (t.outcome.intervention.status, has_log(&t, "Marking request as disruptive."), logs(&t))
+        };
 
-        let mut t = Transaction::new(&ms, &rules, None);
-        let mut rm = RuleMessage::new(&r);
-        rm.save_message = false;
-        Block::new("block").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
-        assert!(has_log(&t, "Marking request as disruptive."));
-        assert!(has_log(&t, "Running action deny"));
-        // Only the disruptive default action ran.
-        assert!(!rm.save_message);
-        assert_eq!(t.outcome.intervention.status, 403);
-        assert!(t.outcome.intervention.disruptive);
-        assert!(rm.is_disruptive);
+        let (status, marked, logs) =
+            run("SecDefaultAction \"phase:1,log,deny,status:403\"\nSecAction \"id:1,phase:1,block\"");
+        assert!(marked, "{logs:?}");
+        assert_eq!(status, 403);
 
         // Nothing happens in a phase without default actions.
-        Pass::new("pass").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
-        let r1 = rule(vec![RuleAction::Block(Block::new("block"))]);
-        Block::new("block").evaluate(&mut ActionContext::new(&mut t, &r1, &mut rm));
-        assert_eq!(t.outcome.intervention.status, 200);
+        let (status, marked, _) = run("SecAction \"id:1,phase:1,block\"");
+        assert!(marked);
+        assert_eq!(status, 200);
     }
 }

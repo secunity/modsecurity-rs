@@ -101,7 +101,6 @@ impl SecRule {
     ) -> bool {
         let (link, chained) = chain.split_first().expect("the plan of the rule");
         let mut global_ret = false;
-        let mut contains_block = rule.has_block_action();
 
         rule.evaluate_base(t);
 
@@ -194,7 +193,7 @@ impl SecRule {
                             }
                         }
                         Self::update_matched_vars(t, key, value_after_trans);
-                        contains_block |= rule.execute_actions_independent_of_chained_rule_result(t, rm);
+                        rule.execute_actions_independent_of_chained_rule_result(t, rm);
                         rule.perform_logging(t, rm, LogPoint::EachMatch);
                         global_ret = true;
                     }
@@ -225,7 +224,7 @@ impl SecRule {
             }
         }
 
-        rule.execute_actions_after_full_match(t, contains_block, rm);
+        rule.execute_actions_after_full_match(link, t, rm);
         // last rule in the chain.
         rule.perform_logging(t, rm, LogPoint::RuleEnd);
         true

@@ -3,6 +3,7 @@
 use crate::lua::Lua;
 use crate::rule::Rule;
 use crate::rule::message::RuleMessage;
+use crate::rules_set::plan::Link;
 use crate::transaction::Transaction;
 
 #[derive(Debug)]
@@ -24,12 +25,18 @@ impl Script {
 
     /// Runs the script; the rule matches when the script's `main` returns
     /// a non empty string (or number).
-    pub fn evaluate<'a>(&'a self, rule: &'a Rule, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
+    pub fn evaluate<'a>(
+        &'a self,
+        rule: &'a Rule,
+        link: &'a Link,
+        t: &mut Transaction<'a>,
+        rm: &mut RuleMessage<'a>,
+    ) -> bool {
         crate::ms_dbg!(t, 4, " Executing script: {}.", self.name);
-        let contains_block = rule.execute_actions_independent_of_chained_rule_result(t, rm);
+        rule.execute_actions_independent_of_chained_rule_result(t, rm);
         let ret = self.lua.run(t, b"");
         if ret {
-            rule.execute_actions_after_full_match(t, contains_block, rm);
+            rule.execute_actions_after_full_match(link, t, rm);
         }
         ret
     }
