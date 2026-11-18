@@ -1,4 +1,4 @@
-This repository is a complete Rust implementation of libmodsecurity v3 (the ModSecurity web application firewall engine), with an nginx connector in `connectors/nginx`. It started as a port of the C++ library v3.0.17. The port is done: the C++ code base is now a behavioral reference, not a design template.
+This repository is a Rust implementation of libmodsecurity v3 (the ModSecurity web application firewall engine), with an nginx connector in `connectors/nginx`. It started as a port of the C++ library v3.0.17. It is now its own engine: the C++ code base is a reference to consult, not a behavior to reproduce.
 
 ## Design freedom
 
@@ -7,19 +7,17 @@ This repository is a complete Rust implementation of libmodsecurity v3 (the ModS
 - Prefer safe Rust. Keep `unsafe` at the boundaries with a `SAFETY` comment on every block: the C API is the `modsecurity-capi` crate and the native libraries are wrapped by the `modsecurity-native` crate (`crates/`); the engine crate (`modsecurity`, at the root) forbids `unsafe_code`. Code that needs a C call uses a safe function of `modsecurity-native`; a new module there is for a new native library only. C functions that tests compare with go in its `testing` module.
 - Larger redesigns are welcome (for example a grammar-based SecLang front end, a compiled rule plan, a safer embedding API, splitting the workspace), but do them as separate, reviewable steps with the verification below, and say up front what they change.
 
-## Compatibility contract
+## What must hold
 
-These are what users, connectors and operators depend on. Keep them unless the owner approves a change:
+The bar for behavior is the tests, not the C++ library:
 
-- **C API and ABI:** every `msc_*` function, its signature, return codes and memory conventions, and the `libmodsecurity.so.3` SONAME.
-- **SecLang semantics:** which configurations are accepted or rejected, and what the accepted ones do (rules, phases, actions, operators, variables, transformations, configuration directives, `Include`).
-- **Detection behavior:** matches, interventions, `TX`/`MATCHED_VAR*`/capture contents and rule evaluation order.
-- **Output formats:** error log lines, audit log formats (native and JSON), and the persistent collection format.
-- **Configuration and directives of the nginx connector.**
+- **The test suites of the original ModSecurity pass:** the regression suite and the unit suite (`cargo test` runs both, `test/suites.rs`).
+- **The OWASP CRS regression suite passes** through nginx (`test/crs/run.sh`).
+- **The interfaces other software is built against stay:** the C API and ABI (every `msc_*` function, its signature, return codes and memory conventions, and the `libmodsecurity.so.3` SONAME), and the configuration directives of the nginx connector. Changing these needs the owner's approval.
 
-Not part of the contract: internal Rust APIs, and the wording and columns of SecLang syntax errors (the owner has approved a new parser that reports them differently). Debug log text is not a contract either, but the differential test compares it line by line, so change it only on purpose and explain the resulting differences.
+Everything else may change when the result is a better engine: internal data structures and evaluation strategy, the order in which a collection's entries are visited, parsing of malformed input, error and debug log wording, and behavior that only exists because of how the C++ code happened to be written. Do not keep a C++ accident for its own sake, and do not ask before removing one that no test depends on. When a test does depend on one, keep exactly what the test needs and say so in a comment.
 
-C++ bugs and quirks are part of current behavior. Fixing one is welcome, but as its own change: name the old behavior, the new behavior and the reason in the commit message, add a regression test, and list it under "Intentional deviations from C++" in `MIGRATION.md`. Never change behavior silently as a side effect of a refactor. Opt-in alternatives (cargo features such as `pm-aho-corasick`) are the way to offer a different behavior without changing the default.
+Behavior changes are still made on purpose and in the open: each is its own commit that names the old behavior, the new behavior and the reason, comes with a regression test, and is listed under "Intentional deviations from C++" in `MIGRATION.md`. Never change behavior silently as a side effect of a refactor. Changes that weaken detection (a request that was blocked is no longer blocked, a value a rule could see is hidden) need the owner's approval even when every test passes.
 
 ## Verification
 
@@ -29,9 +27,9 @@ Run for every change, before committing:
 - `cargo test` (and `--no-default-features` and the opt-in features when the change touches them)
 - `cargo clippy --all-targets -- -D warnings` for the default, `--no-default-features` and `--all-features` builds, plus the nginx connector when it is affected
 - (`.github/workflows/ci.yml` runs the three checks above on every push and pull request; the ones below are run by hand.)
-- For any engine change: `test/differential/run.sh` against the C++ library. It must stay identical (outputs with and without the debug log, and the debug log itself, up to the documented differences: UTF-8 rendering, rule line numbers and `\"` in operator parameters, see `MIGRATION.md`).
+- For any engine change: `test/differential/run.sh` against the C++ library, as a report and not a gate. It shows what a change did to the outputs and the debug log on CRS traffic. A refactor that claims to change no behavior must leave it identical; a behavior change must explain every difference it shows (in the commit message), and a difference in an intervention is a detection change.
 - For changes to the SecLang parser, the body processors, transformations or operators: the fuzz targets (`fuzz/README.md`), a few minutes each, and the inputs in `fuzz/regressions/`.
-- For connector changes and before merging larger work: the OWASP CRS regression suite through nginx (`test/crs/run.sh`). The script reruns tests that failed, alone, up to three times (`RETRIES`), because the test backend sometimes drops a large POST and nginx answers 502 (test 920390-1); a test that fails every time is a real failure.
+- For connector changes, for every behavior change and before merging larger work: the OWASP CRS regression suite through nginx (`test/crs/run.sh`). The script reruns tests that failed, alone, up to three times (`RETRIES`), because the test backend sometimes drops a large POST and nginx answers 502 (test 920390-1); a test that fails every time is a real failure.
 
 Add focused tests for behavior that a change could affect. When replacing an implementation, compare the old and new one directly on generated inputs.
 
