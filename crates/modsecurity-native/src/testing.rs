@@ -36,17 +36,6 @@ pub fn strerror(errnum: i32) -> String {
     unsafe { CStr::from_ptr(libc::strerror(errnum)) }.to_string_lossy().into_owned()
 }
 
-/// `snprintf("%.{precision}g", d)`.
-pub fn snprintf_g(d: f64, precision: usize) -> String {
-    let mut buf = [0 as c_char; 512];
-    let fmt = CString::new(format!("%.{precision}g")).expect("no NUL");
-    // SAFETY: the buffer bounds the output; the format takes one double.
-    unsafe {
-        libc::snprintf(buf.as_mut_ptr(), buf.len(), fmt.as_ptr(), d);
-        CStr::from_ptr(buf.as_ptr()).to_string_lossy().into_owned()
-    }
-}
-
 // `inet_pton` is part of the C library but not exposed by `libc`.
 unsafe extern "C" {
     fn inet_pton(af: c_int, src: *const c_char, dst: *mut c_void) -> c_int;

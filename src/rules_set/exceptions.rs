@@ -221,18 +221,18 @@ mod tests {
         m.emplace(1.0, "a");
         m.emplace(2.0, "x");
         m.emplace(1.0, "b");
-        assert_eq!(m.for_rule(crate::rule::Id::from_number(1.0)), ["b", "a"]);
-        assert_eq!(m.for_rule(crate::rule::Id::from_number(2.0)), ["x"]);
-        assert!(m.for_rule(crate::rule::Id::from_number(3.0)).is_empty());
+        assert_eq!(m.for_rule(crate::rule::Id::new(1)), ["b", "a"]);
+        assert_eq!(m.for_rule(crate::rule::Id::new(2)), ["x"]);
+        assert!(m.for_rule(crate::rule::Id::new(3)).is_empty());
         let mut n = IdMultimap::default();
         n.emplace(1.0, "c");
         n.merge_from(&m);
         // A merge walks the entries in container order, emplacing each in
         // front: it reverses them (as with libstdc++).
-        assert_eq!(n.for_rule(crate::rule::Id::from_number(1.0)), ["a", "b", "c"]);
+        assert_eq!(n.for_rule(crate::rule::Id::new(1)), ["a", "b", "c"]);
         // -0.0 and 0.0 are the same id.
         m.emplace(-0.0, "z");
-        assert_eq!(m.for_rule(crate::rule::Id::from_number(0.0)), ["z"]);
+        assert_eq!(m.for_rule(crate::rule::Id::new(0)), ["z"]);
     }
 
     #[test]

@@ -290,6 +290,20 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   values (a forwarded-for header): a value followed by a NUL byte no
   longer matches the address before it. Regression test:
   `ip_set::tests::nul_bytes`.
+- **Which rule ids are accepted.** *C++:* the `id` action reads its
+  value as a floating point number (`std::stod`) and accepts it when that
+  number prints back as the same text with 40 significant digits. Of the
+  digit strings the grammar lets through, that refuses an id with leading
+  zeros (`id:007`) and every integer a double cannot hold exactly
+  (`id:9007199254740993`, and `id:9223372036854775807`, the largest 64 bit
+  integer), and accepts larger ones that it can (`id:9223372036854775808`,
+  `id:18446744073709551616`), which the 64 bit id of the rule then cannot
+  hold. *Here:* the id is a decimal integer up to 9223372036854775807;
+  leading zeros are allowed (`id:007` is 7). *Why:* the owner does not
+  want the accidents of the C++ code kept where its tests do not need
+  them; the C++ suites and CRS only use plain integers. The C++ library
+  was run on the eight ids of this entry and differs exactly as said.
+  Regression test: `actions::rule_id::tests::init_and_configure`.
 - **Time formatting** (audit/error log timestamps, the JSON `time_stamp`,
   parallel audit log and upload directory names) always uses the C locale's
   formats and English names. C++'s `strftime` follows the process `LC_TIME`

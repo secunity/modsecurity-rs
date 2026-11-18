@@ -1237,3 +1237,13 @@ Kept, because they are not a standard call: `isodigit` (the standard
 the vertical tab, `is_ascii_whitespace` does not), `find` / `find_from`
 (a search in bytes), `x2c`, `hex2dec`, `chomp`, `limit_to`, and the C
 number conversions of `cnum`.
+
+## Rule ids are integers
+
+The `id` action kept its value as an `f64`, parsed like C++ `std::stod`
+and checked by printing it back with `%.40g`, for which
+`cnum::format_g` (and a test helper calling `snprintf`) existed. It is
+an `i64` parsed by the standard library; `format_g` is gone. Which ids
+are accepted changes at the edges: see "Intentional deviations from C++"
+in `MIGRATION.md`.
+

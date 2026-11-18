@@ -3,18 +3,16 @@
 /// The id of a rule (`id:942100`), 0 for a rule without one.
 ///
 /// A rule keeps its id as a 64 bit integer, but the id is other numbers
-/// elsewhere, as in C++: the `id` action reads a floating point number,
-/// `SecRuleUpdateTargetById` and `SecRuleUpdateActionById` look rules up
-/// by one, and `ctl:ruleRemoveById`, `ctl:ruleRemoveTargetById` and
+/// elsewhere, as in C++: `SecRuleUpdateTargetById` and
+/// `SecRuleUpdateActionById` look rules up by a floating point number, and `ctl:ruleRemoveById`, `ctl:ruleRemoveTargetById` and
 /// `SecRuleRemoveById` hold `int`s. The comparisons between them are
 /// here, each as C++ makes it.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Id(i64);
 
 impl Id {
-    /// The id the `id` action read.
-    pub fn from_number(id: f64) -> Self {
-        Id(id as i64)
+    pub fn new(id: i64) -> Self {
+        Id(id)
     }
 
     pub fn get(self) -> i64 {
@@ -64,7 +62,7 @@ mod tests {
 
     #[test]
     fn comparisons() {
-        let id = Id::from_number(942100.0);
+        let id = Id::new(942100);
         assert_eq!((id.get(), id.to_string(), format!("{id:?}")), (942100, "942100".to_string(), "942100".to_string()));
         assert!(id.is(942100) && !id.is(942101));
         assert!(id.is_within(942000, 942100) && id.is_within(942100, 942100) && !id.is_within(942101, 942200));
@@ -72,7 +70,7 @@ mod tests {
 
         // Beyond the `int` range: never the id of a `ctl:` action, but
         // another id for `SecRuleRemoveById`.
-        let big = Id::from_number(4294967297.0);
+        let big = Id::new(4294967297);
         assert!(!big.is(1) && !big.is_within(0, i32::MAX));
         assert_eq!(big.narrowed(), 1);
     }
