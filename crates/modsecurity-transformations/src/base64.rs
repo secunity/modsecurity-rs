@@ -214,8 +214,7 @@ impl Base64 {
     /// As in C++ (`strlen(data.c_str())`), the input stops at the first NUL
     /// byte.
     pub fn decode(data: &[u8]) -> Option<Vec<u8>> {
-        let len = data.iter().position(|&c| c == 0).unwrap_or(data.len());
-        mbedtls_decode(&data[..len])
+        mbedtls_decode(modsecurity_compat::chars::c_str(data))
     }
 
     /// Lenient decoding (`t:base64DecodeExt`).

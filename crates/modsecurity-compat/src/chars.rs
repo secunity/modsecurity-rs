@@ -155,6 +155,17 @@ pub fn chomp(s: &mut Vec<u8>) {
     }
 }
 
+/// `s` as C code sees it through a `const char *`: up to its first NUL
+/// byte. The C++ library hands many byte strings to C functions
+/// (`c_str()`), which is why what follows a NUL byte is so often ignored.
+#[inline]
+pub fn c_str(s: &[u8]) -> &[u8] {
+    match s.iter().position(|&c| c == 0) {
+        Some(end) => &s[..end],
+        None => s,
+    }
+}
+
 /// Lossy view of bytes for log messages.
 #[inline]
 pub fn lossy(s: &[u8]) -> std::borrow::Cow<'_, str> {

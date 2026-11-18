@@ -64,8 +64,8 @@ fn ngx_str_to_bytes(a: &ngx_str_t) -> Option<Vec<u8>> {
 /// # Safety
 /// `pool` must be a valid pool.
 unsafe fn pool_cstr(pool: *mut nginx_sys::ngx_pool_t, s: &str) -> *mut c_char {
-    let bytes = s.as_bytes();
-    let end = bytes.iter().position(|&c| c == 0).unwrap_or(bytes.len());
+    let bytes = crate::nginx::c_str(s.as_bytes());
+    let end = bytes.len();
     // SAFETY: allocates end + 1 bytes from the pool and fills them.
     unsafe {
         let p = ngx_pnalloc(pool, end + 1) as *mut u8;

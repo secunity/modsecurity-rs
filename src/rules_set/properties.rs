@@ -177,7 +177,7 @@ impl ConfigUnicodeMap {
         let mut found = false;
         let mut processing = false;
         // The C++ code reads the file as a C string: it ends at a NUL byte.
-        let buf = &buf[..buf.iter().position(|&c| c == 0).unwrap_or(buf.len())];
+        let buf = modsecurity_compat::chars::c_str(&buf);
         for p in buf.split(|c| CODEPAGE_SEPARATORS.contains(c)).filter(|t| !t.is_empty()) {
             let codepage = crate::utils::string::atoi(p) as u32;
             if codepage as f64 == config_code_page {

@@ -254,7 +254,7 @@ impl Regex {
         let mut erroroffset: usize = 0;
         // The C++ code passes the pattern as a NUL terminated C string, so a
         // pattern stops at its first NUL byte.
-        let len = pattern.iter().position(|&c| c == 0).unwrap_or(pattern.len());
+        let len = crate::c_str(&pattern).len();
         // SAFETY: pattern points to `len` readable bytes; out-params are
         // valid; a null compile context selects defaults.
         let pc = unsafe {

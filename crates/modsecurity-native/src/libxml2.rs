@@ -744,6 +744,5 @@ pub enum SchemaError {
 /// A NUL terminated copy of `s`, cut at its first NUL byte (as the C++
 /// code's `c_str()` view of a `std::string` would be).
 fn c_string(s: &[u8]) -> CString {
-    let end = s.iter().position(|&c| c == 0).unwrap_or(s.len());
-    CString::new(&s[..end]).expect("no NUL byte")
+    CString::new(crate::c_str(s)).expect("no NUL byte")
 }

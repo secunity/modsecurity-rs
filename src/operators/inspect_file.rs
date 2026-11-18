@@ -39,11 +39,11 @@ impl InspectFile {
         // for a bare name, so make such a path explicitly relative.
         let program = if self.file.contains('/') { self.file.clone() } else { format!("./{}", self.file) };
         // The argument is passed as a C string.
-        let end = arg.iter().position(|&c| c == 0).unwrap_or(arg.len());
+        let arg = modsecurity_compat::chars::c_str(arg);
 
         let output = Command::new(program)
             .arg0(&self.file)
-            .arg(OsStr::from_bytes(&arg[..end]))
+            .arg(OsStr::from_bytes(arg))
             .stdin(Stdio::inherit())
             .stderr(Stdio::inherit())
             .stdout(Stdio::piped())

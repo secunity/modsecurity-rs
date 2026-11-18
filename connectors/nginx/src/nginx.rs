@@ -32,6 +32,14 @@ use nginx_sys::{
 const NGX_SOCKADDR_STRLEN: usize =
     5 + core::mem::size_of::<nginx_sys::sockaddr_un>() - core::mem::offset_of!(nginx_sys::sockaddr_un, sun_path);
 
+/// `s` up to its first NUL byte: what nginx is given of it as a C string.
+pub fn c_str(s: &[u8]) -> &[u8] {
+    match s.iter().position(|&c| c == 0) {
+        Some(end) => &s[..end],
+        None => s,
+    }
+}
+
 /// The bytes of an `ngx_str_t` (none for an empty or null one).
 fn bytes(s: &ngx_str_t) -> Vec<u8> {
     if s.len == 0 || s.data.is_null() { Vec::new() } else { s.as_bytes().to_vec() }
@@ -63,9 +71,7 @@ impl Log {
         if self.0.is_null() || level > unsafe { (*self.0).log_level } {
             return;
         }
-        let end = msg.iter().position(|&c| c == 0).unwrap_or(msg.len());
-        let mut c = Vec::with_capacity(end + 1);
-        c.extend_from_slice(&msg[..end]);
+        let mut c = c_str(msg).to_vec();
         c.push(0);
         // SAFETY: "%s" with one NUL terminated string argument.
         unsafe { ngx_log_error_core(level, self.0, 0, c"%s".as_ptr(), c.as_ptr() as *const c_void) };

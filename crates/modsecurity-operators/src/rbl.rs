@@ -7,6 +7,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use crate::{Context, Operator, Param};
+use modsecurity_compat::chars::c_str;
 
 /// The block list service, recognized from the parameter. It decides
 /// whether an access key is needed and how an answer is logged.
@@ -27,12 +28,6 @@ pub struct Rbl {
     service: Vec<u8>,
     demands_password: bool,
     provider: RblProvider,
-}
-
-/// The C string view of `s` (up to its first NUL byte).
-fn c_str(s: &[u8]) -> &[u8] {
-    let end = s.iter().position(|&c| c == 0).unwrap_or(s.len());
-    &s[..end]
 }
 
 /// The four numbers of a dotted quad, parsed like

@@ -1189,3 +1189,21 @@ entry is an address or `address/length`, parsed with the standard library
 and `ipnet` (`parse_address`, `parse_entry`). Which lists load changes
 with that (`/0` and `::1/128` are accepted, `/24abc` is not): the second
 `@ipMatch` item of "Intentional deviations from C++" in `MIGRATION.md`.
+
+## One `c_str`
+
+"The bytes up to the first NUL byte" was written out in 21 places: four
+named helpers (`cstr`, `cstr_prefix`, two `c_str`) and seventeen inline
+`position(|&c| c == 0)`. There is one now,
+`modsecurity_compat::chars::c_str`, used by the engine and the operators,
+body and transformations crates. `modsecurity-native` (below the compat
+crate) and the nginx connector (a C boundary of its own) have one private
+copy each, and the C API's `strdup` keeps its own cut.
+
+No behavior changed. Each remaining use is a place where C++ hands a
+string to C code, so what follows a NUL byte is ignored there: the audit
+log, Lua, `@inspectFile`'s argument, `@rbl`, `@geoLookup`, `@fuzzyHash`
+lists, `@detectSQLi`'s fingerprint, the multipart parser, base64
+decoding, regular expression patterns, the unicode map file, downloaded
+rules, the HTTPS audit log body. Whether each of those should keep that
+is a question of behavior, case by case.

@@ -220,7 +220,7 @@ impl ModSecurity {
         let mut trans = transformations.search_all(match_string.as_bytes());
 
         // `content` is read as a C string.
-        let content = &content[..content.iter().position(|&c| c == 0).unwrap_or(content.len())];
+        let content = modsecurity_compat::chars::c_str(content);
         let len = content.len();
 
         let mut g = JsonGen::new();

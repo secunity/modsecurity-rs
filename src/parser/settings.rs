@@ -545,10 +545,8 @@ impl Builder<'_, '_> {
                 _ => return Ok(()),
             }
         }
-        let content = match c.content.iter().position(|&b| b == 0) {
-            Some(n) => &c.content[..n],
-            None => &c.content[..],
-        };
+        // The C++ code reads what it downloaded as a C string.
+        let content = modsecurity_compat::chars::c_str(&c.content);
         let idx = self.driver.add_filename(url.to_string());
         load(self.driver, content, idx)
     }

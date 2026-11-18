@@ -88,8 +88,7 @@ impl HttpsClient {
         if !self.request_body.is_empty() {
             // The C++ code hands the body to CURLOPT_POSTFIELDS as a C
             // string: it is sent up to its first NUL byte.
-            let len = self.request_body.iter().position(|&c| c == 0).unwrap_or(self.request_body.len());
-            curl.post_fields_copy(&self.request_body[..len])?;
+            curl.post_fields_copy(modsecurity_compat::chars::c_str(&self.request_body))?;
             // Disable Expect: 100-continue
             headers_chunk.append("Expect:")?;
         }

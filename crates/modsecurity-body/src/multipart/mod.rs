@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use modsecurity_compat::chars::{is_space, lossy};
+use modsecurity_compat::chars::{c_str, is_space, lossy};
 use modsecurity_types::{DebugSink, ms_dbg, ms_dbg_opt};
 
 mod content_disposition;
@@ -38,14 +38,6 @@ pub const MULTIPART_BUF_SIZE: usize = 4096;
 // ---------------------------------------------------------------------------
 // C string helpers
 // ---------------------------------------------------------------------------
-
-/// The C string starting at `s[0]`: everything up to the first NUL byte.
-fn c_str(s: &[u8]) -> &[u8] {
-    match s.iter().position(|&c| c == 0) {
-        Some(p) => &s[..p],
-        None => s,
-    }
-}
 
 /// The byte at `i` of a C string: reading at (or past) the end yields the
 /// NUL terminator.

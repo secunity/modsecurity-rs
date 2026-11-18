@@ -75,7 +75,7 @@ impl Intervention {
     /// URL. A status that is not a valid HTTP status code (or a URL that
     /// is not a valid header value) gives a 500 response.
     pub fn to_response<B: Default>(&self) -> Option<Response<B>> {
-        let url = self.url.as_deref().map(|u| u.split(|&c| c == 0).next().unwrap_or_default());
+        let url = self.url.as_deref().map(modsecurity_compat::chars::c_str);
         if url.is_none() && self.status == 200 {
             return None;
         }

@@ -107,14 +107,7 @@ end
         pub script_name: String,
     }
 
-    /// The part of a C string the C API sees (`const char *` up to the
-    /// first NUL).
-    fn cstr(s: &[u8]) -> &[u8] {
-        match s.iter().position(|&c| c == 0) {
-            Some(p) => &s[..p],
-            None => s,
-        }
-    }
+    use modsecurity_compat::chars::c_str as cstr;
 
     fn lossy(s: &[u8]) -> String {
         String::from_utf8_lossy(s).into_owned()

@@ -69,8 +69,7 @@ impl Operator for FuzzyHash {
         }
         for line in lines {
             // strdup(line.c_str()): up to the first NUL byte.
-            let end = line.iter().position(|&c| c == 0).unwrap_or(line.len());
-            self.chunks.push(std::ffi::CString::new(&line[..end]).unwrap_or_default());
+            self.chunks.push(std::ffi::CString::new(modsecurity_compat::chars::c_str(line)).unwrap_or_default());
         }
 
         Ok(())

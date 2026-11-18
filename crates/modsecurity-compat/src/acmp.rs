@@ -338,9 +338,7 @@ impl Acmp {
 
     /// The text of a node as a C string (up to its first NUL byte).
     fn node_text(&self, node: usize) -> &[u8] {
-        let t = &self.nodes[node].text;
-        let end = t.iter().position(|&c| c == 0).unwrap_or(t.len());
-        &t[..end]
+        crate::chars::c_str(&self.nodes[node].text)
     }
 }
 

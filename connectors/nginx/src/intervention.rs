@@ -31,7 +31,7 @@ pub fn process_intervention(ctx: &mut Ctx, request: &Request<'_>, early_log: boo
     }
 
     // The C connector reads the url as a C string: up to its first NUL.
-    let url = it.url.as_deref().map(|u| u.split(|&c| c == 0).next().unwrap_or_default());
+    let url = it.url.as_deref().map(crate::nginx::c_str);
     let status = it.status;
 
     if let Some(url) = url {
