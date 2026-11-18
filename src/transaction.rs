@@ -29,7 +29,6 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::actions::disruptive::allow::AllowType;
-use crate::actions::transformation::Transformation;
 use crate::audit_log::{AuditLogStatus, Parts, PartsChange};
 use crate::collection::collections::Collections;
 use crate::instance::ModSecurity;
@@ -261,8 +260,6 @@ pub struct EvalScratch<'a> {
     pub e: Vec<VariableValue>,
     /// The transformation results of one value.
     pub values: TransformationResults,
-    /// The transformations the rule applies to each value.
-    pub chain: Vec<&'a Transformation>,
 }
 
 /// The HTTP exchange as the connector reported it, and what is derived

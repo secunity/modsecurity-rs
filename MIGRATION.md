@@ -304,6 +304,22 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **Directives that select rules by tag or message match them as
+  written.** `SecRuleRemoveByTag`, `SecRuleRemoveByMsg`,
+  `SecRuleUpdateTargetByTag` and `SecRuleUpdateTargetByMsg` name a tag or
+  a message. *C++:* for every transaction, each rule's tags and message
+  are expanded (macros such as `%{tx.kind}` get their value of the
+  moment) and compared with the name. *Here:* the comparison is made once
+  for the rule set, with the tag or message as written, a macro expanding
+  to nothing: `SecRuleRemoveByTag attack-sqli` no longer removes a rule
+  tagged `%{tx.kind}-sqli` when `tx.kind` happens to be `attack`. *Why:*
+  which rules a configuration removes or retargets is a property of the
+  configuration (it is part of the rule plan, see `REFACTORING.md`), not
+  of a request. Tags and messages of CRS that these directives are used
+  with have no macros. `ctl:ruleRemoveByTag` and
+  `ctl:ruleRemoveTargetByTag`, which act during a transaction, still
+  expand them. Regression test:
+  `rules_set::plan::tests::tags_and_messages_are_matched_as_written`.
 - **NUL bytes elsewhere.** *C++:* many values pass through a C string
   and so end at their first NUL byte. *Here:* in the places below a NUL
   byte is a byte like another. *Why:* approved by the owner; what follows

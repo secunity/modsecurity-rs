@@ -1265,3 +1265,26 @@ lines and headers as C strings: `c_at` and `c_starts_with` are gone, the
 cursor of the Content-Disposition parser gives `Option<u8>`, and "the end
 of the line" is the end of the slice. See "Intentional deviations from
 C++" in `MIGRATION.md`.
+
+
+## The rule plan (step 1)
+
+A rule alone does not say what runs: its transformations depend on
+`SecDefaultAction` and `SecRuleUpdateActionById`, its targets on the
+`SecRuleUpdateTarget...` directives, and the `SecRuleRemove...` directives
+decide whether it runs. The evaluation used to work all of this out for
+every rule of every transaction (`Rule::for_each_transformation`,
+`SecRule::final_vars`, the removal checks of `RulesSet::evaluate`).
+
+`rules_set::plan` works it out once per rule set: `Plan::compile` gives,
+for each phase, the steps (`Step::Marker`, `Step::Rule` with a `Link` per
+rule of the chain, `Step::Removed`), and a `Link` holds the rule's
+effective transformations, their path, and its targets. `RulesSet::plan`
+compiles it the first time a transaction needs it and a new load or merge
+discards it. The evaluation follows the plan and only looks at what a
+transaction can change (`ctl:` actions).
+
+Not in the plan yet: the actions of a rule (the `SecDefaultAction` ones
+that run on a match and the `SecRuleUpdateActionById` ones are still
+looked up during the evaluation), and the variables and operators
+themselves.

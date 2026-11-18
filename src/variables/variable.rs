@@ -318,34 +318,6 @@ pub(crate) fn regex_name(collection: &str, regex: &str) -> String {
     format!("{}:regex({})", collection, regex)
 }
 
-/// A list of (borrowed) variables.
-#[derive(Default)]
-pub struct Variables<'v>(pub Vec<&'v Variable>);
-
-impl<'v> Variables<'v> {
-    pub fn new() -> Self {
-        Variables(Vec::new())
-    }
-
-    /// Whether the list holds the same target as `v`.
-    pub fn contains_var(&self, v: &Variable) -> bool {
-        self.0.iter().any(|m| v.same_as(m))
-    }
-
-    /// Whether a variable of the list selects the value `v`: by regex for
-    /// a `COLLECTION:/regex/` variable, by full name otherwise.
-    pub fn contains_value(&self, v: &VariableValue) -> bool {
-        self.0.iter().any(|m| match m.regex() {
-            Some(r) => r.is_match(v.key()),
-            None => v.key_with_collection() == m.full_name().as_bytes(),
-        })
-    }
-
-    pub fn push(&mut self, v: &'v Variable) {
-        self.0.push(v);
-    }
-}
-
 /// The full names of `vars` joined by `|`.
 pub fn variables_to_string<'a, I>(vars: I) -> String
 where

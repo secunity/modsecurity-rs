@@ -51,6 +51,11 @@ impl RulesSetPhases {
         }
     }
 
+    /// The rules of the phase with the index `phase`.
+    pub(crate) fn at_index(&self, phase: usize) -> &[Arc<Entry>] {
+        &self.rules_at_phase[phase]
+    }
+
     pub fn for_phase(&self, phase: Phases) -> &[Arc<Entry>] {
         &self.rules_at_phase[phase.index()]
     }

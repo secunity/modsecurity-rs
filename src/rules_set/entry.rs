@@ -4,7 +4,6 @@
 use crate::phases::Phases;
 use crate::rule::Rule;
 use crate::rules_set::marker::Marker;
-use crate::transaction::Transaction;
 
 // Rules always live behind an `Arc`, so the size difference between the
 // variants does not matter.
@@ -16,15 +15,6 @@ pub enum Entry {
 }
 
 impl Entry {
-    /// Evaluates the entry. Returns whether it matched (always `true` for a
-    /// marker).
-    pub fn evaluate<'a>(&'a self, t: &mut Transaction<'a>) -> bool {
-        match self {
-            Entry::Marker(m) => m.evaluate(t),
-            Entry::Rule(r) => r.evaluate(t),
-        }
-    }
-
     /// The phase the rule runs in; `None` for a rule with an unknown
     /// `phase:<name>` (see `actions::phase`), which runs in none.
     pub fn phase(&self) -> Option<Phases> {
@@ -43,8 +33,12 @@ impl Entry {
         }
     }
 
-    pub fn is_marker(&self) -> bool {
-        matches!(self, Entry::Marker(_))
+    /// The marker, unless this is a rule.
+    pub fn as_marker(&self) -> Option<&Marker> {
+        match self {
+            Entry::Marker(m) => Some(m),
+            Entry::Rule(_) => None,
+        }
     }
 
     /// The rule, unless this is a marker.

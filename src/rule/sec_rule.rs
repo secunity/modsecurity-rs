@@ -4,10 +4,12 @@
 use crate::operators::operator::RuleOperator;
 use crate::rule::message::{Matched, RuleMessage};
 use crate::rule::{LogPoint, Rule, TransformationPath};
+use crate::rules_set::plan::Link;
 use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
-use crate::variables::variable::{Variable, Variables, variables_to_string};
+use crate::variables::variable::{Variable, variables_to_string};
+use crate::variables::variable_value::VariableValue;
 
 /// The `SecRule` specific part of a rule: its targets and its operator.
 #[derive(Debug)]
@@ -58,77 +60,46 @@ impl SecRule {
         self.operator.evaluate(t, rule, value, rm)
     }
 
-    /// The targets that `SecRuleUpdateTargetByTag`, `...ByMsg` and
-    /// `...ById` exclude from (`exclusion`) or add to (`addition`) the
-    /// rule.
-    fn variables_exceptions<'a>(
-        rule: &'a Rule,
-        t: &Transaction<'a>,
-        exclusion: &mut Variables<'a>,
-        addition: &mut Variables<'a>,
-    ) {
-        let ex = &t.rules.properties.exceptions;
-        let mut helper = |v: &'a Variable| match v.exclusion_base() {
-            Some(base) => exclusion.push(base),
-            None => addition.push(v),
-        };
-        for (tag, v) in &ex.variable_update_target_by_tag {
-            if rule.contains_tag(tag, t) {
-                helper(v.as_ref());
+    /// The targets to inspect: the ones of the rule's plan, minus the
+    /// ones the transaction removed (`ctl:ruleRemoveTargetById` and
+    /// `...ByTag`, which only remove targets the rule was written with).
+    fn targets<'a>(&'a self, rule: &'a Rule, link: &'a Link, t: &Transaction<'a>, vars: &mut Vec<&'a Variable>) {
+        let ctl = &t.ctl;
+        for variable in link.targets.iter().map(|&i| &self.variables[i]) {
+            let name = variable.full_name();
+            let by_id = |(id, target): &(i32, String)| rule.rule_id.is(*id) && target.eq_ignore_ascii_case(name);
+            let by_tag = |(tag, target): &(String, String)| target == name && rule.contains_tag(tag, t);
+            if !ctl.rule_remove_target_by_id.iter().any(by_id) && !ctl.rule_remove_target_by_tag.iter().any(by_tag) {
+                vars.push(variable);
             }
         }
-        for (msg, v) in &ex.variable_update_target_by_msg {
-            if rule.contains_msg(msg, t) {
-                helper(v.as_ref());
-            }
-        }
-        for v in ex.variable_update_target_by_id.for_rule(rule.rule_id) {
-            helper(v.as_ref());
-        }
+        vars.extend(link.added_targets.iter().map(|v| v.as_ref()));
     }
 
-    /// The targets to inspect: the rule's own, minus the excluded ones
-    /// (by `SecRuleUpdateTarget*` and the `ctl:ruleRemoveTarget*` of the
-    /// transaction), plus the added ones.
-    fn final_vars<'a>(
-        &'a self,
-        rule: &'a Rule,
-        t: &Transaction<'a>,
-        vars: &mut Vec<&'a Variable>,
-        exclusion: &mut Variables<'a>,
-    ) {
-        let mut addition = Variables::new();
-        Self::variables_exceptions(rule, t, exclusion, &mut addition);
-        for variable in &self.variables {
-            if exclusion.contains_var(variable) {
-                continue;
-            }
-            if t.ctl
-                .rule_remove_target_by_id
-                .iter()
-                .any(|(id, target)| rule.rule_id.is(*id) && target.eq_ignore_ascii_case(variable.full_name()))
-            {
-                continue;
-            }
-            if t.ctl
+    /// Whether the transaction removed the value `v` from the rule's
+    /// targets (`ctl:ruleRemoveTargetById=<id>;ARGS:name` and `...ByTag`).
+    fn removed_value(rule: &Rule, t: &Transaction<'_>, v: &VariableValue) -> bool {
+        let name = v.key_with_collection();
+        let ctl = &t.ctl;
+        ctl.rule_remove_target_by_id.iter().any(|(id, target)| rule.rule_id.is(*id) && target.as_bytes() == name)
+            || ctl
                 .rule_remove_target_by_tag
                 .iter()
-                .any(|(tag, target)| target == variable.full_name() && rule.contains_tag(tag, t))
-            {
-                continue;
-            }
-            vars.push(variable);
-        }
-        for v in addition.0 {
-            vars.push(v);
-        }
+                .any(|(tag, target)| target.as_bytes() == name && rule.contains_tag(tag, t))
     }
 
     /// Evaluates the rule: runs the operator on every transformed target
     /// value, then the chained rule and the actions. Returns whether the
     /// rule (with its chain) matched; `true` also for a rule removed by
     /// `ctl:ruleRemoveById`, as in C++.
-    pub fn evaluate<'a>(&'a self, rule: &'a Rule, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
+    pub fn evaluate<'a>(
+        &'a self,
+        rule: &'a Rule,
+        chain: &'a [Link],
+        t: &mut Transaction<'a>,
+        rm: &mut RuleMessage<'a>,
+    ) -> bool {
+        let (link, chained) = chain.split_first().expect("the plan of the rule");
         let mut global_ret = false;
         let mut contains_block = rule.has_block_action();
 
@@ -190,12 +161,9 @@ impl SecRule {
 
         // The transaction's buffers, reused by every rule (a chained rule
         // evaluated below gets fresh ones); given back after the loop.
-        let EvalScratch { mut vars, mut e, mut values, mut chain } = std::mem::take(&mut t.eval.scratch);
-        chain.clear();
-        rule.transformations_in(t.rules, &mut chain);
+        let EvalScratch { mut vars, mut e, mut values } = std::mem::take(&mut t.eval.scratch);
         vars.clear();
-        let mut exclusion = Variables::new();
-        self.final_vars(rule, t, &mut vars, &mut exclusion);
+        self.targets(rule, link, t, &mut vars);
 
         for &var in &vars {
             e.clear();
@@ -204,24 +172,11 @@ impl SecRule {
                 let value = v.value();
                 let key = v.key_with_collection();
 
-                if exclusion.contains_value(&v)
-                    || t.ctl
-                        .rule_remove_target_by_id
-                        .iter()
-                        .any(|(id, target)| rule.rule_id.is(*id) && target.as_bytes() == v.key_with_collection())
-                {
-                    continue;
-                }
-                if exclusion.contains_value(&v)
-                    || t.ctl
-                        .rule_remove_target_by_tag
-                        .iter()
-                        .any(|(tag, target)| target.as_bytes() == v.key_with_collection() && rule.contains_tag(tag, t))
-                {
+                if link.excludes_value(&v) || Self::removed_value(rule, t, &v) {
                     continue;
                 }
 
-                rule.execute_transformations(t, &chain, value, &mut values);
+                rule.execute_transformations(t, &link.transformations, value, &mut values);
 
                 for (value_after_trans, path) in &values {
                     let ret = self.execute_operator_at(rule, t, key, value_after_trans, rm);
@@ -235,7 +190,7 @@ impl SecRule {
                         match path {
                             TransformationPath::Step(p) => rm.reference.extend_from_slice(p.as_bytes()),
                             TransformationPath::Full => {
-                                rm.reference.extend_from_slice(rule.transformation_path(t).as_bytes())
+                                rm.reference.extend_from_slice(link.transformation_path.as_bytes())
                             }
                         }
                         Self::update_matched_vars(t, key, value_after_trans);
@@ -247,8 +202,7 @@ impl SecRule {
             }
         }
         vars.clear();
-        chain.clear();
-        t.eval.scratch = EvalScratch { vars, e, values, chain };
+        t.eval.scratch = EvalScratch { vars, e, values };
 
         if !global_ret {
             crate::ms_dbg!(t, 4, "Rule returned 0.");
@@ -264,7 +218,7 @@ impl SecRule {
             };
             crate::ms_dbg!(t, 4, "Executing chained rule.");
             t.eval.chained_rule_parents.push(rule);
-            let recursive_global_ret = child.evaluate_with_message(t, rm);
+            let recursive_global_ret = child.evaluate_with_message(chained, t, rm);
             t.eval.chained_rule_parents.pop();
             if !recursive_global_ret {
                 return false;

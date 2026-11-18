@@ -29,7 +29,7 @@ use crate::phases::Phases;
 use crate::rule::message::RuleMessage;
 use crate::rule::sec_rule::SecRule;
 use crate::rule::sec_rule_script::Script;
-use crate::rules_set::RulesSet;
+use crate::rules_set::plan::Link;
 use crate::rules_set::properties::RuleEngine;
 use crate::transaction::Transaction;
 use crate::utils::string::limit_to;
@@ -287,17 +287,23 @@ impl Rule {
 
     // --- evaluation ---
 
-    /// Evaluates the rule with a new rule message. Returns whether it
+    /// Evaluates the rule with a new rule message. `chain` is the plan of
+    /// the rule and of the rules chained to it. Returns whether it
     /// matched.
-    pub fn evaluate<'a>(&'a self, t: &mut Transaction<'a>) -> bool {
+    pub fn evaluate<'a>(&'a self, chain: &'a [Link], t: &mut Transaction<'a>) -> bool {
         let mut rm = RuleMessage::new(self);
-        self.evaluate_with_message(t, &mut rm)
+        self.evaluate_with_message(chain, t, &mut rm)
     }
 
     /// Evaluates the rule with the message `rm`, according to its kind.
-    pub fn evaluate_with_message<'a>(&'a self, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
+    pub fn evaluate_with_message<'a>(
+        &'a self,
+        chain: &'a [Link],
+        t: &mut Transaction<'a>,
+        rm: &mut RuleMessage<'a>,
+    ) -> bool {
         match &self.kind {
-            RuleKind::SecRule(o) => o.evaluate(self, t, rm),
+            RuleKind::SecRule(o) => o.evaluate(self, chain, t, rm),
             RuleKind::SecAction => crate::rule::sec_action::evaluate(self, t, rm),
             RuleKind::SecRuleScript(s) => s.evaluate(self, t, rm),
         }
@@ -437,78 +443,16 @@ impl Rule {
         crate::ms_dbg!(t, 4, "Not running any disruptive action (or block): {}. SecRuleEngine is not On.", a.name());
     }
 
-    /// The transformations the rule applies, in order:
-    /// the `SecDefaultAction` ones (unless the rule has `t:none`), the
-    /// rule's own (from its last `t:none` on) and the `SecRuleUpdateActionById`
-    /// ones (likewise).
-    fn for_each_transformation<'a>(&'a self, rules: &'a RulesSet, mut f: impl FnMut(&'a Transformation)) {
-        let mut none = 0;
-
-        for a in &self.transformations {
-            if a.is_none() {
-                none += 1;
-            }
-        }
-
-        // Check for transformations on the SecDefaultAction. Notice that
-        // first we make sure that won't be a t:none on the target rule.
-        if none == 0
-            && let Some(defaults) = self.phase.map(|p| &rules.properties.default_actions[p.index()])
-        {
-            for a in defaults {
-                if a.kind() != Kind::RunTimeBeforeMatchAttempt {
-                    continue;
-                }
-                if let Some(tr) = a.as_transformation() {
-                    f(tr);
-                }
-            }
-        }
-
-        for a in &self.transformations {
-            if none == 0 {
-                f(a);
-            }
-            if a.is_none() {
-                none -= 1;
-            }
-        }
-
-        let pre = &rules.properties.exceptions.action_pre_update_target_by_id;
-        for a in pre.for_rule(self.rule_id) {
-            if a.is_transformation_none() {
-                none += 1;
-            }
-        }
-        for a in pre.for_rule(self.rule_id) {
-            if let Some(tr) = a.as_transformation()
-                && none == 0
-            {
-                f(tr);
-            }
-            if a.is_transformation_none() {
-                none -= 1;
-            }
-        }
-    }
-
-    /// The transformations this rule applies with the rules of `t`, in
-    /// order (see `for_each_transformation`), appended to `chain`. They are
-    /// the same for every value the rule inspects.
-    pub fn transformations_in<'a>(&'a self, rules: &'a RulesSet, chain: &mut Vec<&'a Transformation>) {
-        self.for_each_transformation(rules, |a| chain.push(a));
-    }
-
-    /// Applies `chain` (see [`Self::transformations_in`]) to `input`.
+    /// Applies `chain` (the transformations of the rule's [`Link`]) to
+    /// `input`.
     ///
     /// `ret` is cleared first; the buffer of its last value is reused. The
     /// path of the final value (without `multiMatch`) is
-    /// [`TransformationPath::Full`], spelled out by [`Self::transformation_path`]
-    /// only when it is needed (on a match).
+    /// [`TransformationPath::Full`]: the path of the rule's [`Link`].
     pub fn execute_transformations(
         &self,
         t: &Transaction<'_>,
-        chain: &[&Transformation],
+        chain: &[Transformation],
         input: &[u8],
         ret: &mut TransformationResults,
     ) {
@@ -544,17 +488,17 @@ impl Rule {
         }
     }
 
-    /// The names of the transformations the rule applies, joined with `,`
-    /// (the C++ code builds this path for every value).
-    pub fn transformation_path(&self, t: &Transaction<'_>) -> String {
-        let mut path = String::new();
-        self.for_each_transformation(t.rules, |a| {
-            if !path.is_empty() {
-                path.push(',');
-            }
-            path.push_str(a.name());
-        });
-        path
+    /// Whether the rule has the tag `name`, as written: a macro in a tag
+    /// expands to nothing here (this is asked of a rule set, outside of
+    /// any transaction).
+    pub fn has_tag(&self, name: &str) -> bool {
+        self.actions_tag.iter().any(|tag| *tag.string.evaluate_cow(None) == *name.as_bytes())
+    }
+
+    /// Whether the rule's `msg` is `name`, as written (see
+    /// [`Self::has_tag`]).
+    pub fn msg_is(&self, name: &str) -> bool {
+        self.msg.as_ref().is_some_and(|m| *m.string.evaluate_cow(None) == *name.as_bytes())
     }
 
     /// Whether one of the rule's `tag`s expands to `name`.

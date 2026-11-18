@@ -4,6 +4,7 @@ pub mod entry;
 pub mod exceptions;
 pub mod marker;
 pub mod phases;
+pub mod plan;
 pub mod properties;
 
 use crate::actions::disruptive::allow::AllowType;
@@ -11,9 +12,11 @@ use crate::debug_log::DebugLog;
 use crate::parser::driver::Driver;
 use crate::phases::Phases;
 use crate::rules_set::phases::RulesSetPhases;
+use crate::rules_set::plan::{Plan, Step};
 use crate::rules_set::properties::RulesSetProperties;
 use crate::transaction::Transaction;
 use crate::utils::https_client::HttpsClient;
+use std::sync::OnceLock;
 
 /// Rules that could not be loaded or merged.
 ///
@@ -45,6 +48,8 @@ impl std::error::Error for LoadError {}
 pub struct RulesSet {
     pub(crate) properties: RulesSetProperties,
     pub(crate) rules_set_phases: RulesSetPhases,
+    /// See [`RulesSet::plan`].
+    plan: OnceLock<Plan>,
 }
 
 impl Default for RulesSet {
@@ -55,7 +60,11 @@ impl Default for RulesSet {
 
 impl RulesSet {
     pub fn new() -> Self {
-        RulesSet { properties: RulesSetProperties::new(), rules_set_phases: RulesSetPhases::default() }
+        RulesSet {
+            properties: RulesSetProperties::new(),
+            rules_set_phases: RulesSetPhases::default(),
+            plan: OnceLock::new(),
+        }
     }
 
     /// An empty rule set that writes its debug log to `custom_log`.
@@ -63,6 +72,7 @@ impl RulesSet {
         RulesSet {
             properties: RulesSetProperties::with_debug_log(custom_log),
             rules_set_phases: RulesSetPhases::default(),
+            plan: OnceLock::new(),
         }
     }
 
@@ -138,8 +148,7 @@ impl RulesSet {
     /// Runs the rules of `phase`, honouring `allow`, `skip`, `skipAfter`,
     /// the rule removals and a disruptive intervention.
     pub(crate) fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
-        let rules = self.rules_set_phases.for_phase(phase);
-        crate::ms_dbg!(t, 9, "This phase consists of {} rule(s).", rules.len());
+        crate::ms_dbg!(t, 9, "This phase consists of {} rule(s).", self.rules_set_phases.for_phase(phase).len());
 
         if t.eval.allow_type == Some(AllowType::FromNowOn) && phase != Phases::Logging {
             crate::ms_dbg!(
@@ -159,10 +168,20 @@ impl RulesSet {
         }
         t.eval.allow_type = None;
 
-        let ex = &self.properties.exceptions;
-        for rule in rules {
-            let rule: &'a crate::rules_set::entry::Entry = rule.as_ref();
-            if t.is_inside_a_marker() && !rule.is_marker() {
+        for step in self.plan().for_phase(phase) {
+            let (rule, chain, removed) = match step {
+                Step::Marker(marker) => {
+                    if let Some(m) = marker.as_marker() {
+                        m.evaluate(t);
+                    }
+                    continue;
+                }
+                Step::Rule { rule, chain } => (rule, chain.as_slice(), None),
+                Step::Removed { rule, by } => (rule, &[][..], Some(*by)),
+            };
+            let Some(r) = rule.as_rule() else { continue };
+
+            if t.is_inside_a_marker() {
                 crate::ms_dbg!(
                     t,
                     9,
@@ -170,8 +189,6 @@ impl RulesSet {
                     rule.reference(),
                     t.current_marker().unwrap_or_default()
                 );
-            } else if rule.is_marker() {
-                rule.evaluate(t);
             } else if t.eval.skip_next > 0 {
                 t.eval.skip_next -= 1;
                 crate::ms_dbg!(
@@ -188,49 +205,18 @@ impl RulesSet {
                     "Skipped rule id '{}' as request trough the utilization of an `allow' action.",
                     rule.reference()
                 );
+            } else if let Some(by) = removed {
+                crate::ms_dbg!(
+                    t,
+                    9,
+                    "Skipped rule id '{}'. Removed by {} directive.",
+                    rule.reference(),
+                    by.directive()
+                );
+            } else if t.ctl.rule_remove_by_tag.iter().any(|z| r.contains_tag(z, t)) {
+                crate::ms_dbg!(t, 9, "Skipped rule id '{}'. Skipped due to a ruleRemoveByTag action.", r.reference());
             } else {
-                let rwa = rule.as_rule();
-                // FIXME (C++): Those should be treated inside the rule itself
-                if let Some(r) = rwa {
-                    if ex.contains(r.rule_id.narrowed()) {
-                        crate::ms_dbg!(
-                            t,
-                            9,
-                            "Skipped rule id '{}'. Removed by an SecRuleRemove directive.",
-                            rule.reference()
-                        );
-                        continue;
-                    }
-                    if ex.remove_rule_by_msg.iter().any(|z| r.contains_msg(z, t)) {
-                        crate::ms_dbg!(
-                            t,
-                            9,
-                            "Skipped rule id '{}'. Removed by a SecRuleRemoveByMsg directive.",
-                            r.reference()
-                        );
-                        continue;
-                    }
-                    if ex.remove_rule_by_tag.iter().any(|z| r.contains_tag(z, t)) {
-                        crate::ms_dbg!(
-                            t,
-                            9,
-                            "Skipped rule id '{}'. Removed by a SecRuleRemoveByTag directive.",
-                            r.reference()
-                        );
-                        continue;
-                    }
-                    if t.ctl.rule_remove_by_tag.iter().any(|z| r.contains_tag(z, t)) {
-                        crate::ms_dbg!(
-                            t,
-                            9,
-                            "Skipped rule id '{}'. Skipped due to a ruleRemoveByTag action.",
-                            r.reference()
-                        );
-                        continue;
-                    }
-                }
-
-                rule.evaluate(t);
+                r.evaluate(chain, t);
                 Self::clean_matched_vars(t);
 
                 if t.outcome.intervention.disruptive {
@@ -239,6 +225,12 @@ impl RulesSet {
                 }
             }
         }
+    }
+
+    /// The plan of the rule set, compiled the first time it is needed
+    /// after the rules changed.
+    pub(crate) fn plan(&self) -> &Plan {
+        self.plan.get_or_init(|| Plan::compile(self))
     }
 
     /// Appends the rules parsed by `from` and merges its properties.
@@ -262,6 +254,8 @@ impl RulesSet {
         phases: &RulesSetPhases,
         properties: &mut RulesSetProperties,
     ) -> Result<usize, LoadError> {
+        // The rules change: so does the plan.
+        self.plan = OnceLock::new();
         let appended = self.rules_set_phases.append(phases);
         if let Err(e) = &appended {
             self.properties.parser_error.push_str(e);
