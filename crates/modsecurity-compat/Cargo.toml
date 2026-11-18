@@ -2,7 +2,7 @@
 name = "modsecurity-compat"
 version.workspace = true
 edition.workspace = true
-description = "Data structures and parsers that reproduce the observable behavior of the C++ libmodsecurity: ACMP, libstdc++'s unordered_multimap order, yajl's JSON, C number parsing"
+description = "Data structures and parsers that reproduce the observable behavior of the C++ libmodsecurity: libstdc++'s unordered_multimap order, yajl's JSON, C number parsing"
 license.workspace = true
 publish = false
 

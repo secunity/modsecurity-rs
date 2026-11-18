@@ -130,7 +130,7 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
 | system libxml2, libfuzzy | same | thin `extern "C"` bindings in the modules that use them |
 | `libc`, `bstr` | — | POSIX calls; byte-string helpers |
 | `jiff` | libc `localtime_r`/`strftime` | local time zone and timestamp formatting (C-locale output) |
-| `aho-corasick` (optional) | — | `pm-aho-corasick` feature: alternative `@pm` matcher (off by default) |
+| `aho-corasick` | ACMP (`acmp.cc`) | the phrase matcher of `@pm` (an intentional deviation, see below) |
 | `prefix-trie`, `ipnet` | the crit-bit tree of `msc_tree.c` | the networks of an `@ipMatch` list (an intentional deviation, see below) |
 | `rand` | `<random>`, `rand()`/`srand()` | transaction id suffix, audit log boundaries |
 | — | yajl | `src/utils/json.rs` (yajl-compatible event parser, tree and generator) |
@@ -202,15 +202,33 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   were checked to be the same.
 - **Lua**: an error raised by a bad `m.*` call in tail position lacks the
   `file:line:` prefix.
-- **`pm-aho-corasick` feature** (off by default): `@pm` and its file
-  variants use a standard Aho-Corasick automaton instead of ACMP, which
-  fixes ACMP's missed matches, its reports of phrases that are not patterns
-  (and NUL truncation), and its platform-dependent handling of pattern
-  bytes >= 0x80. All regression and unit cases pass either way, and on the
-  CRS v4.8.0 regression suite (go-ftw, nginx) the alerts are the same as
-  with ACMP. Without the
-  feature the C++ behaviour is kept (the ACMP port agrees with C++
-  `acmp_process_quick` on 200k random cases).
+- **`@pm`, `@pmFromFile`, `@pmf`: the phrase matcher.** *C++:* its own
+  Aho-Corasick matcher (ACMP, from ModSecurity v2), whose fail links only
+  look one level up. It misses some matches (`@pm aaBa B bcbA ccc` does
+  not match `AAAb`, which contains `B`); it can report a phrase that is
+  not in the list, the text of the trie node it stopped on (`@pm abcd bc`
+  on `abcx` reports `abc`); it cuts the reported phrase at a NUL byte;
+  and it reads phrase bytes as C `char`, so bytes >= 0x80 never match
+  where `char` is signed (x86) and do where it is not (ARM). *Here:* the
+  `aho-corasick` crate: every occurrence is found, the phrase reported
+  (`TX:0` with `capture`, the matched data of the logs) is the phrase of
+  the list that matched, whole, and bytes that are not ASCII are compared
+  as they are on every platform. As before: the first match is the one
+  that ends first, matching is ASCII case insensitive, empty phrases are
+  ignored. *Why:* a list that misses phrases it contains is a detection
+  bug, and nothing can rely on which ones are missed; approved by the
+  owner. The port of ACMP (which agreed with C++ `acmp_process_quick` on
+  200k random cases) was compared with the crate before it was removed,
+  on 24,000 generated phrase lists and 192,000 searches: the crate
+  matches whenever ACMP does, never the other way round. For lists of
+  words (34 letters and signs) 66 of 48,000 searches differ, all in the
+  phrase reported; for lists made to collide (4 letters) 8,706 differ:
+  8,240 in the phrase reported, 328 where ACMP only saw a later match,
+  138 where it saw none. Until this change the crate was the opt-in
+  `pm-aho-corasick` feature, which no longer exists. The C++ regression
+  and unit suites pass, and on the differential test (CRS, 60 requests)
+  the results are identical to C++. Regression test:
+  `pm::tests::where_acmp_differs` in `modsecurity-operators`.
 - **`@ipMatch`, `@ipMatchFromFile`, `@ipMatchF` with overlapping networks.**
   *C++:* the networks are kept in a crit-bit tree inherited from
   ModSecurity v2. Its netmask arrays are reset whenever a netmask is added

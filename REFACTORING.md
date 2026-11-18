@@ -1207,3 +1207,12 @@ lists, `@detectSQLi`'s fingerprint, the multipart parser, base64
 decoding, regular expression patterns, the unicode map file, downloaded
 rules, the HTTPS audit log body. Whether each of those should keep that
 is a question of behavior, case by case.
+
+## `@pm` without the C++ matcher
+
+The port of ACMP (`modsecurity_compat::acmp`, 460 lines) is gone, and
+with it the `pm-aho-corasick` feature: the `aho-corasick` crate is the
+only phrase matcher of `@pm`, `@pmFromFile` and `@pmf`, and a required
+dependency of the operators crate. This changes which phrases are found
+and reported: see "Intentional deviations from C++" in `MIGRATION.md`.
+

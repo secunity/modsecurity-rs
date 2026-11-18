@@ -33,14 +33,11 @@ options; all are on by default:
 | `ssdeep` | `WITH_SSDEEP` | system libfuzzy (`@fuzzyHash`) |
 | `curl` | `WITH_CURL` | system libcurl (`SecRemoteRules`, HTTPS audit log, remote `@pmFromFile`/`@ipMatchFromFile`) |
 | `regex-dollar-endonly` | `MODSEC_REGEX_DOLLAR_ENDONLY` | — (off by default) |
-| `pm-aho-corasick` | — (not in C++) | `aho-corasick` crate; off by default, see below |
 
-`pm-aho-corasick` matches `@pm`/`@pmFromFile`/`@pmf` phrases with the
-`aho-corasick` crate instead of the port of the C++ ACMP parser. ACMP misses
-some matches and can report a phrase that is not one of the patterns; with
-the feature, every occurrence is found and `TX:0`/log messages show the
-pattern that matched. This changes results compared with C++, so it is off by
-default.
+`@pm`, `@pmFromFile` and `@pmf` differ from C++ on purpose: they use the
+`aho-corasick` crate, where C++ has its own matcher (ACMP) that misses some
+matches and can report a phrase that is not in the list. Every occurrence
+is found, and `TX:0` and the log messages show the phrase that matched.
 
 `@ipMatch`, `@ipMatchFromFile` and `@ipMatchF` differ from C++ on purpose:
 an address matches whenever a listed network contains it. The C++ tree

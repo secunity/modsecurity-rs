@@ -23,7 +23,6 @@ lmdb = ["engine/lmdb"]
 ssdeep = ["engine/ssdeep"]
 curl = ["engine/curl"]
 regex-dollar-endonly = ["engine/regex-dollar-endonly"]
-pm-aho-corasick = ["engine/pm-aho-corasick"]
 
 [dependencies]
 # The engine, under another name: this crate's library is also called

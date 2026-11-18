@@ -13,7 +13,6 @@ publish = false
 libxml2 = ["modsecurity-native/libxml2"]
 ssdeep = ["modsecurity-native/ssdeep"]
 regex-dollar-endonly = []
-pm-aho-corasick = ["dep:aho-corasick"]
 # @geoLookup with MaxMind databases (without it no database opens).
 maxmind = ["dep:maxminddb"]
 
@@ -22,11 +21,13 @@ maxmind = ["dep:maxminddb"]
 modsecurity-types = { path = "../modsecurity-types" }
 # PCRE2 (@rx, @verifyCC, ...) and ssdeep (@fuzzyHash).
 modsecurity-native = { path = "../modsecurity-native" }
-# ACMP (@pm), the IP tree (@ipMatch) and the byte helpers.
+# The byte helpers and the C number conversions.
 modsecurity-compat = { path = "../modsecurity-compat" }
 # @detectSQLi and @detectXSS.
 libinjection = { path = "../../others/libinjection" }
-aho-corasick = { version = "1", optional = true }
+# @pm, @pmFromFile and @pmf: the phrase matcher, in place of the C++ ACMP,
+# which misses matches and reports phrases that are not in the list.
+aho-corasick = "1"
 # @rbl: the DNS lookup of the block list, with the platform getaddrinfo as
 # in C++. @geoLookup: the same function, to read an address as
 # libmaxminddb does.

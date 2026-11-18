@@ -5,7 +5,6 @@
 //! what the C++ library gives, where a standard Rust equivalent would
 //! differ.
 //!
-//! - [`acmp`]: the Aho-Corasick matcher of `@pm` (with its missed matches);
 //! - [`unordered_multimap`]: a multimap that iterates in the order of
 //!   libstdc++'s `std::unordered_multimap` (the order of `ARGS` & co.);
 //! - [`json`]: a JSON reader and writer that accept and produce what yajl
@@ -16,7 +15,6 @@
 
 #![forbid(unsafe_code)]
 
-pub mod acmp;
 pub mod chars;
 pub mod cnum;
 pub mod errno;

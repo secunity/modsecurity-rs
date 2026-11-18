@@ -2,8 +2,6 @@
 //! phrases (case insensitive).
 
 use crate::{Context, Operator, Param, Resources};
-#[cfg(not(feature = "pm-aho-corasick"))]
-use modsecurity_compat::acmp::{Acmp, Acmpt};
 use modsecurity_compat::chars::valid_hex;
 
 /// Strips optional surrounding quotes and decodes the `|hex|` blocks and
@@ -67,63 +65,31 @@ pub fn parse_pm_content(op_parm: &[u8]) -> Vec<u8> {
     parsed
 }
 
-/// The phrase matcher behind `@pm`: the C++ ACMP parser (default).
+/// The phrase matcher behind `@pm`: an Aho-Corasick automaton (the
+/// `aho-corasick` crate). The first match is the one that ends first,
+/// matching is ASCII case insensitive, and empty phrases are ignored.
 ///
-/// Patterns are matched case insensitively (`acmp_create(0)`); `find`
-/// returns the offset of the last byte of the first match and the matched
-/// phrase.
-#[cfg(not(feature = "pm-aho-corasick"))]
-#[derive(Debug)]
-pub(crate) struct Matcher(Acmp);
-
-#[cfg(not(feature = "pm-aho-corasick"))]
-impl Matcher {
-    fn new() -> Self {
-        Matcher(Acmp::create(0))
-    }
-
-    pub(crate) fn add_pattern(&mut self, pattern: &[u8]) {
-        self.0.add_pattern(pattern);
-    }
-
-    /// Builds the fail tree once all patterns were added.
-    fn prepare(&mut self) {
-        while !self.0.is_failtree_done() {
-            self.0.prepare();
-        }
-    }
-
-    fn find(&self, input: &[u8]) -> Option<(usize, &[u8])> {
-        Acmpt::new(&self.0).process_quick(input)
-    }
-}
-
-/// The phrase matcher behind `@pm` with the `pm-aho-corasick` feature: the
-/// `aho-corasick` crate instead of the C++ ACMP parser.
-///
-/// This deliberately deviates from C++: ACMP misses some matches (its fail
-/// links only look one level up), can report a phrase that is not one of
-/// the patterns (the text of the trie node it stopped on), truncates the
-/// reported phrase at a NUL byte, and never matches pattern bytes >= 0x80
+/// This deviates from C++ on purpose (see "Intentional deviations from
+/// C++" in `MIGRATION.md`). Its matcher, ACMP, misses some matches (its
+/// fail links only look one level up), can report a phrase that is not
+/// one of the phrases (the text of the trie node it stopped on), cuts the
+/// reported phrase at a NUL byte, and never matches phrase bytes >= 0x80
 /// where C `char` is signed. Here every occurrence is found and the
-/// reported phrase is always the pattern that matched. As with ACMP, the
-/// first match is the one that ends first, matching is ASCII case
-/// insensitive, and empty patterns are ignored.
-#[cfg(feature = "pm-aho-corasick")]
+/// reported phrase is always the phrase that matched.
 #[derive(Debug)]
 pub(crate) struct Matcher {
     patterns: Vec<Vec<u8>>,
     ac: Option<aho_corasick::AhoCorasick>,
 }
 
-#[cfg(feature = "pm-aho-corasick")]
 impl Matcher {
     fn new() -> Self {
         Matcher { patterns: Vec::new(), ac: None }
     }
 
     pub(crate) fn add_pattern(&mut self, pattern: &[u8]) {
-        // As acmp_add_pattern: no-op once prepared, empty patterns ignored.
+        // No phrase is added once the automaton is built, and empty
+        // phrases are ignored (as in C++).
         if self.ac.is_none() && !pattern.is_empty() {
             self.patterns.push(pattern.to_vec());
         }
@@ -234,7 +200,7 @@ mod tests {
         assert_eq!(parse_pm_content(b"   "), b"   ".to_vec());
     }
 
-    fn matcher(patterns: &[&[u8]]) -> Matcher {
+    fn matcher_of(patterns: &[&[u8]]) -> Matcher {
         let mut m = Matcher::new();
         for p in patterns {
             m.add_pattern(p);
@@ -243,40 +209,32 @@ mod tests {
         m
     }
 
-    /// Behaviour shared by both matchers: case insensitive, first match is
-    /// the one that ends first, empty patterns never match.
+    /// Case insensitive, the first match is the one that ends first, and
+    /// empty phrases never match.
     #[test]
-    fn matcher_common() {
-        let m = matcher(&[b"foo", b"Bar", b""]);
+    fn matcher() {
+        let m = matcher_of(&[b"foo", b"Bar", b""]);
         assert_eq!(m.find(b"xxbARfoo"), Some((4, &b"Bar"[..])));
         assert_eq!(m.find(b"nothing"), None);
-        assert_eq!(matcher(&[b""]).find(b"abc"), None);
+        assert_eq!(matcher_of(&[b""]).find(b"abc"), None);
         // "she" and "he" both end at offset 2: the longer one is reported.
-        assert_eq!(matcher(&[b"he", b"she"]).find(b"she"), Some((2, &b"she"[..])));
+        assert_eq!(matcher_of(&[b"he", b"she"]).find(b"she"), Some((2, &b"she"[..])));
     }
 
-    /// The C++ ACMP quirks the default matcher keeps (checked against the
-    /// C++ `acmp_process_quick`).
-    #[cfg(not(feature = "pm-aho-corasick"))]
+    /// Where the C++ matcher (ACMP) is wrong: see "Intentional deviations
+    /// from C++" in MIGRATION.md. (Its results are in the comments.)
     #[test]
-    fn matcher_acmp_quirks() {
-        // A missed match: "B" occurs in the input.
-        assert_eq!(matcher(&[b"aaBa", b"B", b"bcbA", b"ccc"]).find(b"AAAb"), None);
-        // A reported phrase that is not a pattern.
-        assert_eq!(matcher(&[b"abcd", b"bc"]).find(b"abcx"), Some((2, &b"abc"[..])));
-        // Truncated at the NUL byte.
-        assert_eq!(matcher(&[b"a\0b"]).find(b"xa\0b"), Some((3, &b"a"[..])));
-    }
-
-    /// The same inputs with the aho-corasick matcher.
-    #[cfg(feature = "pm-aho-corasick")]
-    #[test]
-    fn matcher_aho_corasick() {
-        assert_eq!(matcher(&[b"aaBa", b"B", b"bcbA", b"ccc"]).find(b"AAAb"), Some((3, &b"B"[..])));
-        assert_eq!(matcher(&[b"abcd", b"bc"]).find(b"abcx"), Some((2, &b"bc"[..])));
-        assert_eq!(matcher(&[b"a\0b"]).find(b"xa\0b"), Some((3, &b"a\0b"[..])));
-        assert_eq!(matcher(&[b"\xe9t\xe9"]).find(b"x\xc9t\xe9"), None);
-        assert_eq!(matcher(&[b"\xe9t\xe9"]).find(b"x\xe9t\xe9"), Some((3, &b"\xe9t\xe9"[..])));
+    fn where_acmp_differs() {
+        // ACMP misses it: "B" occurs in the input.
+        assert_eq!(matcher_of(&[b"aaBa", b"B", b"bcbA", b"ccc"]).find(b"AAAb"), Some((3, &b"B"[..])));
+        // ACMP reports "abc", which is not a phrase.
+        assert_eq!(matcher_of(&[b"abcd", b"bc"]).find(b"abcx"), Some((2, &b"bc"[..])));
+        // ACMP reports "a": the phrase up to its NUL byte.
+        assert_eq!(matcher_of(&[b"a\0b"]).find(b"xa\0b"), Some((3, &b"a\0b"[..])));
+        // Bytes that are not ASCII are compared as they are (ACMP never
+        // matches them where C `char` is signed).
+        assert_eq!(matcher_of(&[b"\xe9t\xe9"]).find(b"x\xc9t\xe9"), None);
+        assert_eq!(matcher_of(&[b"\xe9t\xe9"]).find(b"x\xe9t\xe9"), Some((3, &b"\xe9t\xe9"[..])));
     }
 
     #[test]
