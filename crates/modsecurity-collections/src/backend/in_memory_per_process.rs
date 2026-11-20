@@ -66,7 +66,7 @@ impl Collection for InMemoryPerProcess {
         self.write().erase(key);
     }
 
-    fn set_expiry(&self, key: &[u8], expiry_seconds: i32) {
+    fn set_expiry(&self, key: &[u8], expiry_seconds: u64) {
         let mut m = self.write();
         if let Some(d) = m.find_mut(key) {
             d.set_expiry(expiry_seconds);

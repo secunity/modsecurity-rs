@@ -5,7 +5,6 @@ use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::collection::Persistent;
 use crate::run_time_string::RunTimeString;
-use crate::utils::string::atoi;
 
 #[derive(Debug)]
 pub struct ExpireVar {
@@ -25,15 +24,17 @@ impl Action for ExpireVar {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let expire_expression_expanded = cx.expand(&self.string);
-        let mut expiry_seconds: i32 = 0;
+        let mut expiry_seconds: u64 = 0;
 
         let fully_qualified_var: &[u8] = match expire_expression_expanded.iter().position(|&c| c == b'=') {
             None => &expire_expression_expanded,
             Some(pos_equals) => {
                 let expiry = &expire_expression_expanded[pos_equals + 1..];
                 if expiry.iter().all(u8::is_ascii_digit) {
-                    // An empty value gives 0.
-                    expiry_seconds = atoi(expiry);
+                    // An empty value gives 0; a number too large to hold
+                    // is the largest.
+                    let digits = String::from_utf8_lossy(expiry);
+                    expiry_seconds = if digits.is_empty() { 0 } else { digits.parse().unwrap_or(u64::MAX) };
                 } else {
                     crate::ms_dbg!(cx, 5, "Non-numeric expiry seconds found in expirevar expression.");
                     return;

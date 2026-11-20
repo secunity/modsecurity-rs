@@ -36,7 +36,7 @@ pub trait Collection: Send + Sync {
 
     fn del(&self, key: &[u8]);
 
-    fn set_expiry(&self, key: &[u8], expiry_seconds: i32);
+    fn set_expiry(&self, key: &[u8], expiry_seconds: u64);
 
     fn resolve_first(&self, var: &[u8]) -> Option<Vec<u8>>;
 

@@ -114,7 +114,7 @@ impl Collection for Lmdb {
         let _ = self.delete(key, false);
     }
 
-    fn set_expiry(&self, key: &[u8], expiry_seconds: i32) {
+    fn set_expiry(&self, key: &[u8], expiry_seconds: u64) {
         let _ = self.replace(key, |mut record| {
             record.set_expiry(expiry_seconds);
             record

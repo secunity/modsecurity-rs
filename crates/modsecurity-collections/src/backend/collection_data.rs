@@ -21,13 +21,14 @@ impl CollectionData {
         self.value = Some(value.to_vec());
     }
 
-    pub fn set_expiry(&mut self, seconds_until_expiry: i32) {
+    pub fn set_expiry(&mut self, seconds_until_expiry: u64) {
         self.set_expiry_at(SystemTime::now(), seconds_until_expiry);
     }
 
-    fn set_expiry_at(&mut self, now: SystemTime, seconds: i32) {
-        let duration = Duration::from_secs(u64::from(seconds.unsigned_abs()));
-        self.expiry = Some(if seconds >= 0 { now + duration } else { now - duration });
+    fn set_expiry_at(&mut self, now: SystemTime, seconds: u64) {
+        // A time too far away to represent is as far as times go.
+        let far = Duration::from_secs(u64::from(u32::MAX));
+        self.expiry = Some(now.checked_add(Duration::from_secs(seconds)).unwrap_or(now + far));
     }
 
     pub fn is_expired(&self) -> bool {
@@ -148,9 +149,9 @@ mod tests {
         let now = UNIX_EPOCH + Duration::from_secs(3_000_000_000);
         let mut record = CollectionData::default();
         assert!(!record.is_expired_at(now));
-        for seconds in [i32::MIN, -1, 0, 1, i32::MAX] {
+        for seconds in [0, 1, u64::from(u32::MAX), u64::MAX] {
             record.set_expiry_at(now, seconds);
-            assert_eq!(record.is_expired_at(now), seconds <= 0);
+            assert_eq!(record.is_expired_at(now), seconds == 0);
             let expiry = record.expiry.unwrap();
             assert!(record.is_expired_at(expiry));
             assert!(!record.is_expired_at(expiry - Duration::from_nanos(1)));

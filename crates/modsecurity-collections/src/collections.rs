@@ -34,7 +34,7 @@ impl<'a> CollectionBinding<'a> {
         self.backend.del(&compartment_key(name, &self.key, Some(second_compartment)));
     }
 
-    pub fn set_expiry(&self, name: &[u8], app: &[u8], seconds: i32) {
+    pub fn set_expiry(&self, name: &[u8], app: &[u8], seconds: u64) {
         self.backend.set_expiry(&compartment_key(name, &self.key, Some(app)), seconds);
     }
 
