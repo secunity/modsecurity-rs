@@ -81,7 +81,7 @@ mod tests {
         let ms = ModSecurity::new();
         let mut rules = RulesSet::new();
         let mut table = UnicodeMapHolder::default();
-        table.change(0x0391, i32::from(b'A'));
+        table.set(0x0391, b'A');
         let config = &mut rules.properties.unicode_map_table;
         config.set = true;
         config.unicode_code_page = 20127;

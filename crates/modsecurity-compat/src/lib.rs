@@ -10,7 +10,7 @@
 //! - [`json`]: a JSON reader and writer that accept and produce what yajl
 //!   does;
 //! - [`chars`]: the byte classes and string helpers the others share;
-//! - [`cnum`]: the number conversions of C (`strtoll`, `atoll`, `atoi`).
+//! - [`cnum`]: the number conversions of C (`strtoll`, `atoll`).
 
 #![forbid(unsafe_code)]
 

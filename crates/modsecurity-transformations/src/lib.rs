@@ -51,26 +51,29 @@ mod utf8_to_unicode;
 pub use modsecurity_compat::chars;
 use sha1::Digest;
 
-/// A unicode map (`SecUnicodeMapFile`): the byte each of the 65536 code
-/// points of `%uHHHH` maps to, or -1.
+/// A unicode map (`SecUnicodeMapFile`): the byte that each code point of
+/// `%uHHHH` maps to, for the ones that have one.
 #[derive(Debug, Clone)]
 pub struct UnicodeMap {
-    pub data: Vec<i32>,
+    /// One entry per code point (65536).
+    bytes: Box<[Option<u8>]>,
 }
 
 impl Default for UnicodeMap {
     fn default() -> Self {
-        UnicodeMap { data: vec![-1; 65536] }
+        UnicodeMap { bytes: vec![None; 1 << 16].into_boxed_slice() }
     }
 }
 
 impl UnicodeMap {
-    pub fn at(&self, index: usize) -> i32 {
-        self.data[index]
+    /// The byte `code` maps to, if any.
+    pub fn get(&self, code: u16) -> Option<u8> {
+        self.bytes[usize::from(code)]
     }
 
-    pub fn change(&mut self, i: usize, a: i32) {
-        self.data[i] = a;
+    /// Maps `code` to `byte`.
+    pub fn set(&mut self, code: u16, byte: u8) {
+        self.bytes[usize::from(code)] = Some(byte);
     }
 }
 

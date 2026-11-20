@@ -1,4 +1,4 @@
-//! The number conversions of C (`strtoll`, `atoll`, `atoi`),
+//! The number conversions of C (`strtoll`, `atoll`),
 //! with their corner cases: what counts as white space, where parsing
 //! stops, and what overflow gives.
 
@@ -69,11 +69,6 @@ pub fn atoll(s: &[u8]) -> i64 {
     strtoll(s, 10).value
 }
 
-/// Parses like glibc's `atoi`: `(int) strtol(s, NULL, 10)`.
-pub fn atoi(s: &[u8]) -> i32 {
-    strtoll(s, 10).value as i32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,10 +84,6 @@ mod tests {
         assert_eq!(strtoll(b"9223372036854775808", 10), Integer { value: i64::MAX, overflow: true, digits: true });
         assert_eq!(strtoll(b" -", 10), Integer { value: 0, overflow: false, digits: false });
         // (int) of the saturated long, as glibc's atoi.
-        assert_eq!(atoi(b"12x"), 12);
-        assert_eq!(atoi(b"99999999999999999999"), -1);
-        assert_eq!(atoi(b"-99999999999999999999"), 0);
-        assert_eq!(atoi(b"4294967297"), 1);
     }
 
     /// `strtoll` is glibc's `strtol` (compared on generated texts).

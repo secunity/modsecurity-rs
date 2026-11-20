@@ -307,6 +307,16 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **Entries of a `SecUnicodeMapFile` are `code:byte` in hexadecimal, or
+  ignored.** *C++* splits an entry with `strtok` and reads each number
+  with `strtol`: a sign, a `0x` prefix and text after the number are
+  accepted, a map above `ff` or below 0 is stored, `:42` is the code 42
+  without a map, and an entry made only of colons crashes. *Here:* an
+  entry is up to four hexadecimal digits, a colon and up to two, and any
+  other is ignored. All 6,522 entries of the shipped `unicode.mapping`
+  are of that form. (This replaces the earlier note on "unusual entries"
+  above.) Regression test:
+  `rules_set::properties::tests::unicode_map_entries`.
 - **A list file that cannot be read is an error.** *C++* (and this
   engine until now): `@pmFromFile`, `@ipMatchFromFile` and `@fuzzyHash`
   open their file and use what could be read of it; a read that fails

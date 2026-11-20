@@ -7,8 +7,6 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use modsecurity_compat::cnum::strtoll;
-
 use crate::actions::rule_action::RuleAction;
 use crate::audit_log::{AuditLog, SetupError};
 use crate::debug_log::{DebugLog, DefaultDebugLog};
@@ -158,10 +156,10 @@ impl ConfigUnicodeMap {
         driver.unicode_map_table.unicode_code_page = config_code_page;
         let mut table = UnicodeMapHolder::default();
         // http://tools.ietf.org/html/rfc3490#section-3.1
-        table.change(0x3002, 0x2e);
-        table.change(0xff61, 0x2e);
-        table.change(0xff0e, 0x2e);
-        table.change(0x002e, 0x2e);
+        table.set(0x3002, 0x2e);
+        table.set(0xff61, 0x2e);
+        table.set(0xff0e, 0x2e);
+        table.set(0x002e, 0x2e);
         let fail = || format!("Failed to open the unicode map file from: {} ", f);
         let buf = match std::fs::read(f) {
             Ok(b) => b,
@@ -174,33 +172,29 @@ impl ConfigUnicodeMap {
             driver.unicode_map_table.unicode_map_table = Some(Arc::new(table));
             return Err(fail());
         }
-        let mut found = false;
-        let mut processing = false;
-        for p in buf.split(|c| CODEPAGE_SEPARATORS.contains(c)).filter(|t| !t.is_empty()) {
-            let codepage = crate::utils::string::atoi(p) as u32;
-            if codepage == config_code_page {
-                found = true;
-            }
-            let has_colon = p.contains(&b':');
-            if found && has_colon {
-                processing = true;
-                // `strtok_r(mapping, ":", &hmap)`: the code is what follows
-                // the leading colons, up to the next one; the map is the
-                // rest. Both are `(int) strtol(.., 16)`.
-                let start = p.iter().position(|&c| c != b':').unwrap_or(p.len());
-                let end = p[start..].iter().position(|&c| c == b':').map_or(p.len(), |n| start + n);
-                let (ucode, hmap) = (&p[start..end], p.get(end + 1..).unwrap_or_default());
-                // Only colons: there is no code, and the entry is ignored.
-                if !ucode.is_empty() {
-                    let code = strtoll(ucode, 16).value as i32;
-                    let map = strtoll(hmap, 16).value as i32;
-                    if (0..=65535).contains(&code) {
-                        table.change(code as usize, map);
+        // The file is a list of code pages: a line with the number of the
+        // page and its name, then its entries, `code:byte` in hexadecimal
+        // (`00a0:20`), until the next page. An entry that is not two such
+        // numbers is ignored.
+        let hex16 = |text: &[u8]| std::str::from_utf8(text).ok().and_then(|t| u16::from_str_radix(t, 16).ok());
+        let hex8 = |text: &[u8]| std::str::from_utf8(text).ok().and_then(|t| u8::from_str_radix(t, 16).ok());
+        let mut in_page = false;
+        let mut entries = false;
+        for token in buf.split(|c| CODEPAGE_SEPARATORS.contains(c)).filter(|t| !t.is_empty()) {
+            match token.iter().position(|&c| c == b':') {
+                // The next page begins.
+                None if entries => break,
+                None => {
+                    let number = std::str::from_utf8(token).ok().and_then(crate::utils::string::parse_digits::<u32>);
+                    in_page |= number == Some(config_code_page);
+                }
+                Some(colon) if in_page => {
+                    entries = true;
+                    if let (Some(code), Some(byte)) = (hex16(&token[..colon]), hex8(&token[colon + 1..])) {
+                        table.set(code, byte);
                     }
                 }
-            }
-            if processing && !has_colon {
-                break;
+                Some(_) => {}
             }
         }
         driver.unicode_map_table.unicode_map_table = Some(Arc::new(table));
@@ -457,9 +451,8 @@ mod tests {
         assert_eq!(parse_octal_mode("08").unwrap_err(), "Invalid octal number");
     }
 
-    /// The entries of a unicode map are split and converted as C's
-    /// `strtok_r(.., ":")` and `(int) strtol(.., 16)` do (each case below
-    /// was compared with the C++ library).
+    /// The entries of the configured code page are read, and only
+    /// well-formed ones.
     #[test]
     fn unicode_map_entries() {
         let dir = std::env::temp_dir().join(format!("msrs-unicode-map-{}", std::process::id()));
@@ -471,31 +464,23 @@ mod tests {
             ConfigUnicodeMap::load_config(file.to_str().unwrap(), 9999, &mut properties).unwrap();
             properties.unicode_map_table.unicode_map_table.unwrap()
         };
-        let at = |entries: &str, code: usize| table(entries).at(code);
+        let at = |entries: &str, code: u16| table(entries).get(code);
 
-        assert_eq!(at("0041:42", 0x41), 0x42);
-        assert_eq!(at("0x41:0x42 +43:44", 0x41), 0x42);
-        assert_eq!(at("0x41:0x42 +43:44", 0x43), 0x44);
-        // A negative or overflowing code is out of range: no entry (they
-        // used to be read as code 0).
-        assert_eq!(at("-41:42", 0), -1);
-        assert_eq!(at("fffffffffffffffff:43", 0), -1);
-        // A negative map is stored as it is; an overflowing one is
-        // `(int) LONG_MAX`, -1, which reads as "not mapped" (both used to
-        // be 0).
-        assert_eq!(at("0041:-42", 0x41), -0x42);
-        assert_eq!(at("0041:fffffffffffffffff", 0x41), -1);
-        // Leading colons are skipped: `:42` is the code 0x42 without a map
-        // (it used to be code 0 mapped to 0x42).
-        assert_eq!(at(":42", 0x42), 0);
-        assert_eq!(at(":42", 0), -1);
-        // Text that is not a number is 0, as before.
-        assert_eq!(at("zz:42", 0), 0x42);
-        assert_eq!(at("41:", 0x41), 0);
-        // Only colons (C++ crashes): ignored.
-        assert_eq!(at("::: 0041:42", 0x41), 0x42);
-        // A NUL byte does not end the file (it does in C++).
-        assert_eq!(at("0041:42\0 0043:44", 0x43), 0x44);
+        assert_eq!(at("0041:42", 0x41), Some(0x42));
+        assert_eq!(at("41:42 0043:44", 0x43), Some(0x44));
+        assert_eq!(at("0041:42", 0x43), None);
+        // The entries of another page are not this page's.
+        assert_eq!(at("0041:42\n\n8888 (other)\n0043:44", 0x43), None);
+        // An entry that is not `code:byte` in hexadecimal is ignored. (C
+        // read each number as far as it could: a sign, a `0x` prefix and
+        // trailing text were accepted, and a map above ff was kept.)
+        for entry in
+            ["-41:42", "0x41:0x42", "0041:-42", "0041:142", "10041:42", "zz:42", "41:", ":42", ":::", "0041:42\0"]
+        {
+            let table = table(&format!("{entry} 0050:51"));
+            assert_eq!((table.get(0x41), table.get(0x42), table.get(0)), (None, None, None), "{entry}");
+            assert_eq!(table.get(0x50), Some(0x51), "{entry}");
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

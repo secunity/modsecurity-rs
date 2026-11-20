@@ -9,9 +9,6 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) {
     let input_len = input.len();
     let mut d = 0usize;
     let mut i = 0usize;
-    // The mapped byte of the current %u sequence, or -1. Without a map it
-    // stays -1; with one it is reassigned for every %u sequence.
-    let mut hmap: i32 = -1;
 
     while i < input_len {
         if input[i] == b'%' {
@@ -25,30 +22,14 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) {
                         && input[i + 4].is_ascii_hexdigit()
                         && input[i + 5].is_ascii_hexdigit()
                     {
-                        if let Some(map) = map {
-                            let mut code: usize = 0;
-                            let mut fact: usize = 1;
-                            for j in (2..=5).rev() {
-                                let c = input[i + j];
-                                if c.is_ascii_hexdigit() {
-                                    let xv = if c >= 97 {
-                                        (c - 97) as usize + 10
-                                    } else if c >= 65 {
-                                        (c - 65) as usize + 10
-                                    } else {
-                                        (c - 48) as usize
-                                    };
-                                    code += xv * fact;
-                                    fact *= 16;
-                                }
-                            }
-                            if code <= 65535 {
-                                hmap = map.at(code);
-                            }
-                        }
+                        // The byte the map gives for the code point, if any.
+                        let code = std::str::from_utf8(&input[i + 2..i + 6])
+                            .ok()
+                            .and_then(|h| u16::from_str_radix(h, 16).ok());
+                        let hmap = map.zip(code).and_then(|(map, code)| map.get(code));
 
-                        if hmap != -1 {
-                            input[d] = hmap as u8;
+                        if let Some(byte) = hmap {
+                            input[d] = byte;
                         } else {
                             // We first make use of the lower byte here,
                             // ignoring the higher byte.
@@ -151,7 +132,7 @@ mod tests {
     #[test]
     fn uses_the_unicode_map() {
         let mut table = UnicodeMap::default();
-        table.change(0x0391, i32::from(b'A'));
+        table.set(0x0391, b'A');
         let mut v = b"%u0391%u00e9%uff21".to_vec();
         inplace(&mut v, Some(&table));
         // mapped, unmapped (lower byte), unmapped full width (+0x20)
