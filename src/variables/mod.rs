@@ -504,7 +504,10 @@ mod tests {
             assert_eq!(eval(&d, &t, None).len(), 0, "{} (dynamic name `zz`)", c);
         }
         // The stored key carries the collection key and the web app id.
-        assert_eq!(ms.ip_collection.resolve_first(format!("{}::app::key1", ip_key).as_bytes()), Some(b"v1".to_vec()));
+        assert_eq!(
+            ms.ip_collection.resolve_first(format!("{}::app::key1", ip_key).as_bytes()),
+            Ok(Some(b"v1".to_vec()))
+        );
 
         // IP del uses the same compartments.
         var("IP", sel_dyn("key1")).write_target().unwrap().remove(&mut t, b"key1");

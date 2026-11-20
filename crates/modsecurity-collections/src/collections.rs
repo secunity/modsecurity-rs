@@ -4,7 +4,7 @@
 //! to its own selected record key, while owning its TX variables outright.
 
 use crate::transaction::TransactionVariables;
-use crate::{Collection, Persistent, compartment_key};
+use crate::{Collection, Persistent, StorageError, compartment_key};
 use modsecurity_native::regex::Regex;
 use modsecurity_types::KeyExclusions;
 use modsecurity_types::variable_value::VariableValue;
@@ -22,29 +22,41 @@ impl<'a> CollectionBinding<'a> {
         Self { backend, key: Vec::new() }
     }
 
-    pub fn get(&self, name: &[u8], app: &[u8]) -> Option<Vec<u8>> {
+    pub fn get(&self, name: &[u8], app: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {
         self.backend.resolve_first(&compartment_key(name, &self.key, Some(app)))
     }
 
-    pub fn set(&self, name: &[u8], app: &[u8], value: &[u8]) {
-        self.backend.store_or_update_first(&compartment_key(name, &self.key, Some(app)), value);
+    pub fn set(&self, name: &[u8], app: &[u8], value: &[u8]) -> Result<(), StorageError> {
+        self.backend.store_or_update_first(&compartment_key(name, &self.key, Some(app)), value)
     }
 
-    pub fn remove(&self, name: &[u8], second_compartment: &[u8]) {
-        self.backend.del(&compartment_key(name, &self.key, Some(second_compartment)));
+    pub fn remove(&self, name: &[u8], second_compartment: &[u8]) -> Result<(), StorageError> {
+        self.backend.del(&compartment_key(name, &self.key, Some(second_compartment)))
     }
 
-    pub fn set_expiry(&self, name: &[u8], app: &[u8], seconds: u64) {
-        self.backend.set_expiry(&compartment_key(name, &self.key, Some(app)), seconds);
+    pub fn set_expiry(&self, name: &[u8], app: &[u8], seconds: u64) -> Result<(), StorageError> {
+        self.backend.set_expiry(&compartment_key(name, &self.key, Some(app)), seconds)
     }
 
-    pub fn resolve(&self, name: &[u8], app: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
-        self.backend.resolve_multi_matches(&compartment_key(name, &self.key, Some(app)), out, exclusions);
+    pub fn resolve(
+        &self,
+        name: &[u8],
+        app: &[u8],
+        out: &mut Vec<VariableValue>,
+        exclusions: &KeyExclusions,
+    ) -> Result<(), StorageError> {
+        self.backend.resolve_multi_matches(&compartment_key(name, &self.key, Some(app)), out, exclusions)
     }
 
     /// The values of this compartment whose name matches `regex`.
-    pub fn resolve_regex(&self, regex: &Regex, app: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
-        self.backend.resolve_regex(&compartment_key(b"", &self.key, Some(app)), regex, out, exclusions);
+    pub fn resolve_regex(
+        &self,
+        regex: &Regex,
+        app: &[u8],
+        out: &mut Vec<VariableValue>,
+        exclusions: &KeyExclusions,
+    ) -> Result<(), StorageError> {
+        self.backend.resolve_regex(&compartment_key(b"", &self.key, Some(app)), regex, out, exclusions)
     }
 }
 

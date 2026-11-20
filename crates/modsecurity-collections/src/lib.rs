@@ -31,20 +31,50 @@ pub fn compartment_key(key: &[u8], compartment: &[u8], compartment2: Option<&[u8
     nkey
 }
 
+/// The storage behind a persistent collection failed: the operation that
+/// did, and the code of the storage (an LMDB code).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StorageError {
+    pub operation: &'static str,
+    pub code: i32,
+}
+
+impl std::fmt::Display for StorageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} failed (code {})", self.operation, self.code)
+    }
+}
+
+impl std::error::Error for StorageError {}
+
+/// The storage of a persistent collection. A key that is not there is not
+/// an error; a storage that cannot be read or written is.
 pub trait Collection: Send + Sync {
-    fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> bool;
+    /// Sets the value of `key`, keeping its expiry.
+    fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> Result<(), StorageError>;
 
-    fn del(&self, key: &[u8]);
+    fn del(&self, key: &[u8]) -> Result<(), StorageError>;
 
-    fn set_expiry(&self, key: &[u8], expiry_seconds: u64);
+    fn set_expiry(&self, key: &[u8], expiry_seconds: u64) -> Result<(), StorageError>;
 
-    fn resolve_first(&self, var: &[u8]) -> Option<Vec<u8>>;
+    fn resolve_first(&self, var: &[u8]) -> Result<Option<Vec<u8>>, StorageError>;
 
-    fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions);
+    fn resolve_multi_matches(
+        &self,
+        var: &[u8],
+        l: &mut Vec<VariableValue>,
+        ke: &KeyExclusions,
+    ) -> Result<(), StorageError>;
 
     /// The values whose key is `prefix` (a compartment, see
     /// [`compartment_key`]) followed by a name that matches `r`.
-    fn resolve_regex(&self, prefix: &[u8], r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions);
+    fn resolve_regex(
+        &self,
+        prefix: &[u8],
+        r: &Regex,
+        l: &mut Vec<VariableValue>,
+        ke: &KeyExclusions,
+    ) -> Result<(), StorageError>;
 }
 
 /// One of the persistent collections.

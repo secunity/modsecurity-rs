@@ -100,12 +100,12 @@ mod tests {
         let mut rm = RuleMessage::new(&r);
         t.collections.ip.key = b"1.2.3.4".to_vec();
         let app = t.rules.properties.settings.sec_web_app_id.clone().unwrap_or_default();
-        t.collections.ip.set(b"foo", app.as_bytes(), b"v");
-        assert!(t.collections.ip.get(b"foo", app.as_bytes()).is_some());
+        t.collections.ip.set(b"foo", app.as_bytes(), b"v").unwrap();
+        assert!(t.collections.ip.get(b"foo", app.as_bytes()).unwrap().is_some());
 
         ExpireVar::with_rts(rts("ip.foo=0")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Setting variable `foo' to expire in 0 seconds."));
-        assert!(t.collections.ip.get(b"foo", app.as_bytes()).is_none());
+        assert!(t.collections.ip.get(b"foo", app.as_bytes()).unwrap().is_none());
 
         ExpireVar::with_rts(rts("ip.foo=1x")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Non-numeric expiry seconds found in expirevar expression."));

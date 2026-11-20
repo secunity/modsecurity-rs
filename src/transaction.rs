@@ -1015,6 +1015,16 @@ impl<'a> Transaction<'a> {
         Some(it)
     }
 
+    /// What a persistent collection answered. When its storage failed,
+    /// that is written to the debug log and the answer is the empty one:
+    /// nothing found, nothing stored.
+    pub(crate) fn stored<T: Default>(&self, answer: Result<T, crate::collection::StorageError>) -> T {
+        answer.unwrap_or_else(|error| {
+            crate::ms_dbg!(self, 1, "Persistent collection: {}", error);
+            T::default()
+        })
+    }
+
     /// Sends a rule message to the server log callback.
     pub(crate) fn server_log(&self, rm: &RuleMessage<'_>) {
         self.ms.server_log(self.log_cb_data.as_deref(), rm, self);

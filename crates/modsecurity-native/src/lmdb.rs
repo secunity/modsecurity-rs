@@ -64,13 +64,25 @@ impl Environment {
             return None;
         }
         let mut txn: *mut MDB_txn = ptr::null_mut();
-        // SAFETY: `env` is open; `txn` and `dbi` are valid out pointers. The
-        // txn is committed (which frees it) right away.
-        unsafe {
-            if ffi::mdb_txn_begin(env, ptr::null_mut(), 0, &mut txn) == 0 {
-                ffi::mdb_dbi_open(txn, ptr::null(), ffi::MDB_CREATE | ffi::MDB_DUPSORT, &mut dbi);
-                ffi::mdb_txn_commit(txn);
+        // The database is opened in a transaction that is committed right
+        // away; an environment without its database is not usable.
+        // SAFETY: `env` is open; `txn` and `dbi` are valid out pointers. A
+        // txn that began is ended exactly once: committed (which frees
+        // it), or aborted when the database could not be opened.
+        let opened = unsafe {
+            ffi::mdb_txn_begin(env, ptr::null_mut(), 0, &mut txn) == 0 && {
+                if ffi::mdb_dbi_open(txn, ptr::null(), ffi::MDB_CREATE | ffi::MDB_DUPSORT, &mut dbi) == 0 {
+                    ffi::mdb_txn_commit(txn) == 0
+                } else {
+                    ffi::mdb_txn_abort(txn);
+                    false
+                }
             }
+        };
+        if !opened {
+            // SAFETY: `env` was opened above and is not used afterwards.
+            unsafe { ffi::mdb_env_close(env) };
+            return None;
         }
         Some(Environment { env, dbi })
     }

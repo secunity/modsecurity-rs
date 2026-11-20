@@ -222,7 +222,9 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
 
     /// `expirevar`: `name` of `collection` expires in `seconds`.
     pub fn expire(&mut self, collection: Persistent, name: &[u8], seconds: u64) {
-        self.t.collections.persistent(collection).set_expiry(name, self.t.rules.properties.web_app_id(), seconds);
+        let set =
+            self.t.collections.persistent(collection).set_expiry(name, self.t.rules.properties.web_app_id(), seconds);
+        self.t.stored(set);
     }
 
     /// `setenv`: `name` in the transaction's `ENV`.

@@ -104,17 +104,17 @@ mod tests {
         for (i, key) in keys.iter().enumerate() {
             let value = i.to_string();
             tx.set(key, value.as_bytes().to_vec());
-            previous.store_or_update_first(key, value.as_bytes());
+            previous.store_or_update_first(key, value.as_bytes()).unwrap();
         }
         for (i, key) in keys.iter().enumerate() {
             if i % 3 == 0 {
                 tx.remove(key);
-                previous.del(key);
+                previous.del(key).unwrap();
             }
             let uppercase = key.to_ascii_uppercase();
             tx.set(&uppercase, b"updated".to_vec());
-            previous.store_or_update_first(&uppercase, b"updated");
-            assert_eq!(tx.get(key), previous.resolve_first(key).as_deref());
+            previous.store_or_update_first(&uppercase, b"updated").unwrap();
+            assert_eq!(tx.get(key), previous.resolve_first(key).unwrap().as_deref());
         }
         let exclusions = KeyExclusions(vec![KeyExclusion::string("KEY-1"), KeyExclusion::regex("^key-2")]);
         for exclusions in [&KeyExclusions::default(), &exclusions] {
@@ -122,7 +122,7 @@ mod tests {
                 let mut actual = vec![VariableValue::new(b"existing", b"tail")];
                 let mut expected = actual.clone();
                 tx.resolve_multi_matches(key, &mut actual, exclusions);
-                previous.resolve_multi_matches(key, &mut expected, exclusions);
+                previous.resolve_multi_matches(key, &mut expected, exclusions).unwrap();
                 assert_eq!(actual, expected);
             }
             for pattern in [".", "^KEY-[123]", "absent"] {
@@ -130,7 +130,7 @@ mod tests {
                 let mut actual = vec![VariableValue::new(b"existing", b"tail")];
                 let mut expected = actual.clone();
                 tx.resolve_regex(&regex, &mut actual, exclusions);
-                previous.resolve_regex(b"", &regex, &mut expected, exclusions);
+                previous.resolve_regex(b"", &regex, &mut expected, exclusions).unwrap();
                 assert_eq!(actual, expected);
             }
         }

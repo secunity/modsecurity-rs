@@ -560,7 +560,9 @@ end
         if collection == "TX" {
             t.collections.tx.set(variable_name, var_value);
         } else if let Some(collection) = crate::collection::Persistent::from_name(&collection) {
-            t.collections.persistent(collection).set(variable_name, t.rules.properties.web_app_id(), &var_value);
+            let stored =
+                t.collections.persistent(collection).set(variable_name, t.rules.properties.web_app_id(), &var_value);
+            t.stored(stored);
         }
         Ok(())
     }
@@ -785,7 +787,7 @@ mod tests {
         assert_eq!(t.collections.tx.get(b"lua_set_var"), Some(&b"2"[..]));
         assert_eq!(
             ms.ip_collection.resolve_first(format!("{}::app::lua_set_var", ip_key).as_bytes()),
-            Some(b"2".to_vec())
+            Ok(Some(b"2".to_vec()))
         );
 
         assert!(loaded("match-set.lua").run(&mut t, b""));

@@ -2,8 +2,8 @@
 
 use std::sync::RwLock;
 
-use crate::Collection;
 use crate::backend::collection_data::CollectionData;
+use crate::{Collection, StorageError};
 use modsecurity_compat::unordered_multimap::UnorderedMultimap;
 use modsecurity_native::regex::Regex;
 use modsecurity_types::KeyExclusions;
@@ -35,50 +35,51 @@ impl InMemoryPerProcess {
         self.write().insert(key.to_vec(), CollectionData::with_value(value));
     }
 
-    /// Deletes `key` if one of its entries has expired.
-    pub fn del_if_expired(&self, key: &[u8]) {
-        let mut m = self.write();
-        let found = m.iter().any(|(k, v)| k == key && v.is_expired());
-        if found {
-            m.erase(key);
-        }
-    }
-
+    /// Deletes the keys of `expired` that still have an expired entry (a
+    /// key may have been written again since it was seen), under one lock.
     fn purge(&self, expired: Vec<Vec<u8>>) {
-        for k in expired {
-            self.del_if_expired(&k);
+        if expired.is_empty() {
+            return;
+        }
+        let mut m = self.write();
+        for key in expired {
+            if m.equal_range(&key).any(|(_, v)| v.is_expired()) {
+                m.erase(&key);
+            }
         }
     }
 }
 
 impl Collection for InMemoryPerProcess {
-    fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> bool {
+    fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> Result<(), StorageError> {
         let mut m = self.write();
         if let Some(d) = m.find_mut(key) {
             d.set_value(value);
         } else {
             m.insert(key.to_vec(), CollectionData::with_value(value));
         }
-        true
+        Ok(())
     }
 
-    fn del(&self, key: &[u8]) {
+    fn del(&self, key: &[u8]) -> Result<(), StorageError> {
         self.write().erase(key);
+        Ok(())
     }
 
-    fn set_expiry(&self, key: &[u8], expiry_seconds: u64) {
+    fn set_expiry(&self, key: &[u8], expiry_seconds: u64) -> Result<(), StorageError> {
         let mut m = self.write();
         if let Some(d) = m.find_mut(key) {
             d.set_expiry(expiry_seconds);
-            return;
+            return Ok(());
         }
         // An expiry may be set for a key that has no value (yet).
         let mut d = CollectionData::default();
         d.set_expiry(expiry_seconds);
         m.insert(key.to_vec(), d);
+        Ok(())
     }
 
-    fn resolve_first(&self, var: &[u8]) -> Option<Vec<u8>> {
+    fn resolve_first(&self, var: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {
         let mut ret = None;
         let mut expired = Vec::new();
         {
@@ -92,10 +93,15 @@ impl Collection for InMemoryPerProcess {
             }
         }
         self.purge(expired);
-        ret
+        Ok(ret)
     }
 
-    fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
+    fn resolve_multi_matches(
+        &self,
+        var: &[u8],
+        l: &mut Vec<VariableValue>,
+        ke: &KeyExclusions,
+    ) -> Result<(), StorageError> {
         let mut expired = Vec::new();
         let start = l.len();
         {
@@ -126,9 +132,16 @@ impl Collection for InMemoryPerProcess {
         }
         move_to_front_reversed(l, start);
         self.purge(expired);
+        Ok(())
     }
 
-    fn resolve_regex(&self, prefix: &[u8], r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
+    fn resolve_regex(
+        &self,
+        prefix: &[u8],
+        r: &Regex,
+        l: &mut Vec<VariableValue>,
+        ke: &KeyExclusions,
+    ) -> Result<(), StorageError> {
         let mut expired = Vec::new();
         let start = l.len();
         {
@@ -151,6 +164,7 @@ impl Collection for InMemoryPerProcess {
         }
         move_to_front_reversed(l, start);
         self.purge(expired);
+        Ok(())
     }
 }
 
@@ -161,12 +175,12 @@ mod tests {
     #[test]
     fn expiry_only_and_empty_values_remain_distinct() {
         let collection = InMemoryPerProcess::new("TX");
-        collection.set_expiry(b"key", 100);
-        assert_eq!(collection.resolve_first(b"key"), None);
-        collection.store_or_update_first(b"key", b"");
-        assert_eq!(collection.resolve_first(b"key"), Some(Vec::new()));
-        collection.set_expiry(b"key", 0);
-        assert_eq!(collection.resolve_first(b"key"), None);
+        collection.set_expiry(b"key", 100).unwrap();
+        assert_eq!(collection.resolve_first(b"key").unwrap(), None);
+        collection.store_or_update_first(b"key", b"").unwrap();
+        assert_eq!(collection.resolve_first(b"key").unwrap(), Some(Vec::new()));
+        collection.set_expiry(b"key", 0).unwrap();
+        assert_eq!(collection.resolve_first(b"key").unwrap(), None);
     }
 
     #[test]
@@ -175,15 +189,15 @@ mod tests {
         collection.store(b"key", b"older");
         collection.store(b"key", b"newer");
         // resolve_first walks all equivalents, returning the last live one.
-        assert_eq!(collection.resolve_first(b"key"), Some(b"older".to_vec()));
+        assert_eq!(collection.resolve_first(b"key").unwrap(), Some(b"older".to_vec()));
         let mut values = vec![VariableValue::new(b"existing", b"value")];
-        collection.resolve_multi_matches(b"key", &mut values, &KeyExclusions::default());
+        collection.resolve_multi_matches(b"key", &mut values, &KeyExclusions::default()).unwrap();
         assert_eq!(values.iter().map(VariableValue::value).collect::<Vec<_>>(), [b"older", b"newer", b"value"]);
 
         // Expiring the first equivalent removes the whole group, but the
         // current resolution still returns the other live value it visited.
-        collection.set_expiry(b"key", 0);
-        assert_eq!(collection.resolve_first(b"key"), Some(b"older".to_vec()));
-        assert_eq!(collection.resolve_first(b"key"), None);
+        collection.set_expiry(b"key", 0).unwrap();
+        assert_eq!(collection.resolve_first(b"key").unwrap(), Some(b"older".to_vec()));
+        assert_eq!(collection.resolve_first(b"key").unwrap(), None);
     }
 }

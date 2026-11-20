@@ -94,7 +94,8 @@ impl WriteTarget<'_> {
         match self {
             Self::Transaction(_) => t.collections.tx.set(key, value),
             Self::Persistent { collection, .. } => {
-                t.collections.persistent(*collection).set(key, t.rules.properties.web_app_id(), &value);
+                let stored = t.collections.persistent(*collection).set(key, t.rules.properties.web_app_id(), &value);
+                t.stored(stored);
             }
         }
     }
@@ -110,7 +111,8 @@ impl WriteTarget<'_> {
                 } else {
                     t.rules.properties.web_app_id()
                 };
-                t.collections.persistent(*collection).remove(key, second);
+                let removed = t.collections.persistent(*collection).remove(key, second);
+                t.stored(removed);
             }
         }
     }
@@ -227,9 +229,11 @@ impl Variable {
                 let binding = t.collections.persistent(*collection);
                 let app = t.rules.properties.web_app_id();
                 match key {
-                    CollectionKey::All | CollectionKey::Key => binding.resolve(self.name.as_bytes(), app, l, ke),
-                    CollectionKey::Regex(regex) => binding.resolve_regex(regex, app, l, ke),
-                    CollectionKey::Dynamic(string) => binding.resolve(&string.evaluate(Some(t)), app, l, ke),
+                    CollectionKey::All | CollectionKey::Key => {
+                        t.stored(binding.resolve(self.name.as_bytes(), app, l, ke))
+                    }
+                    CollectionKey::Regex(regex) => t.stored(binding.resolve_regex(regex, app, l, ke)),
+                    CollectionKey::Dynamic(string) => t.stored(binding.resolve(&string.evaluate(Some(t)), app, l, ke)),
                 }
             }
             Source::Rule(selector) => rule::evaluate(selector, t, rule, l),
@@ -436,13 +440,13 @@ pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u
             } else if comp(variable, "TX") {
                 cols.tx.get(b"").map(<[u8]>::to_vec)
             } else if comp(variable, "USER") {
-                cols.user.get(b"", web_app_id)
+                t.stored(cols.user.get(b"", web_app_id))
             } else if comp(variable, "SESSION") {
-                cols.session.get(b"", web_app_id)
+                t.stored(cols.session.get(b"", web_app_id))
             } else if comp(variable, "IP") {
-                cols.ip.get(b"", web_app_id)
+                t.stored(cols.ip.get(b"", web_app_id))
             } else if comp(variable, "GLOBAL") {
-                cols.global.get(b"", web_app_id)
+                t.stored(cols.global.get(b"", web_app_id))
             } else {
                 return Err(VariableNotFound);
             }
@@ -457,15 +461,15 @@ pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u
             } else if comp(col, "TX") {
                 cols.tx.get(var).map(<[u8]>::to_vec)
             } else if comp(col, "RESOURCE") {
-                cols.resource.get(var, web_app_id)
+                t.stored(cols.resource.get(var, web_app_id))
             } else if comp(col, "USER") {
-                cols.user.get(var, web_app_id)
+                t.stored(cols.user.get(var, web_app_id))
             } else if comp(col, "SESSION") {
-                cols.session.get(var, web_app_id)
+                t.stored(cols.session.get(var, web_app_id))
             } else if comp(col, "IP") {
-                cols.ip.get(var, web_app_id)
+                t.stored(cols.ip.get(var, web_app_id))
             } else if comp(col, "GLOBAL") {
-                cols.global.get(var, web_app_id)
+                t.stored(cols.global.get(var, web_app_id))
             } else {
                 return Err(VariableNotFound);
             }
