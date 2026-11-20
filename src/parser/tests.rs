@@ -460,9 +460,6 @@ fn numbers_beyond_the_int_range() {
             "Not able to convert '18446744073709551617' into a number",
         ),
         (format!("SecRuleRemoveById {TWO_64_PLUS_1}"), "Not a number or range: 18446744073709551617"),
-        // Beyond `int` but within 64 bits: these two were truncated.
-        ("SecRuleRemoveById 3000000000".to_string(), "Not a number or range: 3000000000"),
-        ("SecRuleRemoveById 1-3000000000".to_string(), "Not a number: 3000000000"),
         (format!("SecAction \"id:1,phase:{TWO_64_PLUS_1},pass\""), "Unknown phase: 18446744073709551617"),
     ];
     for (rule, error) in rejected {
@@ -470,6 +467,11 @@ fn numbers_beyond_the_int_range() {
         assert!(!d.parse(&format!("{rule}\n"), "t"), "accepted: {rule}");
         assert!(d.properties.parser_error.contains(error), "{rule}: {}", d.properties.parser_error);
     }
+
+    // Beyond `int` but within 64 bits: an id like another for
+    // `SecRuleRemoveById`.
+    let mut d = Driver::new();
+    assert!(d.parse("SecRuleRemoveById 3000000000 1-3000000000\n", "t"), "{}", d.properties.parser_error);
 
     // `atoi`: `(int) strtol`, which saturates at LONG_MAX, so -1.
     let mut d = Driver::new();

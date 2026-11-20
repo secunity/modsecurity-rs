@@ -5,12 +5,13 @@
 //! configuration.
 
 use std::collections::HashMap;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use crate::actions::action::Kind;
 use crate::actions::rule_action::RuleAction;
 use crate::rule::Id;
-use crate::utils::string::{parser_sanitizer, ssplit, stoi};
+use crate::utils::string::parser_sanitizer;
 use crate::variables::variable::Variable;
 
 /// What `SecRuleUpdate...ById` directives give to rules: per rule id, in
@@ -54,8 +55,8 @@ pub struct RulesExceptions {
     pub action_pos_update_target_by_id: IdMultimap<Arc<RuleAction>>,
     pub remove_rule_by_msg: Vec<String>,
     pub remove_rule_by_tag: Vec<String>,
-    ranges: Vec<(i32, i32)>,
-    numbers: Vec<i32>,
+    /// The ids of `SecRuleRemoveById`: ranges, of one id for a single one.
+    removed_ids: Vec<RangeInclusive<Id>>,
 }
 
 impl RulesExceptions {
@@ -118,66 +119,36 @@ impl RulesExceptions {
         }
     }
 
-    /// Parses the argument of `SecRuleRemoveById` (ids and ranges).
-    pub fn load(&mut self, a: &str) -> Result<(), String> {
-        let mut added = false;
-        for r in ssplit(a.as_bytes(), b' ') {
-            let b = parser_sanitizer(String::from_utf8_lossy(&r).into_owned());
-            if b.is_empty() {
-                continue;
+    /// `SecRuleRemoveById`: the ids and ranges of ids (`first-last`) of
+    /// `list`, separated by spaces.
+    pub fn load(&mut self, list: &str) -> Result<(), String> {
+        let mut ranges = Vec::new();
+        for item in list.split(' ').map(|item| parser_sanitizer(item.to_string())).filter(|item| !item.is_empty()) {
+            let id = |text: &str| Id::parse(text).ok_or_else(|| format!("Not a number: {text}"));
+            let range = match item.split_once('-') {
+                None => Id::parse(&item).map(|id| id..=id).ok_or_else(|| format!("Not a number or range: {item}"))?,
+                Some((first, last)) => id(first)?..=id(last)?,
+            };
+            if range.is_empty() {
+                return Err(format!("Invalid range: {item}"));
             }
-            if let Some(dash) = b.find('-') {
-                let n1s = &b[..dash];
-                let n2s = &b[dash + 1..];
-                let Some(n1n) = stoi(n1s.as_bytes()) else {
-                    return Err(format!("Not a number: {}", n1s));
-                };
-                let Some(n2n) = stoi(n2s.as_bytes()) else {
-                    return Err(format!("Not a number: {}", n2s));
-                };
-                // Note: the C++ code compares the strings, not the numbers.
-                if n1s > n2s {
-                    return Err(format!("Invalid range: {}", b));
-                }
-                self.add_range(n1n, n2n);
-                added = true;
-            } else {
-                match stoi(b.as_bytes()) {
-                    Some(num) => {
-                        self.add_number(num);
-                        added = true;
-                    }
-                    None => return Err(format!("Not a number or range: {}", b)),
-                }
-            }
+            ranges.push(range);
         }
-        if added {
-            return Ok(());
+        if ranges.is_empty() {
+            return Err(format!("Not a number or range: {list}"));
         }
-        Err(format!("Not a number or range: {}", a))
+        self.removed_ids.extend(ranges);
+        Ok(())
     }
 
-    pub fn add_number(&mut self, a: i32) {
-        self.numbers.push(a);
-    }
-
-    pub fn add_range(&mut self, a: i32, b: i32) {
-        self.ranges.push((a, b));
-    }
-
-    /// Whether `SecRuleRemoveById` removes the rule id `a`.
-    pub fn contains(&self, a: i32) -> bool {
-        self.numbers.contains(&a) || self.ranges.iter().any(|&(x, y)| x <= a && y >= a)
+    /// Whether `SecRuleRemoveById` removes the rule `id`.
+    pub fn contains(&self, id: Id) -> bool {
+        self.removed_ids.iter().any(|range| range.contains(&id))
     }
 
     /// Adds the exceptions of `from` (of a merged rule set) to these.
     pub fn merge(&mut self, from: &RulesExceptions) {
-        for &a in &from.numbers {
-            self.add_number(a);
-        }
-        for &(a, b) in &from.ranges {
-            self.add_range(a, b);
-        }
+        self.removed_ids.extend(from.removed_ids.iter().cloned());
         for p in &from.variable_update_target_by_tag {
             self.variable_update_target_by_tag.push(p.clone());
         }
@@ -251,14 +222,33 @@ mod tests {
         }
     }
 
+    /// `SecRuleRemoveById` takes ids as rules have them, and compares
+    /// the bounds of a range as numbers. (C++ compared the bounds as
+    /// text, so `5-10` was refused and `10-5` accepted; read each id as
+    /// far as its digits go; and kept ids as 32 bit integers, so that
+    /// removing rule 1 also removed rule 4294967297.)
     #[test]
     fn load_ids() {
+        let id = Id::new;
         let mut e = RulesExceptions::new();
         assert!(e.load("1 5-9").is_ok());
-        assert!(e.contains(1) && e.contains(7) && !e.contains(10));
-        // Faithful to C++: the bounds are compared as strings ("5" > "10").
-        assert_eq!(e.load("5-10").unwrap_err(), "Invalid range: 5-10");
-        assert_eq!(e.load("x").unwrap_err(), "Not a number or range: x");
+        assert!(e.contains(id(1)) && e.contains(id(5)) && e.contains(id(9)));
+        assert!(!e.contains(id(2)) && !e.contains(id(10)) && !e.contains(id(4294967297)));
+        assert!(e.load("5-10 4294967297 \"20\"").is_ok());
+        assert!(e.contains(id(10)) && e.contains(id(4294967297)) && e.contains(id(20)));
+        for (list, error) in [
+            ("10-5", "Invalid range: 10-5"),
+            ("x", "Not a number or range: x"),
+            ("12abc", "Not a number or range: 12abc"),
+            ("1-x", "Not a number: x"),
+            ("-5", "Not a number: "),
+            ("", "Not a number or range: "),
+            ("  ", "Not a number or range:   "),
+        ] {
+            assert_eq!(e.load(list).unwrap_err(), error, "{list:?}");
+        }
+        // A list with an error adds nothing.
+        assert!(e.load("30 x").is_err() && !e.contains(id(30)));
     }
 
     /// `SecRuleUpdateActionById` cannot give a rule another id, phase or

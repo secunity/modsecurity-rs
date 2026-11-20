@@ -109,7 +109,7 @@ impl Step {
             return Step::Marker(entry.clone());
         };
         let ex = &rules.properties.exceptions;
-        let by = if ex.contains(rule.rule_id.narrowed()) {
+        let by = if ex.contains(rule.rule_id) {
             Some(RemovedBy::Id)
         } else if ex.remove_rule_by_msg.iter().any(|msg| rule.msg_is(msg)) {
             Some(RemovedBy::Msg)

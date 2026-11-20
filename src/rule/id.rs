@@ -2,11 +2,11 @@
 
 /// The id of a rule (`id:942100`), 0 for a rule without one.
 ///
-/// A rule keeps its id as a 64 bit integer, and so do
-/// `SecRuleUpdateTargetById` and `SecRuleUpdateActionById`, but
-/// `ctl:ruleRemoveById`, `ctl:ruleRemoveTargetById` and
-/// `SecRuleRemoveById` hold `int`s, as in C++. The comparisons with those
-/// are here, each as C++ makes it.
+/// A rule keeps its id as a 64 bit integer, and so do the directives that
+/// name rules (`SecRuleRemoveById`, `SecRuleUpdateTargetById`,
+/// `SecRuleUpdateActionById`). The actions `ctl:ruleRemoveById` and
+/// `ctl:ruleRemoveTargetById` hold `int`s; the comparisons with those are
+/// here.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Id(i64);
 
@@ -34,13 +34,6 @@ impl Id {
     /// Whether this is in `first..=last`, a range of a `ctl:ruleRemoveById`.
     pub fn is_within(self, first: i32, last: i32) -> bool {
         i64::from(first) <= self.0 && i64::from(last) >= self.0
-    }
-
-    /// The id as `SecRuleRemoveById` compares it: narrowed to an `int`, as
-    /// C++ does (`RulesExceptions::contains(int)` is given the 64 bit id),
-    /// so that the rule 4294967297 is removed by `SecRuleRemoveById 1`.
-    pub fn narrowed(self) -> i32 {
-        self.0 as i32
     }
 }
 
@@ -74,11 +67,9 @@ mod tests {
             assert_eq!(Id::parse(text), None, "{text}");
         }
 
-        // Beyond the `int` range: never the id of a `ctl:` action, but
-        // another id for `SecRuleRemoveById`.
+        // Beyond the `int` range: never the id of a `ctl:` action.
         let big = Id::new(4294967297);
         assert!(!big.is(1) && !big.is_within(0, i32::MAX));
-        assert_eq!(big.narrowed(), 1);
     }
 
     /// Whether a request for `/x` is denied under `conf`.
@@ -92,14 +83,17 @@ mod tests {
         t.intervention().is_some_and(|it| it.status == 403)
     }
 
-    /// As in C++ (compared with the C++ library): `SecRuleRemoveById`
-    /// sees the id narrowed to an `int`, `ctl:ruleRemoveById` does not.
+    /// A rule with an id beyond the `int` range is removed by its own id
+    /// only. (In C++ `SecRuleRemoveById` sees the id narrowed to an `int`:
+    /// removing rule 1 removes rule 4294967297 too.)
     #[test]
     fn an_id_beyond_the_int_range() {
         let rule = "SecRule REQUEST_URI \"@contains x\" \"id:4294967297,phase:1,deny,status:403\"\n";
         assert!(denied(rule));
-        assert!(!denied(&format!("{rule}SecRuleRemoveById 1\n")));
-        assert!(denied(&format!("{rule}SecRuleRemoveById 2\n")));
+        assert!(denied(&format!("{rule}SecRuleRemoveById 1\n")));
+        assert!(denied(&format!("{rule}SecRuleRemoveById 2-4294967296\n")));
+        assert!(!denied(&format!("{rule}SecRuleRemoveById 4294967297\n")));
+        assert!(!denied(&format!("{rule}SecRuleRemoveById 4294967290-4294967299\n")));
         let ctl = "SecAction \"id:5,phase:1,pass,nolog,ctl:ruleRemoveById=1\"\n";
         assert!(denied(&format!("{ctl}{rule}")));
         let ctl_range = "SecAction \"id:5,phase:1,pass,nolog,ctl:ruleRemoveById=1-2147483647\"\n";

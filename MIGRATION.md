@@ -304,6 +304,20 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`SecRuleRemoveById` reads ids and ranges as numbers.** *C++:*
+  - the bounds of a range are compared as text, so `SecRuleRemoveById
+    5-10` is refused ("Invalid range") and `10-5` is accepted (and
+    removes nothing);
+  - each id is read as far as its digits go (`12abc` is 12);
+  - ids are kept as 32 bit integers and a rule's 64 bit id is narrowed
+    to compare, so `SecRuleRemoveById 1` also removes rule 4294967297,
+    and an id above 2147483647 cannot be named.
+  *Here:* an id is a decimal integer, as in the `id` action; a range
+  needs `first <= last`; a rule is removed by its own id only. A list
+  with an invalid item is refused as a whole. The tests of the original
+  ModSecurity pass. Regression tests:
+  `rules_set::exceptions::tests::load_ids`,
+  `rule::id::tests::an_id_beyond_the_int_range`.
 - **`SecRuleUpdateActionById` and `SecRuleUpdateTargetById`: several
   for one rule apply in the order of the configuration.** *C++:* they
   are kept in a hash table that puts a new entry in front of the others
