@@ -140,16 +140,10 @@ impl Driver {
             }
         }
 
-        // A rule without a phase (unknown `phase:<name>`) is dropped.
         let phase = r.phase();
-        if let Some(phase) = phase
-            && self.rules_set_phases.insert(Arc::new(Entry::Rule(r)))
-        {
-            let index = self.rules_set_phases.for_phase(phase).len() - 1;
-            self.last_rule = Some(LastRule { phase, index, depth: 0 });
-        } else {
-            self.last_rule = None;
-        }
+        self.rules_set_phases.insert(Arc::new(Entry::Rule(r)));
+        let index = self.rules_set_phases.for_phase(phase).len() - 1;
+        self.last_rule = Some(LastRule { phase, index, depth: 0 });
         true
     }
 

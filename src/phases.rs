@@ -5,7 +5,6 @@
 /// It is mandatory to call all the phases, even if you don't have this
 /// phases segmented in your end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(i32)]
 pub enum Phases {
     /// The very first information that ModSecurity can inspect, right
     /// after a connection is established.
@@ -39,6 +38,19 @@ impl Phases {
     /// The position of the phase in per-phase tables.
     pub(crate) fn index(self) -> usize {
         self as usize
+    }
+
+    /// The number rules and logs know the phase by (`phase:2`); 0 for the
+    /// two that precede the request headers.
+    pub fn number(self) -> u8 {
+        match self {
+            Phases::Connection | Phases::Uri => 0,
+            Phases::RequestHeaders => 1,
+            Phases::RequestBody => 2,
+            Phases::ResponseHeaders => 3,
+            Phases::ResponseBody => 4,
+            Phases::Logging => 5,
+        }
     }
 }
 

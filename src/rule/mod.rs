@@ -75,7 +75,7 @@ pub struct Rule {
     /// Where the rule was read.
     pub file_name: String,
     pub line_number: usize,
-    phase: Option<Phases>,
+    phase: Phases,
 
     pub rev: String,
     pub ver: String,
@@ -111,7 +111,7 @@ impl Rule {
         let mut r = Rule {
             file_name: file_name.to_string(),
             line_number,
-            phase: Some(Phases::RequestHeaders),
+            phase: Phases::RequestHeaders,
             rev: String::new(),
             ver: String::new(),
             accuracy: 0,
@@ -156,13 +156,12 @@ impl Rule {
         r
     }
 
-    /// The phase the rule runs in; `None` after an unknown `phase:<name>`,
-    /// which leaves the rule out of every phase.
-    pub fn phase(&self) -> Option<Phases> {
+    /// The phase the rule runs in.
+    pub fn phase(&self) -> Phases {
         self.phase
     }
 
-    pub fn set_phase(&mut self, phase: Option<Phases>) {
+    pub fn set_phase(&mut self, phase: Phases) {
         self.phase = phase;
     }
 

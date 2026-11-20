@@ -12,13 +12,9 @@ pub struct RulesSetPhases {
 }
 
 impl RulesSetPhases {
-    /// Adds the rule to its phase. Returns whether it has one.
-    pub fn insert(&mut self, rule: Arc<Entry>) -> bool {
-        let Some(phase) = rule.phase() else {
-            return false;
-        };
-        self.rules_at_phase[phase.index()].push(rule);
-        true
+    /// Adds the rule to its phase.
+    pub fn insert(&mut self, rule: Arc<Entry>) {
+        self.rules_at_phase[rule.phase().index()].push(rule);
     }
 
     /// Merges `from` into `self` phase by phase, refusing duplicated

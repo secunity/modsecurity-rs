@@ -15,11 +15,10 @@ pub enum Entry {
 }
 
 impl Entry {
-    /// The phase the rule runs in; `None` for a rule with an unknown
-    /// `phase:<name>` (see `actions::phase`), which runs in none.
-    pub fn phase(&self) -> Option<Phases> {
+    /// The phase the entry is in.
+    pub fn phase(&self) -> Phases {
         match self {
-            Entry::Marker(m) => Some(m.phase),
+            Entry::Marker(m) => m.phase,
             Entry::Rule(r) => r.phase(),
         }
     }

@@ -434,20 +434,14 @@ impl Builder<'_, '_> {
     fn sec_default_action(&mut self, list: Vec<ParsedAction>) -> Res<()> {
         let mut has_disruptive = false;
         let mut checked_actions: Vec<RuleAction> = Vec::new();
-        let mut defined_phase: Option<Phases> = None;
-        let mut sec_rule_defined_phase: i32 = -1;
+        let mut phase = Phases::RequestHeaders;
         for pa in list {
             let a = pa.into_action();
             if a.is_disruptive() && !matches!(a, RuleAction::Block(_)) {
                 has_disruptive = true;
             }
-            if let RuleAction::Phase(phase) = &a {
-                defined_phase = phase.phase;
-                sec_rule_defined_phase = match phase.phase {
-                    None => -1,
-                    Some(Phases::Connection) => 0,
-                    Some(p) => p as i32 - 1,
-                };
+            if let RuleAction::Phase(defined) = &a {
+                phase = defined.phase;
             } else if matches!(a.kind(), Kind::RunTimeOnlyIfMatch | Kind::RunTimeBeforeMatchAttempt) {
                 if a.is_transformation_none() {
                     return self.fail("The transformation none is not suitable to be part of the SecDefaultActions");
@@ -461,11 +455,11 @@ impl Builder<'_, '_> {
         if !has_disruptive {
             return self.fail("SecDefaultAction must specify a disruptive action.");
         }
-        let index = defined_phase.unwrap_or(Phases::RequestHeaders).index();
+        let index = phase.index();
         if !self.driver.properties.default_actions[index].is_empty() {
             let msg = format!(
                 "SecDefaultActions can only be placed once per phase and configuration context. Phase {} was informed already.",
-                sec_rule_defined_phase
+                phase.number()
             );
             return self.fail(&msg);
         }

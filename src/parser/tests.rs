@@ -279,7 +279,7 @@ fn chains_and_duplicates() {
     let child = r.chained_rule_child.as_ref().unwrap();
     assert!(child.chained_rule_parent);
     assert!(child.chained_rule_child.is_some());
-    assert_eq!(child.phase(), Some(Phases::RequestBody));
+    assert_eq!(child.phase(), Phases::RequestBody);
     let (n, err) = load("SecRule ARGS \"@rx a\" \"id:40\"\nSecRule ARGS \"@rx a\" \"id:40\"\n", "t");
     assert_eq!(n, -1);
     assert_eq!(err, "Rule id: 40 is duplicated\n");
@@ -430,7 +430,7 @@ fn quoted_phase_name() {
     let mut d = Driver::new();
     assert!(d.parse("SecAction \"id:1,phase:'request',pass\"\n", "t"), "{}", d.properties.parser_error);
     let rule = d.rules_set_phases.for_phase(Phases::RequestBody)[0].as_rule().unwrap();
-    assert_eq!(rule.phase(), Some(Phases::RequestBody));
+    assert_eq!(rule.phase(), Phases::RequestBody);
     assert!(!format!("{rule:?}").contains("Allow"), "{rule:?}");
     assert_eq!(load("SecAction \"id:1,phase:'phase',pass\"\n", "t").0, -1);
 }

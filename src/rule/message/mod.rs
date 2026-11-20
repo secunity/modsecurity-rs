@@ -192,10 +192,9 @@ impl<'r> RuleMessage<'r> {
         &self.reference
     }
 
-    /// The SecLang phase number (1..5) of the rule.
-    pub fn phase_number(&self) -> i32 {
-        // One less than the `Phases` value; a rule without a phase gives -2.
-        self.rule.phase().map_or(-1, |p| p as i32) - 1
+    /// The number of the rule's phase (`phase:2`).
+    pub fn phase_number(&self) -> u8 {
+        self.rule.phase().number()
     }
 }
 

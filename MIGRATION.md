@@ -307,6 +307,27 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **An unknown phase is a configuration error.** *C++:* `phase:` takes a
+  number or one of `request`, `response`, `logging`; any other word
+  (`phase:reqeust`) is accepted without a message, and the rule is then
+  in no phase: it never runs. A number is read as far as its digits go.
+  *Here:* `phase:` takes exactly `0` to `5` or one of the three names
+  (in any case); anything else is refused with "Unknown phase". *Why:* a
+  typing mistake should not silently switch a rule off. Regression test:
+  `actions::phase::tests::init_and_configure`.
+- **The numbers of `status`, `severity`, `accuracy`, `maturity` and
+  `skip` are decimal digits.** *C++:* each is read with `std::stoi`: the
+  longest numeric prefix, with an optional sign (`severity:2x` is 2,
+  `skip:+3` is 3, `status:-1` is accepted), as an `int`. *Here:* decimal
+  digits only, and the value has to fit its type: `status` up to 65535,
+  `severity`, `accuracy` and `maturity` up to 255. Regression tests: the
+  tests of each action, and `parser::tests::numbers_beyond_the_int_range`.
+- **Ports and status codes from a C caller.** The C API takes them as
+  `int`. A value that is not a port (negative, above 65535) is recorded
+  as port 0, and one that is not a status code as status 0; C++ keeps
+  the number as given (`REMOTE_PORT` could be `-1`). The `H` part of the
+  native audit log wrote the placeholder `%d` for a status of -1; it
+  writes the number.
 - **`ctl:ruleRemoveById` and `ctl:ruleRemoveTargetById` take ids as
   rules have them.** *C++:* these two actions keep 32 bit ids, read as
   far as the digits go: `ctl:ruleRemoveById=12abc` is rule 12, and a
