@@ -17,7 +17,7 @@ use crate::rules_set::properties::{
     parse_octal_mode,
 };
 use crate::utils::https_client::HttpsClient;
-use crate::utils::string::{atoi, parse_digits, ssplit, strtol_int};
+use crate::utils::string::{parse_digits, ssplit};
 use crate::utils::system::{expand_env, find_resource};
 
 /// The value of a setting directive, as its effect gets it.
@@ -127,11 +127,13 @@ fn directive(keyword: &str) -> Option<Directive> {
             Ok(())
         }),
         "secauditlogdirmode" => value(&[(Sep(Number), SanFindSep), (SepQuoted(Number), SanFindSep)], |b, v| {
-            b.driver.properties.audit_log.set_storage_dir_mode(strtol_int(&v.text, 8) as u32);
+            let mode = b.file_mode(&v.text)?;
+            b.driver.properties.audit_log.set_storage_dir_mode(mode);
             Ok(())
         }),
         "secauditlogfilemode" => value(NUMBER, |b, v| {
-            b.driver.properties.audit_log.set_file_mode(strtol_int(&v.text, 8) as u32);
+            let mode = b.file_mode(&v.text)?;
+            b.driver.properties.audit_log.set_file_mode(mode);
             Ok(())
         }),
         "secauditlogformat" => word(&["JSON", "Native"], |b, v| {
@@ -245,14 +247,9 @@ fn directive(keyword: &str) -> Option<Directive> {
                 Ok(())
             })
         }
-        "seccookieformat" => {
-            value(
-                NUMBER,
-                |b, v| {
-                    if atoi(&v.bytes) == 1 { b.fail("SecCookieFormat 1 is not yet supported.") } else { Ok(()) }
-                },
-            )
-        }
+        "seccookieformat" => value(NUMBER, |b, v| {
+            if parse_digits(&v.text) == Some(1u32) { b.fail("SecCookieFormat 1 is not yet supported.") } else { Ok(()) }
+        }),
         "secunicodemapfile" => value(&[(UnicodeMap, FindSep)], |b, v| b.unicode_map_file(&v.text)),
         "secgeolookupdb" => value(FREE_TEXT_LINE, |b, v| b.geo_lookup_db(&v.text)),
         "sechttpblkey" => value(FREE_TEXT_LINE, |b, v| {
@@ -270,11 +267,13 @@ fn directive(keyword: &str) -> Option<Directive> {
 
         // --- Limits ------------------------------------------------------
         "secargumentslimit" => value(NUMBER, |b, v| {
-            b.driver.properties.settings.arguments_limit = Some(atoi(&v.bytes) as u32);
+            // A number too large to hold is the largest limit.
+            b.driver.properties.settings.arguments_limit = Some(parse_digits(&v.text).unwrap_or(u32::MAX));
             Ok(())
         }),
         "secrequestbodyjsondepthlimit" => value(NUMBER, |b, v| {
-            b.driver.properties.settings.request_body_json_depth_limit = Some(atoi(&v.bytes) as u32);
+            b.driver.properties.settings.request_body_json_depth_limit =
+                Some(parse_digits(&v.text).unwrap_or(u32::MAX));
             Ok(())
         }),
         "secrequestbodylimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
@@ -473,6 +472,14 @@ impl Builder<'_, '_> {
             Err(err) => return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err)),
         }
         Ok(())
+    }
+
+    /// The permission bits written as `text`, an octal number (`0640`).
+    fn file_mode(&mut self, text: &str) -> Res<u32> {
+        match u32::from_str_radix(text, 8) {
+            Ok(mode) => Ok(mode),
+            Err(_) => self.fail(&format!("Not an octal number: {text}")),
+        }
     }
 
     /// `SecUnicodeMapFile <file> <code page>`

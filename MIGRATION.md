@@ -307,6 +307,21 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **More numbers of a configuration read as digits.** *C++* reads these
+  with C functions that stop at the first character that is not a digit
+  and keep what they have:
+  - `SecAuditLogFileMode` and `SecAuditLogDirMode` (`strtol`, base 8):
+    `0789` was mode 7. *Here:* the value has to be an octal number, or
+    the configuration is refused.
+  - `@fuzzyHash <file> <threshold>` and the values of
+    `@validateByteRange` (`std::stoi`): `10x` was 10. *Here:* decimal
+    digits (white space around a value of `@validateByteRange` is still
+    allowed, as in `37-102, 127-255`).
+  - `SecArgumentsLimit`, `SecRequestBodyJsonDepthLimit`,
+    `SecCookieFormat`: unchanged for a number; one too large to hold is
+    still the largest limit.
+  Regression tests: `parser::tests::file_modes`, the tests of
+  `validate_byte_range`.
 - **`@eq` compares 64 bit integers.** *C++:* `@eq` reads both sides
   with `std::stoi` (the other comparisons, `@gt`, `@ge`, `@lt`, `@le`,
   use 64 bit numbers), and a number that does not fit an `int` counts as

@@ -1,4 +1,4 @@
-//! The number conversions of C and C++ (`strtoll`, `atoi`, `std::stoi`),
+//! The number conversions of C (`strtoll`, `atoll`, `atoi`),
 //! with their corner cases: what counts as white space, where parsing
 //! stops, and what overflow gives.
 
@@ -74,22 +74,6 @@ pub fn atoi(s: &[u8]) -> i32 {
     strtoll(s, 10).value as i32
 }
 
-/// Parses like `std::stoi`: `None` where the C++ function throws (no
-/// conversion, or a value out of the `int` range).
-pub fn stoi(s: &[u8]) -> Option<i32> {
-    let n = strtoll(s, 10);
-    if !n.digits || n.overflow {
-        return None;
-    }
-    i32::try_from(n.value).ok()
-}
-
-/// Parses an integer in `base` as `strtol(s, NULL, base)` does, truncated
-/// to `int` (what C gives when the `long` result is assigned to an `int`).
-pub fn strtol_int(s: &str, base: u32) -> i32 {
-    strtoll(s.as_bytes(), base).value as i32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,24 +88,11 @@ mod tests {
         assert_eq!(atoll(b"-9223372036854775808"), i64::MIN);
         assert_eq!(strtoll(b"9223372036854775808", 10), Integer { value: i64::MAX, overflow: true, digits: true });
         assert_eq!(strtoll(b" -", 10), Integer { value: 0, overflow: false, digits: false });
-        assert_eq!(stoi(b"\t42 "), Some(42));
-        assert_eq!(stoi(b"x"), None);
-        assert_eq!(stoi(b"-"), None);
-        assert_eq!(stoi(b"2147483648"), None);
-        assert_eq!(stoi(b"-2147483648"), Some(i32::MIN));
         // (int) of the saturated long, as glibc's atoi.
         assert_eq!(atoi(b"12x"), 12);
         assert_eq!(atoi(b"99999999999999999999"), -1);
         assert_eq!(atoi(b"-99999999999999999999"), 0);
         assert_eq!(atoi(b"4294967297"), 1);
-        assert_eq!(strtol_int(" 0750", 8), 0o750);
-        assert_eq!(strtol_int("\"0750\"", 8), 0);
-        assert_eq!(strtol_int("-ff", 16), -255);
-        // The optional prefix of base 16, only before a digit.
-        assert_eq!(strtol_int("0x1f", 16), 31);
-        assert_eq!(strtol_int(" -0X1f", 16), -31);
-        assert_eq!(strtol_int("0xg", 16), 0);
-        assert_eq!(strtol_int("0x1f", 8), 0);
     }
 
     /// `strtoll` is glibc's `strtol` (compared on generated texts).

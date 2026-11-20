@@ -253,11 +253,18 @@ fn load(rules: &str, reference: &str) -> (i32, String) {
     (n, r.parser_error())
 }
 
+/// The modes of the audit log files are octal numbers. (C read them as
+/// far as the octal digits go: `0789` was mode 7.)
 #[test]
-fn c_conversions() {
-    use crate::utils::string::strtol_int;
-    assert_eq!(strtol_int(" 0750", 8), 0o750);
-    assert_eq!(strtol_int("\"0750\"", 8), 0);
+fn file_modes() {
+    let mut d = Driver::new();
+    assert!(d.parse("SecAuditLogFileMode 0640\nSecAuditLogDirMode 0750\n", "t"), "{}", d.properties.parser_error);
+    let dump = format!("{:?}", d.properties.audit_log);
+    assert!(dump.contains(&format!("file_permission: Some({})", 0o640)), "{dump}");
+    assert!(dump.contains(&format!("directory_permission: Some({})", 0o750)), "{dump}");
+    let mut d = Driver::new();
+    assert!(!d.parse("SecAuditLogFileMode 0789\n", "t"));
+    assert!(d.properties.parser_error.contains("Not an octal number: 0789"), "{}", d.properties.parser_error);
 }
 
 #[test]

@@ -2,7 +2,6 @@
 //! outside the allowed values and ranges.
 
 use crate::{Context, Operator, Param, Resources};
-use modsecurity_compat::cnum::stoi;
 
 #[derive(Debug)]
 pub struct ValidateByteRange {
@@ -16,49 +15,37 @@ impl ValidateByteRange {
         ValidateByteRange { param, table: [0; 32] }
     }
 
-    fn set(&mut self, b: i32) {
-        self.table[(b >> 3) as usize] |= 1 << (b & 0x7);
+    fn set(&mut self, b: u8) {
+        self.table[usize::from(b >> 3)] |= 1 << (b & 0x7);
     }
 
     /// Adds `N` or `N-M` to the table.
     pub fn add_range(&mut self, range_representation: &[u8]) -> Result<(), String> {
-        let lossy = |s: &[u8]| String::from_utf8_lossy(s).into_owned();
+        // A number in decimal digits, with white space around it allowed
+        // (`37-102, 127-255`); what it is too large for is said by the
+        // caller.
+        let number = |text: &[u8]| {
+            let trimmed = std::str::from_utf8(text.trim_ascii()).ok();
+            let digits = trimmed.filter(|t| !t.is_empty() && t.bytes().all(|c| c.is_ascii_digit()));
+            digits
+                .map(|t| t.parse::<u64>().unwrap_or(u64::MAX))
+                .ok_or_else(|| format!("Not able to convert '{}' into a number", String::from_utf8_lossy(text)))
+        };
+        let byte = |n: u64, what: &str| u8::try_from(n).map_err(|_| format!("Invalid {what} value: {n}"));
+
         let Some(pos) = range_representation.iter().position(|&c| c == b'-') else {
-            let Some(start) = stoi(range_representation) else {
-                return Err(format!("Not able to convert '{}' into a number", lossy(range_representation)));
-            };
-            if !(0..=255).contains(&start) {
-                return Err(format!("Invalid byte value: {}", start));
-            }
-            self.set(start);
+            let value = byte(number(range_representation)?, "byte")?;
+            self.set(value);
             return Ok(());
         };
-
-        let start_s = &range_representation[..pos];
-        let Some(mut start) = stoi(start_s) else {
-            return Err(format!("Not able to convert '{}' into a number", lossy(start_s)));
-        };
-
-        let end_s = &range_representation[pos + 1..];
-        let Some(end) = stoi(end_s) else {
-            return Err(format!("Not able to convert '{}' into a number", lossy(end_s)));
-        };
-
-        if !(0..=255).contains(&start) {
-            return Err(format!("Invalid range start value: {}", start));
-        }
-        if !(0..=255).contains(&end) {
-            return Err(format!("Invalid range end value: {}", end));
-        }
+        let (start, end) = (number(&range_representation[..pos])?, number(&range_representation[pos + 1..])?);
+        let (start, end) = (byte(start, "range start")?, byte(end, "range end")?);
         if start > end {
             return Err(format!("Invalid range: {}-{}", start, end));
         }
-
-        while start <= end {
-            self.set(start);
-            start += 1;
+        for b in start..=end {
+            self.set(b);
         }
-
         Ok(())
     }
 }

@@ -40,7 +40,6 @@ impl Operator for FuzzyHash {
 
     #[cfg(feature = "ssdeep")]
     fn init(&mut self, param2: &str, resources: &dyn Resources) -> Result<(), String> {
-        use modsecurity_compat::cnum::stoi;
         use std::io::Read;
 
         let param = self.param.literal.clone();
@@ -49,7 +48,8 @@ impl Operator for FuzzyHash {
         };
         let digit = &param[pos + 1..];
         let file = String::from_utf8_lossy(&param[..pos]).into_owned();
-        let Some(threshold) = stoi(digit) else {
+        let threshold = std::str::from_utf8(digit).ok().filter(|d| d.bytes().all(|c| c.is_ascii_digit()));
+        let Some(threshold) = threshold.and_then(|d| d.parse().ok()) else {
             return Err(format!("Expecting a digit, got: {}", String::from_utf8_lossy(digit)));
         };
         self.threshold = threshold;
