@@ -3,16 +3,12 @@
 
 use crate::base64::Base64;
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
     if value.is_empty() {
-        return false;
+        return;
     }
-    match Base64::decode_forgiven(value) {
-        Some(transformed) => {
-            *value = transformed;
-            true
-        }
-        None => false,
+    if let Some(transformed) = Base64::decode_forgiven(value) {
+        *value = transformed;
     }
 }

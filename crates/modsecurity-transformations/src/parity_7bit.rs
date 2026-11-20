@@ -3,10 +3,7 @@
 
 /// Sets the high bit of every byte so that the byte has even
 /// (`even == true`) or odd parity.
-fn set_parity(value: &mut [u8], even: bool) -> bool {
-    if value.is_empty() {
-        return false;
-    }
+fn set_parity(value: &mut [u8], even: bool) {
     for uc in value.iter_mut() {
         let x = *uc;
         let mut p = x ^ (x >> 4);
@@ -18,30 +15,25 @@ fn set_parity(value: &mut [u8], even: bool) -> bool {
             *uc = x & 0x7f;
         }
     }
-    true
 }
 
 /// `t:parityEven7bit`: sets the high bit so that every byte has even
 /// parity.
-pub fn even(value: &mut [u8]) -> bool {
-    set_parity(value, true)
+pub fn even(value: &mut [u8]) {
+    set_parity(value, true);
 }
 
 /// `t:parityOdd7bit`: sets the high bit so that every byte has odd
 /// parity.
-pub fn odd(value: &mut [u8]) -> bool {
-    set_parity(value, false)
+pub fn odd(value: &mut [u8]) {
+    set_parity(value, false);
 }
 
 /// `t:parityZero7bit`: clears the high bit of every byte.
-pub fn zero(value: &mut [u8]) -> bool {
-    if value.is_empty() {
-        return false;
-    }
+pub fn zero(value: &mut [u8]) {
     for c in value.iter_mut() {
         *c &= 0x7f;
     }
-    true
 }
 
 #[cfg(test)]
@@ -51,13 +43,13 @@ mod tests {
     #[test]
     fn parity() {
         let mut v = *b"\x01\x03\x81";
-        assert!(even(&mut v));
+        even(&mut v);
         // The high bit counts in the parity: 0x81 has even parity already.
         assert_eq!(v, *b"\x81\x03\x01");
-        assert!(odd(&mut v));
+        odd(&mut v);
         assert_eq!(v, *b"\x81\x83\x01");
-        assert!(zero(&mut v));
+        zero(&mut v);
         assert_eq!(v, *b"\x01\x03\x01");
-        assert!(!even(&mut []));
+        even(&mut []);
     }
 }

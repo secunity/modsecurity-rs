@@ -8,14 +8,13 @@
 /// The positions are signed indices into `val` (`input` is index 0,
 /// `end` the index of the last byte) because `dst` may briefly go below
 /// 0 when removing a back reference.
-pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
+pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
     let mut hitroot = false;
     let mut done = false;
-    let mut changed = false;
 
     // Need at least one byte to normalize
     if val.is_empty() {
-        return false;
+        return;
     }
 
     let input_len = val.len();
@@ -37,11 +36,9 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
         if win {
             if at(val, src) == b'\\' {
                 val[src as usize] = b'/';
-                changed = true;
             }
             if src < end && at(val, src + 1) == b'\\' {
                 val[(src + 1) as usize] = b'/';
-                changed = true;
             }
         }
 
@@ -65,7 +62,6 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
             // Could it be an empty path segment?
             if src != end && at(val, src) == b'/' {
                 // Ignore
-                changed = true;
                 // Copy will take care of this.
             } else if at(val, src) == b'.' {
                 // Could it be a back or self reference?
@@ -104,12 +100,10 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
                             skip_copy = true; // Skip the copy.
                         } else {
                             src += 1;
-                            changed = true;
                         }
                     }
                 } else if dst == input {
                     // Relative Self-reference?
-                    changed = true;
 
                     // Ignore.
 
@@ -120,7 +114,6 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
                     }
                 } else if at(val, dst - 1) == b'/' {
                     // Self-reference?
-                    changed = true;
 
                     // Ignore.
 
@@ -146,13 +139,8 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
 
         // Skip to the last forward slash when multiple are used.
         if at(val, src) == b'/' {
-            let oldsrc = src;
-
             while src < end && (at(val, src + 1) == b'/' || (win && at(val, src + 1) == b'\\')) {
                 src += 1;
-            }
-            if oldsrc != src {
-                changed = true;
             }
 
             // Do not copy the forward slash to the root
@@ -176,7 +164,6 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
     }
 
     val.truncate(dst as usize);
-    changed
 }
 
 #[cfg(test)]

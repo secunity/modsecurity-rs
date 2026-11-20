@@ -1,8 +1,8 @@
 //! The `t:removeCommentsChar` transformation: removes the comment
 //! characters `/*`, `*/`, `<!--`, `-->`, `--` and `#`.
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
     let e = value.len();
     let mut d = 0usize;
     let mut s = 0usize;
@@ -35,7 +35,5 @@ pub fn transform(value: &mut Vec<u8>) -> bool {
         }
     }
 
-    let changed = d != s;
     value.truncate(d);
-    changed
 }

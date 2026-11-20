@@ -3,11 +3,10 @@
 
 use crate::chars::string_to_hex;
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
     if value.is_empty() {
-        return false;
+        return;
     }
     *value = string_to_hex(value).into_bytes();
-    true
 }

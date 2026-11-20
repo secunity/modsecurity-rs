@@ -34,16 +34,16 @@ impl Transformation {
         self.kind == TransformationKind::None
     }
 
-    /// Transforms `value` in place; returns whether it changed. Only
+    /// Transforms `value` in place. Only
     /// `urlDecodeUni` uses the transaction: for the map of
     /// `SecUnicodeMapFile`, when one is set with a code page (without a
     /// transaction no map is used).
-    pub fn transform(&self, value: &mut Vec<u8>, t: Option<&Transaction<'_>>) -> bool {
+    pub fn transform(&self, value: &mut Vec<u8>, t: Option<&Transaction<'_>>) {
         let unicode_map = t.and_then(|t| {
             let config = &t.rules.properties.unicode_map_table;
             if config.set && config.unicode_code_page > 0 { config.unicode_map_table.as_deref() } else { None }
         });
-        self.kind.apply(value, &Context { unicode_map })
+        self.kind.apply(value, &Context { unicode_map });
     }
 }
 
@@ -72,7 +72,7 @@ mod tests {
         assert_eq!(Transformation::from_name("t:nosuch").kind, TransformationKind::Identity);
         assert!(Transformation::from_name("t:none").is_none());
         let mut v = b"aB".to_vec();
-        assert!(Transformation::from_name("t:uppercase").transform(&mut v, None));
+        Transformation::from_name("t:uppercase").transform(&mut v, None);
         assert_eq!(v, b"AB");
     }
 
@@ -90,11 +90,11 @@ mod tests {
         {
             let t = Transaction::new(&ms, &rules, None);
             let mut v = b"%u0391".to_vec();
-            assert!(tfn.transform(&mut v, Some(&t)));
+            tfn.transform(&mut v, Some(&t));
             assert_eq!(v, b"A");
             // Without a transaction no map is used.
             let mut v = b"%u0391".to_vec();
-            assert!(tfn.transform(&mut v, None));
+            tfn.transform(&mut v, None);
             assert_eq!(v, b"\x91");
         }
 
@@ -102,7 +102,7 @@ mod tests {
         rules.properties.unicode_map_table.unicode_code_page = 0;
         let t = Transaction::new(&ms, &rules, None);
         let mut v = b"%u0391".to_vec();
-        assert!(tfn.transform(&mut v, Some(&t)));
+        tfn.transform(&mut v, Some(&t));
         assert_eq!(v, b"\x91");
     }
 }

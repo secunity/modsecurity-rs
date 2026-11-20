@@ -2,21 +2,20 @@
 
 use crate::chars::{hex2dec, x2c};
 
-/// Decodes `val` in place, turning `+` into a space; returns whether the
-/// value changed and the number of invalid `%` encodings.
-pub fn urldecode_nonstrict_inplace(val: &mut Vec<u8>, invalid_count: &mut i32) -> bool {
-    urldecode_nonstrict_inplace_ext(val, true, invalid_count)
+/// Decodes `val` in place, turning `+` into a space; `invalid_count` is set
+/// to the number of invalid `%` encodings.
+pub fn urldecode_nonstrict_inplace(val: &mut Vec<u8>, invalid_count: &mut i32) {
+    urldecode_nonstrict_inplace_ext(val, true, invalid_count);
 }
 
 /// Decodes the `%XX` escapes of `val` in place (and `+` into a space when
 /// `plus_to_space` is set). Invalid escapes are kept as they are and counted
-/// in `invalid_count`. Returns whether the value changed.
-pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool, invalid_count: &mut i32) -> bool {
+/// in `invalid_count`.
+pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool, invalid_count: &mut i32) {
     let e = val.len();
     let mut s = 0usize;
     let mut d = 0usize;
     *invalid_count = 0;
-    let mut changed = false;
     while s != e {
         if val[s] == b'%' {
             if s + 2 < e {
@@ -27,7 +26,6 @@ pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool, i
                     val[d] = uni;
                     d += 1;
                     s += 3;
-                    changed = true;
                 } else {
                     val[d] = val[s];
                     d += 1;
@@ -43,7 +41,6 @@ pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool, i
         } else {
             if plus_to_space && val[s] == b'+' {
                 val[d] = b' ';
-                changed = true;
             } else {
                 val[d] = val[s];
             }
@@ -51,10 +48,7 @@ pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool, i
             s += 1;
         }
     }
-    if changed {
-        val.truncate(d);
-    }
-    changed
+    val.truncate(d);
 }
 
 /// Decodes the `%XX` escapes of `src`; invalid escapes are copied as they
@@ -92,7 +86,7 @@ mod tests {
     fn nonstrict() {
         let mut v = b"a%41+b%zz%4".to_vec();
         let mut inv = 0;
-        assert!(urldecode_nonstrict_inplace(&mut v, &mut inv));
+        urldecode_nonstrict_inplace(&mut v, &mut inv);
         assert_eq!(v, b"aA b%zz%4".to_vec());
         assert_eq!(inv, 2);
     }

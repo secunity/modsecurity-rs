@@ -7,10 +7,9 @@ use crate::chars::{is_space, x2c, xsingle2c};
 /// References:
 ///     http://www.w3.org/TR/REC-CSS2/syndata.html#q4
 ///     http://www.unicode.org/roadmaps/
-fn css_decode_inplace(input: &mut Vec<u8>) -> bool {
+fn css_decode_inplace(input: &mut Vec<u8>) {
     let input_len = input.len();
     let mut d = 0usize;
-    let mut changed = false;
     let mut i = 0usize;
 
     while i < input_len {
@@ -93,13 +92,10 @@ fn css_decode_inplace(input: &mut Vec<u8>) -> bool {
 
                     // Move over.
                     i += j;
-
-                    changed = true;
                 } else if input[i] == b'\n' {
                     // No hexadecimal digits after backslash
                     // A newline character following backslash is ignored.
                     i += 1;
-                    changed = true;
                 } else {
                     // The character after backslash is not a hexadecimal
                     // digit, nor a newline.
@@ -113,7 +109,6 @@ fn css_decode_inplace(input: &mut Vec<u8>) -> bool {
                 // Do not include backslash in output
                 // (continuation to nothing)
                 i += 1;
-                changed = true;
             }
         } else {
             // Character is not a backslash.
@@ -125,32 +120,31 @@ fn css_decode_inplace(input: &mut Vec<u8>) -> bool {
     }
 
     input.truncate(d);
-    changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    css_decode_inplace(value)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
+    css_decode_inplace(value);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn run(input: &[u8]) -> (Vec<u8>, bool) {
+    fn run(input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        let changed = css_decode_inplace(&mut v);
-        (v, changed)
+        css_decode_inplace(&mut v);
+        v
     }
 
     #[test]
     fn decodes() {
-        assert_eq!(run(b"\\41 b"), (b"Ab".to_vec(), true));
-        assert_eq!(run(b"\\ff21"), (b"A".to_vec(), true)); // full width 'A'... + 0x20
-        assert_eq!(run(b"\\0041"), (b"A".to_vec(), true));
-        assert_eq!(run(b"a\\"), (b"a".to_vec(), true));
-        assert_eq!(run(b"\\\nx"), (b"x".to_vec(), true));
-        assert_eq!(run(b"\\zx"), (b"zx".to_vec(), false));
-        assert_eq!(run(b"\\a"), (b"\x0a".to_vec(), true));
+        assert_eq!(run(b"\\41 b"), b"Ab");
+        assert_eq!(run(b"\\ff21"), b"A"); // full width 'A'... + 0x20
+        assert_eq!(run(b"\\0041"), b"A");
+        assert_eq!(run(b"a\\"), b"a");
+        assert_eq!(run(b"\\\nx"), b"x");
+        assert_eq!(run(b"\\zx"), b"zx");
+        assert_eq!(run(b"\\a"), b"\x0a");
     }
 }

@@ -2,8 +2,8 @@
 //! quotes, backslashes and carets, collapses separators into one space,
 //! removes a space before `/` or `(`, and lowercases).
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
     let old_len = value.len();
     let mut d = 0usize;
     let mut space = false;
@@ -38,5 +38,4 @@ pub fn transform(value: &mut Vec<u8>) -> bool {
         }
     }
     value.truncate(d);
-    d != old_len
 }

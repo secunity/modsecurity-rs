@@ -10,7 +10,7 @@
 //!
 //! let t = Transformation::from_name("urlDecode").unwrap();
 //! let mut value = b"a%20b".to_vec();
-//! assert!(t.apply(&mut value, &Context::default()));
+//! t.apply(&mut value, &Context::default());
 //! assert_eq!(value, b"a b");
 //! ```
 //!
@@ -236,8 +236,8 @@ impl Transformation {
         PREFIX_NAMES.iter().find(|(name, _)| text.starts_with(name.as_bytes())).map_or(T::Identity, |&(_, t)| t)
     }
 
-    /// Transforms `value` in place; returns whether it changed.
-    pub fn apply(self, value: &mut Vec<u8>, context: &Context<'_>) -> bool {
+    /// Transforms `value` in place.
+    pub fn apply(self, value: &mut Vec<u8>, context: &Context<'_>) {
         match self {
             T::Base64Decode => base64_decode::transform(value),
             T::Base64DecodeExt => base64_decode_ext::transform(value),
@@ -250,20 +250,11 @@ impl Transformation {
             T::HexEncode => hex_encode::transform(value),
             T::HtmlEntityDecode => html_entity_decode::transform(value),
             T::JsDecode => js_decode::transform(value),
-            T::Length => {
-                *value = value.len().to_string().into_bytes();
-                true
-            }
+            T::Length => *value = value.len().to_string().into_bytes(),
             T::LowerCase => case::lower(value),
             T::UpperCase => case::upper(value),
-            T::Md5 => {
-                *value = md5::Md5::digest(&*value).to_vec();
-                true
-            }
-            T::Sha1 => {
-                *value = sha1::Sha1::digest(&*value).to_vec();
-                true
-            }
+            T::Md5 => *value = md5::Md5::digest(&*value).to_vec(),
+            T::Sha1 => *value = sha1::Sha1::digest(&*value).to_vec(),
             T::NormalisePath => normalise_path::normalize_path_inplace(value, false),
             T::NormalisePathWin => normalise_path::normalize_path_inplace(value, true),
             T::ParityEven7bit => parity_7bit::even(value),
@@ -283,7 +274,7 @@ impl Transformation {
             T::UrlDecodeUni => url_decode_uni::transform(value, context.unicode_map),
             T::UrlEncode => url_encode::transform(value),
             T::Utf8ToUnicode => utf8_to_unicode::transform(value),
-            T::None | T::Identity => false,
+            T::None | T::Identity => {}
         }
     }
 }
@@ -292,10 +283,10 @@ impl Transformation {
 mod tests {
     use super::*;
 
-    fn apply(name: &str, input: &[u8]) -> (bool, Vec<u8>) {
+    fn apply(name: &str, input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        let changed = Transformation::from_name(name).unwrap().apply(&mut v, &Context::default());
-        (changed, v)
+        Transformation::from_name(name).unwrap().apply(&mut v, &Context::default());
+        v
     }
 
     #[test]
@@ -325,17 +316,18 @@ mod tests {
 
     #[test]
     fn simple_kinds() {
-        assert_eq!(apply("length", b"abcd"), (true, b"4".to_vec()));
-        assert_eq!(apply("uppercase", b"aB1"), (true, b"AB1".to_vec()));
-        assert_eq!(apply("lowercase", b"ab1"), (false, b"ab1".to_vec()));
-        assert_eq!(apply("trimLeft", b" a "), (true, b"a ".to_vec()));
-        assert_eq!(apply("trimRight", b" a "), (true, b" a".to_vec()));
-        assert_eq!(apply("urlDecode", b"a%41+"), (true, b"aA ".to_vec()));
-        assert_eq!(chars::string_to_hex(&apply("md5", b"abc").1), "900150983cd24fb0d6963f7d28e17f72");
-        assert_eq!(chars::string_to_hex(&apply("sha1", b"abc").1), "a9993e364706816aba3e25717850c26c9cd0d89d");
-        assert_eq!(apply("none", b"x"), (false, b"x".to_vec()));
-        assert_eq!(apply("normalizePathWin", b"a\\b"), (true, b"a/b".to_vec()));
+        assert_eq!(apply("length", b"abcd"), b"4");
+        assert_eq!(apply("uppercase", b"aB1"), b"AB1");
+        assert_eq!(apply("lowercase", b"ab1"), b"ab1");
+        assert_eq!(apply("trimLeft", b" a "), b"a ");
+        assert_eq!(apply("trimRight", b" a "), b" a");
+        assert_eq!(apply("urlDecode", b"a%41+"), b"aA ");
+        assert_eq!(chars::string_to_hex(&apply("md5", b"abc")), "900150983cd24fb0d6963f7d28e17f72");
+        assert_eq!(chars::string_to_hex(&apply("sha1", b"abc")), "a9993e364706816aba3e25717850c26c9cd0d89d");
+        assert_eq!(apply("none", b"x"), b"x");
+        assert_eq!(apply("normalizePathWin", b"a\\b"), b"a/b");
         let mut v = b"x".to_vec();
-        assert!(!T::Identity.apply(&mut v, &Context::default()));
+        T::Identity.apply(&mut v, &Context::default());
+        assert_eq!(v, b"x");
     }
 }

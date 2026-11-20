@@ -2,12 +2,11 @@
 
 use crate::chars::{isodigit, x2c};
 
-fn inplace(input: &mut Vec<u8>) -> bool {
+fn inplace(input: &mut Vec<u8>) {
     let input_len = input.len();
     // A read at `input_len` (one past the last byte) sees 0.
     let at = |input: &[u8], k: usize| input.get(k).copied().unwrap_or(0);
     let mut d = 0usize;
-    let mut changed = false;
     let mut i = 0usize;
 
     while i < input_len {
@@ -37,7 +36,6 @@ fn inplace(input: &mut Vec<u8>) -> bool {
                 input[d] = c;
                 d += 1;
                 i += 6;
-                changed = true;
             } else if i + 3 < input_len
                 && input[i + 1] == b'x'
                 && input[i + 2].is_ascii_hexdigit()
@@ -47,7 +45,6 @@ fn inplace(input: &mut Vec<u8>) -> bool {
                 input[d] = x2c(&input[i + 2..i + 4]);
                 d += 1;
                 i += 4;
-                changed = true;
             } else if i + 1 < input_len && isodigit(input[i + 1]) {
                 // \OOO (only one byte, \000 - \377)
                 let mut buf = [0u8; 3];
@@ -71,7 +68,6 @@ fn inplace(input: &mut Vec<u8>) -> bool {
                     input[d] = v as u8;
                     d += 1;
                     i += 1 + j;
-                    changed = true;
                 }
             } else if i + 1 < input_len {
                 // \C
@@ -91,7 +87,6 @@ fn inplace(input: &mut Vec<u8>) -> bool {
                 input[d] = c;
                 d += 1;
                 i += 2;
-                changed = true;
             } else {
                 // Not enough bytes
                 while i < input_len {
@@ -108,29 +103,28 @@ fn inplace(input: &mut Vec<u8>) -> bool {
     }
 
     input.truncate(d);
-    changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    inplace(value)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
+    inplace(value);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn run(input: &[u8]) -> (Vec<u8>, bool) {
+    fn run(input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        let changed = inplace(&mut v);
-        (v, changed)
+        inplace(&mut v);
+        v
     }
 
     #[test]
     fn decodes() {
-        assert_eq!(run(b"\\u0041\\uff21\\x42"), (b"AAB".to_vec(), true));
-        assert_eq!(run(b"\\101\\477"), (b"A'7".to_vec(), true));
-        assert_eq!(run(b"\\q\\"), (b"q\\".to_vec(), true));
-        assert_eq!(run(b"plain"), (b"plain".to_vec(), false));
+        assert_eq!(run(b"\\u0041\\uff21\\x42"), b"AAB");
+        assert_eq!(run(b"\\101\\477"), b"A'7");
+        assert_eq!(run(b"\\q\\"), b"q\\");
+        assert_eq!(run(b"plain"), b"plain");
     }
 }

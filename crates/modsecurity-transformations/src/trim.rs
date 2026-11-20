@@ -3,28 +3,22 @@
 
 use crate::chars::is_space;
 
-/// Removes leading whitespace; returns whether any was removed.
-pub fn ltrim(s: &mut Vec<u8>) -> bool {
+/// Removes leading whitespace.
+pub fn ltrim(s: &mut Vec<u8>) {
     let start = s.iter().position(|&c| !is_space(c)).unwrap_or(s.len());
     s.drain(..start);
-    start != 0
 }
 
-/// Removes trailing whitespace; returns whether any was removed.
-pub fn rtrim(s: &mut Vec<u8>) -> bool {
+/// Removes trailing whitespace.
+pub fn rtrim(s: &mut Vec<u8>) {
     let end = s.iter().rposition(|&c| !is_space(c)).map_or(0, |p| p + 1);
-    let changed = end != s.len();
     s.truncate(end);
-    changed
 }
 
-/// Removes leading and trailing whitespace; returns whether any was
-/// removed.
-pub fn trim(s: &mut Vec<u8>) -> bool {
-    let mut changed = false;
-    changed |= rtrim(s);
-    changed |= ltrim(s);
-    changed
+/// Removes leading and trailing whitespace.
+pub fn trim(s: &mut Vec<u8>) {
+    rtrim(s);
+    ltrim(s);
 }
 
 #[cfg(test)]
@@ -34,14 +28,15 @@ mod tests {
     #[test]
     fn trims() {
         let mut v = b" \t a b \r\n".to_vec();
-        assert!(trim(&mut v));
+        trim(&mut v);
         assert_eq!(v, b"a b");
-        assert!(!trim(&mut v));
+        trim(&mut v);
+        assert_eq!(v, b"a b");
         let mut v = b"   ".to_vec();
-        assert!(ltrim(&mut v));
+        ltrim(&mut v);
         assert!(v.is_empty());
         let mut v = b"  x ".to_vec();
-        assert!(rtrim(&mut v));
+        rtrim(&mut v);
         assert_eq!(v, b"  x");
     }
 }

@@ -88,7 +88,7 @@ fn lookup_named_entity(name: &[u8]) -> Option<u8> {
     NAMED_ENTITIES.iter().find(|(n, _)| n.len() == name.len() && n.eq_ignore_ascii_case(name)).map(|&(_, ch)| ch)
 }
 
-fn inplace(input: &mut Vec<u8>) -> bool {
+fn inplace(input: &mut Vec<u8>) {
     let input_len = input.len();
     let mut d = 0usize;
     let mut i = 0usize;
@@ -180,35 +180,33 @@ fn inplace(input: &mut Vec<u8>) -> bool {
         }
     }
 
-    let changed = d != input_len;
     input.truncate(d);
-    changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    inplace(value)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
+    inplace(value);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn run(input: &[u8]) -> (Vec<u8>, bool) {
+    fn run(input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        let changed = inplace(&mut v);
-        (v, changed)
+        inplace(&mut v);
+        v
     }
 
     #[test]
     fn decodes() {
-        assert_eq!(run(b"&lt;&#65;&#x42&LT"), (b"<AB<".to_vec(), true));
-        assert_eq!(run(b"&ltest;"), (b"&ltest;".to_vec(), false));
-        assert_eq!(run(b"&#;&#x;&"), (b"&#;&#x;&".to_vec(), false));
-        assert_eq!(run(b"&nbsp;"), (vec![NBSP], true));
+        assert_eq!(run(b"&lt;&#65;&#x42&LT"), b"<AB<");
+        assert_eq!(run(b"&ltest;"), b"&ltest;");
+        assert_eq!(run(b"&#;&#x;&"), b"&#;&#x;&");
+        assert_eq!(run(b"&nbsp;"), vec![NBSP]);
         // strtol saturates at LONG_MAX -> 0xff
-        assert_eq!(run(b"&#99999999999999999999999;"), (vec![0xff], true));
-        assert_eq!(run(b"&#x1ffffffffffffffff;"), (vec![0xff], true));
-        assert_eq!(run(b"&#321;"), (vec![321u32 as u8], true));
+        assert_eq!(run(b"&#99999999999999999999999;"), vec![0xff]);
+        assert_eq!(run(b"&#x1ffffffffffffffff;"), vec![0xff]);
+        assert_eq!(run(b"&#321;"), vec![321u32 as u8]);
     }
 }

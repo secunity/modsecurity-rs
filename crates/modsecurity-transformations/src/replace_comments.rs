@@ -1,9 +1,8 @@
 //! The `t:replaceComments` transformation: replaces each `/* */` comment
 //! (also an unterminated one) with a single space.
 
-fn inplace(input: &mut Vec<u8>) -> bool {
+fn inplace(input: &mut Vec<u8>) {
     let input_len = input.len();
-    let mut changed = false;
     let mut incomment = false;
     let mut i = 0usize;
     let mut j = 0usize;
@@ -13,7 +12,6 @@ fn inplace(input: &mut Vec<u8>) -> bool {
             if input[i] == b'/' && i + 1 < input_len && input[i + 1] == b'*' {
                 incomment = true;
                 i += 2;
-                changed = true;
             } else {
                 input[j] = input[i];
                 i += 1;
@@ -35,10 +33,9 @@ fn inplace(input: &mut Vec<u8>) -> bool {
     }
 
     input.truncate(j);
-    changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    inplace(value)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
+    inplace(value);
 }

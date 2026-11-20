@@ -5,8 +5,7 @@
 use crate::UnicodeMap;
 use crate::chars::x2c;
 
-fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
-    let mut changed = false;
+fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) {
     let input_len = input.len();
     let mut d = 0usize;
     let mut i = 0usize;
@@ -68,7 +67,6 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
                         }
                         d += 1;
                         i += 6;
-                        changed = true;
                     } else {
                         // Invalid data, skip %u.
                         input[d] = input[i];
@@ -98,7 +96,6 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
                         input[d] = x2c(&input[i + 1..i + 3]);
                         d += 1;
                         i += 3;
-                        changed = true;
                     } else {
                         // Not a valid encoding, skip this %
                         input[d] = input[i];
@@ -116,7 +113,6 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
             // Character is not a percent sign.
             if input[i] == b'+' {
                 input[d] = b' ';
-                changed = true;
             } else {
                 input[d] = input[i];
             }
@@ -126,31 +122,30 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
     }
 
     input.truncate(d);
-    changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
-    inplace(value, map)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>, map: Option<&UnicodeMap>) {
+    inplace(value, map);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn run(input: &[u8]) -> (Vec<u8>, bool) {
+    fn run(input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        let changed = inplace(&mut v, None);
-        (v, changed)
+        inplace(&mut v, None);
+        v
     }
 
     #[test]
     fn decodes_without_a_map() {
-        assert_eq!(run(b"%41+%u0042%uff21"), (b"A BA".to_vec(), true));
-        assert_eq!(run(b"%u00"), (b"%u00".to_vec(), false));
-        assert_eq!(run(b"%uzzzz"), (b"%uzzzz".to_vec(), false));
-        assert_eq!(run(b"%4"), (b"%4".to_vec(), false));
-        assert_eq!(run(b"%zz"), (b"%zz".to_vec(), false));
+        assert_eq!(run(b"%41+%u0042%uff21"), b"A BA");
+        assert_eq!(run(b"%u00"), b"%u00");
+        assert_eq!(run(b"%uzzzz"), b"%uzzzz");
+        assert_eq!(run(b"%4"), b"%4");
+        assert_eq!(run(b"%zz"), b"%zz");
     }
 
     #[test]
@@ -158,13 +153,13 @@ mod tests {
         let mut table = UnicodeMap::default();
         table.change(0x0391, i32::from(b'A'));
         let mut v = b"%u0391%u00e9%uff21".to_vec();
-        assert!(inplace(&mut v, Some(&table)));
+        inplace(&mut v, Some(&table));
         // mapped, unmapped (lower byte), unmapped full width (+0x20)
         assert_eq!(v, b"A\xe9A");
 
         // Without a map.
         let mut v = b"%u0391".to_vec();
-        assert!(inplace(&mut v, None));
+        inplace(&mut v, None);
         assert_eq!(v, b"\x91");
     }
 }

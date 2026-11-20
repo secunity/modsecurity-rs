@@ -10,14 +10,13 @@ fn push_code_point(data: &mut Vec<u8>, d: u32) {
     data.extend_from_slice(format!("%u{d:04x}").as_bytes());
 }
 
-fn encode(value: &mut Vec<u8>) -> bool {
+fn encode(value: &mut Vec<u8>) {
     let input = value.as_slice();
     let input_len = input.len();
     // The length checks below use the whole input length, not the bytes
     // left, so a sequence may be read past the last byte; such reads see
     // 0, which fails every continuation-byte check.
     let at = |k: usize| input.get(k).copied().unwrap_or(0);
-    let mut changed = false;
     let mut count: usize = 0;
     let bytes_left = input_len;
 
@@ -59,7 +58,6 @@ fn encode(value: &mut Vec<u8>) -> bool {
                     // compute character number
                     d = ((u32::from(c) & 0x1F) << 6) | (u32::from(at(i + 1)) & 0x3F);
                     push_code_point(&mut data, d);
-                    changed = true;
                 }
             }
         } else if (c & 0xF0) == 0xE0 {
@@ -82,7 +80,6 @@ fn encode(value: &mut Vec<u8>) -> bool {
                         | ((u32::from(at(i + 1)) & 0x3F) << 6)
                         | (u32::from(at(i + 2)) & 0x3F);
                     push_code_point(&mut data, d);
-                    changed = true;
                 }
             }
         } else if (c & 0xF8) == 0xF0 {
@@ -115,7 +112,6 @@ fn encode(value: &mut Vec<u8>) -> bool {
                         | ((u32::from(at(i + 2)) & 0x3F) << 6)
                         | (u32::from(at(i + 3)) & 0x3F);
                     push_code_point(&mut data, d);
-                    changed = true;
                 }
             }
         } else {
@@ -151,36 +147,35 @@ fn encode(value: &mut Vec<u8>) -> bool {
     }
 
     *value = data;
-    changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    encode(value)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
+    encode(value);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn run(input: &[u8]) -> (Vec<u8>, bool) {
+    fn run(input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        let changed = encode(&mut v);
-        (v, changed)
+        encode(&mut v);
+        v
     }
 
     #[test]
     fn encodes() {
-        assert_eq!(run("aé€😀".as_bytes()), (b"a%u00e9%u20ac%u1f600".to_vec(), true));
-        assert_eq!(run(b"plain"), (b"plain".to_vec(), false));
+        assert_eq!(run("aé€😀".as_bytes()), b"a%u00e9%u20ac%u1f600");
+        assert_eq!(run(b"plain"), b"plain");
         // NUL inside the value is dropped, a final NUL is kept
-        assert_eq!(run(b"a\0b\0"), (b"ab\0".to_vec(), false));
+        assert_eq!(run(b"a\0b\0"), b"ab\0");
         // truncated / invalid sequences produce nothing for the lead byte
-        assert_eq!(run(b"ab\xc3"), (b"ab".to_vec(), false));
-        assert_eq!(run(b"\xc3("), (b"(".to_vec(), false));
+        assert_eq!(run(b"ab\xc3"), b"ab");
+        assert_eq!(run(b"\xc3("), b"(");
         // overlong encodings also copy the lead byte
-        assert_eq!(run(b"\xc0\xaf"), (b"%u002f\xc0".to_vec(), true));
+        assert_eq!(run(b"\xc0\xaf"), b"%u002f\xc0");
         // invalid first byte copied as is
-        assert_eq!(run(b"\xff"), (b"\xff".to_vec(), false));
+        assert_eq!(run(b"\xff"), b"\xff");
     }
 }

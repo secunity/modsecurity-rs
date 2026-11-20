@@ -5,12 +5,11 @@ use modsecurity_compat::cnum::strtoll;
 
 use crate::chars::{isodigit, x2c};
 
-fn ansi_c_sequences_decode_inplace(input: &mut Vec<u8>) -> bool {
+fn ansi_c_sequences_decode_inplace(input: &mut Vec<u8>) {
     let input_len = input.len();
     // A read at `input_len` (one past the last byte) sees 0.
     let at = |input: &[u8], k: usize| input.get(k).copied().unwrap_or(0);
     let mut d = 0usize;
-    let mut changed = false;
     let mut i = 0usize;
 
     while i < input_len {
@@ -74,8 +73,6 @@ fn ansi_c_sequences_decode_inplace(input: &mut Vec<u8>) -> bool {
                 input[d] = c as u8;
                 d += 1;
             }
-
-            changed = true;
         } else {
             // Input character not a backslash, copy it.
             input[d] = input[i];
@@ -85,30 +82,29 @@ fn ansi_c_sequences_decode_inplace(input: &mut Vec<u8>) -> bool {
     }
 
     input.truncate(d);
-    changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    ansi_c_sequences_decode_inplace(value)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
+    ansi_c_sequences_decode_inplace(value);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn run(input: &[u8]) -> (Vec<u8>, bool) {
+    fn run(input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        let changed = ansi_c_sequences_decode_inplace(&mut v);
-        (v, changed)
+        ansi_c_sequences_decode_inplace(&mut v);
+        v
     }
 
     #[test]
     fn decodes() {
-        assert_eq!(run(b"\\n\\x41\\101"), (b"\nAA".to_vec(), true));
+        assert_eq!(run(b"\\n\\x41\\101"), b"\nAA");
         // octal above one byte wraps (strtol result truncated to a byte)
-        assert_eq!(run(b"\\777"), (vec![0xff], true));
-        assert_eq!(run(b"\\xZ"), (b"xZ".to_vec(), true));
-        assert_eq!(run(b"abc\\"), (b"abc\\".to_vec(), false));
+        assert_eq!(run(b"\\777"), vec![0xff]);
+        assert_eq!(run(b"\\xZ"), b"xZ");
+        assert_eq!(run(b"abc\\"), b"abc\\");
     }
 }

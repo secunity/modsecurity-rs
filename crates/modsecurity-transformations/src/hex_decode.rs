@@ -4,10 +4,7 @@ use crate::chars::x2c;
 
 /// Decodes pairs of hex digits in place (no validation: invalid digits give
 /// garbage bytes, and a trailing odd character is dropped).
-fn inplace(value: &mut Vec<u8>) -> bool {
-    if value.is_empty() {
-        return false;
-    }
+fn inplace(value: &mut Vec<u8>) {
     let len = value.len();
     let mut d = 0usize;
     let mut i = 0usize;
@@ -17,10 +14,9 @@ fn inplace(value: &mut Vec<u8>) -> bool {
         i += 2;
     }
     value.truncate(d);
-    true
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    inplace(value)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
+    inplace(value);
 }

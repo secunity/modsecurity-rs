@@ -9,15 +9,10 @@ fn mytolower(ch: u8) -> u8 {
 }
 
 /// Decodes SQL hex literals (`0xHHHH...`) in place.
-fn inplace(value: &mut Vec<u8>) -> bool {
-    if value.is_empty() {
-        return false;
-    }
-
+fn inplace(value: &mut Vec<u8>) {
     let end = value.len();
     let mut d = 0usize;
     let mut data = 0usize;
-    let mut changed = false;
 
     while data < end {
         if data + 3 < end
@@ -35,7 +30,6 @@ fn inplace(value: &mut Vec<u8>) -> bool {
                     break;
                 }
             }
-            changed = true;
         } else {
             value[d] = value[data];
             d += 1;
@@ -44,10 +38,9 @@ fn inplace(value: &mut Vec<u8>) -> bool {
     }
 
     value.truncate(d);
-    changed
 }
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
-    inplace(value)
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
+    inplace(value);
 }

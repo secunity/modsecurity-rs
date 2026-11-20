@@ -3,8 +3,8 @@
 
 use crate::chars::is_space;
 
-/// Transforms `value` in place; returns whether it changed.
-pub fn transform(value: &mut Vec<u8>) -> bool {
+/// Transforms `value` in place.
+pub fn transform(value: &mut Vec<u8>) {
     let old_len = value.len();
     let mut in_white_space = false;
     let mut d = 0usize;
@@ -24,5 +24,4 @@ pub fn transform(value: &mut Vec<u8>) -> bool {
         }
     }
     value.truncate(d);
-    d != old_len
 }
