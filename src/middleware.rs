@@ -51,10 +51,9 @@ use http_body_util::{BodyExt, Either, Full};
 use tower_layer::Layer;
 use tower_service::Service;
 
+use crate::inspection::{Blocked, Inspection};
 use crate::instance::ModSecurity;
 use crate::rules_set::RulesSet;
-use crate::rules_set::properties::RuleEngine;
-use crate::transaction::Transaction;
 
 /// The response body: buffered by the middleware (its own responses, and
 /// inspected bodies), or the inner service's.
@@ -126,24 +125,16 @@ where
     }
 }
 
-/// The response that ends the transaction when the rules intervene, after
-/// recording its status and running the logging phase. A disruptive
-/// intervention with nothing to send (status 200, no URL) lets the
-/// request go on, as in the nginx connector.
-fn intercept<B>(t: &mut Transaction<'_>) -> Option<Response<ResponseBody<B>>> {
-    let it = t.intervention()?;
-    let response = it.to_response::<Full<Bytes>>()?;
-    if it.url.is_none() {
-        t.update_status_code(it.status);
-    }
-    t.process_logging();
-    Some(response.map(Either::Left))
+/// The response that ends the exchange when the rules interrupt it: the
+/// intervention's (the logging phase runs as `blocked` is dropped).
+fn intercepted<B>(blocked: Blocked<'_>) -> Response<ResponseBody<B>> {
+    let response = blocked.intervention().to_response::<Full<Bytes>>();
+    // An intervention always has something to send (see `Blocked`).
+    response.unwrap_or_default().map(Either::Left)
 }
 
-/// An empty response with `status` that ends the transaction.
-fn fail<B>(t: &mut Transaction<'_>, status: StatusCode) -> Response<ResponseBody<B>> {
-    t.update_status_code(status.as_u16().into());
-    t.process_logging();
+/// An empty response with `status`.
+fn empty<B>(status: StatusCode) -> Response<ResponseBody<B>> {
     let mut response = Response::new(Either::Left(Full::default()));
     *response.status_mut() = status;
     response
@@ -160,55 +151,47 @@ where
     ReqBody: Body + From<Bytes>,
     ResBody: Body<Data = Bytes>,
 {
-    let mut t = Transaction::new(engine, rules, None);
-
     let unknown = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0));
     let c = request.extensions().get::<Connection>().copied();
-    t.process_connection_addrs(c.map_or(unknown, |c| c.client), c.map_or(unknown, |c| c.server));
-    if let Some(response) = intercept(&mut t) {
-        return Ok(response);
-    }
-    t.process_request_head(&request);
-    if let Some(response) = intercept(&mut t) {
-        return Ok(response);
-    }
+    let head =
+        Inspection::new(engine, rules).connection(c.map_or(unknown, |c| c.client), c.map_or(unknown, |c| c.server));
+    let request_body = match head.and_then(|head| head.request(&request)) {
+        Ok(stage) => stage,
+        Err(blocked) => return Ok(intercepted(blocked)),
+    };
 
     let (parts, body) = request.into_parts();
     let Ok(body) = body.collect().await.map(|b| b.to_bytes()) else {
-        return Ok(fail(&mut t, StatusCode::BAD_REQUEST));
+        request_body.abort(StatusCode::BAD_REQUEST.as_u16());
+        return Ok(empty(StatusCode::BAD_REQUEST));
     };
-    t.append_request_body(&body);
-    t.process_request_body();
-    if let Some(response) = intercept(&mut t) {
-        return Ok(response);
-    }
+    let response_head = match request_body.write(&body).and_then(|stage| stage.finish()) {
+        Ok(stage) => stage,
+        Err(blocked) => return Ok(intercepted(blocked)),
+    };
 
     let response = inner.call(Request::from_parts(parts, ReqBody::from(body))).await?;
-    t.process_response_head(&response);
-    if let Some(response) = intercept(&mut t) {
-        return Ok(response);
-    }
+    let response_body = match response_head.response(&response) {
+        Ok(stage) => stage,
+        Err(blocked) => return Ok(intercepted(blocked)),
+    };
 
-    let inspected = rules.properties.settings.sec_response_body_access == Some(true)
-        && t.rule_engine_state() != Some(RuleEngine::Disabled);
-    let response = if inspected {
+    // An inspected body is read completely; another one streams through.
+    let (response, verdict) = if response_body.is_inspected() {
         let (parts, body) = response.into_parts();
         let Ok(body) = body.collect().await.map(|b| b.to_bytes()) else {
-            return Ok(fail(&mut t, StatusCode::BAD_GATEWAY));
+            response_body.abort(StatusCode::BAD_GATEWAY.as_u16());
+            return Ok(empty(StatusCode::BAD_GATEWAY));
         };
-        t.append_response_body(&body);
-        t.process_response_body();
-        Response::from_parts(parts, Either::Left(Full::new(body)))
+        let verdict = response_body.write(&body).and_then(|stage| stage.finish());
+        (Response::from_parts(parts, Either::Left(Full::new(body))), verdict)
     } else {
-        t.process_response_body();
-        response.map(Either::Right)
+        (response.map(Either::Right), response_body.finish())
     };
-    if let Some(response) = intercept(&mut t) {
-        return Ok(response);
+    match verdict {
+        Ok(()) => Ok(response),
+        Err(blocked) => Ok(intercepted(blocked)),
     }
-
-    t.process_logging();
-    Ok(response)
 }
 
 #[cfg(test)]

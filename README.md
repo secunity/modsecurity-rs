@@ -52,35 +52,48 @@ builds the core without the optional components.
 ## Using it from Rust
 
 ```rust
-use modsecurity::{ModSecurity, RulesSet, Transaction};
+use modsecurity::inspection::{Blocked, Inspection};
+use modsecurity::{ModSecurity, RulesSet};
 
-let ms = ModSecurity::new();
+let engine = ModSecurity::new();
 let mut rules = RulesSet::new();
 if let Err(error) = rules.load_from_uri("modsecurity.conf") {
     eprintln!("{error}");
 }
 
-let mut t = Transaction::new(&ms, &rules, None);
-t.process_connection("10.0.0.7", 51234, "10.0.0.1", 80);
-t.process_uri(b"/index.php?id=1", b"GET", b"1.1");
-t.add_request_header(b"Host", b"www.example.com");
-t.process_request_headers();
-// ... request body, response headers/body, process_logging()
-if let Some(intervention) = t.intervention() {
-    println!("status {}", intervention.status);
+// One exchange, stage by stage: each step gives the next stage, or
+// `Blocked` when the rules interrupt the exchange.
+let outcome = (|| {
+    let client = "10.0.0.7:51234".parse().unwrap();
+    let server = "10.0.0.1:80".parse().unwrap();
+    let head = Inspection::new(&engine, &rules).connection(client, server)?;
+    let body = head.request_head(b"GET", b"/index.php?id=1", b"1.1", [("Host", "www.example.com")])?;
+    let response = body.finish()?; // or .write(piece)? for each piece of a body first
+    // ... the application answers ...
+    let response_body = response.response_head(200, "HTTP 1.1", [("Content-Type", "text/html")])?;
+    response_body.write(b"<html>...</html>")?.finish()
+})();
+if let Err(blocked) = outcome {
+    println!("status {}", blocked.intervention().status);
 }
 ```
 
-The API is the types at the crate root: `ModSecurity`, `RulesSet`,
-`Transaction`, `Intervention`, the server log callback (`ServerLogEntry`,
-`RuleMessage`) and the `DebugLog` trait. `ModSecurity` and `RulesSet` are
-`Send + Sync` (share them between worker threads); a `Transaction` borrows
-both.
+The stages of `modsecurity::inspection` put the order of the phases in the
+types, and the audit log is written when the exchange ends, wherever that
+is. Underneath is a `Transaction`, which can also be driven directly
+(`process_uri`, `add_request_header`, `process_request_headers`,
+`intervention`, ...): that is what the C API does.
+
+The API is the types at the crate root (`ModSecurity`, `RulesSet`,
+`Transaction`, `Intervention`, `RuleMessage`, the server log callback and
+the `DebugLog` trait) and `inspection`. `ModSecurity` and `RulesSet` are
+`Send + Sync` (share them between worker threads); an inspection borrows
+both. What the rules found is in `Transaction::rule_messages`, as data.
 
 ### In a Rust HTTP server
 
 With the `tower` feature, `modsecurity::middleware::ModSecurityLayer` runs
-the transaction phases around any tower HTTP service (axum, hyper, tonic,
+an inspection around any tower HTTP service (axum, hyper, tonic,
 ...) and answers interventions itself:
 
 ```rust,ignore
@@ -93,8 +106,9 @@ let app = axum::Router::new().route("/", get(handler)).layer(layer);
 The client and server addresses come from a `middleware::Connection`
 request extension. `examples/axum` is a complete server (`cargo run -p
 modsecurity-axum-example`). The `http` feature alone adds
-`Transaction::process_request_head`/`process_response_head` for `http`
-crate requests and responses, and `Intervention::to_response`.
+the stages' `request`/`response` (and `Transaction::process_request_head`/
+`process_response_head`) for `http` crate requests and responses, and
+`Intervention::to_response`.
 
 ## Tests
 

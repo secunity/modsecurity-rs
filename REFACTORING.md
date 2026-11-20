@@ -1324,3 +1324,19 @@ the error log line and the `H` lines of the native audit log, `json.rs`
 the entry of `messages` in the JSON audit log (it was written out in
 `audit_log/format.rs`). No behavior change.
 
+## A staged API: `modsecurity::inspection`
+
+`Transaction` has the shape of the C API: any of its `process_*` and
+`add_*` methods can be called at any time, and nothing makes the caller
+ask for the intervention after a phase. `inspection` puts the order in
+types, on top of it: `Inspection` → `RequestHead` → `RequestBody` →
+`ResponseHead` → `ResponseBody`. A step consumes its stage and gives
+`Result<next stage, Blocked>`, so `?` carries an intervention out; the
+logging phase runs when the last value of the exchange is dropped (after
+the last step, when a `Blocked` goes away, on `abort(status)`, or when a
+stage is abandoned).
+
+The tower middleware is written with it (its tests are unchanged), and it
+is what the README and the crate documentation show first. `Transaction`
+is unchanged: the C API and the nginx connector use it directly.
+

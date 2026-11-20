@@ -1,29 +1,35 @@
 //! libmodsecurity v3, the ModSecurity web application firewall engine, in
 //! Rust.
 //!
-//! The API is the handful of types re-exported here: a [`ModSecurity`]
-//! engine instance, the [`RulesSet`] loaded from SecLang configuration,
-//! and a [`Transaction`] per HTTP exchange, which the connector feeds phase
-//! by phase and asks for an [`Intervention`]. The same engine is offered to
-//! C as libmodsecurity's `msc_*` API by the `modsecurity-capi` crate.
+//! The API is a [`ModSecurity`] engine instance, the [`RulesSet`] loaded
+//! from SecLang configuration, and one inspection per HTTP exchange:
+//! [`inspection`] takes it stage by stage (the connection, the request
+//! head and body, the response head and body) and each step answers with
+//! the next stage or with the decision to interrupt the exchange.
 //!
 //! ```no_run
-//! use modsecurity::{ModSecurity, RulesSet, Transaction};
+//! use modsecurity::inspection::{Blocked, Inspection};
+//! use modsecurity::{ModSecurity, RulesSet};
 //!
-//! let modsec = ModSecurity::new();
+//! let engine = ModSecurity::new();
 //! let mut rules = RulesSet::new();
 //! rules.load_from_uri("rules.conf").expect("valid rules");
 //!
-//! let mut transaction = Transaction::new(&modsec, &rules, None);
-//! transaction.process_connection("127.0.0.1", 12345, "127.0.0.1", 80);
-//! transaction.process_uri(b"/?q=1", b"GET", b"1.1");
-//! transaction.add_request_header(b"Host", b"example.com");
-//! transaction.process_request_headers();
-//!
-//! if let Some(it) = transaction.intervention() {
-//!     println!("There is an intervention: status {}", it.status);
+//! let outcome = (|| {
+//!     let (client, server) = ("127.0.0.1:12345".parse().unwrap(), "127.0.0.1:80".parse().unwrap());
+//!     let head = Inspection::new(&engine, &rules).connection(client, server)?;
+//!     let body = head.request_head(b"GET", b"/?q=1", b"1.1", [("Host", "example.com")])?;
+//!     body.finish().map(drop)
+//! })();
+//! if let Err(blocked) = outcome {
+//!     println!("There is an intervention: status {}", blocked.intervention().status);
 //! }
 //! ```
+//!
+//! Underneath is a [`Transaction`], which a connector that keeps the state
+//! itself feeds phase by phase and asks for an [`Intervention`]; the same
+//! engine is offered to C as libmodsecurity's `msc_*` API by the
+//! `modsecurity-capi` crate.
 
 // The calls into C libraries are in the `modsecurity-native` crate.
 #![forbid(unsafe_code)]
@@ -47,6 +53,7 @@ pub(crate) use modsecurity_collections as collection;
 pub(crate) mod debug_log;
 #[cfg(feature = "http")]
 mod http_support;
+pub mod inspection;
 pub(crate) mod instance;
 pub(crate) mod intervention;
 pub(crate) mod lua;
