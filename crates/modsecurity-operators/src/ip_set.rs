@@ -12,7 +12,6 @@
 //! reads entries with C habits (`atoi`, fixed buffers) that refuse `/0`
 //! and `::1/128` and accept `/24abc`.
 
-use std::io::Read;
 use std::net::IpAddr;
 
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
@@ -57,12 +56,10 @@ impl IpSet {
 
     /// Adds the entries of the file `file`.
     pub fn add_from_file(&mut self, file: &str) -> Result<(), String> {
-        let Ok(mut f) = std::fs::File::open(file) else {
+        // A file that cannot be read completely is not used at all.
+        let Ok(content) = std::fs::read(file) else {
             return Err(format!("Failed to open file: {}", file));
         };
-        let mut content = Vec::new();
-        // A read error is not reported: what was read so far is used.
-        let _ = f.read_to_end(&mut content);
         Self::loaded(self.add_from_buffer(&content))
     }
 
@@ -397,6 +394,16 @@ mod tests {
 
     /// A NUL byte is not the end of the text: an entry with one is not an
     /// entry, and a value with one is not an address.
+    /// A file that can be opened and not read (a directory, here) is an
+    /// error, not an empty list. (Its content up to the failure used to be
+    /// taken as the list.)
+    #[test]
+    fn a_file_that_cannot_be_read() {
+        let directory = std::env::temp_dir();
+        let error = IpSet::new().add_from_file(directory.to_str().unwrap()).unwrap_err();
+        assert!(error.starts_with("Failed to open file: "), "{error}");
+    }
+
     #[test]
     fn nul_bytes() {
         assert!(set("1.2.3.4\0").is_none());

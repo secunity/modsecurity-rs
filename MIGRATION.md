@@ -307,6 +307,18 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **A list file that cannot be read is an error.** *C++* (and this
+  engine until now): `@pmFromFile`, `@ipMatchFromFile` and `@fuzzyHash`
+  open their file and use what could be read of it; a read that fails
+  part way (or a directory given as the file) gives a shorter or empty
+  list without a message, and the rule loads. *Here:* the rule does not
+  load ("Failed to open file"). Regression test:
+  `ip_set::tests::a_file_that_cannot_be_read`.
+- **Persistent collections: a storage that fails is reported.** With the
+  LMDB backend, a write or read that fails is written to the debug log
+  (level 1, "Persistent collection: put failed (code ...)"); the
+  transaction goes on as before (nothing stored, nothing found). An LMDB
+  file whose database cannot be opened is not used.
 - **The temporary file of an upload that was cut short is deleted.**
   *C++* (and this engine until now): when the body ends inside a file
   part (no final boundary), that part's temporary file is not among the

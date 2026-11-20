@@ -1,7 +1,5 @@
 //! The `@pmFromFile` (`@pmf`) operator.
 
-use std::io::Read;
-
 use crate::pm::Pm;
 use crate::{Context, Operator, Param, Resources};
 use modsecurity_compat::chars::{is_space, split};
@@ -73,12 +71,10 @@ impl Operator for PmFromFile {
                 self.add_lines(&content);
             } else {
                 let lookup = resources.find(&token, config);
-                let Ok(mut file) = std::fs::File::open(lookup.path.unwrap_or_default()) else {
+                // A file that cannot be read completely is not used at all.
+                let Ok(content) = std::fs::read(lookup.path.unwrap_or_default()) else {
                     return Err(format!("Failed to open file: '{}'. {}", token, lookup.looked_at));
                 };
-                let mut content = Vec::new();
-                // A read error is not reported: what was read so far is used.
-                let _ = file.read_to_end(&mut content);
                 self.add_lines(&content);
             }
         }

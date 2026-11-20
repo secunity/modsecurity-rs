@@ -40,8 +40,6 @@ impl Operator for FuzzyHash {
 
     #[cfg(feature = "ssdeep")]
     fn init(&mut self, param2: &str, resources: &dyn Resources) -> Result<(), String> {
-        use std::io::Read;
-
         let param = self.param.literal.clone();
         let Some(pos) = param.iter().rposition(|&c| c == b' ') else {
             return Err("Please use @fuzzyHash with filename and value".to_string());
@@ -55,12 +53,10 @@ impl Operator for FuzzyHash {
         self.threshold = threshold;
 
         let lookup = resources.find(&file, param2);
-        let Ok(mut f) = std::fs::File::open(lookup.path.unwrap_or_default()) else {
+        // A file that cannot be read completely is not used at all.
+        let Ok(content) = std::fs::read(lookup.path.unwrap_or_default()) else {
             return Err(format!("Failed to open file: {}. {}", String::from_utf8_lossy(&param), lookup.looked_at));
         };
-        let mut content = Vec::new();
-        // A read error is not reported: what was read so far is used.
-        let _ = f.read_to_end(&mut content);
 
         let mut lines: Vec<&[u8]> = content.split(|&c| c == b'\n').collect();
         if content.is_empty() || content.ends_with(b"\n") {
