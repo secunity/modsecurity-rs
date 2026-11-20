@@ -717,14 +717,31 @@ impl<V> UnorderedMultimap<V> {
             self.free.push(i);
             removed += 1;
         }
+        // The buckets point at the node before their first element: fix
+        // the ones the removal affects (the removed elements' bucket, and
+        // the bucket of the element that now follows `prev`).
+        let next_bkt = n.map(|i| self.bucket_index(self.node(i).hash));
+        if self.buckets[bkt] == Some(prev) {
+            // The removed elements began their bucket.
+            if next_bkt != Some(bkt) {
+                if let Some(next_bkt) = next_bkt {
+                    self.buckets[next_bkt] = Some(prev);
+                }
+                self.buckets[bkt] = None;
+            }
+        } else if let Some(next_bkt) = next_bkt
+            && next_bkt != bkt
+        {
+            self.buckets[next_bkt] = Some(prev);
+        }
         self.set_next(prev, n);
         self.element_count -= removed;
-        self.rebuild_buckets();
         removed
     }
 
-    /// Recomputes each bucket's "before" pointer from the node list. This is
-    /// exactly the invariant libstdc++ maintains incrementally on erase.
+    /// Recomputes each bucket's "before" pointer from the node list: what
+    /// `erase` maintains step by step, for the tests to compare with.
+    #[cfg(test)]
     fn rebuild_buckets(&mut self) {
         for b in self.buckets.iter_mut() {
             *b = None;
@@ -833,5 +850,28 @@ mod tests {
             n += 1;
         }
         assert!(n > 0);
+    }
+
+    /// `erase` keeps the buckets as a full recomputation would have them.
+    #[test]
+    fn erase_keeps_the_buckets() {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(11);
+        for reserve in [0, 10, 1000] {
+            let mut m: UnorderedMultimap<u32> = UnorderedMultimap::with_reserve(reserve);
+            let key = |n: u32| format!("k{}", n % 97).into_bytes();
+            for step in 0..4000 {
+                let n = rng.random_range(0..400);
+                if rng.random_range(0..3) == 0 {
+                    m.erase(&key(n));
+                } else {
+                    m.insert(key(n), step);
+                }
+                let mut recomputed = m.clone();
+                recomputed.rebuild_buckets();
+                assert_eq!(m.buckets, recomputed.buckets, "step {step}");
+                assert_eq!(m.iter().count(), m.len());
+            }
+        }
     }
 }
