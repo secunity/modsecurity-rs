@@ -512,10 +512,10 @@ mod tests {
         // IP del uses the same compartments.
         var("IP", sel_dyn("key1")).write_target().unwrap().remove(&mut t, b"key1");
         assert!(eval(&var("IP", sel_key("key1")), &t, None).is_empty());
-        // Sic: SESSION del uses the IP collection key as second compartment,
-        // so it does not remove the value.
+        // SESSION too. (C++ deletes under the key of the IP collection
+        // instead of the web application's, which removes nothing.)
         var("SESSION", sel_dyn("key1")).write_target().unwrap().remove(&mut t, b"key1");
-        assert_eq!(eval(&var("SESSION", sel_key("key1")), &t, None).len(), 1);
+        assert!(eval(&var("SESSION", sel_key("key1")), &t, None).is_empty());
     }
 
     #[test]

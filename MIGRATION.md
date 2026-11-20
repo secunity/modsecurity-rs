@@ -307,6 +307,13 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`setvar:!session.name` removes the variable.** *C++:* a variable of
+  the `SESSION` collection is stored under the session key and the web
+  application id, and deleted under the session key and the key of the
+  `IP` collection: the deletion finds nothing and the variable stays.
+  *Here:* it is deleted where it was stored, as for the other
+  collections. Regression test:
+  `variables::tests::persistent_collections_are_compartmentalised`.
 - **Entries of a `SecUnicodeMapFile` are `code:byte` in hexadecimal, or
   ignored.** *C++* splits an entry with `strtok` and reads each number
   with `strtol`: a sign, a `0x` prefix and text after the number are

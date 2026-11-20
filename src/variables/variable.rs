@@ -104,14 +104,7 @@ impl WriteTarget<'_> {
         match self {
             Self::Transaction(_) => t.collections.tx.remove(key),
             Self::Persistent { collection, .. } => {
-                // Compatibility: SESSION deletion uses the IP key as its
-                // second compartment, unlike storage and other collections.
-                let second = if *collection == Persistent::Session {
-                    &t.collections.ip.key
-                } else {
-                    t.rules.properties.web_app_id()
-                };
-                let removed = t.collections.persistent(*collection).remove(key, second);
+                let removed = t.collections.persistent(*collection).remove(key, t.rules.properties.web_app_id());
                 t.stored(removed);
             }
         }
