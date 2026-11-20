@@ -1,14 +1,8 @@
 //! Rule exceptions configured by `SecRuleRemoveBy*` and
 //! `SecRuleUpdate*`.
 //!
-//! The C++ class keeps the "update target/action by id" tables in
-//! `std::unordered_multimap`. Every consumer looks those tables up by rule
-//! id, so the only observable property of the container is the relative
-//! order of entries sharing an id: libstdc++ inserts a new element in
-//! front of its equivalents. [`IdMultimap`] reproduces exactly that. The
-//! tag/msg tables are keyed by freshly allocated
-//! `shared_ptr<std::string>` (every entry is a distinct key, ordered by
-//! pointer hash); they are kept in insertion order here.
+//! The entries of every table are kept in the order of the
+//! configuration.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,8 +13,8 @@ use crate::rule::Id;
 use crate::utils::string::{parser_sanitizer, ssplit, stoi};
 use crate::variables::variable::Variable;
 
-/// Multimap keyed by rule id where a new entry goes in front of the existing
-/// entries with the same id (libstdc++ `unordered_multimap::emplace`).
+/// What `SecRuleUpdate...ById` directives give to rules: per rule id, in
+/// the order of the configuration.
 #[derive(Debug)]
 pub struct IdMultimap<V> {
     by_id: HashMap<Id, Vec<V>>,
@@ -34,22 +28,19 @@ impl<V> Default for IdMultimap<V> {
 
 impl<V: Clone> IdMultimap<V> {
     pub fn emplace(&mut self, id: Id, value: V) {
-        self.by_id.entry(id).or_default().insert(0, value);
+        self.by_id.entry(id).or_default().push(value);
     }
 
-    /// The entries for the rule with id `rule_id`, in container order.
+    /// The entries for the rule with id `rule_id`, in order.
     pub fn for_rule(&self, rule_id: Id) -> &[V] {
         self.by_id.get(&rule_id).map_or(&[], Vec::as_slice)
     }
 
-    /// Emplaces the entries of `from`, walking each id's entries in
-    /// container order (so a merge reverses them, as with libstdc++).
+    /// Adds the entries of `from` (a configuration loaded later) after
+    /// the ones already here.
     pub fn merge_from(&mut self, from: &IdMultimap<V>) {
         for (&key, values) in &from.by_id {
-            let to = self.by_id.entry(key).or_default();
-            for v in values {
-                to.insert(0, v.clone());
-            }
+            self.by_id.entry(key).or_default().extend(values.iter().cloned());
         }
     }
 }
@@ -206,20 +197,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn id_multimap_front_insertion() {
+    fn id_multimap_keeps_the_order() {
         let mut m = IdMultimap::default();
         m.emplace(Id::new(1), "a");
         m.emplace(Id::new(2), "x");
         m.emplace(Id::new(1), "b");
-        assert_eq!(m.for_rule(Id::new(1)), ["b", "a"]);
+        assert_eq!(m.for_rule(Id::new(1)), ["a", "b"]);
         assert_eq!(m.for_rule(Id::new(2)), ["x"]);
         assert!(m.for_rule(Id::new(3)).is_empty());
         let mut n = IdMultimap::default();
         n.emplace(Id::new(1), "c");
         n.merge_from(&m);
-        // A merge walks the entries in container order, emplacing each in
-        // front: it reverses them (as with libstdc++).
-        assert_eq!(n.for_rule(Id::new(1)), ["a", "b", "c"]);
+        assert_eq!(n.for_rule(Id::new(1)), ["c", "a", "b"]);
+    }
+
+    /// The actions and targets that `SecRuleUpdate...ById` directives
+    /// give a rule are in the order of the configuration, however many
+    /// times it was loaded in pieces. (They were in the order of a C++
+    /// hash table: reversed by every other merge of rule sets.)
+    #[test]
+    fn updates_are_in_the_order_of_the_configuration() {
+        let rule = "SecRule ARGS \"@rx x\" \"id:1,phase:1,pass\"\n";
+        let updates = "SecRuleUpdateActionById 1 \"tag:'first'\"\nSecRuleUpdateActionById 1 \"tag:'second',tag:'third'\"\n\
+                       SecRuleUpdateTargetById 1 \"REQUEST_URI\"\nSecRuleUpdateTargetById 1 \"REQUEST_METHOD\"\n";
+        let describe = |rules: &crate::RulesSet| {
+            let ex = &rules.properties.exceptions;
+            let tags: Vec<String> = ex
+                .action_pos_update_target_by_id
+                .for_rule(Id::new(1))
+                .iter()
+                .filter_map(|a| match &**a {
+                    RuleAction::Tag(tag) => Some(tag.string.evaluate_static_string()),
+                    _ => None,
+                })
+                .collect();
+            let targets: Vec<&str> =
+                ex.variable_update_target_by_id.for_rule(Id::new(1)).iter().map(|v| v.full_name()).collect();
+            (tags.join(","), targets.join("|"))
+        };
+        // In one load, in two, and merged into another rule set twice
+        // over (as a connector does for nested locations).
+        let mut one = crate::RulesSet::new();
+        one.load(&format!("{rule}{updates}")).unwrap();
+        let mut two = crate::RulesSet::new();
+        two.load(rule).unwrap();
+        two.load(updates).unwrap();
+        let mut outer = crate::RulesSet::new();
+        outer.merge(&mut two).unwrap();
+        let mut inner = crate::RulesSet::new();
+        inner.merge(&mut outer).unwrap();
+        for rules in [&one, &two, &outer, &inner] {
+            assert_eq!(describe(rules), ("first,second,third".to_string(), "REQUEST_URI|REQUEST_METHOD".to_string()));
+        }
     }
 
     #[test]

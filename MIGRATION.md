@@ -304,6 +304,16 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`SecRuleUpdateActionById` and `SecRuleUpdateTargetById`: several
+  for one rule apply in the order of the configuration.** *C++:* they
+  are kept in a hash table that puts a new entry in front of the others
+  of the same rule, and merging rule sets (loading another file, a
+  server or location block of a connector) walks that table and reverses
+  them again. So the order in which a rule's added actions run, and in
+  which its added targets are inspected, depends on how many times the
+  configuration was merged. *Here:* always the order in which they are
+  written. Regression test:
+  `rules_set::exceptions::tests::updates_are_in_the_order_of_the_configuration`.
 - **Nothing is written to standard output or standard error** by the
   library (apart from `msc_rules_dump`, whose purpose it is). *C++*
   prints in three situations, and the Rust engine did too:
