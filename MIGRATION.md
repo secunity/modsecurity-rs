@@ -307,6 +307,16 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`setenv` does not change the environment of the process.** *C++:*
+  the `setenv` action calls `setenv(3)`: the variable is set for the
+  whole process, so every later transaction sees it in `ENV` (one
+  request's data in another's), and in a server with several threads the
+  call races with every reader of the environment. *Here:* the variable
+  belongs to the transaction: `ENV` shows it there, and a program run by
+  `@inspectFile` in that transaction gets it in its environment. Not
+  seen any more: by other transactions, by `os.getenv` in a Lua script,
+  and by the server itself. Regression test:
+  `actions::set_env::tests::setenv`.
 - **`multiMatch` inspects every value that differs.** *C++:* with
   `multiMatch`, the value after a transformation is inspected when the
   transformation reports that it changed the value. Some report wrongly:

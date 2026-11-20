@@ -569,20 +569,21 @@ mod tests {
         let rules = RulesSet::new();
         let mut t = Transaction::new(&ms, &rules, None);
         t.variable_envs.insert(b"modfoo".to_vec(), b"bar".to_vec());
-        crate::utils::system::set_env(b"MSRS_TEST_ENV", b"regression tests");
+        // A variable of the process: cargo sets this one for tests.
+        let (process_name, process_value) = ("CARGO_PKG_NAME", env!("CARGO_PKG_NAME"));
 
         assert_eq!(eval(&var("ENV", sel_key("modfoo")), &t, None), vec![("ENV:modfoo".into(), "bar".into())]);
         assert!(eval(&var("ENV", sel_key("MODFOO")), &t, None).is_empty());
         assert_eq!(
-            eval(&var("ENV", sel_key("MSRS_TEST_ENV")), &t, None),
-            vec![("ENV:MSRS_TEST_ENV".into(), "regression tests".into())]
+            eval(&var("ENV", sel_key(process_name)), &t, None),
+            vec![(format!("ENV:{process_name}"), process_value.to_string())]
         );
         let all = eval(&var("ENV", sel_none()), &t, None);
         assert!(all.contains(&("ENV:modfoo".into(), "bar".into())));
-        assert!(all.contains(&("ENV:MSRS_TEST_ENV".into(), "regression tests".into())));
+        assert!(all.contains(&(format!("ENV:{process_name}"), process_value.to_string())));
         // setenv wins over the process environment.
-        t.variable_envs.insert(b"MSRS_TEST_ENV".to_vec(), b"mine".to_vec());
-        assert_eq!(eval(&var("ENV", sel_key("MSRS_TEST_ENV")), &t, None)[0].1, "mine");
+        t.variable_envs.insert(process_name.as_bytes().to_vec(), b"mine".to_vec());
+        assert_eq!(eval(&var("ENV", sel_key(process_name)), &t, None)[0].1, "mine");
         // Exclusions.
         let mut e = var("ENV", sel_none());
         e.exclude(KeyExclusion::string("modfoo"));

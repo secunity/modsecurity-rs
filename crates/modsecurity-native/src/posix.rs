@@ -1,18 +1,7 @@
-//! libc calls with no safe equivalent in std: `setenv`, `mkstemp`,
-//! `wordexp` and `gai_strerror`.
+//! libc calls with no safe equivalent in std: `mkstemp`, `wordexp` and
+//! `gai_strerror`.
 
 use std::ffi::{CStr, CString, c_char, c_int};
-
-/// `setenv(name, value, 1)`. `name` must not be empty or contain `=`, and
-/// neither may contain a NUL (callers check: `setenv` rejects those).
-pub fn set_env(name: &[u8], value: &[u8]) {
-    use std::ffi::OsStr;
-    use std::os::unix::ffi::OsStrExt;
-    debug_assert!(!name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0));
-    // SAFETY: this mutates the process environment (what `setenv` is for), with
-    // the usual caveat about concurrent getenv(3) calls from other threads.
-    unsafe { std::env::set_var(OsStr::from_bytes(name), OsStr::from_bytes(value)) };
-}
 
 /// `mkstemp(3)`: creates and opens a new file named `template` with its
 /// final `XXXXXX` replaced. Returns the name and the file (`None` when it

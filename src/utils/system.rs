@@ -6,7 +6,6 @@ use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 
 pub use modsecurity_compat::errno::strerror;
-pub use modsecurity_native::posix::set_env;
 
 /// The process CPU time in seconds.
 pub fn cpu_seconds() -> f64 {

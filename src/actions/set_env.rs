@@ -32,15 +32,9 @@ impl Action for SetENV {
             String::from_utf8_lossy(&value)
         );
 
-        // `setenv(3)` with overwrite. It rejects an empty name and one with
-        // `=` (EINVAL), and a name or value with an embedded NUL cannot be
-        // passed to it: the process environment is left alone for those,
-        // without an error (`set_var` would panic on them).
-        let valid = !name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0);
-        if valid {
-            crate::utils::system::set_env(&name, &value);
-        }
-        // The transaction's view of the environment (the `ENV` variable).
+        // The transaction's own environment: what the `ENV` variable shows
+        // and what a program run by `@inspectFile` gets. The environment
+        // of the process is not touched.
         cx.set_env(name, value);
     }
 }
@@ -63,6 +57,9 @@ mod tests {
         SetENV::with_rts(rts("MSRS_ACTIONS_TEST=a=b")).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Setting environment variable: MSRS_ACTIONS_TEST to a=b"));
         assert_eq!(t.variable_envs.get(b"MSRS_ACTIONS_TEST".as_slice()), Some(&b"a=b".to_vec()));
-        assert_eq!(std::env::var("MSRS_ACTIONS_TEST").as_deref(), Ok("a=b"));
+        // The process and other transactions do not see it.
+        assert!(std::env::var_os("MSRS_ACTIONS_TEST").is_none());
+        let other = Transaction::new(&ms, &rules, None);
+        assert!(other.variable_envs.is_empty());
     }
 }

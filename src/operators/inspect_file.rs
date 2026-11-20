@@ -25,11 +25,12 @@ impl InspectFile {
     }
 
     /// Runs `self.file` with `arg`, as `posix_spawn` would: the path is
-    /// not searched in `PATH`, the environment, stdin and stderr are
-    /// inherited and stdout is captured. Returns the captured output when
-    /// the program exited with status 0.
+    /// not searched in `PATH`, stdin and stderr are inherited and stdout
+    /// is captured. The program gets the environment of the process plus
+    /// `envs`, what `setenv` actions set in the transaction. Returns the
+    /// captured output when the program exited with status 0.
     #[cfg(unix)]
-    fn run_program(&self, arg: &[u8]) -> Option<Vec<u8>> {
+    fn run_program(&self, arg: &[u8], envs: &std::collections::BTreeMap<Vec<u8>, Vec<u8>>) -> Option<Vec<u8>> {
         use std::ffi::OsStr;
         use std::os::unix::ffi::OsStrExt;
         use std::os::unix::process::CommandExt;
@@ -41,9 +42,16 @@ impl InspectFile {
         // The argument is passed as a C string.
         let arg = modsecurity_compat::chars::c_str(arg);
 
+        // What the system cannot take as an environment entry is left out.
+        let passable = |(name, value): &(&Vec<u8>, &Vec<u8>)| {
+            !name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0)
+        };
+        let envs = envs.iter().filter(passable).map(|(n, v)| (OsStr::from_bytes(n), OsStr::from_bytes(v)));
+
         let output = Command::new(program)
             .arg0(&self.file)
             .arg(OsStr::from_bytes(arg))
+            .envs(envs)
             .stdin(Stdio::inherit())
             .stderr(Stdio::inherit())
             .stdout(Stdio::piped())
@@ -60,7 +68,7 @@ impl InspectFile {
     /// The variant for the other platforms: stdout is captured, and the
     /// output is returned when the program exited with status 0.
     #[cfg(not(unix))]
-    fn run_program(&self, arg: &[u8]) -> Option<Vec<u8>> {
+    fn run_program(&self, arg: &[u8], _envs: &std::collections::BTreeMap<Vec<u8>, Vec<u8>>) -> Option<Vec<u8>> {
         use std::process::{Command, Stdio};
         let arg = String::from_utf8(arg.to_vec()).ok()?;
         let output = Command::new(&self.file).arg(arg).stdout(Stdio::piped()).output().ok()?;
@@ -103,7 +111,7 @@ impl InspectFile {
             return self.lua.run(t, input);
         }
 
-        let Some(res) = self.run_program(input) else {
+        let Some(res) = self.run_program(input, &t.variable_envs) else {
             return false;
         };
         if res.len() > 1 && res[0] != b'1' {
