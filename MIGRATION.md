@@ -307,6 +307,15 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`multiMatch` inspects every value that differs.** *C++:* with
+  `multiMatch`, the value after a transformation is inspected when the
+  transformation reports that it changed the value. Some report wrongly:
+  `t:normalisePath` turns `a/..` (and `/a/..`) into the empty value
+  without reporting a change, so that value is never inspected, and
+  `t:length` of `1` reports a change that is none. *Here:* the engine
+  compares the value before and after each transformation itself.
+  Regression test:
+  `actions::multi_match::tests::every_value_that_differs_is_inspected`.
 - **More numbers of a configuration read as digits.** *C++* reads these
   with C functions that stop at the first character that is not a digit
   and keep what they have:

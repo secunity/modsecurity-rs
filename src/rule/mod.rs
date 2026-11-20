@@ -313,7 +313,10 @@ impl Rule {
         }
 
         for a in chain {
-            if a.transform(&mut value, Some(t)) && multi_match {
+            a.transform(&mut value, Some(t));
+            // With multiMatch, every value a transformation produced is
+            // inspected: the ones that differ from the value before it.
+            if multi_match && ret.last().is_some_and(|(before, _)| *before != value) {
                 ret.push((value.clone(), TransformationPath::Step(a.name().to_string())));
                 nth += 1;
             }
