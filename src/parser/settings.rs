@@ -349,7 +349,7 @@ fn directive(keyword: &str) -> Option<Directive> {
         "secmarker" => value(&[(SepQuoted(Word), FindSep), (Sep(Word), FindSep)], |b, v| {
             let marker = remove_brackets_if_needed(v.text.clone());
             let file = b.file_name();
-            b.driver.add_sec_marker(&marker, &file, b.line as i32);
+            b.driver.add_sec_marker(&marker, &file, b.line);
             Ok(())
         }),
         "secruleremovebyid" => {

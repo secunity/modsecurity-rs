@@ -79,7 +79,7 @@ fn eval_operator(t: &UnitTest, transaction: &mut Transaction<'_>) -> (i64, Vec<u
     let _ = op.init(&t.filename);
     configure_libinjection_override(t);
     let actions = if t.capture != 0 { Some(vec![RuleAction::Capture(Capture::new("capture"))]) } else { None };
-    let rule = Rule::new(actions, None, "dummy.conf", -1, RuleKind::SecAction);
+    let rule = Rule::new(actions, None, "dummy.conf", 0, RuleKind::SecAction);
     let mut rm = new_rule_message(&rule);
     let matched = evaluate_operator(&op, transaction, &rule, &t.input, &mut rm);
     let mut output = Vec::new();

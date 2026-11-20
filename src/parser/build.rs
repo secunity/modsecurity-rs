@@ -144,7 +144,7 @@ impl Builder<'_, '_> {
     }
 
     fn directive(&mut self, directive: Directive<'_>) -> Res<()> {
-        let line = self.line as i32;
+        let line = self.line;
         match directive {
             Directive::Rule { variables, operator, actions } => {
                 let vars = self.targets(&variables)?;

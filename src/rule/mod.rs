@@ -74,7 +74,7 @@ pub enum RuleKind {
 pub struct Rule {
     /// Where the rule was read.
     pub file_name: String,
-    pub line_number: i32,
+    pub line_number: usize,
     phase: Option<Phases>,
 
     pub rev: String,
@@ -105,7 +105,7 @@ impl Rule {
         actions: Option<Vec<RuleAction>>,
         transformations: Option<Vec<Transformation>>,
         file_name: &str,
-        line_number: i32,
+        line_number: usize,
         kind: RuleKind,
     ) -> Self {
         let mut r = Rule {

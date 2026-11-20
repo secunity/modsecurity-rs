@@ -113,7 +113,7 @@ impl<'r> RuleMessage<'r> {
     }
 
     /// The file the rule was read from, and its line there.
-    pub fn rule_location(&self) -> (&'r str, i32) {
+    pub fn rule_location(&self) -> (&'r str, usize) {
         (&self.rule.file_name, self.rule.line_number)
     }
 

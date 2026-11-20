@@ -67,13 +67,12 @@ impl Driver {
     }
 
     /// Adds a `SecMarker` to every phase.
-    pub fn add_sec_marker(&mut self, marker: &str, file_name: &str, line_number: i32) -> i32 {
+    pub fn add_sec_marker(&mut self, marker: &str, file_name: &str, line_number: usize) {
         for phase in Phases::ALL {
             let mut rule = Marker::new(marker, file_name, line_number);
             rule.phase = phase;
             self.rules_set_phases.insert(Arc::new(Entry::Marker(rule)));
         }
-        0
     }
 
     /// Adds a `SecAction` rule.
