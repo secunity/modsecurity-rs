@@ -355,6 +355,18 @@ pub fn cases() -> Vec<(&'static str, Vec<u8>, Vec<u8>, Uploads)> {
             none,
         ),
         (
+            "an upload cut short",
+            CT.to_vec(),
+            lf("--XyZ\r\nContent-Disposition: form-data; name=\"f\"; filename=\"x.txt\"\r\n\r\nfile body\r\n"),
+            save(),
+        ),
+        (
+            "an upload cut short, files kept",
+            CT.to_vec(),
+            lf("--XyZ\r\nContent-Disposition: form-data; name=\"f\"; filename=\"x.txt\"\r\n\r\nfile body\r\n"),
+            Uploads { keep_files: Some(true), ..save() },
+        ),
+        (
             "quoted boundary",
             b"multipart/form-data; boundary=\"XyZ\"".to_vec(),
             b("--\"XyZ\"\nContent-Disposition: form-data; name=\"a\"\n\n1\n--XyZ--\n"),

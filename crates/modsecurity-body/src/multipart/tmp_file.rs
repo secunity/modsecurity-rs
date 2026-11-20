@@ -19,8 +19,13 @@ pub struct MultipartPartTmpFile {
     /// The open file; `None` once closed, or when the file could not be
     /// created.
     file: Mutex<Option<File>>,
-    /// Whether to delete the file when the transaction is done.
-    delete: AtomicBool,
+    /// Whether the file was created: there is one to delete.
+    created: bool,
+    /// Whether the file stays on disk when the transaction is done
+    /// (`SecUploadKeepFiles`). It does not unless this is asked for, so
+    /// that a file nobody decided about (an upload that was cut short) is
+    /// not left behind.
+    keep: AtomicBool,
     /// Set once the deletion was handled through
     /// [`MultipartPartTmpFile::release`].
     released: AtomicBool,
@@ -50,8 +55,9 @@ impl MultipartPartTmpFile {
 
         MultipartPartTmpFile {
             tmp_file_name: path,
+            created: file.is_some(),
             file: Mutex::new(file),
-            delete: AtomicBool::new(false),
+            keep: AtomicBool::new(false),
             released: AtomicBool::new(false),
         }
     }
@@ -61,9 +67,9 @@ impl MultipartPartTmpFile {
         &self.tmp_file_name
     }
 
-    /// Marks the file for deletion when the transaction is done.
-    pub fn set_delete(&self) {
-        self.delete.store(true, Ordering::Relaxed);
+    /// Leaves the file on disk when the transaction is done.
+    pub fn keep(&self) {
+        self.keep.store(true, Ordering::Relaxed);
     }
 
     /// Whether the file was created (successfully or not: in the latter
@@ -94,7 +100,7 @@ impl MultipartPartTmpFile {
         }
     }
 
-    /// Deletes the file if it was marked for deletion,
+    /// Deletes the file unless it is to be kept,
     /// logging the outcome to the transaction's debug log. The
     /// transaction may call this when it is done with its temporary files;
     /// otherwise the deletion happens (without the debug messages) when the
@@ -103,7 +109,7 @@ impl MultipartPartTmpFile {
         if self.released.swap(true, Ordering::Relaxed) {
             return;
         }
-        if self.tmp_file_name.is_empty() || !self.delete.load(Ordering::Relaxed) {
+        if !self.created || self.keep.load(Ordering::Relaxed) {
             return;
         }
         // make sure it is closed first

@@ -307,6 +307,14 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **The temporary file of an upload that was cut short is deleted.**
+  *C++* (and this engine until now): when the body ends inside a file
+  part (no final boundary), that part's temporary file is not among the
+  ones marked for deletion and stays in `SecUploadDir` for good; a client
+  can fill the directory with them. *Here:* a temporary file is deleted
+  when its transaction ends unless `SecUploadKeepFiles On` keeps it, and
+  only the files of completed parts are kept. Regression test: the cases
+  `an upload cut short` of `crates/modsecurity-body/tests/multipart.rs`.
 - **`setenv` does not change the environment of the process.** *C++:*
   the `setenv` action calls `setenv(3)`: the variable is set for the
   whole process, so every later transaction sees it in `ENV` (one

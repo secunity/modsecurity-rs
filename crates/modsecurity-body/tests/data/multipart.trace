@@ -1135,6 +1135,72 @@ debug[4] Multipart: Cleanup started (keep files set to Not set)
 complete -> false
 error: Some("Multipart: Final boundary missing.")
 no files length: 100
+=== an upload cut short
+debug[9] Multipart: Boundary: XyZ
+init -> true
+debug[9] Multipart: Added part header "Content-Disposition" "form-data; name="f"; filename="x.txt"".
+add MultipartName f = f @2046
+debug[9] Multipart: Content-Disposition name: f.
+debug[9] Multipart: Content-Disposition filename: x.txt.
+add MultipartFileName f = x.txt @2060
+debug[4] MultipartPartTmpFile: Create filename= <tmp>
+keep_tmp_file <tmp>
+debug[4] Multipart: Created temporary file 1 (mode 00): <tmp>
+set MultipartUnmatchedBoundary = 0 @1000
+set MultipartDataBefore = 0 @1000
+set MultipartDataAfter = 0 @1000
+set MultipartDuplicatePartHeader = 0 @1000
+set MultipartBoundaryQuoted = 0 @1000
+set MultipartBoundaryWhiteSpace = 0 @1000
+set MultipartHeaderFolding = 0 @1000
+set MultipartLfLine = 0 @1000
+set MultipartCrlfLfLines = 0 @1000
+set MultipartMissingSemicolon = 0 @1000
+set MultipartInvalidQuoting = 0 @1000
+set MultipartInvalidPart = 0 @1000
+set MultipartInvalidHeaderFolding = 0 @1000
+set MultipartStrictError = 0 @1000
+debug[1] Multipart: Final boundary missing.
+debug[4] Multipart: Cleanup started (keep files set to Not set)
+complete -> false
+error: Some("Multipart: Final boundary missing.")
+no files length: 62
+file <tmp> holds file body
+debug[4] Multipart: file deleted successfully (part) "<tmp>"
+after release, exists: false
+=== an upload cut short, files kept
+debug[9] Multipart: Boundary: XyZ
+init -> true
+debug[9] Multipart: Added part header "Content-Disposition" "form-data; name="f"; filename="x.txt"".
+add MultipartName f = f @2046
+debug[9] Multipart: Content-Disposition name: f.
+debug[9] Multipart: Content-Disposition filename: x.txt.
+add MultipartFileName f = x.txt @2060
+debug[4] MultipartPartTmpFile: Create filename= <tmp>
+keep_tmp_file <tmp>
+debug[4] Multipart: Created temporary file 1 (mode 00): <tmp>
+set MultipartUnmatchedBoundary = 0 @1000
+set MultipartDataBefore = 0 @1000
+set MultipartDataAfter = 0 @1000
+set MultipartDuplicatePartHeader = 0 @1000
+set MultipartBoundaryQuoted = 0 @1000
+set MultipartBoundaryWhiteSpace = 0 @1000
+set MultipartHeaderFolding = 0 @1000
+set MultipartLfLine = 0 @1000
+set MultipartCrlfLfLines = 0 @1000
+set MultipartMissingSemicolon = 0 @1000
+set MultipartInvalidQuoting = 0 @1000
+set MultipartInvalidPart = 0 @1000
+set MultipartInvalidHeaderFolding = 0 @1000
+set MultipartStrictError = 0 @1000
+debug[1] Multipart: Final boundary missing.
+debug[4] Multipart: Cleanup started (keep files set to True)
+complete -> false
+error: Some("Multipart: Final boundary missing.")
+no files length: 62
+file <tmp> holds file body
+debug[4] Multipart: file deleted successfully (part) "<tmp>"
+after release, exists: false
 === quoted boundary
 debug[9] Multipart: Boundary (quoted): XyZ
 init -> true

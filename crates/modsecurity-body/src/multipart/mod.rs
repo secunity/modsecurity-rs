@@ -794,9 +794,10 @@ impl Multipart {
         }
     }
 
-    /// Marks the temporary files of the parts for deletion (unless
-    /// `SecUploadKeepFiles` is on); they stay on disk until the transaction
-    /// is done with them. Runs once.
+    /// Decides what becomes of the temporary files once the transaction is
+    /// done with them: the files of the parts are kept with
+    /// `SecUploadKeepFiles On`, and deleted otherwise. The file of a part
+    /// that was never completed is always deleted. Runs once.
     fn cleanup(&mut self, cx: Option<&dyn Context>) {
         if self.cleaned_up {
             return;
@@ -813,15 +814,16 @@ impl Multipart {
             }
         );
 
-        if self.upload_keep_files != Some(true) {
-            for m in &self.parts {
-                if m.type_ == PartType::File
-                    && let Some(f) = &m.tmp_file
-                {
-                    // only mark for deletion for now; the file should stay
-                    // on disk until the transaction is complete
+        for m in &self.parts {
+            if m.type_ == PartType::File
+                && let Some(f) = &m.tmp_file
+            {
+                if self.upload_keep_files == Some(true) {
+                    f.keep();
+                } else {
+                    // The file stays on disk until the transaction is
+                    // complete.
                     ms_dbg_opt!(cx, 9, "Multipart: Marking temporary file for deletion: {}", f.filename());
-                    f.set_delete();
                 }
             }
         }
