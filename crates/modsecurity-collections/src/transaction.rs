@@ -130,7 +130,7 @@ mod tests {
                 let mut actual = vec![VariableValue::new(b"existing", b"tail")];
                 let mut expected = actual.clone();
                 tx.resolve_regex(&regex, &mut actual, exclusions);
-                previous.resolve_regex(&regex, &mut expected, exclusions);
+                previous.resolve_regex(b"", &regex, &mut expected, exclusions);
                 assert_eq!(actual, expected);
             }
         }

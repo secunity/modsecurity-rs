@@ -43,7 +43,7 @@ pub(crate) enum CollectionKey {
     All,
     Key,
     /// The compiled regex and its text as written.
-    Regex(Regex, String),
+    Regex(Regex),
     Dynamic(RunTimeString),
 }
 
@@ -220,7 +220,7 @@ impl Variable {
                 match key {
                     // The key is the name, which is empty for `TX`.
                     CollectionKey::All | CollectionKey::Key => tx.resolve_multi_matches(self.name.as_bytes(), l, ke),
-                    CollectionKey::Regex(r, _) => tx.resolve_regex(r, l, ke),
+                    CollectionKey::Regex(r) => tx.resolve_regex(r, l, ke),
                     CollectionKey::Dynamic(string) => tx.resolve_multi_matches(&string.evaluate(Some(t)), l, ke),
                 }
             }
@@ -229,7 +229,7 @@ impl Variable {
                 let app = t.rules.properties.web_app_id();
                 match key {
                     CollectionKey::All | CollectionKey::Key => binding.resolve(self.name.as_bytes(), app, l, ke),
-                    CollectionKey::Regex(_, pattern) => binding.resolve_regex(pattern.as_bytes(), app, l, ke),
+                    CollectionKey::Regex(regex) => binding.resolve_regex(regex, app, l, ke),
                     CollectionKey::Dynamic(string) => binding.resolve(&string.evaluate(Some(t)), app, l, ke),
                 }
             }
@@ -254,7 +254,7 @@ impl Variable {
             Source::Set(_, Selector::Regex(r))
             | Source::Names(_, Selector::Regex(r))
             | Source::Rule(Selector::Regex(r)) => Some(r),
-            Source::Tx(CollectionKey::Regex(r, _)) | Source::Persistent(_, CollectionKey::Regex(r, _)) => Some(r),
+            Source::Tx(CollectionKey::Regex(r)) | Source::Persistent(_, CollectionKey::Regex(r)) => Some(r),
             _ => None,
         }
     }

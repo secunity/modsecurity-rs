@@ -5,6 +5,7 @@
 
 use crate::transaction::TransactionVariables;
 use crate::{Collection, Persistent, compartment_key};
+use modsecurity_native::regex::Regex;
 use modsecurity_types::KeyExclusions;
 use modsecurity_types::variable_value::VariableValue;
 
@@ -41,10 +42,9 @@ impl<'a> CollectionBinding<'a> {
         self.backend.resolve_multi_matches(&compartment_key(name, &self.key, Some(app)), out, exclusions);
     }
 
-    pub fn resolve_regex(&self, pattern: &[u8], app: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
-        // Compile the compartment-prefixed expression on every evaluation,
-        // preserving the backend's case-insensitive, multiline semantics.
-        self.backend.resolve_regular_expression(&compartment_key(pattern, &self.key, Some(app)), out, exclusions);
+    /// The values of this compartment whose name matches `regex`.
+    pub fn resolve_regex(&self, regex: &Regex, app: &[u8], out: &mut Vec<VariableValue>, exclusions: &KeyExclusions) {
+        self.backend.resolve_regex(&compartment_key(b"", &self.key, Some(app)), regex, out, exclusions);
     }
 }
 

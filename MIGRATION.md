@@ -304,6 +304,20 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **Regular expression keys of persistent collections (`IP:/regex/`,
+  `GLOBAL:/regex/`, ...).** *C++:* the expression is prefixed with the
+  compartment of the transaction (`10.0.0.1::app::` + expression),
+  compiled for every evaluation, and searched in the full keys of every
+  compartment of the collection. So the compartment is read as an
+  expression (`10.0.0.1` also matches the keys of `1000001`), an
+  expression anchored with `^` never matches, and each evaluation walks
+  the keys of all clients. *Here:* the expression compiled when the rule
+  is loaded is matched with the names of the keys of the transaction's
+  own compartment. *Why:* one client's rule must not select another
+  client's keys, and `^` should work. The tests of the original
+  ModSecurity (`collection-regular_expression_selection.json`) pass.
+  Regression test:
+  `variables::persistent::tests::regex_keys_of_a_persistent_collection`.
 - **`SecRuleUpdateActionById` with an action that is not disruptive
   keeps the rule's disruptive action.** *C++:* any action the directive
   adds to a rule switches off the rule's own disruptive action (and its

@@ -103,7 +103,7 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
             let (name, key) = match selector {
                 S::None => ("TX".to_string(), CollectionKey::All),
                 S::DictElement(e) => (format!("TX:{}", e), CollectionKey::Key),
-                S::Regexp(r) => (regex_name("TX", &r), CollectionKey::Regex(Regex::new_case(&r, true), r)),
+                S::Regexp(r) => (regex_name("TX", &r), CollectionKey::Regex(Regex::new_case(&r, true))),
                 S::Dynamic(m) => ("TX:dynamic".to_string(), CollectionKey::Dynamic(m)),
             };
             Some(Variable::new(&name, Source::Tx(key)))

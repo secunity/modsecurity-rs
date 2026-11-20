@@ -275,10 +275,10 @@ impl Collection for Lmdb {
         move_to_front_reversed(l, start);
     }
 
-    fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
+    fn resolve_regex(&self, prefix: &[u8], r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let start = l.len();
         self.walk("resolveRegularExpression", |k, d| {
-            if !r.is_match(k) {
+            if !k.strip_prefix(prefix).is_some_and(|name| r.is_match(name)) {
                 return;
             }
             if ke.to_omit(k) {
@@ -353,8 +353,8 @@ mod tests {
 
         // regular expression (case insensitive), no collection prefix
         let mut l = Vec::new();
-        let re = format!("^{}::A", p.to_uppercase());
-        c.resolve_regular_expression(re.as_bytes(), &mut l, &KeyExclusions::default());
+        let prefix = format!("{p}::");
+        c.resolve_regex(prefix.as_bytes(), &Regex::new_case("^A", true), &mut l, &KeyExclusions::default());
         assert_eq!(keys(&l), vec![k("ab"), k("a")]);
         assert_eq!(l[0].key_with_collection(), k("ab").as_slice());
 

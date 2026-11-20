@@ -42,14 +42,9 @@ pub trait Collection: Send + Sync {
 
     fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions);
 
-    /// The values whose key matches `r`.
-    fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions);
-
-    /// [`Collection::resolve_regex`] with the pattern `var`, compiled as
-    /// the C++ code does (case insensitive, multi-line).
-    fn resolve_regular_expression(&self, var: &[u8], l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
-        self.resolve_regex(&Regex::with_options(var, true, true), l, ke)
-    }
+    /// The values whose key is `prefix` (a compartment, see
+    /// [`compartment_key`]) followed by a name that matches `r`.
+    fn resolve_regex(&self, prefix: &[u8], r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions);
 }
 
 /// One of the persistent collections.

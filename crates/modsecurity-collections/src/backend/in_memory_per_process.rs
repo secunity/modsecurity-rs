@@ -128,13 +128,15 @@ impl Collection for InMemoryPerProcess {
         self.purge(expired);
     }
 
-    fn resolve_regex(&self, r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
+    fn resolve_regex(&self, prefix: &[u8], r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let mut expired = Vec::new();
         let start = l.len();
         {
             let m = self.read();
             for (k, d) in m.iter() {
-                if !r.is_match(k) {
+                // Keys ignore case, so the compartment does too.
+                let named = k.split_at_checked(prefix.len()).filter(|(p, _)| p.eq_ignore_ascii_case(prefix));
+                if !named.is_some_and(|(_, name)| r.is_match(name)) {
                     continue;
                 }
                 if ke.to_omit(k) {
