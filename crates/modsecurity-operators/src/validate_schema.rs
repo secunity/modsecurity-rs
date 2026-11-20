@@ -9,11 +9,6 @@ pub struct ValidateSchema {
     param: Param,
     #[cfg(feature = "libxml2")]
     resource: String,
-    /// The messages reported while loading the schema. They accumulate
-    /// over the lifetime of the operator, across evaluations; the mutex
-    /// is there because evaluations may run on several threads.
-    #[cfg(feature = "libxml2")]
-    err: std::sync::Mutex<String>,
 }
 
 impl ValidateSchema {
@@ -22,8 +17,6 @@ impl ValidateSchema {
             param,
             #[cfg(feature = "libxml2")]
             resource: String::new(),
-            #[cfg(feature = "libxml2")]
-            err: std::sync::Mutex::new(String::new()),
         }
     }
 }
@@ -85,11 +78,10 @@ impl Operator for ValidateSchema {
             return true;
         }
 
-        // The errors of loading the schema accumulate in `m_err` (the
-        // `err` field of the operator: across evaluations too). Only the
-        // errors of the schema code are kept, not those of the parser
-        // reading the schema document.
-        let mut m_err = self.err.lock().unwrap_or_else(|e| e.into_inner());
+        // The errors of loading the schema, for the message of a failure
+        // below. Only the errors of the schema code are kept, not those of
+        // the parser reading the schema document.
+        let mut m_err = String::new();
         let result = doc.validate_schema(
             &self.resource,
             &mut |m| {
