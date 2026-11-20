@@ -1056,11 +1056,11 @@ impl Drop for Transaction<'_> {
 /// The debug log of the rule set, with the transaction id and URI on each
 /// line.
 impl crate::DebugSink for Transaction<'_> {
-    fn debug_enabled(&self, level: i32) -> bool {
+    fn debug_enabled(&self, level: u8) -> bool {
         self.rules.properties.debug_log.enabled(level)
     }
 
-    fn debug(&self, level: i32, message: &str) {
+    fn debug(&self, level: u8, message: &str) {
         self.rules.debug(level, &self.id, &String::from_utf8_lossy(&self.http.uri), message);
     }
 }

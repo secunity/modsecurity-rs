@@ -7,28 +7,28 @@
 /// processor).
 pub trait DebugSink {
     /// Whether the debug log takes messages of `level`.
-    fn debug_enabled(&self, level: i32) -> bool;
+    fn debug_enabled(&self, level: u8) -> bool;
 
     /// Writes `message` to the debug log.
-    fn debug(&self, level: i32, message: &str);
+    fn debug(&self, level: u8, message: &str);
 }
 
 impl<T: DebugSink + ?Sized> DebugSink for &T {
-    fn debug_enabled(&self, level: i32) -> bool {
+    fn debug_enabled(&self, level: u8) -> bool {
         (**self).debug_enabled(level)
     }
 
-    fn debug(&self, level: i32, message: &str) {
+    fn debug(&self, level: u8, message: &str) {
         (**self).debug(level, message);
     }
 }
 
 impl<T: DebugSink + ?Sized> DebugSink for &mut T {
-    fn debug_enabled(&self, level: i32) -> bool {
+    fn debug_enabled(&self, level: u8) -> bool {
         (**self).debug_enabled(level)
     }
 
-    fn debug(&self, level: i32, message: &str) {
+    fn debug(&self, level: u8, message: &str) {
         (**self).debug(level, message);
     }
 }
@@ -63,16 +63,16 @@ mod tests {
     use super::DebugSink;
 
     struct Lines {
-        level: i32,
+        level: u8,
         lines: RefCell<Vec<String>>,
     }
 
     impl DebugSink for Lines {
-        fn debug_enabled(&self, level: i32) -> bool {
+        fn debug_enabled(&self, level: u8) -> bool {
             level <= self.level
         }
 
-        fn debug(&self, level: i32, message: &str) {
+        fn debug(&self, level: u8, message: &str) {
             self.lines.borrow_mut().push(format!("[{level}] {message}"));
         }
     }

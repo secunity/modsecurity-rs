@@ -75,11 +75,11 @@ pub fn show(bytes: &[u8]) -> String {
 macro_rules! recorder_for {
     ($m:ident, $trace:ident) => {
         impl modsecurity_types::DebugSink for $crate::support::Recorder<$m::MultipartPartTmpFile> {
-            fn debug_enabled(&self, level: i32) -> bool {
+            fn debug_enabled(&self, level: u8) -> bool {
                 level <= 9
             }
 
-            fn debug(&self, level: i32, message: &str) {
+            fn debug(&self, level: u8, message: &str) {
                 self.push(format!("debug[{level}] {message}"));
             }
         }

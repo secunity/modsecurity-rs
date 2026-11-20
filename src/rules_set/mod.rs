@@ -268,7 +268,7 @@ impl RulesSet {
 
     /// Writes `msg` to the debug log for the transaction `id` handling
     /// `uri`.
-    pub(crate) fn debug(&self, level: i32, id: &str, uri: &str, msg: &str) {
+    pub(crate) fn debug(&self, level: u8, id: &str, uri: &str, msg: &str) {
         self.properties.debug_log.write_ctx(level, id, uri, msg);
     }
 

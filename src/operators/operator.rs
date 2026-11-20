@@ -251,11 +251,11 @@ impl Resources for EngineResources {
 }
 
 impl crate::DebugSink for MatchContext<'_, '_, '_> {
-    fn debug_enabled(&self, level: i32) -> bool {
+    fn debug_enabled(&self, level: u8) -> bool {
         self.t.debug_enabled(level)
     }
 
-    fn debug(&self, level: i32, message: &str) {
+    fn debug(&self, level: u8, message: &str) {
         self.t.debug(level, message);
     }
 }

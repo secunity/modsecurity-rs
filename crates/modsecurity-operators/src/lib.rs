@@ -292,10 +292,10 @@ pub(crate) mod test_support {
     }
 
     impl DebugSink for TestContext {
-        fn debug_enabled(&self, _level: i32) -> bool {
+        fn debug_enabled(&self, _level: u8) -> bool {
             false
         }
-        fn debug(&self, _level: i32, _message: &str) {}
+        fn debug(&self, _level: u8, _message: &str) {}
     }
 
     impl Context for TestContext {

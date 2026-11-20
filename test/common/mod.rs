@@ -138,12 +138,12 @@ pub fn json2bin(s: &mut Vec<u8>) {
 #[derive(Default)]
 pub struct CustomDebugLog {
     log: Mutex<String>,
-    level: i32,
+    level: Option<u8>,
 }
 
 impl CustomDebugLog {
     pub fn new() -> Self {
-        CustomDebugLog { log: Mutex::new(String::new()), level: -1 }
+        CustomDebugLog { log: Mutex::new(String::new()), level: None }
     }
 
     pub fn log_messages(&self) -> String {
@@ -159,22 +159,22 @@ impl CustomDebugLog {
 }
 
 impl DebugLog for CustomDebugLog {
-    fn write(&self, level: i32, msg: &str) {
+    fn write(&self, level: u8, msg: &str) {
         let mut l = self.log.lock().unwrap();
         l.push_str(&format!("[{}] {}\n", level, msg));
     }
 
-    fn write_ctx(&self, level: i32, id: &str, uri: &str, msg: &str) {
+    fn write_ctx(&self, level: u8, id: &str, uri: &str, msg: &str) {
         let mut l = self.log.lock().unwrap();
         l.push_str(&format!("[{}] [{}] [{}] {}\n", id, uri, level, msg));
     }
 
-    fn level(&self) -> Option<i32> {
-        (self.level != -1).then_some(self.level)
+    fn level(&self) -> Option<u8> {
+        self.level
     }
 
-    fn set_level(&mut self, level: i32) {
-        self.level = level;
+    fn set_level(&mut self, level: u8) {
+        self.level = Some(level);
     }
 
     fn file(&self) -> Option<&str> {

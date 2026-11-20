@@ -17,7 +17,7 @@ use crate::rules_set::properties::{
     parse_octal_mode,
 };
 use crate::utils::https_client::HttpsClient;
-use crate::utils::string::{atoi, ssplit, strtol_int};
+use crate::utils::string::{atoi, parse_digits, ssplit, strtol_int};
 use crate::utils::system::{expand_env, find_resource};
 
 /// The value of a setting directive, as its effect gets it.
@@ -176,7 +176,8 @@ fn directive(keyword: &str) -> Option<Directive> {
             }
         }),
         "secdebugloglevel" => value(NUMBER, |b, v| {
-            b.driver.properties.debug_log.set_level(atoi(&v.bytes));
+            // A number too large for a level asks for everything.
+            b.driver.properties.debug_log.set_level(parse_digits(&v.text).unwrap_or(u8::MAX));
             Ok(())
         }),
 

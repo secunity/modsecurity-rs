@@ -12,15 +12,15 @@ use crate::utils::shared_files::SharedFile;
 
 pub trait DebugLog: std::any::Any + Send + Sync {
     /// Logs `msg` at `level`.
-    fn write(&self, level: i32, msg: &str);
+    fn write(&self, level: u8, msg: &str);
 
     /// Logs `msg` at `level` for the transaction `id` handling `uri`.
-    fn write_ctx(&self, level: i32, id: &str, uri: &str, msg: &str);
+    fn write_ctx(&self, level: u8, id: &str, uri: &str, msg: &str);
 
     /// `SecDebugLogLevel`, when set.
-    fn level(&self) -> Option<i32>;
+    fn level(&self) -> Option<u8>;
 
-    fn set_level(&mut self, level: i32);
+    fn set_level(&mut self, level: u8);
 
     /// `SecDebugLog`: the log file, when set.
     fn file(&self) -> Option<&str>;
@@ -29,7 +29,7 @@ pub trait DebugLog: std::any::Any + Send + Sync {
 
     /// Whether messages of `level` are logged (what the `ms_dbg` macros
     /// check before formatting a message).
-    fn enabled(&self, level: i32) -> bool {
+    fn enabled(&self, level: u8) -> bool {
         self.level().is_some_and(|l| l >= level)
     }
 }
@@ -37,7 +37,7 @@ pub trait DebugLog: std::any::Any + Send + Sync {
 /// The stock debug log: appends to a [`SharedFile`].
 #[derive(Debug, Default)]
 pub struct DefaultDebugLog {
-    level: Option<i32>,
+    level: Option<u8>,
     file_name: Option<String>,
     /// The open file (`None` when `file_name` could not be opened).
     file: Option<Arc<SharedFile>>,
@@ -57,23 +57,23 @@ impl DefaultDebugLog {
 }
 
 impl DebugLog for DefaultDebugLog {
-    fn write(&self, level: i32, msg: &str) {
+    fn write(&self, level: u8, msg: &str) {
         if self.enabled(level) {
             self.append(format!("[{}] {}\n", level, msg));
         }
     }
 
-    fn write_ctx(&self, level: i32, id: &str, uri: &str, msg: &str) {
+    fn write_ctx(&self, level: u8, id: &str, uri: &str, msg: &str) {
         if self.enabled(level) {
             self.append(format!("[{}] [{}] [{}] {}\n", id, uri, level, msg));
         }
     }
 
-    fn level(&self) -> Option<i32> {
+    fn level(&self) -> Option<u8> {
         self.level
     }
 
-    fn set_level(&mut self, level: i32) {
+    fn set_level(&mut self, level: u8) {
         self.level = Some(level);
     }
 
@@ -113,16 +113,16 @@ pub(crate) mod test_support {
     }
 
     impl DebugLog for CaptureLog {
-        fn write(&self, _level: i32, msg: &str) {
+        fn write(&self, _level: u8, msg: &str) {
             self.lines.lock().unwrap().push(msg.to_string());
         }
-        fn write_ctx(&self, _level: i32, _id: &str, _uri: &str, msg: &str) {
+        fn write_ctx(&self, _level: u8, _id: &str, _uri: &str, msg: &str) {
             self.lines.lock().unwrap().push(msg.to_string());
         }
-        fn level(&self) -> Option<i32> {
+        fn level(&self) -> Option<u8> {
             Some(9)
         }
-        fn set_level(&mut self, _level: i32) {}
+        fn set_level(&mut self, _level: u8) {}
         fn file(&self) -> Option<&str> {
             None
         }

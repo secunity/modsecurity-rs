@@ -472,7 +472,8 @@ end
     /// `m.log(level, text)`: writes `text` to the debug log at `level`.
     fn log(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
         // Retrieve parameters.
-        let level = check_number(lua, args.front(), 1)? as i32;
+        // A level out of range is the nearest one.
+        let level = check_number(lua, args.front(), 1)? as u8;
         let text = check_string(lua, args.get(1), 2)?;
         // Log message.
         crate::ms_dbg!(&**t.borrow(), level, "{}", lossy(&text));

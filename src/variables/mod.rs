@@ -161,16 +161,16 @@ pub(crate) mod test_support {
     }
 
     impl DebugLog for CaptureLog {
-        fn write(&self, level: i32, msg: &str) {
+        fn write(&self, level: u8, msg: &str) {
             self.log.lock().unwrap().push_str(&format!("[{}] {}\n", level, msg));
         }
-        fn write_ctx(&self, level: i32, _id: &str, _uri: &str, msg: &str) {
+        fn write_ctx(&self, level: u8, _id: &str, _uri: &str, msg: &str) {
             self.write(level, msg);
         }
-        fn level(&self) -> Option<i32> {
+        fn level(&self) -> Option<u8> {
             Some(9)
         }
-        fn set_level(&mut self, _level: i32) {}
+        fn set_level(&mut self, _level: u8) {}
         fn file(&self) -> Option<&str> {
             None
         }

@@ -277,7 +277,7 @@ impl Multipart {
     }
 
     /// Records `message` as the error of the body, and logs it at `level`.
-    fn fail(&mut self, cx: &dyn Context, level: i32, message: impl Into<String>) {
+    fn fail(&mut self, cx: &dyn Context, level: u8, message: impl Into<String>) {
         let message = message.into();
         ms_dbg!(cx, level, "{}", message);
         self.error = Some(message);
