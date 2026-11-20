@@ -1307,3 +1307,20 @@ matched chain, kept in order (tags, `severity`, `logdata`, `msg`, the
 others as written, the disruptive action). The functions that run the
 actions moved there from `rule/mod.rs`. No behavior change.
 
+## A rule message is data; the logs render it
+
+`RuleMessage` could only be turned into a log line: its fields were
+private to the crate, so an embedder that wanted the rule id, the tags or
+the severity of a match had to parse the text. It now has accessors for
+the rule (`rule_id`, `rule_location`, `rev`, `ver`, `maturity`,
+`accuracy`), for what the rule says about the match (`message`, `data`,
+`severity`, `tags`, `is_disruptive`) and for what matched (`operator`,
+`operator_parameter`, `variable`, `reference`). `Transaction::rule_messages`
+gives every message of a transaction; the server log callback gets the
+ones that do not interrupt when it asks for `LogProperties::RULE_MESSAGE`.
+
+`rule/message.rs` became a directory: `mod.rs` is the message, `text.rs`
+the error log line and the `H` lines of the native audit log, `json.rs`
+the entry of `messages` in the JSON audit log (it was written out in
+`audit_log/format.rs`). No behavior change.
+

@@ -248,30 +248,8 @@ pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
         // messages
         g.string(b"messages");
         g.array_open();
-        for a in &t.outcome.rules_messages {
-            g.map_open();
-            g.add("message", &a.message);
-            g.string(b"details");
-            g.map_open();
-            g.add("match", &a.match_message());
-            g.add("reference", &a.reference);
-            g.add("ruleId", a.rule.rule_id.to_string().as_bytes());
-            g.add("file", a.rule.file_name.as_bytes());
-            g.add("lineNumber", a.rule.line_number.to_string().as_bytes());
-            g.add("data", to_hex_if_needed(&a.data, false).as_bytes());
-            g.add("severity", a.severity.to_string().as_bytes());
-            g.add("ver", a.rule.ver.as_bytes());
-            g.add("rev", a.rule.rev.as_bytes());
-            g.string(b"tags");
-            g.array_open();
-            for b in &a.tags {
-                g.string(b);
-            }
-            g.array_close();
-            g.add("maturity", a.rule.maturity.to_string().as_bytes());
-            g.add("accuracy", a.rule.accuracy.to_string().as_bytes());
-            g.map_close();
-            g.map_close();
+        for message in &t.outcome.rules_messages {
+            message.write_json(&mut g);
         }
         g.array_close();
     }
