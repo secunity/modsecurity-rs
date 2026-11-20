@@ -307,6 +307,14 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`setvar` arithmetic is 64 bit.** *C++:* `setvar:tx.n=+5` and
+  `=-5` read both numbers with `std::stoi` and compute in `int`. A value
+  that does not fit an `int` counts as 0 (a counter at 3000000000 plus 1
+  is 1), and a result beyond the range wraps around (2147483647 plus 1 is
+  -2147483648). *Here:* 64 bit integers, and a result stops at the ends
+  of that range. A value still counts as the integer it starts with
+  (`5abc` is 5, text is 0). Regression test:
+  `actions::set_var::tests::arithmetic_is_64_bit_on_the_integer_a_value_starts_with`.
 - **Two sizes are whole numbers.** *C++* keeps them as `double` and
   prints them with six decimals:
   - `ARGS_COMBINED_SIZE` has the value `8.000000`. *Here:* `8`. A

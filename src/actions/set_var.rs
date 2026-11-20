@@ -5,8 +5,8 @@
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
-use crate::utils::string::stoi;
 use crate::variables::variable::Variable;
+use modsecurity_compat::cnum::atoll;
 
 /// Each operation owns exactly the operand it needs. Bare assignment and
 /// removal cannot accidentally carry an ignored predicate.
@@ -29,12 +29,6 @@ impl SetVar {
     pub fn new(variable: Variable, operation: SetVarOperation) -> Self {
         Self { variable, operation }
     }
-}
-
-/// The integer that `s` starts with (see [`stoi`]); any failure (no
-/// digits, out of `int` range) gives 0.
-fn stoi_or_zero(s: &[u8]) -> i32 {
-    stoi(s).unwrap_or(0)
 }
 
 impl Action for SetVar {
@@ -68,19 +62,21 @@ impl Action for SetVar {
                 return;
             }
             SetVarOperation::Add(_) | SetVarOperation::Subtract(_) => {
-                let pre = stoi_or_zero(&resolved_pre);
+                // A value counts as the integer it starts with, 0 when it
+                // starts with none.
+                let pre = atoll(&resolved_pre);
 
                 let mut l = Vec::new();
                 // The variable sees the rule only when it is a `SecRule`.
                 let rr = Some(rule).filter(|r| r.is_sec_rule());
                 self.variable.evaluate(t, rr, &mut l);
-                let value = l.first().map(|v| stoi_or_zero(v.value())).unwrap_or(0);
+                let value = l.first().map(|v| atoll(v.value())).unwrap_or(0);
 
-                // The result wraps around on overflow.
+                // The result stops at the ends of the 64 bit range.
                 let r = if matches!(self.operation, SetVarOperation::Add(_)) {
-                    value.wrapping_add(pre)
+                    value.saturating_add(pre)
                 } else {
-                    value.wrapping_sub(pre)
+                    value.saturating_sub(pre)
                 };
                 r.to_string().into_bytes()
             }
@@ -144,9 +140,9 @@ mod tests {
         assert_eq!(tx(&t, "score"), Some(b"-5".to_vec()));
         setvar("foo", Add(rts("3"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "foo"), Some(b"3".to_vec()));
-        // Out of `int` range is a failure too.
+        // A number beyond 32 bits is a number.
         setvar("big", Add(rts("99999999999"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
-        assert_eq!(tx(&t, "big"), Some(b"0".to_vec()));
+        assert_eq!(tx(&t, "big"), Some(b"99999999999".to_vec()));
 
         setvar("foo", Unset).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "foo"), None);
@@ -154,20 +150,27 @@ mod tests {
     }
 
     #[test]
-    fn arithmetic_keeps_prefix_parsing_and_wrapping() {
+    fn arithmetic_is_64_bit_on_the_integer_a_value_starts_with() {
         let ms = ModSecurity::new();
         let rules = rules();
         let r = rule(vec![]);
         let mut t = Transaction::new(&ms, &rules, None);
         let mut rm = RuleMessage::new(&r);
         for (previous, operand, subtract, expected) in [
-            ("2147483647", "1", false, "-2147483648"),
-            ("-2147483648", "1", true, "2147483647"),
+            // Beyond 32 bits. (C++ computes in `int`: the first two wrap
+            // around, and a value that does not fit an `int` counts as 0,
+            // so the next two give 1 and 7.)
+            ("2147483647", "1", false, "2147483648"),
+            ("-2147483648", "1", true, "-2147483649"),
+            ("2147483648", "1", false, "2147483649"),
+            ("7", "-2147483649", false, "-2147483642"),
+            // At the ends of the range.
+            ("9223372036854775807", "1", false, "9223372036854775807"),
+            ("-9223372036854775808", "1", true, "-9223372036854775808"),
             ("2suffix", " \t+3tail", false, "5"),
             ("2\0tail", "3", false, "5"),
-            ("2147483648", "1", false, "1"),
-            ("7", "-2147483649", false, "7"),
             ("7", "", false, "7"),
+            ("text", "4", false, "4"),
         ] {
             t.collections.tx.set(b"score", previous.as_bytes().to_vec());
             let operation = if subtract { Subtract(rts(operand)) } else { Add(rts(operand)) };
