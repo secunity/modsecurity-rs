@@ -398,7 +398,7 @@ impl Rule {
         a: &RuleAction,
         default_context: bool,
     ) {
-        if !a.is_disruptive() && a.name() != "block" {
+        if !a.is_disruptive() && !matches!(a, RuleAction::Block(_)) {
             crate::ms_dbg!(t, 9, "Running action: {}", a.name());
         } else if default_context && !self.contains_static_block_action {
             crate::ms_dbg!(t, 4, "Ignoring action: {} (rule does not cotains block)", a.name());
@@ -498,9 +498,7 @@ impl Rule {
 
     /// The `(prefix, href)` of the rule's `xmlns` actions, including the
     /// ones added by `SecRuleUpdateActionById`: the run time actions, then
-    /// the added ones. An action counts when its
-    /// name as written is `xmlns` (a transformation never is: its name
-    /// starts with `t:`).
+    /// the added ones.
     pub fn xml_namespaces<'s>(&'s self, t: &'s Transaction<'_>) -> Vec<(&'s str, &'s str)> {
         let ex = &t.rules.properties.exceptions;
         let updates = ex.action_pos_update_target_by_id.for_rule(self.rule_id).iter().map(|a| a.as_ref());
@@ -508,7 +506,7 @@ impl Rule {
             .iter()
             .chain(updates)
             .filter_map(|a| match a {
-                RuleAction::XmlNs(x) if x.name() == "xmlns" => Some(x.namespace()),
+                RuleAction::XmlNs(x) => Some(x.namespace()),
                 _ => None,
             })
             .collect()

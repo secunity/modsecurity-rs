@@ -304,6 +304,14 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`block` and `xmlns` in capitals.** Action names ignore case, but
+  *C++* recognises these two by their name in lower case afterwards. A
+  `BLOCK` action was not treated as disruptive: it ran the disruptive
+  action of `SecDefaultAction` even with `SecRuleEngine DetectionOnly`,
+  so a request was denied in a mode that must only detect. An `XMLNS`
+  action was ignored by `XML:/xpath` targets. *Here:* both are what they
+  are however they are written. Regression test:
+  `actions::block::tests::block_in_capitals_is_still_disruptive`.
 - **Regular expression keys of persistent collections (`IP:/regex/`,
   `GLOBAL:/regex/`, ...).** *C++:* the expression is prefixed with the
   compartment of the transaction (`10.0.0.1::app::` + expression),

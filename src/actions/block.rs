@@ -94,4 +94,29 @@ mod tests {
         assert!(marked);
         assert_eq!(status, 200);
     }
+
+    /// `block` is a disruptive action however it is written: it does not
+    /// run when the rule engine only detects. (`BLOCK` used to, as in
+    /// C++: the action was recognised by its name in lower case.)
+    #[test]
+    fn block_in_capitals_is_still_disruptive() {
+        let denied = |engine: &str, block: &str| {
+            let ms = ModSecurity::new();
+            let mut rules = rules();
+            rules
+                .load(&format!(
+                    "SecRuleEngine {engine}\nSecDefaultAction \"phase:1,log,deny,status:403\"\n\
+                     SecAction \"id:1,phase:1,{block}\""
+                ))
+                .unwrap();
+            let mut t = Transaction::new(&ms, &rules, None);
+            t.process_uri(b"/", b"GET", b"1.1");
+            t.process_request_headers();
+            t.intervention().is_some()
+        };
+        for block in ["block", "BLOCK", "Block"] {
+            assert!(denied("On", block), "{block}");
+            assert!(!denied("DetectionOnly", block), "{block}");
+        }
+    }
 }
