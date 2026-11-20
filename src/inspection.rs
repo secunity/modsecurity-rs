@@ -99,7 +99,7 @@ macro_rules! stage {
             /// backend that fails): records the status and runs the
             /// logging phase.
             pub fn abort(mut self, status: u16) {
-                self.0.0.update_status_code(status.into());
+                self.0.0.update_status_code(status);
             }
         }
     };
@@ -199,7 +199,7 @@ impl<'a> ResponseHead<'a> {
         for (name, value) in headers {
             t.add_response_header(name.as_ref(), value.as_ref());
         }
-        t.process_response_headers(status.into(), protocol);
+        t.process_response_headers(status, protocol);
         self.0.proceed(ResponseBody)
     }
 
@@ -284,7 +284,7 @@ mod tests {
 
     /// Runs a whole exchange; the stage at which the rules interrupted
     /// it, with the status.
-    fn run(rules: &RulesSet) -> Result<(), (&'static str, i32)> {
+    fn run(rules: &RulesSet) -> Result<(), (&'static str, u16)> {
         let engine = ModSecurity::new();
         let at = |stage: &'static str| move |b: Blocked<'_>| (stage, b.intervention().status);
         let address = ADDRESS.parse().unwrap();

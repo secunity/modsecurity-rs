@@ -334,7 +334,7 @@ impl AuditLog {
         true
     }
 
-    pub fn is_relevant(&self, status: i32) -> bool {
+    pub fn is_relevant(&self, status: u16) -> bool {
         self.relevant.as_ref().is_some_and(|r| r.re.is_match(status.to_string().as_bytes()))
     }
 

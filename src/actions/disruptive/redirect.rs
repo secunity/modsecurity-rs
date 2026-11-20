@@ -13,7 +13,7 @@ pub struct Redirect {
 impl Redirect {
     /// The status sent with the redirection, unless a 301..307 one was set
     /// before.
-    const STATUS: i32 = 302;
+    const STATUS: u16 = 302;
 
     pub fn with_rts(z: RunTimeString) -> Self {
         Redirect { string: z }

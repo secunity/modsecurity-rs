@@ -2,18 +2,18 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::utils::string::stoi;
 
 #[derive(Debug)]
 pub struct Status {
     name: String,
-    status: i32,
+    status: u16,
 }
 
 impl Status {
     pub fn new(name: &str, payload: &str) -> Result<Self, String> {
-        // No digits, or a value out of the `int` range, is an error.
-        let status = stoi(payload.as_bytes()).ok_or_else(|| format!("Not a valid number: {}", payload))?;
+        let digits = !payload.is_empty() && payload.bytes().all(|c| c.is_ascii_digit());
+        let status =
+            payload.parse().ok().filter(|_| digits).ok_or_else(|| format!("Not a valid number: {}", payload))?;
         Ok(Status { name: name.to_string(), status })
     }
 }

@@ -141,7 +141,7 @@ pub unsafe extern "C" fn msc_process_response_headers(
 ) -> c_int {
     let t = tx!(t);
     let p = String::from_utf8_lossy(unsafe { bytes(protocol) }).into_owned();
-    t.process_response_headers(code, &p);
+    t.process_response_headers(u16::try_from(code).unwrap_or(0), &p);
     1
 }
 
@@ -288,7 +288,8 @@ pub unsafe extern "C" fn msc_process_logging(t: *mut CTransaction) -> c_int {
 /// `t` as above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_update_status_code(t: *mut CTransaction, status: c_int) -> c_int {
-    tx!(t).update_status_code(status);
+    // A number that is not a status code is recorded as 0.
+    tx!(t).update_status_code(u16::try_from(status).unwrap_or(0));
     1
 }
 

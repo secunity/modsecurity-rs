@@ -78,11 +78,11 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
     // --- intervention --------------------------------------------------
 
     /// The status of the pending intervention (200 when none was set).
-    pub fn intervention_status(&self) -> i32 {
+    pub fn intervention_status(&self) -> u16 {
         self.t.outcome.intervention.status
     }
 
-    pub fn set_intervention_status(&mut self, status: i32) {
+    pub fn set_intervention_status(&mut self, status: u16) {
         self.t.outcome.intervention.status = status;
     }
 

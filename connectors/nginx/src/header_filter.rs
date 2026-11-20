@@ -116,7 +116,7 @@ fn inspect_headers(request: &Request<'_>, ctx: &mut Ctx) -> Option<ngx_int_t> {
     // HTTP V2 module is enabled, and request has been posted with HTTP/2.0.
     let version = if request.is_http2() { "HTTP 2.0" } else { "HTTP 1.1" };
 
-    ctx.modsec_transaction.process_response_headers(request.response_status() as i32, version);
+    ctx.modsec_transaction.process_response_headers(u16::try_from(request.response_status()).unwrap_or(0), version);
     let ret = process_intervention(ctx, request, false);
     if request.error_page() {
         return None;

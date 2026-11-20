@@ -283,7 +283,7 @@ pub(crate) struct HttpData {
     /// Combined size of all arguments (`ARGS_COMBINED_SIZE`).
     pub(crate) args_combined_size_double: f64,
     /// The HTTP status code, when known.
-    pub(crate) http_code_returned: i32,
+    pub(crate) http_code_returned: u16,
 }
 
 /// Request body processing: the body's type, the processor chosen for it
@@ -807,7 +807,7 @@ impl<'a> Transaction<'a> {
 
     /// Phase 3: records the response status and protocol and runs the
     /// response headers rules.
-    pub fn process_response_headers(&mut self, code: i32, proto: &str) {
+    pub fn process_response_headers(&mut self, code: u16, proto: &str) {
         crate::ms_dbg!(self, 4, "Starting phase RESPONSE_HEADERS. (SecRules 3)");
         self.http.http_code_returned = code;
         let off = self.vars.offset;
@@ -1027,7 +1027,7 @@ impl<'a> Transaction<'a> {
     }
 
     /// Sets the response status (`RESPONSE_STATUS`).
-    pub fn update_status_code(&mut self, code: i32) {
+    pub fn update_status_code(&mut self, code: u16) {
         self.http.http_code_returned = code;
         let off = self.vars.offset;
         self.vars.response_status.set(code.to_string().as_bytes(), off);

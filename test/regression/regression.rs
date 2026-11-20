@@ -304,7 +304,7 @@ fn run_one(t: &RegressionTest, resources: &[&str]) -> Outcome {
         for (name, value) in &t.response_headers {
             tr.add_response_header(name, value);
         }
-        tr.process_response_headers(r.status as i32, &t.response_protocol);
+        tr.process_response_headers(u16::try_from(r.status).unwrap_or(0), &t.response_protocol);
         actions(&mut r, &mut tr, &server_log);
 
         tr.append_response_body(&t.response_body);

@@ -9,7 +9,7 @@ impl RuleMessage<'_> {
     /// The log line of the message, with the optional `parts`. `code` is
     /// the status code of a disruptive message; without one the line keeps
     /// a `%d` placeholder for it.
-    pub fn log(&self, t: &Transaction<'_>, parts: LogParts, code: Option<i32>) -> String {
+    pub fn log(&self, t: &Transaction<'_>, parts: LogParts, code: Option<u16>) -> String {
         let mut msg: Vec<u8> = Vec::with_capacity(2048);
         if parts.contains(LogParts::CLIENT) {
             msg.extend_from_slice(format!("[client {}] ", t.http.client_ip_address).as_bytes());

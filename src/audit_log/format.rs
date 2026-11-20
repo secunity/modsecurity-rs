@@ -139,8 +139,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
     }
     if parts.contains(Parts::H) {
         section(&mut a, "H");
-        // A status of -1 reads as "no code" (the `%d` placeholder).
-        let code = Some(t.http.http_code_returned).filter(|&c| c != -1);
+        let code = Some(t.http.http_code_returned);
         for m in &t.outcome.rules_messages {
             a.extend_from_slice(p);
             line(&mut a, m.log(t, LogParts::empty(), code).as_bytes());
@@ -214,7 +213,7 @@ pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
     if parts.contains(Parts::E) {
         g.add("body", &t.http.response_body);
     }
-    g.add_num("http_code", t.http.http_code_returned as i64);
+    g.add_num("http_code", t.http.http_code_returned.into());
     if parts.contains(Parts::F) {
         g.string(b"headers");
         g.map_open();

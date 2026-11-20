@@ -6,7 +6,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Intervention {
     /// The HTTP status code to answer with.
-    pub status: i32,
+    pub status: u16,
     /// The redirect target (`redirect` action), as raw bytes.
     pub url: Option<Vec<u8>>,
     /// The log message (`[client ...] ModSecurity: Access denied ...`).

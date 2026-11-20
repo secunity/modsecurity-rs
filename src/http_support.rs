@@ -63,7 +63,7 @@ impl Transaction<'_> {
             self.add_response_header(name.as_str().as_bytes(), value.as_bytes());
         }
         let protocol = format!("HTTP {}", version_number(response.version()));
-        self.process_response_headers(response.status().as_u16().into(), &protocol);
+        self.process_response_headers(response.status().as_u16(), &protocol);
     }
 }
 
@@ -80,7 +80,7 @@ impl Intervention {
             return None;
         }
         let mut response = Response::new(B::default());
-        let status = u16::try_from(self.status).ok().and_then(|s| StatusCode::from_u16(s).ok());
+        let status = StatusCode::from_u16(self.status).ok();
         *response.status_mut() = status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         if let Some(url) = url {
             match HeaderValue::from_bytes(url) {

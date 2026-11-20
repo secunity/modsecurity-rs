@@ -35,7 +35,7 @@ impl ModSecurityIntervention {
             self.url = strdup(url);
         }
         self.disruptive = c_int::from(it.disruptive);
-        self.status = it.status;
+        self.status = it.status.into();
         if let Some(log) = &it.log {
             self.log = strdup(log.as_bytes());
         }
