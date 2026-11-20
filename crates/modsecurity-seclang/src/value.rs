@@ -11,14 +11,13 @@
 
 /// Removes the spaces around a value (not when only one character is
 /// left).
-pub fn remove_white_spaces_if_needed(mut a: String) -> String {
-    while a.len() > 1 && a.starts_with(' ') {
-        a.remove(0);
-    }
-    while a.len() > 1 && a.ends_with(' ') {
-        a.pop();
-    }
-    a
+pub fn remove_white_spaces_if_needed(a: String) -> String {
+    // At least one character is left: the last space of a value that is
+    // only spaces.
+    let leading = a.bytes().take_while(|&c| c == b' ').count().min(a.len().saturating_sub(1));
+    let rest = &a[leading..];
+    let trailing = rest.bytes().rev().take_while(|&c| c == b' ').count().min(rest.len().saturating_sub(1));
+    rest[..rest.len() - trailing].to_string()
 }
 
 /// Removes one pair of surrounding double quotes, then one pair of single
@@ -302,6 +301,22 @@ mod tests {
     use super::Extract::*;
     use super::Pattern::*;
     use super::*;
+
+    #[test]
+    fn spaces_around_a_value() {
+        for (text, trimmed) in [
+            ("", ""),
+            (" ", " "),
+            ("   ", " "),
+            ("a", "a"),
+            (" a", "a"),
+            ("a  ", "a"),
+            ("  a b  ", "a b"),
+            (" \ta ", "\ta"),
+        ] {
+            assert_eq!(remove_white_spaces_if_needed(text.to_string()), trimmed, "{text:?}");
+        }
+    }
 
     /// The value read from `rest` and the pattern it was written as.
     fn value<'a>(rest: &'a str, patterns: &[(Pattern, Extract)]) -> Result<(String, usize), Refused<'a>> {
