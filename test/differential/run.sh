@@ -48,28 +48,38 @@ done
 lines() { sed -E 's/\[line "[0-9]+"\]/[line ""]/g; /with param/s/\\"/"/g' "$1"; }
 lines "$work/cpp/out.txt" > "$work/cpp/out.norm"
 lines "$work/rs/out.txt" > "$work/rs/out.norm"
-diff "$work/cpp/out.norm" "$work/rs/out.norm"
+# The script reports what differs and goes on (it is a report, not a gate:
+# see CLAUDE.md). `same A B what` prints the differences of two files.
+same() {
+    if diff "$1" "$2" > "$work/last.diff"; then
+        echo "$3: identical"
+    else
+        echo "$3: DIFFERENT ($(grep -c '^[<>]' "$work/last.diff") lines; the first ones follow)"
+        head -20 "$work/last.diff"
+    fi
+}
+same "$work/cpp/out.norm" "$work/rs/out.norm" "requests: $(grep -c '^REQ ' "$work/cpp/out.txt"), outputs"
+
+# The debug logs: rule locations (`'<file>:<line>'`) are compared without
+# the line, and operator parameters with `\"` read as `"` (see above). Each
+# log is hundreds of MB, so they are normalised to files and compared by
+# diff. With KEEP_WORK=1 the whole difference stays in debug.diff.
 python3 -I - "$work/cpp/debug.log" "$work/rs/debug.log" <<'PY'
-import itertools, re, sys
-# Rule locations (`'<file>:<line>'`) are compared without the line, and
-# operator parameters with `\"` read as `"` (see above).
+import re, sys
 loc = re.compile(r"('[^']*):[0-9]+'")
-def norm(line):
-    line = loc.sub(r"\1:'", line.decode('utf-8', 'replace'))
-    return line.replace('\\"', '"') if 'with param' in line else line
-# Stream both logs (each is hundreds of MB).
-n, bad = 0, []
-with open(sys.argv[1], 'rb') as fa, open(sys.argv[2], 'rb') as fb:
-    for x, y in itertools.zip_longest(fa, fb):
-        n += 1
-        if x is None or y is None or norm(x) != norm(y):
-            bad.append(n)
-            if len(bad) == 10:
-                break
-assert not bad, f"debug log differs at lines {bad}"
-print(f"identical: {n} debug log lines")
+for path in sys.argv[1:]:
+    with open(path, 'rb') as log, open(path + '.norm', 'w', encoding='utf-8') as out:
+        for line in log:
+            line = loc.sub(r"\1:'", line.decode('utf-8', 'replace'))
+            out.write(line.replace('\\"', '"') if 'with param' in line else line)
 PY
-echo "requests: $(grep -c '^REQ ' "$work/cpp/out.txt"), outputs identical"
+if diff "$work/cpp/debug.log.norm" "$work/rs/debug.log.norm" > "$work/debug.diff"; then
+    echo "debug log: identical ($(wc -l < "$work/rs/debug.log.norm") lines)"
+else
+    echo "debug log: DIFFERENT ($(grep -c '^<' "$work/debug.diff") lines only in C++, $(grep -c '^>' "$work/debug.diff") only here, of $(wc -l < "$work/rs/debug.log.norm"))"
+    echo "  kinds of lines that differ:"
+    grep '^[<>]' "$work/debug.diff" | sed -E 's/^([<>]) \[[^]]*\] \[[^]]*\] \[[0-9]\] */\1 /; s/[0-9]+/N/g; s/"[^"]*"/"..."/g; s/: .*/: .../' | cut -c1-70 | sort | uniq -c | sort -rn | head -8
+fi
 
 # Second pass without the debug log: some paths (e.g. the transformation
 # cache) are only taken when the debug level is below 9.
@@ -80,8 +90,7 @@ for v in cpp rs; do
 done
 lines "$work/cpp-nodebug/out.txt" > "$work/cpp-nodebug/out.norm"
 lines "$work/rs-nodebug/out.txt" > "$work/rs-nodebug/out.norm"
-diff "$work/cpp-nodebug/out.norm" "$work/rs-nodebug/out.norm"
-echo "without debug log: outputs identical"
+same "$work/cpp-nodebug/out.norm" "$work/rs-nodebug/out.norm" "without debug log: outputs"
 
 # Third pass: the audit logs (an output format of the compatibility
 # contract). Run-specific values are normalized: dates, the random native
@@ -128,8 +137,7 @@ for mode in native json concurrent; do
             done | sort | while read -r id f; do echo "== $id"; audit_norm "$f"; done > "$d/entries.norm"
         fi
     done
-    diff "$work/audit-$mode-cpp/audit.norm" "$work/audit-$mode-rs/audit.norm"
+    same "$work/audit-$mode-cpp/audit.norm" "$work/audit-$mode-rs/audit.norm" "audit log ($mode)"
     [ "$mode" != concurrent ] ||
-        diff "$work/audit-$mode-cpp/entries.norm" "$work/audit-$mode-rs/entries.norm"
+        same "$work/audit-$mode-cpp/entries.norm" "$work/audit-$mode-rs/entries.norm" "audit log ($mode) entries"
 done
-echo "audit logs (native, JSON, concurrent): identical"
