@@ -3,12 +3,13 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::utils::string::{split_str, stoi};
+use crate::rule::Id;
+use crate::utils::string::split_str;
 
 #[derive(Debug)]
 pub struct RuleRemoveTargetById {
     name: String,
-    id: i32,
+    id: Id,
     target: String,
 }
 
@@ -22,8 +23,7 @@ impl RuleRemoveTargetById {
         let (Some(id), Some(target)) = (param.next(), param.next()) else {
             return Err(format!("{} is not a valid 'ID;VARIABLE'", what));
         };
-        // No digits, or a value out of the `int` range, is an error.
-        let Some(id) = stoi(id.as_bytes()) else {
+        let Some(id) = crate::rule::id::parse(&id) else {
             return Err(format!("Not able to convert '{}' into a number", id));
         };
         Ok(RuleRemoveTargetById { name: name.to_string(), id, target })

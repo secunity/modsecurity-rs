@@ -10,9 +10,10 @@ pub struct RuleId {
 }
 
 impl RuleId {
-    /// The id `a`: a decimal number, up to the largest 64 bit integer.
+    /// The id `a`: a decimal number, up to the largest unsigned 64 bit
+    /// integer.
     pub fn new(name: &str, a: &str) -> Result<Self, String> {
-        match crate::rule::Id::parse(a) {
+        match crate::rule::id::parse(a) {
             Some(rule_id) => Ok(RuleId { name: name.to_string(), rule_id }),
             None => Err(format!("The input \"{}\" does not seems to be a valid rule id.", a)),
         }
@@ -38,13 +39,13 @@ mod tests {
     use super::*;
     use crate::actions::block::test_support::{RuleAction, rule};
 
-    fn id(p: &str) -> Result<i64, String> {
+    fn id(p: &str) -> Result<u64, String> {
         let a = {
             let text = format!("id:{}", p);
             let (name, payload) = crate::actions::action::name_and_payload(&text);
             RuleId::new(name, payload)
         }?;
-        Ok(rule(vec![RuleAction::from(a)]).rule_id.get())
+        Ok(rule(vec![RuleAction::from(a)]).rule_id)
     }
 
     #[test]
@@ -56,9 +57,9 @@ mod tests {
         // Every 64 bit integer is itself (C++ reads the id as a floating
         // point number: this one is refused there, 9007199254740992 is not).
         assert_eq!(id("9007199254740993"), Ok(9007199254740993));
-        assert_eq!(id("9223372036854775807"), Ok(i64::MAX));
+        assert_eq!(id("18446744073709551615"), Ok(u64::MAX));
         let err = |s: &str| Err(format!("The input \"{}\" does not seems to be a valid rule id.", s));
-        assert_eq!(id("9223372036854775808"), err("9223372036854775808"));
+        assert_eq!(id("18446744073709551616"), err("18446744073709551616"));
         assert_eq!(id("abc"), err("abc"));
         assert_eq!(id("-1"), err("-1"));
         assert_eq!(id("+1"), err("+1"));

@@ -8,7 +8,7 @@
 //! evaluation (the `RULE` variable walks it).
 
 mod actions;
-mod id;
+pub mod id;
 pub mod message;
 pub mod sec_action;
 pub mod sec_rule;

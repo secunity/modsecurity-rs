@@ -329,7 +329,7 @@ pub unsafe extern "C" fn msc_get_rules_messages_rule_ids(
             break;
         }
         // SAFETY: written < ids_len, within the caller's buffer.
-        unsafe { *ids.add(written) = m.rule_id() };
+        unsafe { *ids.add(written) = i64::try_from(m.rule_id()).unwrap_or(i64::MAX) };
         written += 1;
     }
     written

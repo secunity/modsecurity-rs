@@ -152,16 +152,15 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
         self.t.ctl.audit_log_modifier.push((change, parts));
     }
 
-    pub fn remove_rules_by_id(&mut self, ids: &[i32], ranges: &[(i32, i32)]) {
+    pub fn remove_rules_by_id(&mut self, ids: &[std::ops::RangeInclusive<crate::rule::Id>]) {
         self.t.ctl.rule_remove_by_id.extend_from_slice(ids);
-        self.t.ctl.rule_remove_by_id_range.extend_from_slice(ranges);
     }
 
     pub fn remove_rules_by_tag(&mut self, tag: String) {
         self.t.ctl.rule_remove_by_tag.push(tag);
     }
 
-    pub fn remove_target_by_id(&mut self, id: i32, target: String) {
+    pub fn remove_target_by_id(&mut self, id: crate::rule::Id, target: String) {
         self.t.ctl.rule_remove_target_by_id.push((id, target));
     }
 

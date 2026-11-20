@@ -11,7 +11,6 @@ use std::sync::Arc;
 use crate::actions::action::Kind;
 use crate::actions::rule_action::RuleAction;
 use crate::rule::Id;
-use crate::utils::string::parser_sanitizer;
 use crate::variables::variable::Variable;
 
 /// What `SecRuleUpdate...ById` directives give to rules: per rule id, in
@@ -122,22 +121,7 @@ impl RulesExceptions {
     /// `SecRuleRemoveById`: the ids and ranges of ids (`first-last`) of
     /// `list`, separated by spaces.
     pub fn load(&mut self, list: &str) -> Result<(), String> {
-        let mut ranges = Vec::new();
-        for item in list.split(' ').map(|item| parser_sanitizer(item.to_string())).filter(|item| !item.is_empty()) {
-            let id = |text: &str| Id::parse(text).ok_or_else(|| format!("Not a number: {text}"));
-            let range = match item.split_once('-') {
-                None => Id::parse(&item).map(|id| id..=id).ok_or_else(|| format!("Not a number or range: {item}"))?,
-                Some((first, last)) => id(first)?..=id(last)?,
-            };
-            if range.is_empty() {
-                return Err(format!("Invalid range: {item}"));
-            }
-            ranges.push(range);
-        }
-        if ranges.is_empty() {
-            return Err(format!("Not a number or range: {list}"));
-        }
-        self.removed_ids.extend(ranges);
+        self.removed_ids.extend(crate::rule::id::parse_list(list)?);
         Ok(())
     }
 
@@ -170,16 +154,16 @@ mod tests {
     #[test]
     fn id_multimap_keeps_the_order() {
         let mut m = IdMultimap::default();
-        m.emplace(Id::new(1), "a");
-        m.emplace(Id::new(2), "x");
-        m.emplace(Id::new(1), "b");
-        assert_eq!(m.for_rule(Id::new(1)), ["a", "b"]);
-        assert_eq!(m.for_rule(Id::new(2)), ["x"]);
-        assert!(m.for_rule(Id::new(3)).is_empty());
+        m.emplace(1, "a");
+        m.emplace(2, "x");
+        m.emplace(1, "b");
+        assert_eq!(m.for_rule(1), ["a", "b"]);
+        assert_eq!(m.for_rule(2), ["x"]);
+        assert!(m.for_rule(3).is_empty());
         let mut n = IdMultimap::default();
-        n.emplace(Id::new(1), "c");
+        n.emplace(1, "c");
         n.merge_from(&m);
-        assert_eq!(n.for_rule(Id::new(1)), ["c", "a", "b"]);
+        assert_eq!(n.for_rule(1), ["c", "a", "b"]);
     }
 
     /// The actions and targets that `SecRuleUpdate...ById` directives
@@ -195,7 +179,7 @@ mod tests {
             let ex = &rules.properties.exceptions;
             let tags: Vec<String> = ex
                 .action_pos_update_target_by_id
-                .for_rule(Id::new(1))
+                .for_rule(1)
                 .iter()
                 .filter_map(|a| match &**a {
                     RuleAction::Tag(tag) => Some(tag.string.evaluate_static_string()),
@@ -203,7 +187,7 @@ mod tests {
                 })
                 .collect();
             let targets: Vec<&str> =
-                ex.variable_update_target_by_id.for_rule(Id::new(1)).iter().map(|v| v.full_name()).collect();
+                ex.variable_update_target_by_id.for_rule(1).iter().map(|v| v.full_name()).collect();
             (tags.join(","), targets.join("|"))
         };
         // In one load, in two, and merged into another rule set twice
@@ -229,7 +213,7 @@ mod tests {
     /// removing rule 1 also removed rule 4294967297.)
     #[test]
     fn load_ids() {
-        let id = Id::new;
+        let id = |n: Id| n;
         let mut e = RulesExceptions::new();
         assert!(e.load("1 5-9").is_ok());
         assert!(e.contains(id(1)) && e.contains(id(5)) && e.contains(id(9)));

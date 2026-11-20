@@ -520,7 +520,7 @@ mod tests {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
         let mut parent = Rule::new(None, None, "f", 1, RuleKind::SecAction);
-        parent.rule_id = crate::rule::Id::new(10);
+        parent.rule_id = 10;
         parent.rev = "3".to_string();
         let sev = crate::actions::severity::Severity::new("severity", "2").unwrap();
         let mut child = Rule::new(

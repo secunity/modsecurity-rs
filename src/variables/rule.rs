@@ -57,7 +57,7 @@ fn add_variable_origin(key: &str, value: &[u8], l: &mut Vec<VariableValue>) {
 
 /// `RULE:id`: the id of the rule or of the nearest chain parent with one.
 fn id(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
-    let Some(r) = find_in_chain(t, rule, |r| r.rule_id.get() != 0) else {
+    let Some(r) = find_in_chain(t, rule, |r| r.rule_id != 0) else {
         return;
     };
     add_variable_origin(RULE_ID, r.rule_id.to_string().as_bytes(), l);

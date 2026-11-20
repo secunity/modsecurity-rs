@@ -1,75 +1,69 @@
-//! [`Id`]: the id of a rule.
+//! The id of a rule (`id:942100`), and how ids are written.
 
-/// The id of a rule (`id:942100`), 0 for a rule without one.
-///
-/// A rule keeps its id as a 64 bit integer, and so do the directives that
-/// name rules (`SecRuleRemoveById`, `SecRuleUpdateTargetById`,
-/// `SecRuleUpdateActionById`). The actions `ctl:ruleRemoveById` and
-/// `ctl:ruleRemoveTargetById` hold `int`s; the comparisons with those are
-/// here.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct Id(i64);
+use std::ops::RangeInclusive;
 
-impl Id {
-    pub fn new(id: i64) -> Self {
-        Id(id)
-    }
+/// The id of a rule; 0 for a rule without one.
+pub type Id = u64;
 
-    /// The id written as `text`: a decimal number, up to the largest 64 bit
-    /// integer.
-    pub fn parse(text: &str) -> Option<Self> {
-        let digits = !text.is_empty() && text.bytes().all(|c| c.is_ascii_digit());
-        text.parse().ok().filter(|_| digits).map(Id)
-    }
-
-    pub fn get(self) -> i64 {
-        self.0
-    }
-
-    /// Whether this is `id`, the `int` of a `ctl:` action.
-    pub fn is(self, id: i32) -> bool {
-        self.0 == i64::from(id)
-    }
-
-    /// Whether this is in `first..=last`, a range of a `ctl:ruleRemoveById`.
-    pub fn is_within(self, first: i32, last: i32) -> bool {
-        i64::from(first) <= self.0 && i64::from(last) >= self.0
-    }
+/// The id written as `text`: decimal digits only.
+pub fn parse(text: &str) -> Option<Id> {
+    let digits = !text.is_empty() && text.bytes().all(|c| c.is_ascii_digit());
+    text.parse().ok().filter(|_| digits)
 }
 
-impl std::fmt::Display for Id {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+/// The ids of a list as `SecRuleRemoveById` and `ctl:ruleRemoveById` take
+/// it: ids and ranges (`first-last`) separated by spaces, each possibly in
+/// quotes. A single id is a range of one.
+pub fn parse_list(list: &str) -> Result<Vec<RangeInclusive<Id>>, String> {
+    let mut ranges = Vec::new();
+    let items = list.split(' ').map(|item| crate::utils::string::parser_sanitizer(item.to_string()));
+    for item in items.filter(|item| !item.is_empty()) {
+        let bound = |text: &str| parse(text).ok_or_else(|| format!("Not a number: {text}"));
+        let range = match item.split_once('-') {
+            None => parse(&item).map(|id| id..=id).ok_or_else(|| format!("Not a number or range: {item}"))?,
+            Some((first, last)) => bound(first)?..=bound(last)?,
+        };
+        if range.is_empty() {
+            return Err(format!("Invalid range: {item}"));
+        }
+        ranges.push(range);
     }
-}
-
-/// The number alone, as when the id was an integer.
-impl std::fmt::Debug for Id {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+    if ranges.is_empty() {
+        return Err(format!("Not a number or range: {list}"));
     }
+    Ok(ranges)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Id;
+    use super::*;
 
     #[test]
-    fn comparisons() {
-        let id = Id::new(942100);
-        assert_eq!((id.get(), id.to_string(), format!("{id:?}")), (942100, "942100".to_string(), "942100".to_string()));
-        assert!(id.is(942100) && !id.is(942101));
-        assert!(id.is_within(942000, 942100) && id.is_within(942100, 942100) && !id.is_within(942101, 942200));
-        assert_eq!(Id::parse("942100"), Some(id));
-        assert_eq!(Id::parse("007"), Some(Id::new(7)));
-        assert_eq!(Id::parse("9223372036854775807"), Some(Id::new(i64::MAX)));
-        for text in ["", "+1", "-1", " 1", "1.0", "9.421e5", "0x10", "942100abc", "9223372036854775808"] {
-            assert_eq!(Id::parse(text), None, "{text}");
+    fn written_ids() {
+        assert_eq!(parse("942100"), Some(942100));
+        assert_eq!(parse("007"), Some(7));
+        assert_eq!(parse("18446744073709551615"), Some(u64::MAX));
+        for text in ["", "+1", "-1", " 1", "1.0", "9.421e5", "0x10", "942100abc", "18446744073709551616"] {
+            assert_eq!(parse(text), None, "{text}");
         }
+    }
 
-        // Beyond the `int` range: never the id of a `ctl:` action.
-        let big = Id::new(4294967297);
-        assert!(!big.is(1) && !big.is_within(0, i32::MAX));
+    #[test]
+    fn lists() {
+        assert_eq!(parse_list("1  '2' 10-20 \"3\""), Ok(vec![1..=1, 2..=2, 10..=20, 3..=3]));
+        for (list, error) in [
+            ("10-5", "Invalid range: 10-5"),
+            ("x", "Not a number or range: x"),
+            ("12abc", "Not a number or range: 12abc"),
+            ("1-x", "Not a number: x"),
+            ("x-2", "Not a number: x"),
+            ("-5", "Not a number: "),
+            ("", "Not a number or range: "),
+            ("  ", "Not a number or range:   "),
+            ("30 x", "Not a number or range: x"),
+        ] {
+            assert_eq!(parse_list(list).unwrap_err(), error, "{list:?}");
+        }
     }
 
     /// Whether a request for `/x` is denied under `conf`.
@@ -84,8 +78,10 @@ mod tests {
     }
 
     /// A rule with an id beyond the `int` range is removed by its own id
-    /// only. (In C++ `SecRuleRemoveById` sees the id narrowed to an `int`:
-    /// removing rule 1 removes rule 4294967297 too.)
+    /// only, by a directive or by a `ctl:` action. (In C++
+    /// `SecRuleRemoveById` sees the id narrowed to an `int`, so removing
+    /// rule 1 removes rule 4294967297 too, and `ctl:ruleRemoveById` cannot
+    /// name such an id.)
     #[test]
     fn an_id_beyond_the_int_range() {
         let rule = "SecRule REQUEST_URI \"@contains x\" \"id:4294967297,phase:1,deny,status:403\"\n";
@@ -98,6 +94,11 @@ mod tests {
         assert!(denied(&format!("{ctl}{rule}")));
         let ctl_range = "SecAction \"id:5,phase:1,pass,nolog,ctl:ruleRemoveById=1-2147483647\"\n";
         assert!(denied(&format!("{ctl_range}{rule}")));
+        for removal in ["ruleRemoveById=4294967297", "ruleRemoveById=4294967290-4294967299"] {
+            assert!(!denied(&format!("SecAction \"id:5,phase:1,pass,nolog,ctl:{removal}\"\n{rule}")), "{removal}");
+        }
+        let target = "SecAction \"id:5,phase:1,pass,nolog,ctl:ruleRemoveTargetById=4294967297;REQUEST_URI\"\n";
+        assert!(!denied(&format!("{target}{rule}")));
     }
 
     /// `SecRuleUpdateTargetById` and `SecRuleUpdateActionById` take the id

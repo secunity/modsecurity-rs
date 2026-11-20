@@ -108,8 +108,8 @@ impl<'r> RuleMessage<'r> {
     // --- the rule ---
 
     /// The `id` of the rule (0 for rules without one).
-    pub fn rule_id(&self) -> i64 {
-        self.rule.rule_id.get()
+    pub fn rule_id(&self) -> u64 {
+        self.rule.rule_id
     }
 
     /// The file the rule was read from, and its line there.

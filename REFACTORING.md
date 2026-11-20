@@ -1340,3 +1340,16 @@ The tower middleware is written with it (its tests are unchanged), and it
 is what the README and the crate documentation show first. `Transaction`
 is unchanged: the C API and the nginx connector use it directly.
 
+## A rule id is a `u64`
+
+`rule::Id` was a wrapper around an `i64` with `is(i32)` and
+`is_within(i32, i32)`: the id was signed because the C++ field was, and
+the two methods compared it with the 32 bit ids that `ctl:ruleRemoveById`
+and `ctl:ruleRemoveTargetById` kept. Those actions now hold ids like
+everything else, so `Id` is an alias of `u64`, and `rule::id` has the two
+functions that say how ids are written: `parse` (one id) and `parse_list`
+(the ids and ranges of `SecRuleRemoveById` and `ctl:ruleRemoveById`,
+which each had a copy of that parser). A transaction keeps the rules
+removed by `ctl:ruleRemoveById` as one list of ranges instead of a list of
+ids and a list of ranges.
+

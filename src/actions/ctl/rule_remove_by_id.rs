@@ -3,65 +3,24 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::utils::string::{parser_sanitizer, ssplit, stoi};
+use crate::rule::Id;
+use std::ops::RangeInclusive;
 
 #[derive(Debug)]
 pub struct RuleRemoveById {
     name: String,
-    ranges: Vec<(i32, i32)>,
-    ids: Vec<i32>,
-}
-
-/// The integer that `s` starts with (see [`stoi`]); `None` when there are
-/// no digits or the value is out of `int` range.
-fn stoi_int(s: &str) -> Option<i32> {
-    stoi(s.as_bytes())
+    /// The ids, as ranges (of one id for a single one).
+    ids: Vec<RangeInclusive<Id>>,
 }
 
 impl RuleRemoveById {
     /// The payload is `ruleRemoveById=` followed by space separated ids
     /// and `first-last` ranges.
     pub fn new(name: &str, payload: &str) -> Result<Self, String> {
-        let mut ranges = Vec::new();
-        let mut ids = Vec::new();
-        let Some((_, what)) = payload.split_once('=') else {
+        let Some((_, list)) = payload.split_once('=') else {
             return Err(format!("{} is not a valid ID or range", payload));
         };
-        let mut added = false;
-
-        for a in ssplit(what.as_bytes(), b' ') {
-            let b = parser_sanitizer(String::from_utf8_lossy(&a).into_owned());
-            if b.is_empty() {
-                continue;
-            }
-
-            if let Some(dash) = b.find('-') {
-                let n1s = &b[..dash];
-                let n2s = &b[dash + 1..];
-                let Some(n1n) = stoi_int(n1s) else {
-                    return Err(format!("Not a number: {}", n1s));
-                };
-                let Some(n2n) = stoi_int(n2s) else {
-                    return Err(format!("Not a number: {}", n2s));
-                };
-                if n1n > n2n {
-                    return Err(format!("Invalid range: {}", b));
-                }
-                ranges.push((n1n, n2n));
-                added = true;
-            } else {
-                let Some(num) = stoi_int(&b) else {
-                    return Err(format!("Not a number or range: {}", b));
-                };
-                ids.push(num);
-                added = true;
-            }
-        }
-
-        if !added {
-            return Err(format!("Not a number or range: {}", what));
-        }
-        Ok(RuleRemoveById { name: name.to_string(), ranges, ids })
+        Ok(RuleRemoveById { name: name.to_string(), ids: crate::rule::id::parse_list(list)? })
     }
 }
 
@@ -71,7 +30,7 @@ impl Action for RuleRemoveById {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        cx.remove_rules_by_id(&self.ids, &self.ranges);
+        cx.remove_rules_by_id(&self.ids);
     }
 }
 
@@ -129,8 +88,7 @@ mod tests {
         for a in &actions {
             a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         }
-        assert_eq!(t.ctl.rule_remove_by_id, vec![1, 2, 3]);
-        assert_eq!(t.ctl.rule_remove_by_id_range, vec![(10, 20)]);
+        assert_eq!(t.ctl.rule_remove_by_id, vec![1..=1, 2..=2, 10..=20, 3..=3]);
         assert_eq!(t.ctl.rule_remove_by_tag, vec!["attack-sqli".to_string()]);
         assert_eq!(t.ctl.rule_remove_target_by_id, vec![(981260, "ARGS:foo".to_string())]);
         assert_eq!(t.ctl.rule_remove_target_by_tag, vec![("CRS".to_string(), "REQUEST_HEADERS:x".to_string())]);

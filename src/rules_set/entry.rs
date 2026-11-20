@@ -57,9 +57,9 @@ impl Entry {
     }
 
     /// The id of a `SecRule`; `None` for any other rule.
-    pub fn sec_rule_id(&self) -> Option<i64> {
+    pub fn sec_rule_id(&self) -> Option<crate::rule::Id> {
         match self {
-            Entry::Rule(r) if r.is_sec_rule() => Some(r.rule_id.get()),
+            Entry::Rule(r) if r.is_sec_rule() => Some(r.rule_id),
             _ => None,
         }
     }

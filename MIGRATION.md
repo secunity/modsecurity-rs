@@ -298,12 +298,23 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   (`id:9007199254740993`, and `id:9223372036854775807`, the largest 64 bit
   integer), and accepts larger ones that it can (`id:9223372036854775808`,
   `id:18446744073709551616`), which the 64 bit id of the rule then cannot
-  hold. *Here:* the id is a decimal integer up to 9223372036854775807;
-  leading zeros are allowed (`id:007` is 7). *Why:* the owner does not
+  hold. *Here:* the id is a decimal integer up to 18446744073709551615
+  (an unsigned 64 bit integer); leading zeros are allowed (`id:007` is
+  7). The C API reports ids as signed 64 bit integers
+  (`msc_get_rules_messages_rule_ids`): an id above 9223372036854775807 is
+  reported as that number there. *Why:* the owner does not
   want the accidents of the C++ code kept where its tests do not need
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`ctl:ruleRemoveById` and `ctl:ruleRemoveTargetById` take ids as
+  rules have them.** *C++:* these two actions keep 32 bit ids, read as
+  far as the digits go: `ctl:ruleRemoveById=12abc` is rule 12, and a
+  rule with an id above 2147483647 cannot be removed, nor its targets,
+  by a `ctl:` action. *Here:* an id is a decimal integer as in the `id`
+  action, and the list of `ctl:ruleRemoveById` is read by the code that
+  reads `SecRuleRemoveById`'s. Regression tests:
+  `rule::id::tests::lists`, `rule::id::tests::an_id_beyond_the_int_range`.
 - **`SecRuleRemoveById` reads ids and ranges as numbers.** *C++:*
   - the bounds of a range are compared as text, so `SecRuleRemoveById
     5-10` is refused ("Invalid range") and `10-5` is accepted (and

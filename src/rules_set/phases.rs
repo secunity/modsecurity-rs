@@ -25,7 +25,7 @@ impl RulesSetPhases {
     /// `SecRule` ids. Returns the number of appended rules. On a duplicate
     /// the phases before it stay appended.
     pub fn append(&mut self, from: &RulesSetPhases) -> Result<usize, String> {
-        let mut ids: Vec<i64> = self.rules_at_phase.iter().flatten().filter_map(|r| r.sec_rule_id()).collect();
+        let mut ids: Vec<u64> = self.rules_at_phase.iter().flatten().filter_map(|r| r.sec_rule_id()).collect();
         ids.sort();
         let mut amount_of_rules = 0;
         for (to, from) in self.rules_at_phase.iter_mut().zip(&from.rules_at_phase) {
@@ -76,7 +76,7 @@ mod tests {
         driver.rules_set_phases
     }
 
-    fn ids(phases: &RulesSetPhases, phase: Phases) -> Vec<i64> {
+    fn ids(phases: &RulesSetPhases, phase: Phases) -> Vec<u64> {
         phases.for_phase(phase).iter().filter_map(|r| r.sec_rule_id()).collect()
     }
 

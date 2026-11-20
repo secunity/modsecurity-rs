@@ -310,11 +310,11 @@ pub(crate) struct CtlOverrides {
     pub(crate) audit_engine: Option<AuditLogStatus>,
     /// `ctl:auditLogParts` changes, in rule order.
     pub(crate) audit_log_modifier: Vec<(PartsChange, Parts)>,
-    pub(crate) rule_remove_by_id: Vec<i32>,
-    pub(crate) rule_remove_by_id_range: Vec<(i32, i32)>,
+    /// `ctl:ruleRemoveById`: ranges of ids (of one id for a single one).
+    pub(crate) rule_remove_by_id: Vec<std::ops::RangeInclusive<crate::rule::Id>>,
     pub(crate) rule_remove_by_tag: Vec<String>,
     pub(crate) rule_remove_target_by_tag: Vec<(String, String)>,
-    pub(crate) rule_remove_target_by_id: Vec<(i32, String)>,
+    pub(crate) rule_remove_target_by_id: Vec<(crate::rule::Id, String)>,
 }
 
 /// Where rule evaluation is: skips, markers, `allow`, the chain being
@@ -448,7 +448,6 @@ impl<'a> Transaction<'a> {
                 audit_engine: None,
                 audit_log_modifier: Vec::new(),
                 rule_remove_by_id: Vec::new(),
-                rule_remove_by_id_range: Vec::new(),
                 rule_remove_by_tag: Vec::new(),
                 rule_remove_target_by_tag: Vec::new(),
                 rule_remove_target_by_id: Vec::new(),

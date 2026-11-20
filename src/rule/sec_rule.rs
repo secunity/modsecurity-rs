@@ -3,7 +3,7 @@
 
 use crate::operators::operator::RuleOperator;
 use crate::rule::message::{Matched, RuleMessage};
-use crate::rule::{LogPoint, Rule, TransformationPath};
+use crate::rule::{Id, LogPoint, Rule, TransformationPath};
 use crate::rules_set::plan::Link;
 use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
@@ -67,7 +67,7 @@ impl SecRule {
         let ctl = &t.ctl;
         for variable in link.targets.iter().map(|&i| &self.variables[i]) {
             let name = variable.full_name();
-            let by_id = |(id, target): &(i32, String)| rule.rule_id.is(*id) && target.eq_ignore_ascii_case(name);
+            let by_id = |(id, target): &(Id, String)| rule.rule_id == *id && target.eq_ignore_ascii_case(name);
             let by_tag = |(tag, target): &(String, String)| target == name && rule.contains_tag(tag, t);
             if !ctl.rule_remove_target_by_id.iter().any(by_id) && !ctl.rule_remove_target_by_tag.iter().any(by_tag) {
                 vars.push(variable);
@@ -81,7 +81,7 @@ impl SecRule {
     fn removed_value(rule: &Rule, t: &Transaction<'_>, v: &VariableValue) -> bool {
         let name = v.key_with_collection();
         let ctl = &t.ctl;
-        ctl.rule_remove_target_by_id.iter().any(|(id, target)| rule.rule_id.is(*id) && target.as_bytes() == name)
+        ctl.rule_remove_target_by_id.iter().any(|(id, target)| rule.rule_id == *id && target.as_bytes() == name)
             || ctl
                 .rule_remove_target_by_tag
                 .iter()
@@ -104,17 +104,7 @@ impl SecRule {
 
         rule.evaluate_base(t);
 
-        for &i in &t.ctl.rule_remove_by_id {
-            if !rule.rule_id.is(i) {
-                continue;
-            }
-            crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
-            return true;
-        }
-        for &(a, b) in &t.ctl.rule_remove_by_id_range {
-            if !rule.rule_id.is_within(a, b) {
-                continue;
-            }
+        if t.ctl.rule_remove_by_id.iter().any(|ids| ids.contains(&rule.rule_id)) {
             crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
             return true;
         }

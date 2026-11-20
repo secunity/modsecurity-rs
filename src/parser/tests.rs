@@ -286,13 +286,13 @@ fn chains_and_duplicates() {
 }
 
 /// The line numbers of the rules of `rules` (sorted by id).
-fn rule_lines(rules: &str) -> Vec<(i64, i32)> {
+fn rule_lines(rules: &str) -> Vec<(u64, i32)> {
     let mut d = Driver::new();
     assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
-    let mut out: Vec<(i64, i32)> = crate::phases::Phases::ALL
+    let mut out: Vec<(u64, i32)> = crate::phases::Phases::ALL
         .iter()
         .flat_map(|&p| d.rules_set_phases.for_phase(p).iter())
-        .filter_map(|r| r.as_rule().map(|r| (r.rule_id.get(), r.line_number)))
+        .filter_map(|r| r.as_rule().map(|r| (r.rule_id, r.line_number)))
         .collect();
     out.sort();
     out.dedup();

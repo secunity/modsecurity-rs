@@ -207,7 +207,7 @@ impl Builder<'_, '_> {
                     UpdateBy::Tag => ex.load_update_target_by_tag(&v, vars),
                     UpdateBy::Msg => ex.load_update_target_by_msg(&v, vars),
                     UpdateBy::Id => {
-                        let Some(rule_id) = crate::rule::Id::parse(&v) else {
+                        let Some(rule_id) = crate::rule::id::parse(&v) else {
                             return self.fail(&format!(
                                 "SecRuleUpdateTargetById: failed to load:The input \"{}\" does not seems to be a valid rule id.. ",
                                 v
@@ -219,7 +219,7 @@ impl Builder<'_, '_> {
             }
             Directive::UpdateAction { id, actions } => {
                 let v = update_value(id);
-                let Some(rule_id) = crate::rule::Id::parse(&v) else {
+                let Some(rule_id) = crate::rule::id::parse(&v) else {
                     return self.fail(&format!(
                         "SecRuleUpdateActionById: failed to load:The input \"{}\" does not seems to be a valid rule id.. ",
                         v
