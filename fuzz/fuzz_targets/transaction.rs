@@ -127,7 +127,7 @@ fuzz_target!(|x: Exchange| {
             t.add_response_header(k, v);
         }
         t.add_response_header(b"Content-Type", b"text/html");
-        t.process_response_headers(i32::from(x.status), "HTTP/1.1");
+        t.process_response_headers(u16::from(x.status), "HTTP/1.1");
         t.append_response_body(&x.response_body);
         t.process_response_body();
         let _ = t.intervention();
