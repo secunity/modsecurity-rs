@@ -1,15 +1,19 @@
-# libmodsecurity (Rust port)
+# libmodsecurity in Rust
 
-A Rust port of [libmodsecurity v3.0.17](https://github.com/owasp-modsecurity/ModSecurity),
+A Rust implementation of [libmodsecurity v3](https://github.com/owasp-modsecurity/ModSecurity),
 the ModSecurity web application firewall engine: it loads SecLang rule sets
 (e.g. the OWASP Core Rule Set) and inspects HTTP transactions handed to it by
 a connector.
 
-The port preserves the C++ project's behaviour and C API (`msc_*` functions),
-so existing C connectors can link against the Rust library. The initial
-[migration](MIGRATION.md) followed the C++ source layout; subsequent
-[Rust refactoring](REFACTORING.md) simplifies internal ownership and types
-while retaining the engine's domain boundaries.
+It began as a port of the C++ library v3.0.17 and is now its own engine. What
+it holds itself to is that the test suites of the original ModSecurity and
+the OWASP CRS regression suite pass, and that the C API (`msc_*` functions)
+stays, so existing C connectors can link against it. Where it behaves
+differently from the C++ library, [MIGRATION.md](MIGRATION.md) says so
+("Intentional deviations from C++").
+
+[ARCHITECTURE.md](ARCHITECTURE.md) describes how the code is organised;
+[REFACTORING.md](REFACTORING.md) is the history of how it got there.
 
 ## Building
 
