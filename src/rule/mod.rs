@@ -168,8 +168,11 @@ impl Rule {
                     }
                     Kind::RunTimeOnlyIfMatch if a.is_disruptive() => r.disruptive_action = Some(a),
                     Kind::RunTimeOnlyIfMatch => r.actions_runtime_pos.push(a),
+                    // A transformation given with the actions.
                     Kind::RunTimeBeforeMatchAttempt => {
-                        println!("General failure, action: {} has an unknown type.", a.name());
+                        if let RuleAction::Transformation(t) = a {
+                            r.transformations.push(t);
+                        }
                     }
                 },
             }

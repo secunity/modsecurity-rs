@@ -157,13 +157,11 @@ impl ModSecurity {
     }
 
     /// Sends a rule message to the server log callback, as text or as the
-    /// message itself depending on the log properties (to stderr when no
-    /// callback is set).
+    /// message itself depending on the log properties. Without a callback
+    /// there is no server log: the message is in the audit log and in
+    /// [`Transaction::rule_messages`].
     pub(crate) fn server_log(&self, data: Option<&(dyn Any + Send)>, rm: &RuleMessage<'_>, t: &Transaction<'_>) {
-        let Some(cb) = &self.log_cb else {
-            eprintln!("Server log callback is not set -- {}", rm.error_log(t));
-            return;
-        };
+        let Some(cb) = &self.log_cb else { return };
         if self.log_properties.contains(LogProperties::TEXT) {
             let d = rm.log(t, LogParts::empty(), None);
             cb(data, ServerLogEntry::Text(&d));

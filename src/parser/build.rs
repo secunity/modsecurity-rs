@@ -227,7 +227,9 @@ impl Builder<'_, '_> {
                     ));
                 };
                 let acts = self.actions(&actions)?.into_iter().map(ParsedAction::into_action).collect();
-                self.driver.properties.exceptions.load_update_action_by_id(rule_id, acts);
+                if let Err(error) = self.driver.properties.exceptions.load_update_action_by_id(rule_id, acts) {
+                    return self.fail(&format!("SecRuleUpdateActionById: {error}. "));
+                }
             }
             Directive::Setting { keyword, rest } => self.setting(keyword, rest)?,
         }

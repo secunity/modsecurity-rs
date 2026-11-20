@@ -10,9 +10,8 @@
 #![cfg(feature = "lmdb")]
 
 use std::ffi::CStr;
-use std::os::raw::c_int;
 
-use modsecurity_native::lmdb::{self, Code, Environment, Txn};
+use modsecurity_native::lmdb::{Code, Environment, Txn};
 
 use crate::Collection;
 use crate::backend::collection_data::CollectionData;
@@ -20,72 +19,11 @@ use modsecurity_native::regex::Regex;
 use modsecurity_types::KeyExclusions;
 use modsecurity_types::variable_value::{VariableValue, move_to_front_reversed};
 
-/// Whether LMDB failures are printed on stdout: no, as in the C++ build
-/// (where `LMDB_STDOUT_COUT` is undefined).
-const LMDB_STDOUT_COUT: bool = false;
-
 /// The location of the shared collections file.
 const SHARED_COLLECTIONS_PATH: &CStr = c"./modsec-shared-collections";
 
 /// The code of a failure to open the environment.
 const NO_ENVIRONMENT: Code = -1;
-
-/// Describes an LMDB failure on stdout (compiled out, as in C++, unless
-/// `LMDB_STDOUT_COUT` is set).
-fn lmdb_debug(rc: c_int, op: &str, scope: &str) {
-    if !LMDB_STDOUT_COUT || rc == 0 {
-        return;
-    }
-
-    let msg = match op {
-        "txn" => {
-            let detail = match rc {
-                lmdb::MDB_PANIC => {
-                    "panic: a fatal error occurred earlier and the environment must be shut down.".to_string()
-                }
-                lmdb::MDB_MAP_RESIZED => {
-                    "map resized: another process wrote data beyond this MDB_env's mapsize and this \
-                                         environment's map must be resized as well. See mdb_env_set_mapsize()."
-                        .to_string()
-                }
-                lmdb::MDB_READERS_FULL => "max readers: a read-only transaction was requested and the reader lock \
-                                          table is full. See mdb_env_set_maxreaders()."
-                    .to_string(),
-                libc::ENOMEM => "out of memory.".to_string(),
-                _ => format!("not sure what is wrong, code: {}", rc),
-            };
-            format!("{}, LMDB failure while starting txn: {}", scope, detail)
-        }
-        "get" => {
-            let detail = match rc {
-                lmdb::MDB_NOTFOUND => "not found: the key was not in the database.",
-                libc::EINVAL => "an invalid parameter was specified.",
-                _ => "not sure what is wrong.",
-            };
-            format!("{}, LMDB failure while getting the key: {}", scope, detail)
-        }
-        "del" => {
-            let detail = match rc {
-                libc::EACCES => "an attempt was made to write in a read-only transaction.".to_string(),
-                libc::EINVAL => "an invalid parameter was specified.".to_string(),
-                _ => format!("not sure what is wrong. Code: {}", rc),
-            };
-            format!("{}, delete procedure failed: {}", scope, detail)
-        }
-        "commit" => {
-            let detail = match rc {
-                libc::EINVAL => "an invalid parameter was specified.".to_string(),
-                libc::ENOSPC => "no more disk space.".to_string(),
-                libc::EIO => "a low-level I/O error occurred while writing.".to_string(),
-                libc::ENOMEM => "out of memory.".to_string(),
-                _ => format!("not sure what is wrong. Code: {}", rc),
-            };
-            format!("{}, commit procedure failed: {}", scope, detail)
-        }
-        _ => return,
-    };
-    println!("{}", msg);
-}
 
 /// A collection stored in the shared LMDB database (`WITH_LMDB`).
 pub struct Lmdb {
@@ -105,73 +43,34 @@ impl Lmdb {
 
     /// Writes `key` with the value computed from its previous data (if any)
     /// in one write transaction: the shared body of `store_or_update_first`
-    /// and `set_expiry`. Returns the last LMDB code (0 on success).
-    fn replace(&self, key: &[u8], scope: &str, build: impl FnOnce(CollectionData) -> CollectionData) -> c_int {
-        let mut txn = match self.txn_begin(false) {
-            Ok(t) => t,
-            Err(rc) => {
-                lmdb_debug(rc, "txn", scope);
-                return rc;
-            }
-        };
-
+    /// and `set_expiry`. A failure of LMDB leaves the key as it was.
+    fn replace(&self, key: &[u8], build: impl FnOnce(CollectionData) -> CollectionData) -> Result<(), Code> {
+        let mut txn = self.txn_begin(false)?;
         let mut previous_data = CollectionData::default();
-        let previous = txn.get(key).map(<[u8]>::to_vec);
-        lmdb_debug(previous.as_ref().err().copied().unwrap_or(0), "get", scope);
-        if let Ok(previous) = previous {
+        if let Ok(previous) = txn.get(key).map(<[u8]>::to_vec) {
             previous_data = CollectionData::from_bytes(&previous);
             // Deletes the pair just read.
-            if let Err(rc) = txn.del(key, &previous) {
-                lmdb_debug(rc, "del", scope);
-                return rc;
-            }
+            txn.del(key, &previous)?;
         }
-
-        let new_data = build(previous_data);
-        if let Err(rc) = txn.put(key, &new_data.serialize()) {
-            lmdb_debug(rc, "put", scope);
-            return rc;
-        }
-
-        let rc = txn.commit().err().unwrap_or(0);
-        lmdb_debug(rc, "commit", scope);
-        rc
+        txn.put(key, &build(previous_data).serialize())?;
+        txn.commit()
     }
 
     /// Deletes `key` if its value has expired.
     fn del_if_expired(&self, key: &[u8]) {
-        self.delete(key, true);
+        let _ = self.delete(key, true);
     }
 
     /// Deletes the first value of `key` (only when it has expired with
     /// `expired_only`), in its own write transaction.
-    fn delete(&self, key: &[u8], expired_only: bool) {
-        let mut txn = match self.txn_begin(false) {
-            Ok(t) => t,
-            Err(rc) => {
-                lmdb_debug(rc, "txn", "del");
-                return;
-            }
-        };
-
-        let value = match txn.get(key) {
-            Ok(v) => v.to_vec(),
-            Err(rc) => {
-                lmdb_debug(rc, "get", "del");
-                return;
-            }
-        };
-
+    fn delete(&self, key: &[u8], expired_only: bool) -> Result<(), Code> {
+        let mut txn = self.txn_begin(false)?;
+        let value = txn.get(key)?.to_vec();
         if !expired_only || CollectionData::from_bytes(&value).is_expired() {
             // Deletes the pair just read.
-            if let Err(rc) = txn.del(key, &value) {
-                lmdb_debug(rc, "del", "del");
-                return;
-            }
+            txn.del(key, &value)?;
         }
-
-        let rc = txn.commit().err().unwrap_or(0);
-        lmdb_debug(rc, "commit", "del");
+        txn.commit()
     }
 
     /// Walks the database with a cursor in a read-only transaction, calling
@@ -179,27 +78,21 @@ impl Lmdb {
     /// expired entries are deleted afterwards ([`Self::del_if_expired`]).
     ///
     /// The walk starts at the first database entry.
-    fn walk(&self, scope: &str, mut f: impl FnMut(&[u8], &[u8])) {
+    fn walk(&self, mut f: impl FnMut(&[u8], &[u8])) {
         let mut expired_vars: Vec<Vec<u8>> = Vec::new();
 
-        match self.txn_begin(true) {
-            Err(rc) => lmdb_debug(rc, "txn", scope),
-            Ok(txn) => {
-                match txn.cursor() {
-                    Err(rc) => lmdb_debug(rc, "cursor_open", scope),
-                    Ok(mut cursor) => {
-                        while let Ok((key, data)) = cursor.next() {
-                            let record = CollectionData::from_bytes(data);
-                            if record.is_expired() {
-                                expired_vars.push(key.to_vec());
-                            } else if let Some(value) = &record.value {
-                                f(key, value);
-                            }
-                        }
+        if let Ok(txn) = self.txn_begin(true) {
+            if let Ok(mut cursor) = txn.cursor() {
+                while let Ok((key, data)) = cursor.next() {
+                    let record = CollectionData::from_bytes(data);
+                    if record.is_expired() {
+                        expired_vars.push(key.to_vec());
+                    } else if let Some(value) = &record.value {
+                        f(key, value);
                     }
                 }
-                drop(txn); // mdb_txn_abort
             }
+            drop(txn); // mdb_txn_abort
         }
 
         for expired_var in &expired_vars {
@@ -210,7 +103,7 @@ impl Lmdb {
 
 impl Collection for Lmdb {
     fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> bool {
-        self.replace(key, "storeOrUpdateFirst", |mut record| {
+        let _ = self.replace(key, |mut record| {
             record.set_value(value);
             record
         });
@@ -218,11 +111,11 @@ impl Collection for Lmdb {
     }
 
     fn del(&self, key: &[u8]) {
-        self.delete(key, false);
+        let _ = self.delete(key, false);
     }
 
     fn set_expiry(&self, key: &[u8], expiry_seconds: i32) {
-        self.replace(key, "setExpiry", |mut record| {
+        let _ = self.replace(key, |mut record| {
             record.set_expiry(expiry_seconds);
             record
         });
@@ -232,20 +125,14 @@ impl Collection for Lmdb {
         let mut ret = None;
         let mut collection_data = CollectionData::default();
 
-        match self.txn_begin(true) {
-            Err(rc) => lmdb_debug(rc, "txn", "resolveFirst"),
-            Ok(txn) => {
-                match txn.get(var) {
-                    Ok(value) => {
-                        collection_data = CollectionData::from_bytes(value);
-                        if !collection_data.is_expired() {
-                            ret = collection_data.value.take();
-                        }
-                    }
-                    Err(rc) => lmdb_debug(rc, "get", "resolveFirst"),
+        if let Ok(txn) = self.txn_begin(true) {
+            if let Ok(value) = txn.get(var) {
+                collection_data = CollectionData::from_bytes(value);
+                if !collection_data.is_expired() {
+                    ret = collection_data.value.take();
                 }
-                drop(txn); // mdb_txn_abort
             }
+            drop(txn); // mdb_txn_abort
         }
 
         // The read-only transaction is complete. Now we can do a delete if
@@ -262,11 +149,11 @@ impl Collection for Lmdb {
         let name = self.name.as_bytes();
         let start = l.len();
         if var.is_empty() {
-            self.walk("resolveMultiMatches", |k, d| {
+            self.walk(|k, d| {
                 l.push(VariableValue::with_collection(name, k, d));
             });
         } else {
-            self.walk("resolveMultiMatches", |k, d| {
+            self.walk(|k, d| {
                 if k.starts_with(var) {
                     l.push(VariableValue::with_collection(name, k, d));
                 }
@@ -277,7 +164,7 @@ impl Collection for Lmdb {
 
     fn resolve_regex(&self, prefix: &[u8], r: &Regex, l: &mut Vec<VariableValue>, ke: &KeyExclusions) {
         let start = l.len();
-        self.walk("resolveRegularExpression", |k, d| {
+        self.walk(|k, d| {
             if !k.strip_prefix(prefix).is_some_and(|name| r.is_match(name)) {
                 return;
             }

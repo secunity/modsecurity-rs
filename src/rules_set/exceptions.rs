@@ -74,15 +74,15 @@ impl RulesExceptions {
 
     /// `SecRuleUpdateActionById`: adds the run time actions to the rule
     /// `id`, to run before or after the match according to their kind.
-    pub fn load_update_action_by_id(&mut self, id: Id, actions: Vec<RuleAction>) {
+    /// Refuses the actions that make a rule what it is (`id`, `phase`,
+    /// `chain`, `rev`, ...): a loaded rule cannot be given another.
+    pub fn load_update_action_by_id(&mut self, id: Id, actions: Vec<RuleAction>) -> Result<(), String> {
+        if let Some(a) = actions.iter().find(|a| a.kind() == Kind::Configuration) {
+            return Err(format!("the action `{}' of a rule cannot be updated", a.name()));
+        }
         for a in actions {
             match a.kind() {
-                Kind::Configuration => {
-                    println!(
-                        "General failure, action: {} has not expected to be used with UpdateActionByID.",
-                        a.name()
-                    );
-                }
+                Kind::Configuration => {}
                 Kind::RunTimeBeforeMatchAttempt => {
                     self.action_pre_update_target_by_id.emplace(id, Arc::new(a));
                 }
@@ -91,6 +91,7 @@ impl RulesExceptions {
                 }
             }
         }
+        Ok(())
     }
 
     /// `SecRuleRemoveByMsg`: removes the rules whose `msg` is `msg`.
@@ -229,5 +230,23 @@ mod tests {
         // Faithful to C++: the bounds are compared as strings ("5" > "10").
         assert_eq!(e.load("5-10").unwrap_err(), "Invalid range: 5-10");
         assert_eq!(e.load("x").unwrap_err(), "Not a number or range: x");
+    }
+
+    /// `SecRuleUpdateActionById` cannot give a rule another id, phase or
+    /// chain. (C++ prints "General failure" on standard output and goes
+    /// on without the action.)
+    #[test]
+    fn update_action_by_id_refuses_what_makes_the_rule() {
+        let load = |actions: &str| {
+            let mut rules = crate::RulesSet::new();
+            rules.load(&format!(
+                "SecRule ARGS \"@rx x\" \"id:1,phase:1,pass\"\nSecRuleUpdateActionById 1 \"{actions}\"\n"
+            ))
+        };
+        assert!(load("deny,status:403,tag:'x',t:lowercase").is_ok());
+        for actions in ["id:2", "pass,phase:2", "chain", "rev:'2'", "ver:'x'", "maturity:1", "accuracy:1"] {
+            let error = load(actions).unwrap_err().to_string();
+            assert!(error.contains("SecRuleUpdateActionById: the action `"), "{actions}: {error}");
+        }
     }
 }

@@ -304,6 +304,22 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **Nothing is written to standard output or standard error** by the
+  library (apart from `msc_rules_dump`, whose purpose it is). *C++*
+  prints in three situations, and the Rust engine did too:
+  - `SecRuleUpdateActionById` with an action that makes the rule what it
+    is (`id`, `phase`, `chain`, `rev`, `ver`, `maturity`, `accuracy`):
+    "General failure" on standard output, and the action is ignored.
+    *Here:* the configuration is refused, with an error that names the
+    action.
+  - A rule message when no server log callback is set: written to
+    standard error. *Here:* there is no server log without a callback;
+    the message is still in the audit log and in the transaction's rule
+    messages.
+  - A transformation among the actions of a rule built in code:
+    "General failure". *Here:* it is one of the rule's transformations.
+  Regression test:
+  `rules_set::exceptions::tests::update_action_by_id_refuses_what_makes_the_rule`.
 - **`block` and `xmlns` in capitals.** Action names ignore case, but
   *C++* recognises these two by their name in lower case afterwards. A
   `BLOCK` action was not treated as disruptive: it ran the disruptive
