@@ -2,6 +2,7 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
+use crate::utils::string::parse_digits;
 
 #[derive(Debug)]
 pub struct Status {
@@ -11,9 +12,7 @@ pub struct Status {
 
 impl Status {
     pub fn new(name: &str, payload: &str) -> Result<Self, String> {
-        let digits = !payload.is_empty() && payload.bytes().all(|c| c.is_ascii_digit());
-        let status =
-            payload.parse().ok().filter(|_| digits).ok_or_else(|| format!("Not a valid number: {}", payload))?;
+        let status = parse_digits(payload).ok_or_else(|| format!("Not a valid number: {}", payload))?;
         Ok(Status { name: name.to_string(), status })
     }
 }

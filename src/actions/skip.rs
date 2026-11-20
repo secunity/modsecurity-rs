@@ -2,19 +2,18 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::utils::string::stoi;
+use crate::utils::string::parse_digits;
 
 #[derive(Debug)]
 pub struct Skip {
     name: String,
-    skip_next: i32,
+    skip_next: usize,
 }
 
 impl Skip {
     pub fn new(name: &str, payload: &str) -> Result<Self, String> {
-        // No digits, or a value out of the `int` range, is an error.
         let skip_next =
-            stoi(payload.as_bytes()).ok_or_else(|| format!("Skip: The input \"{}\" is not a number.", payload))?;
+            parse_digits(payload).ok_or_else(|| format!("Skip: The input \"{}\" is not a number.", payload))?;
         Ok(Skip { name: name.to_string(), skip_next })
     }
 }

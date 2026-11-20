@@ -7,8 +7,7 @@ pub type Id = u64;
 
 /// The id written as `text`: decimal digits only.
 pub fn parse(text: &str) -> Option<Id> {
-    let digits = !text.is_empty() && text.bytes().all(|c| c.is_ascii_digit());
-    text.parse().ok().filter(|_| digits)
+    crate::utils::string::parse_digits(text)
 }
 
 /// The ids of a list as `SecRuleRemoveById` and `ctl:ruleRemoveById` take

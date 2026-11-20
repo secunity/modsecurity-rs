@@ -79,8 +79,8 @@ pub struct Rule {
 
     pub rev: String,
     pub ver: String,
-    pub accuracy: i32,
-    pub maturity: i32,
+    pub accuracy: u8,
+    pub maturity: u8,
     pub rule_id: Id,
     pub chained_rule_child: Option<Box<Rule>>,
     pub chained_rule_parent: bool,
@@ -240,7 +240,7 @@ impl Rule {
     }
 
     /// The `severity` of the rule (0 without one).
-    pub fn severity(&self) -> i32 {
+    pub fn severity(&self) -> u8 {
         self.actions.severity().map(|s| s.severity).unwrap_or(0)
     }
 

@@ -321,7 +321,7 @@ pub(crate) struct CtlOverrides {
 /// evaluated, captures, and buffers reused from rule to rule.
 pub(crate) struct EvalState<'a> {
     /// Rules still to be skipped because of a `skip` action.
-    pub(crate) skip_next: i32,
+    pub(crate) skip_next: usize,
     /// The `SecMarker` being skipped to (by `skipAfter`).
     pub(crate) marker: Option<String>,
     /// Set by a matching `allow` action, until the rules it covers are
@@ -348,7 +348,7 @@ pub(crate) struct Outcome<'a> {
     /// through [`Transaction::intervention`].
     pub(crate) is_interrupted: bool,
     /// Set by the `severity` action (`HIGHEST_SEVERITY`).
-    pub(crate) highest_severity_action: i32,
+    pub(crate) highest_severity_action: u8,
 }
 
 pub struct Transaction<'a> {

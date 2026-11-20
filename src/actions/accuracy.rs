@@ -2,19 +2,18 @@
 
 use crate::actions::action::{Action, Kind};
 use crate::rule::Rule;
-use crate::utils::string::stoi;
+use crate::utils::string::parse_digits;
 
 #[derive(Debug)]
 pub struct Accuracy {
     name: String,
-    accuracy: i32,
+    accuracy: u8,
 }
 
 impl Accuracy {
     pub fn new(name: &str, payload: &str) -> Result<Self, String> {
-        // No digits, or a value out of the `int` range, is an error.
         let accuracy =
-            stoi(payload.as_bytes()).ok_or_else(|| format!("Accuracy: The input \"{}\" is not a number.", payload))?;
+            parse_digits(payload).ok_or_else(|| format!("Accuracy: The input \"{}\" is not a number.", payload))?;
         Ok(Accuracy { name: name.to_string(), accuracy })
     }
 }

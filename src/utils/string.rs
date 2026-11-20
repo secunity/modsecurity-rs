@@ -22,6 +22,13 @@ pub fn split_str(s: &str, delimiter: char) -> Vec<String> {
     split(s.as_bytes(), delimiter as u8).into_iter().map(|v| String::from_utf8_lossy(&v).into_owned()).collect()
 }
 
+/// The number written as `text` in decimal digits only (no sign, no white
+/// space), when it fits `T`: how the numbers of a configuration are read.
+pub fn parse_digits<T: std::str::FromStr>(text: &str) -> Option<T> {
+    let digits = !text.is_empty() && text.bytes().all(|c| c.is_ascii_digit());
+    text.parse().ok().filter(|_| digits)
+}
+
 // The helpers that clean a configuration value are part of the syntax.
 pub use modsecurity_seclang::value::sanitize as parser_sanitizer;
 

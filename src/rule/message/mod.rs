@@ -61,7 +61,7 @@ pub struct RuleMessage<'r> {
     pub(crate) no_audit_log: bool,
     pub(crate) reference: Vec<u8>,
     pub(crate) save_message: bool,
-    pub(crate) severity: i32,
+    pub(crate) severity: u8,
     pub(crate) tags: Vec<Vec<u8>>,
 }
 
@@ -128,12 +128,12 @@ impl<'r> RuleMessage<'r> {
     }
 
     /// The `maturity` of the rule.
-    pub fn maturity(&self) -> i32 {
+    pub fn maturity(&self) -> u8 {
         self.rule.maturity
     }
 
     /// The `accuracy` of the rule.
-    pub fn accuracy(&self) -> i32 {
+    pub fn accuracy(&self) -> u8 {
         self.rule.accuracy
     }
 
@@ -150,7 +150,7 @@ impl<'r> RuleMessage<'r> {
     }
 
     /// The `severity` of the rule (0 to 7; 0 also without one).
-    pub fn severity(&self) -> i32 {
+    pub fn severity(&self) -> u8 {
         self.severity
     }
 

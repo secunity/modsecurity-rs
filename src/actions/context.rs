@@ -71,7 +71,7 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
     }
 
     /// `severity` of the rule message.
-    pub fn set_severity(&mut self, severity: i32) {
+    pub fn set_severity(&mut self, severity: u8) {
         self.rm.severity = severity;
     }
 
@@ -105,18 +105,18 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
     }
 
     /// The highest severity so far (`HIGHEST_SEVERITY`; 255 when none).
-    pub fn highest_severity(&self) -> i32 {
+    pub fn highest_severity(&self) -> u8 {
         self.t.outcome.highest_severity_action
     }
 
-    pub fn set_highest_severity(&mut self, severity: i32) {
+    pub fn set_highest_severity(&mut self, severity: u8) {
         self.t.outcome.highest_severity_action = severity;
     }
 
     // --- rule evaluation -----------------------------------------------
 
     /// `skip`: the number of rules to skip.
-    pub fn skip_next(&mut self, rules: i32) {
+    pub fn skip_next(&mut self, rules: usize) {
         self.t.eval.skip_next = rules;
     }
 

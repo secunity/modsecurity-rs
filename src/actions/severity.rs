@@ -2,12 +2,13 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::utils::string::stoi;
+use crate::utils::string::parse_digits;
 
 #[derive(Debug)]
 pub struct Severity {
     name: String,
-    pub severity: i32,
+    /// 0 (emergency) to 7 (debug).
+    pub severity: u8,
 }
 
 impl Severity {
@@ -23,7 +24,7 @@ impl Severity {
             "notice" => 5,
             "info" => 6,
             "debug" => 7,
-            _ => stoi(a.as_bytes()).ok_or_else(|| format!("Severity: The input \"{}\" is not a number.", a))?,
+            _ => parse_digits(&a).ok_or_else(|| format!("Severity: The input \"{}\" is not a number.", a))?,
         };
         Ok(Severity { name: name.to_string(), severity })
     }
@@ -57,7 +58,7 @@ mod tests {
     use crate::rule::message::RuleMessage;
     use crate::transaction::Transaction;
 
-    fn sev(p: &str) -> Result<i32, String> {
+    fn sev(p: &str) -> Result<u8, String> {
         {
             let text = format!("severity:{}", p);
             let (name, payload) = crate::actions::action::name_and_payload(&text);
