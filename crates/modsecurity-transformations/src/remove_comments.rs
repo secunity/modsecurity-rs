@@ -26,8 +26,8 @@ fn inplace(input: &mut Vec<u8>) -> bool {
                 changed = true;
                 i += 4;
             } else if input[i] == b'-' && i + 1 < input_len && input[i + 1] == b'-' {
-                // Quirk kept from C++: the space is written at `i`, but the
-                // value is then cut at `j` (<= i), so it is never kept.
+                // The space is written at `i`, but the value is then cut at
+                // `j` (<= i), so it is never kept.
                 input[i] = b' ';
                 changed = true;
                 break;

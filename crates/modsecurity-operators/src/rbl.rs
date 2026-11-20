@@ -1,8 +1,8 @@
 //! The `@rbl` operator: looks the input (an IPv4 address or a domain) up
 //! in a DNS block list.
 //!
-//! The DNS lookup uses the platform `getaddrinfo` (no hints, first result),
-//! exactly as the C++ operator does.
+//! The DNS lookup uses the platform `getaddrinfo` (no hints, first
+//! result).
 
 use std::net::{Ipv4Addr, SocketAddr};
 
@@ -143,7 +143,8 @@ impl Rbl {
             _ => " ",
         };
 
-        // The literal "%s" is part of the C++ message.
+        // The literal "%s" is part of the message: the debug log text of the
+        // original ModSecurity, kept as it is.
         crate::ms_dbg!(
             cx,
             4,

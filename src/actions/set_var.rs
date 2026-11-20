@@ -31,8 +31,8 @@ impl SetVar {
     }
 }
 
-/// Parses a leading integer as `std::stoi` does; any failure (no digits,
-/// out of `int` range) gives 0.
+/// The integer that `s` starts with (see [`stoi`]); any failure (no
+/// digits, out of `int` range) gives 0.
 fn stoi_or_zero(s: &[u8]) -> i32 {
     stoi(s).unwrap_or(0)
 }
@@ -71,12 +71,12 @@ impl Action for SetVar {
                 let pre = stoi_or_zero(&resolved_pre);
 
                 let mut l = Vec::new();
-                // C++ only forwards `RuleWithOperator`s (`SecRule`s).
+                // The variable sees the rule only when it is a `SecRule`.
                 let rr = Some(rule).filter(|r| r.is_sec_rule());
                 self.variable.evaluate(t, rr, &mut l);
                 let value = l.first().map(|v| stoi_or_zero(v.value())).unwrap_or(0);
 
-                // Signed overflow is undefined in C++; wrap.
+                // The result wraps around on overflow.
                 let r = if matches!(self.operation, SetVarOperation::Add(_)) {
                     value.wrapping_add(pre)
                 } else {
@@ -139,7 +139,7 @@ mod tests {
         assert_eq!(tx(&t, "score"), Some(b"-5".to_vec()));
         assert!(has_log(&t, "Saving variable: TX:score with value: -5"));
 
-        // Non numeric operands count as 0 (C++ `stoi` failures).
+        // Non numeric operands count as 0.
         setvar("score", Add(rts("x"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(tx(&t, "score"), Some(b"-5".to_vec()));
         setvar("foo", Add(rts("3"))).evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));

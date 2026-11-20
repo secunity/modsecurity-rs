@@ -46,7 +46,7 @@ impl Environment {
 
     /// Opens the environment at `path` (one file, `MDB_NOSUBDIR`) and its
     /// database. The environment is never closed: it lives as long as the
-    /// process (the C++ destructor's `mdb_env_close` ran at exit).
+    /// process, and `mdb_env_close` is not called at exit.
     fn open(path: &CStr) -> Option<Environment> {
         let mut env: *mut MDB_env = ptr::null_mut();
         let mut dbi: MDB_dbi = 0;

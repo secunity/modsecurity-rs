@@ -14,7 +14,7 @@ unsafe extern "C" {
 }
 
 /// The signature of `buf` (`fuzzy_hash_buf`), or `None` when libfuzzy
-/// fails. The length is passed as 32 bits, as the C++ call does.
+/// fails. The length is passed as 32 bits (`fuzzy_hash_buf` takes a `uint32_t`).
 pub fn hash(buf: &[u8]) -> Option<CString> {
     let mut result = [0 as c_char; FUZZY_MAX_RESULT];
     // SAFETY: `buf` is readable for its length (truncated to 32 bits, never

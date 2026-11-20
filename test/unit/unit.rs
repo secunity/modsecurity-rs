@@ -1,7 +1,8 @@
-//! Port of `test/unit/unit.cc` / `test/unit/unit_test.cc`: runs the
-//! operator and transformation test cases of `secrules-language-tests`.
+//! Runs the operator and transformation test cases of
+//! `secrules-language-tests`.
 //!
-//! Usage (from the `test/` directory, like the C++ utility):
+//! Usage (from the `test/` directory, with the command line of the original
+//! `unit_tests` utility):
 //! `unit_tests [path ...]`; without arguments the operators and
 //! transformations suites are run. Exit status: number of failures.
 

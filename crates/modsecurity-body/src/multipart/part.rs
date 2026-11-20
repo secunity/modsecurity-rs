@@ -72,7 +72,7 @@ pub(super) struct MultipartPart {
     pub(super) header_lines: Vec<(usize, Vec<u8>)>,
 
     /// Where the data starts and how long it is, as the debug log shows
-    /// them (unsigned int in C++, hence the wrapping arithmetic).
+    /// them: 32 bits wide, with wrapping arithmetic on larger bodies.
     pub(super) offset: u32,
     pub(super) length: u32,
 }
@@ -134,9 +134,8 @@ impl MultipartPart {
 }
 
 impl Multipart {
-    /// Handles a line of the headers of the part `mpp`. Like the C++ code
-    /// (whose failures return 0, which its caller does not treat as fatal),
-    /// a failure only records the error.
+    /// Handles a line of the headers of the part `mpp`. A failure only
+    /// records the error: it does not stop the processing of the body.
     pub(super) fn process_part_header(
         &mut self,
         cx: &mut dyn Context,

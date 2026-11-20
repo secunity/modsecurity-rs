@@ -5,13 +5,13 @@
 //! reach the transaction through the `m` table: `m.log`, `m.getvar`,
 //! `m.getvars` and `m.setvar`.
 //!
-//! The C API calls of the C++ code are expressed with the `mlua` crate
-//! (Lua 5.4, the version the C++ reference build uses). Lua errors are
+//! Lua is reached through the `mlua` crate (Lua 5.4). Lua errors are
 //! caught with Lua's own `pcall` so that the error object reaches us
 //! untouched (mlua's own calls would append a stack traceback), and the
-//! `luaL_check*` argument errors of the C API are reproduced by hand.
-//! Without the `lua` feature the engine behaves like the C++ build without
-//! `WITH_LUA`.
+//! `luaL_check*` argument errors of Lua's C API are reproduced by hand, so
+//! that the messages are the ones libmodsecurity writes to the debug log.
+//! Without the `lua` feature no script can be loaded: "Lua support was not
+//! enabled."
 
 use crate::transaction::Transaction;
 
@@ -126,7 +126,7 @@ end
 
     /// `lua_tostring(L, -1)`: strings and numbers (converted the way Lua
     /// does); `None` (a NULL pointer) for anything else. Errors raised by
-    /// our callbacks are strings in C++ (`luaL_error`).
+    /// our callbacks are strings (see `WRAPPER`).
     fn lua_tostring(lua: &mlua::Lua, v: Value) -> Option<Vec<u8>> {
         match v {
             Value::String(s) => Some(cstr(&s.as_bytes()).to_vec()),
@@ -187,7 +187,7 @@ end
     /// `luaL_argerror`, raised as a Lua error (`luaL_error` adds the
     /// location of the calling Lua code). The function the script called is
     /// the `WRAPPER` closure, one level above the Rust callback: its name
-    /// and its caller's location are the ones the C++ messages show. (Only
+    /// and its caller's location are the ones `luaL_argerror` shows. (Only
     /// a tail call such as `return m.log()` differs: the wrapper replaces
     /// the calling frame, so no location is shown for it.)
     fn arg_error(lua: &mlua::Lua, mut arg: i32, extramsg: &str) -> mlua::Error {
@@ -276,7 +276,7 @@ end
             self.script_name = script.to_string();
 
             let compiled = load_file(&lua, script).map_err(|luaerr| {
-                // Sic: the C++ message has no closing quote.
+                // Sic: the message has no closing quote.
                 let mut err = format!("Failed to compile script '{}", script);
                 if let Some(e) = luaerr {
                     err.push_str(": ");
@@ -285,7 +285,7 @@ end
                 err.push('.');
                 err
             })?;
-            // As in C++, the dump is appended to the blob.
+            // The dump is appended to the blob.
             self.blob.extend_from_slice(&compiled.dump(false));
             Ok(())
         }
@@ -325,8 +325,8 @@ end
 
                 let m = lua.create_table()?;
                 globals.set("__transaction", LightUserData(transaction_ptr))?;
-                // The C functions of the C++ code raise their errors (bad
-                // arguments) as strings with luaL_error. Errors returned by
+                // The errors of these functions (bad arguments) are raised
+                // as strings, as luaL_error raises them. Errors returned by
                 // mlua callbacks are userdata, so each function is wrapped
                 // in a small Lua function that re-raises them as strings
                 // (see `arg_error` for how the message is built).
@@ -500,7 +500,7 @@ end
         apply_transformations(lua, t, args.get(1), &mut var)?;
 
         if var.is_empty() {
-            // Sic: C++ pushes nil but returns 0 results.
+            // Sic: no result for an empty value, not nil.
             return Ok(MultiValue::new());
         }
 
@@ -538,8 +538,7 @@ end
     fn setvar(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
         if args.len() != 2 {
             crate::ms_dbg!(&**t.borrow(), 8, "m.setvar: Failed m.setvar funtion must has 2 arguments");
-            // The C++ function returns -1 here; to the caller that is no
-            // value.
+            // Logged, and the script gets no value and no error.
             return Ok(());
         }
         let var_value = check_string(lua, args.get(1), 2)?;
@@ -587,9 +586,8 @@ end
                         continue;
                     }
 
-                    // FIXME (C++): transformation is not yet returning null,
-                    // so the "Invalid transformation function" branch of the
-                    // C++ code is never taken.
+                    // An unknown transformation name is not an error: it
+                    // does nothing (see `Transformation::from_name`).
                     let tfn = transformation::Transformation::from_name(&format!("t:{}", lossy(&name)));
                     tfn.transform(var, Some(&t.borrow()));
                 }
@@ -602,8 +600,9 @@ end
                 Ok(())
             }
             other => {
-                // Sic: the C++ code passes the stack index (2) to
-                // lua_typename, which names type 2: "userdata".
+                // Sic: the message always names the type "userdata" (the
+                // name of Lua type 2), whatever was found; the number is
+                // the real type.
                 crate::ms_dbg!(
                     &**t.borrow(),
                     8,
@@ -831,8 +830,8 @@ mod tests {
         ));
     }
 
-    /// The same script was run through the C++ reference build; the
-    /// expected lines are its debug log.
+    /// The expected lines are the debug log of libmodsecurity 3.0.17 for
+    /// the same script.
     #[test]
     fn callback_errors_match_cpp() {
         let ms = ModSecurity::new();

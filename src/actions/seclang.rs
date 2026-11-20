@@ -14,9 +14,8 @@ use crate::parser::syntax::value::is_audit_part;
 use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
 use crate::run_time_string::RunTimeString;
 
-/// An action of a rule as the parser builds it: the C++ code keeps both
-/// kinds in a `std::vector<std::unique_ptr<actions::Action>>` and sorts the
-/// transformations out with `dynamic_cast` when the rule is built.
+/// An action of a rule as the parser builds it: a transformation, or any
+/// other action.
 #[derive(Debug)]
 pub(crate) enum ParsedAction {
     Action(RuleAction),
@@ -76,7 +75,7 @@ pub(crate) fn with_macros(name: &str, z: RunTimeString) -> ParsedAction {
 // ---------------------------------------------------------------------------
 
 /// Whether an action takes the value written after its name (`None`: the
-/// name alone). These are the token shapes of the C++ scanner.
+/// name alone).
 type Accepts = fn(Option<&str>) -> bool;
 
 /// Builds the action from its name as written and its payload (the value

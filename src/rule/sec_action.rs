@@ -9,7 +9,6 @@ use crate::transaction::Transaction;
 /// matches.
 pub fn evaluate<'a>(rule: &'a Rule, link: &'a Link, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) -> bool {
     rule.evaluate_base(t);
-    // FIXME (C++): This needs to be removed on the runtime exception review.
 
     crate::ms_dbg!(t, 4, "(Rule: {}) Executing unconditional rule...", rule.rule_id);
     rule.execute_actions_independent_of_chained_rule_result(t, rm);

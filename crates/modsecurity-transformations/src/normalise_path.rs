@@ -5,10 +5,9 @@
 /// and repeated slashes).
 /// With `win`, backslashes are converted to forward slashes first.
 ///
-/// The C++ pointer arithmetic is kept as signed indices into `val`
-/// (`input` is index 0, `end` the index of the last byte); `dst` may
-/// briefly go below 0 when removing a back reference, as the C++
-/// pointer does.
+/// The positions are signed indices into `val` (`input` is index 0,
+/// `end` the index of the last byte) because `dst` may briefly go below
+/// 0 when removing a back reference.
 pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
     let mut hitroot = false;
     let mut done = false;
@@ -46,7 +45,8 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) -> bool {
             }
         }
 
-        // `goto copy` / `goto skip_copy` of the C++ code.
+        // Whether this step normalizes the segment, and whether it then
+        // skips the copy.
         let mut normalize = true;
         let mut skip_copy = false;
 

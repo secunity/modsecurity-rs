@@ -1,7 +1,7 @@
 //! `ModSecurityIntervention` (`modsecurity/intervention.h`): how the C API
 //! exchanges an [`Intervention`]. Its layout is part of the ABI
 //! (`#[repr(C)]`) and its `url`/`log` strings are `malloc`ed C strings owned
-//! by the caller, as in C++.
+//! by the caller.
 
 use std::ffi::{c_char, c_int};
 use std::ptr;
@@ -20,15 +20,15 @@ pub struct ModSecurityIntervention {
 }
 
 impl Default for ModSecurityIntervention {
-    /// A cleaned intervention (`intervention::clean`).
+    /// A cleaned intervention: status 200, no strings, not disruptive.
     fn default() -> Self {
         ModSecurityIntervention { status: 200, pause: 0, url: ptr::null_mut(), log: ptr::null_mut(), disruptive: 0 }
     }
 }
 
 impl ModSecurityIntervention {
-    /// The part of C++ `Transaction::intervention` that fills the caller's
-    /// struct: `url` and `log` are only written when there is one to copy,
+    /// Fills the caller's struct for `msc_intervention`: `url` and `log`
+    /// are only written when there is one to copy,
     /// and the caller's `disruptive` field is what the C API returns.
     pub(crate) fn fill_from(&mut self, it: &Intervention) {
         if let Some(url) = &it.url {
@@ -41,8 +41,7 @@ impl ModSecurityIntervention {
         }
     }
 
-    /// `intervention::free` followed by `intervention::clean`: releases the
-    /// strings and resets the struct.
+    /// Releases the strings and resets the struct to a cleaned intervention.
     pub(crate) fn free_and_clean(&mut self) {
         for p in [&mut self.url, &mut self.log] {
             if !p.is_null() {
@@ -56,7 +55,7 @@ impl ModSecurityIntervention {
     }
 }
 
-/// C++ `strdup(s.c_str())`: copies `s` up to its first NUL byte into a
+/// `strdup` for a byte slice: copies `s` up to its first NUL byte into a
 /// `malloc`ed, NUL terminated string that C callers release with `free(3)`.
 /// Returns null if the allocation fails.
 pub(crate) fn strdup(s: &[u8]) -> *mut c_char {
@@ -106,7 +105,7 @@ mod tests {
 
     #[test]
     fn fill_keeps_caller_strings_when_absent() {
-        // C++ only overwrites url/log when the transaction has one.
+        // url/log are only overwritten when the intervention has one.
         let mut c = ModSecurityIntervention { url: strdup(b"caller"), ..Default::default() };
         c.fill_from(&Intervention { status: 403, disruptive: true, ..Default::default() });
         // SAFETY: allocated above.

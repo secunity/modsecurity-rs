@@ -21,7 +21,7 @@ pub enum Writer {
         log: Arc<SharedFile>,
     },
     /// Every entry goes to its own file; the index lines to `SecAuditLog2`,
-    /// or else `SecAuditLog` (both are opened when set, as in C++).
+    /// or else `SecAuditLog` (both are opened when set).
     Parallel {
         log: Option<Arc<SharedFile>>,
         log2: Option<Arc<SharedFile>>,
@@ -53,10 +53,9 @@ impl Writer {
 }
 
 /// A boundary of `SERIAL_AUDIT_LOG_BOUNDARY_LENGTH` random alphanumeric
-/// characters. The C++ code uses the C library `rand()` (seeded
-/// with `srand(time(NULL))` by the `ModSecurity` constructor); the `rand`
-/// crate's thread local generator is used instead, so creating an engine no
-/// longer reseeds the host process's `rand()`.
+/// characters, from the `rand` crate's thread local generator. The C
+/// library `rand()` is not used, so creating an engine does not reseed the
+/// host process's `rand()`.
 pub fn generate_boundary() -> String {
     use rand::Rng;
     const ALPHANUM: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";

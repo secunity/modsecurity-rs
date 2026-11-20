@@ -19,7 +19,7 @@ pub(super) fn write(
     transaction: &Transaction<'_>,
     parts: Parts,
 ) -> Result<(), String> {
-    // As in C++, the format comes from the transaction's rule set.
+    // The format comes from the transaction's rule set.
     let msg = if transaction.rules.properties.audit_log.format == Some(AuditLogFormat::Json) {
         format::json(transaction, parts)
     } else {

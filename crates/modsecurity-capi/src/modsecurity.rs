@@ -9,7 +9,7 @@ pub type CModSecLogCb = Option<unsafe extern "C" fn(*mut c_void, *const c_void)>
 /// The `void *logCbData` given to `msc_new_transaction*`.
 pub struct CLogData(pub *mut c_void);
 // SAFETY: the pointer is opaque to the library and only handed back to
-// the connector's callback, as in C++.
+// the connector's callback.
 unsafe impl Send for CLogData {}
 
 #[unsafe(no_mangle)]

@@ -5,8 +5,7 @@
 //! [`RuleKind`]. A chained rule owns its child (`chained_rule_child`); the
 //! parent is not linked back: `chained_rule_parent` records that there is
 //! one, and the transaction keeps the stack of chain ancestors during
-//! evaluation (the `RULE` variable walks it). (In C++ these are the class
-//! `RuleWithActions` and its three subclasses.)
+//! evaluation (the `RULE` variable walks it).
 
 mod actions;
 mod id;
@@ -45,17 +44,17 @@ pub enum TransformationPath {
 }
 pub type TransformationResults = Vec<TransformationResult>;
 
-/// Where [`Rule::perform_logging`] is called from (the C++
-/// `lastLog` / `chainedParentNull` flags).
+/// Where [`Rule::perform_logging`] is called from, which decides
+/// whether the message is logged there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogPoint {
-    /// A match of a `SecRule` (`lastLog = false`): logs `multiMatch` rules.
+    /// A match of a `SecRule`: logs `multiMatch` rules.
     EachMatch,
-    /// The end of a matching `SecRule` (`lastLog = true`,
-    /// `chainedParentNull = true`).
+    /// The end of a matching `SecRule`: logs the other rules, unless
+    /// the rule is a chained child.
     RuleEnd,
-    /// The end of a `SecAction` (`lastLog = true`,
-    /// `chainedParentNull = false`).
+    /// The end of a `SecAction`: logs a rule with a block action, or
+    /// one to be logged that has a message.
     UnconditionalEnd,
 }
 
@@ -385,7 +384,6 @@ impl Rule {
             } else if (self.has_block_action() && !self.has_multimatch())
                 || (is_it_to_be_logged && !self.has_multimatch() && !rm.message.is_empty())
             {
-                // (two C++ branches with identical bodies)
                 t.outcome.rules_messages.push(rm.clone());
                 if !rm.is_disruptive {
                     t.server_log(rm);

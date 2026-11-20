@@ -1,7 +1,7 @@
 //! A single valued transaction variable (e.g. `REQUEST_METHOD`).
 //!
-//! The C++ class kept a back pointer to its transaction that was never
-//! used for anything but construction; it is not needed here.
+//! The variable holds its name, value and origin; it has no reference to
+//! the transaction that owns it.
 
 use crate::variables::variable_origin::VariableOrigin;
 use crate::variables::variable_value::VariableValue;
@@ -55,7 +55,7 @@ impl AnchoredVariable {
             return;
         }
         // `var` holds the current value (kept in sync by set/unset), so
-        // this only shares it (C++: `m_var.m_value.assign(m_value)`).
+        // this only shares it.
         l.push(self.var.clone());
     }
 

@@ -107,7 +107,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
     if parts.contains(Parts::D) {
         section(&mut a, "D");
         line(&mut a, p);
-        // TODO (C++): write audit_log D part.
+        // Not implemented: part D has a header and no content.
     }
     if parts.contains(Parts::E) && !t.http.response_body.is_empty() {
         let body = to_hex_if_needed(&t.http.response_body, false);
@@ -135,12 +135,11 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
     if parts.contains(Parts::G) {
         section(&mut a, "G");
         a.push(b'\n');
-        // TODO (C++): write audit_log G part.
+        // Not implemented: part G has a header and no content.
     }
     if parts.contains(Parts::H) {
         section(&mut a, "H");
-        // A status of -1 reads as "no code" (the `%d` placeholder), as the
-        // C++ comparison with -1 does.
+        // A status of -1 reads as "no code" (the `%d` placeholder).
         let code = Some(t.http.http_code_returned).filter(|&c| c != -1);
         for m in &t.outcome.rules_messages {
             a.extend_from_slice(p);
@@ -194,7 +193,6 @@ pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
     g.add("hostname", t.http.request_host_name.as_bytes());
     g.add("uri", &t.http.uri);
     if parts.contains(Parts::C) {
-        // FIXME (C++): check for the binary content size.
         g.add("body", to_hex_if_needed(&t.http.request_body, false).as_bytes());
     }
     if parts.contains(Parts::B) {

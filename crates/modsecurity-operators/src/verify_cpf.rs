@@ -48,7 +48,7 @@ impl VerifyCPF {
         let mut s_cpf = [0u8; CPF_LEN];
         let mut i = 0usize;
 
-        // The C code stops at the first NUL byte.
+        // The number ends at the first NUL byte.
         for &c in cpfnumber.iter().take_while(|&&c| c != 0) {
             if i < CPF_LEN && c.is_ascii_digit() {
                 s_cpf[i] = c;
@@ -104,7 +104,7 @@ impl Operator for VerifyCPF {
 
         let mut i = 0usize;
         while i + 1 < input.len() {
-            // Offsets are relative to the searched suffix, as in C++.
+            // Offsets are relative to the searched suffix `input[i..]`.
             let matches = self.re.search_all(&input[i..]);
             for m in &matches {
                 if self.verify(m.str()) {

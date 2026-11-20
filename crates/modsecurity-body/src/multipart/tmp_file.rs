@@ -42,8 +42,8 @@ impl MultipartPartTmpFile {
         {
             use std::os::unix::fs::PermissionsExt;
             if f.set_permissions(std::fs::Permissions::from_mode(mode)).is_err() {
-                // The C++ code marked the descriptor as invalid (-1) here,
-                // leaking it; it is closed instead.
+                // The file is closed and counts as not opened: writing to
+                // it fails.
                 file = None;
             }
         }
@@ -94,8 +94,8 @@ impl MultipartPartTmpFile {
         }
     }
 
-    /// Deletes the file if it was marked for deletion (as the C++ destructor
-    /// does), logging the outcome to the transaction's debug log. The
+    /// Deletes the file if it was marked for deletion,
+    /// logging the outcome to the transaction's debug log. The
     /// transaction may call this when it is done with its temporary files;
     /// otherwise the deletion happens (without the debug messages) when the
     /// last reference is dropped.

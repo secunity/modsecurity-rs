@@ -19,31 +19,28 @@ pub const MODSECURITY_VERSION_NUM: u64 = 30170100;
 
 bitflags::bitflags! {
     /// What the server log callback receives
-    /// ([`ModSecurity::set_server_log_cb_with_properties`]). The bits are
-    /// those of the C++ `LogProperty` enumeration.
+    /// ([`ModSecurity::set_server_log_cb_with_properties`]). The bit values
+    /// are those of libmodsecurity's `LogProperty` enumeration.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct LogProperties: u8 {
         /// The text of the log entry.
         const TEXT = 1;
         /// The rule message itself, instead of the text.
         const RULE_MESSAGE = 2;
-        /// The highlight information of the rule message (no effect, as
-        /// in C++).
+        /// The highlight information of the rule message (no effect).
         const INCLUDE_FULL_HIGHLIGHT = 4;
     }
 }
 
-/// What the server log callback receives (C++ passes either a `const char*`
-/// or a `RuleMessage*` through a `const void*`, depending on the log
-/// properties).
+/// What the server log callback receives: the text of the entry or the rule
+/// message, depending on the log properties.
 pub enum ServerLogEntry<'m, 't> {
     Text(&'m str),
     RuleMessage(&'m RuleMessage<'m>, &'m Transaction<'t>),
 }
 
 /// The server log callback: called with the transaction's callback data
-/// (the C++ `void *` given to the `Transaction` constructor) and the log
-/// entry.
+/// (given when the transaction was created) and the log entry.
 pub type ModSecLogCb = Box<dyn Fn(Option<&(dyn Any + Send)>, ServerLogEntry<'_, '_>) + Send + Sync>;
 
 /// The engine instance: persistent collections, connector information and
@@ -81,9 +78,8 @@ fn new_collection(name: &str) -> Box<dyn Collection> {
 impl ModSecurity {
     pub fn new() -> Self {
         crate::unique_id::UniqueId::unique_id();
-        // (C++ calls `srand(time(NULL))` here to seed libc `rand()` for the
-        // audit log boundaries; those now come from the `rand` crate, see
-        // `audit_log::writer::generate_boundary`.)
+        // (libc `rand()` is not seeded here: the audit log boundaries come
+        // from the `rand` crate, see `audit_log::writer::generate_boundary`.)
         // (A no-op without libxml2.)
         modsecurity_body::xml::init_parser();
         ModSecurity {
@@ -178,25 +174,24 @@ impl ModSecurity {
     /// `match_string` holds the offsets as written in the logs, e.g.
     /// `o0,4v64,13v114,4t:lowercase` (`v<start>,<size>` variable offsets
     /// in `content`, `o<start>,<size>` operator offsets in the variable
-    /// value, `t:<name>` transformations). The C++ `err` out-parameter is
-    /// the `Err` value; where the C++ code throws a standard exception
-    /// (`std::stoi`, `std::string` constructor), the `Err` carries the
-    /// exception's `what()` text.
+    /// value, `t:<name>` transformations). The `Err` value is the message
+    /// to report; for a number that cannot be read (not a number, or
+    /// beyond the `int` range) it is the text `stoi`.
     ///
-    /// The C++ quirks are kept: the last `v`/`o` entry is never used
-    /// (`pending > 3`), the operator size is taken from the first operator
-    /// entry as a whole (`ops.back()`, e.g. `o0,4`, which then makes
-    /// `std::stoi` throw), and the closing brackets do not match the
-    /// opened containers (yajl does not check them and rejects the last
-    /// one).
+    /// Three quirks of this function in libmodsecurity are kept: the last
+    /// `v`/`o` entry is never used (`pending > 3`), the operator size is
+    /// taken from the first operator entry as a whole (`ops.last()`, e.g.
+    /// `o0,4`, which is then not a number), and the closing brackets do not
+    /// match the opened containers (the generator does not check them).
     pub fn process_content_offset(content: &[u8], match_string: &str) -> Result<Vec<u8>, String> {
         use crate::actions::transformation::Transformation;
         use modsecurity_compat::json::JsonGen;
         use modsecurity_native::regex::Regex;
 
-        // The regex captures contain decimal digits, so general C++ prefix
-        // parsing (whitespace, signs, trailing text) is unnecessary here.
-        // Keep its signed 32-bit range and externally reported error text.
+        // The regex captures contain decimal digits only, so there is no
+        // white space, sign or trailing text to handle. The range is that
+        // of a signed 32-bit number and the error text is reported to the
+        // caller as it is.
         fn parse_offset(bytes: &[u8]) -> Result<usize, &'static str> {
             std::str::from_utf8(bytes)
                 .map_err(|_| "stoi")?
@@ -210,9 +205,9 @@ impl ModSecurity {
         let transformations = Regex::new("t:(?:(?!t:).)+");
         let mut var_value: Vec<u8> = Vec::new();
 
-        // `searchAll` builds its list with push_front: `rbegin()` walks the
-        // matches in order, three entries each (whole match, start, size),
-        // and `back()` is the first entry.
+        // `search_all` returns its entries last first: `iter().rev()` walks
+        // the matches in order, three entries each (whole match, start,
+        // size), and `last()` is the first entry.
         let vars = variables.search_all(match_string.as_bytes());
         let ops = operators.search_all(match_string.as_bytes());
         let mut trans = transformations.search_all(match_string.as_bytes());
@@ -297,7 +292,7 @@ impl ModSecurity {
             g.map_open();
             it.next();
             let starting_at = it.next().map(|m| m.str()).unwrap_or_default();
-            // Quirk (C++): `ops.back()`, not the size entry.
+            // Quirk: `ops.last()`, not the size entry.
             let size = ops.last().map(|m| m.str()).unwrap_or_default();
             it.next();
             g.string(b"startingAt");
@@ -320,9 +315,9 @@ impl ModSecurity {
         g.map_close();
 
         g.map_close();
-        // Quirk (C++): these close the element map, the "match" array and
-        // the root map with the wrong brackets; the final
-        // `yajl_gen_map_close` underflows yajl's depth and writes nothing.
+        // Quirk: these close the element map, the "match" array and the
+        // root map with the wrong brackets (the generator does not check
+        // them).
         g.array_close();
 
         g.map_close();
@@ -342,7 +337,7 @@ mod process_content_offset_tests {
         ModSecurity::process_content_offset(content.as_bytes(), m).map(|v| String::from_utf8(v).unwrap())
     }
 
-    // Expected values produced by the C++ reference build.
+    // The expected values are the output of libmodsecurity 3.0.17.
     #[test]
     fn reference_example() {
         let request = "GET /index.html?param1=value1&param2=value1&param3=value1 HTTP/\n\
@@ -386,7 +381,7 @@ mod process_content_offset_tests {
             pco("Hello World Foo", "v0,5v6,5v12,3o20,3o2,2").unwrap_err(),
             "Offset is out of the variable limits."
         );
-        // The C++ code throws std::invalid_argument / std::out_of_range.
+        // Not a number (the whole `o9,3` entry), and beyond the `int` range.
         assert_eq!(pco("Hello World Foo", "v0,5v6,5v12,3o9,3o2,2").unwrap_err(), "stoi");
         assert_eq!(pco("Hello", "v99999999999,1v1,1").unwrap_err(), "stoi");
     }

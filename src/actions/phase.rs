@@ -19,8 +19,8 @@ impl Phase {
     /// The payload is a phase number (0..5) or `request`, `response` or
     /// `logging`.
     pub fn new(name: &str, payload: &str) -> Result<Self, String> {
-        // `std::stoi` throws for non numbers and for values out of the
-        // `int` range.
+        // `stoi` gives `None` for a text that does not start with a number
+        // and for a value out of the `int` range.
         let (phase, sec_rules_phase) = match stoi(payload.as_bytes()) {
             Some(0) => (Some(Phases::Connection), 0),
             Some(1) => (Some(Phases::RequestHeaders), 1),
@@ -29,8 +29,8 @@ impl Phase {
             Some(4) => (Some(Phases::ResponseBody), 4),
             Some(5) => (Some(Phases::Logging), 5),
             Some(_) => return Err(format!("Unknown phase: {}", payload)),
-            // A number beyond the `int` range: C++ crashes here (the
-            // exception of `std::stoi` is not caught).
+            // A number beyond the `int` range is an unknown phase, not a
+            // phase name.
             None if modsecurity_compat::cnum::strtoll(payload.as_bytes(), 10).digits => {
                 return Err(format!("Unknown phase: {}", payload));
             }
@@ -38,9 +38,8 @@ impl Phase {
                 "request" => (Some(Phases::RequestBody), 2),
                 "response" => (Some(Phases::ResponseBody), 4),
                 "logging" => (Some(Phases::Logging), 5),
-                // Quirk kept from C++: an unknown name is not reported and
-                // leaves the rule without a phase (C++: phase -1), so it
-                // never runs.
+                // An unknown name is not reported and leaves the rule
+                // without a phase, so it never runs.
                 _ => (None, 0),
             },
         };
@@ -89,7 +88,7 @@ mod tests {
         assert_eq!(phase("REQUEST"), Ok((Some(Phases::RequestBody), 2)));
         assert_eq!(phase("response"), Ok((Some(Phases::ResponseBody), 4)));
         assert_eq!(phase("logging"), Ok((Some(Phases::Logging), 5)));
-        // C++ quirk: an unknown name is accepted, without a phase.
+        // An unknown name is accepted, without a phase.
         assert_eq!(phase("foo"), Ok((None, 0)));
         assert_eq!(phase("6"), Err("Unknown phase: 6".to_string()));
         // Beyond `int` (C++ crashes): an unknown phase too, not a rule

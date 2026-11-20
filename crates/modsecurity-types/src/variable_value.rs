@@ -8,15 +8,14 @@ use std::sync::Arc;
 use crate::variable_origin::VariableOrigin;
 
 /// Moves the values pushed onto `l` from index `start` on to its front, in
-/// reverse order: the result of the C++ code's `l->insert(l->begin(), ...)`
-/// for each of them in turn, i.e. the new values reversed, followed by the
-/// previous contents of `l`.
+/// reverse order: the result of inserting each of them at the front in
+/// turn, i.e. the new values reversed, followed by the previous contents of
+/// `l`.
 ///
-/// The C++ vector holds pointers, so its repeated front insertion is cheap
-/// per element; with owned values it must be done in one pass to stay
-/// linear (resolving `ARGS` with hundreds of arguments for every rule
-/// otherwise dominates the evaluation time). Callers push straight onto `l`
-/// and call this once, which needs no temporary list.
+/// It is done in one pass to stay linear: inserting the values at the front
+/// one by one is quadratic, and resolving `ARGS` with hundreds of arguments
+/// for every rule then dominates the evaluation time. Callers push straight
+/// onto `l` and call this once, which needs no temporary list.
 pub fn move_to_front_reversed(l: &mut [VariableValue], start: usize) {
     let added = l.len() - start;
     l[start..].reverse();
@@ -26,8 +25,7 @@ pub fn move_to_front_reversed(l: &mut [VariableValue], start: usize) {
 pub type Origins = Vec<VariableOrigin>;
 
 /// A resolved variable: collection name, key and value, plus where the value
-/// came from. In C++ resolution produced heap allocated copies owned by the
-/// caller; here resolution produces owned values in a `Vec`.
+/// came from. Resolution produces owned values in a `Vec`.
 ///
 /// Resolving a collection (e.g. `ARGS`, once per rule that targets it)
 /// copies its values, so the data is shared behind an `Arc` and a copy only

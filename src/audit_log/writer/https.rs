@@ -13,7 +13,7 @@ pub(super) fn write(audit: &AuditLog, transaction: &Transaction<'_>, parts: Part
     let log = format::json(transaction, parts);
     http_client.set_request_type("application/json");
     http_client.set_request_body(&log);
-    // As in C++, a failed upload is not reported.
+    // A failed upload is not reported.
     http_client.download(&audit.path1);
     Ok(())
 }

@@ -1,7 +1,8 @@
-//! Port of `test/regression/regression.cc` / `regression_test.cc`: runs the
-//! SecLang regression test cases (`test/test-cases/regression/*.json`).
+//! Runs the SecLang regression test cases of the original ModSecurity
+//! (`test/test-cases/regression/*.json`).
 //!
-//! Usage, from the `test/` directory like the C++ utility:
+//! Usage, from the `test/` directory (the command line of the original
+//! `regression_tests` utility):
 //! `regression_tests [automake] [path[:N]]` — `path` is a directory or a
 //! single JSON file, `:N` selects the N-th file. Exit status: number of
 //! failed tests.
@@ -156,9 +157,10 @@ fn contains(s: &str, pattern: &str) -> bool {
 
 /// Whether the parser error `s` is the expected one.
 ///
-/// The wording and position of syntax errors differ from the C++ parser
-/// (they are not part of the compatibility contract): a syntax error only
-/// has to be one, and the other errors are compared without their position.
+/// The test cases expect the wording and position the C++ parser gives to
+/// syntax errors, which are not part of the compatibility contract: a syntax
+/// error only has to be one, and the other errors are compared without
+/// their position.
 fn parser_error_matches(s: &str, expected: &str) -> bool {
     const SYNTAX: [&str; 4] = ["Expecting an action", "Expecting a variable", "Invalid input", "syntax error"];
     if SYNTAX.iter().any(|e| expected.contains(e)) {

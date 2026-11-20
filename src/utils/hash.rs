@@ -1,5 +1,5 @@
 //! MD5 and SHA-1 digests as hexadecimal text (the `md-5` and `sha1`
-//! crates; C++ uses mbedtls).
+//! crates).
 
 use ::sha1::Digest;
 

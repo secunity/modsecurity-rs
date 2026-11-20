@@ -45,8 +45,8 @@ macro_rules! ms_dbg {
     }};
 }
 
-/// [`ms_dbg`](crate::ms_dbg) where the sink is optional (the C++ macro
-/// tolerates a null transaction pointer).
+/// [`ms_dbg`](crate::ms_dbg) where the sink is optional: nothing is logged
+/// without one.
 #[macro_export]
 macro_rules! ms_dbg_opt {
     ($sink:expr, $lvl:expr, $($arg:tt)*) => {{

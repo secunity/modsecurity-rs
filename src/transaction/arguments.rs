@@ -68,7 +68,7 @@ impl ArgumentWriter<'_> {
             .as_ref()
             .and_then(|s| s.as_bytes().first().copied())
             .unwrap_or(b'&');
-        // Like std::getline, an empty input or trailing separator produces
+        // An empty input or a trailing separator produces
         // no extra argument. Borrow each segment instead of copying the
         // whole input into a vector of parts before decoding it.
         for part in body.split_inclusive(|&byte| byte == separator) {

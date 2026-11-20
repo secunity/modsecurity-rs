@@ -33,7 +33,7 @@ impl Operator for IpMatch {
     }
 
     fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
-        // An invalid list fails without a message, as in C++.
+        // An invalid list fails without a message.
         if self.tree.add_from_buffer(&self.param.literal) { Ok(()) } else { Err(String::new()) }
     }
 

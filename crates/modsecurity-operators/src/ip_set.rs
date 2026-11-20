@@ -33,10 +33,9 @@ impl IpSet {
     /// Adds the entries of `buffer`: any number of comma separated entries
     /// per line, with or without spaces around them; `#` starts a comment,
     /// and lines may end with a carriage return. Returns `false` if an
-    /// entry is invalid; there is no error message (the C code never fills
-    /// one).
+    /// entry is invalid; there is no error message saying which one.
     pub fn add_from_buffer(&mut self, buffer: &[u8]) -> bool {
-        // std::getline: a trailing newline does not produce an extra line.
+        // A trailing newline does not produce an extra (empty) line.
         let mut lines: Vec<&[u8]> = buffer.split(|&c| c == b'\n').collect();
         if buffer.is_empty() || buffer.ends_with(b"\n") {
             lines.pop();
@@ -51,7 +50,7 @@ impl IpSet {
     }
 
     /// The result of loading entries: an invalid entry fails with an empty
-    /// message, as in C++.
+    /// message.
     fn loaded(ok: bool) -> Result<(), String> {
         if ok { Ok(()) } else { Err(String::new()) }
     }
@@ -62,7 +61,7 @@ impl IpSet {
             return Err(format!("Failed to open file: {}", file));
         };
         let mut content = Vec::new();
-        // A read error ends the stream, like a failing std::getline.
+        // A read error is not reported: what was read so far is used.
         let _ = f.read_to_end(&mut content);
         Self::loaded(self.add_from_buffer(&content))
     }
@@ -354,7 +353,7 @@ mod tests {
                 let nets: Vec<(u128, u8)> = (0..n)
                     .map(|_| {
                         let a = base | u128::from(rng.random::<u16>());
-                        // 127 at most: C++ does not accept an explicit /128.
+                        // 127 at most: an explicit /128 is covered by the tests above.
                         let m = rng.random_range(bits - 16..bits.min(127) + 1) as u8;
                         (a, m)
                     })

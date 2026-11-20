@@ -1,7 +1,7 @@
 //! String helpers: hex conversions, splitting, trimming and number parsing.
 //!
-//! C++ `std::string` is a byte string; the helpers here therefore operate on
-//! `&[u8]`/`Vec<u8>`. Helpers that only ever see configuration text also
+//! Request data and rule values are byte strings, so the helpers here operate
+//! on `&[u8]`/`Vec<u8>`. Helpers that only ever see configuration text also
 //! have `&str` conveniences.
 
 pub use modsecurity_compat::chars::{

@@ -12,7 +12,7 @@ pub struct Status {
 
 impl Status {
     pub fn new(name: &str, payload: &str) -> Result<Self, String> {
-        // `std::stoi`: no digits or out of `int` range -> error.
+        // No digits, or a value out of the `int` range, is an error.
         let status = stoi(payload.as_bytes()).ok_or_else(|| format!("Not a valid number: {}", payload))?;
         Ok(Status { name: name.to_string(), status })
     }

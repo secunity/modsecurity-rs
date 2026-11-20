@@ -4,8 +4,8 @@
 //! compartmentalised with the collection key set by
 //! `initcol`/`setsid`/`setuid` and the `SecWebAppId`.
 //!
-//! The C++ code has one set of four classes per collection; here the
-//! collection is a value and the variables are built by [`variable`].
+//! The collection is a value ([`Persistent`]) and the variables of all
+//! five are built by [`variable`].
 //! The RESOURCE regex naming quirk is retained; the SESSION deletion quirk
 //! is handled by the writable target in `variable.rs`.
 
@@ -15,8 +15,8 @@ use modsecurity_native::regex::Regex;
 
 pub use crate::collection::Persistent;
 
-/// The name given to `COL:/regex/` variables. Sic: the C++ code names
-/// the `RESOURCE` one `RESOURCE:` (so it shows as `RESOURCE::regex(..)`).
+/// The name given to `COL:/regex/` variables. Sic: the `RESOURCE` one
+/// is named `RESOURCE:` (so it shows as `RESOURCE::regex(..)`).
 fn regex_name(collection: Persistent) -> &'static str {
     match collection {
         Persistent::Resource => "RESOURCE:",

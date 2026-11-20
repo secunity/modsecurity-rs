@@ -32,12 +32,12 @@ pub(crate) enum Computed {
 impl Computed {
     pub(crate) fn evaluate(self, var: &Variable, t: &Transaction<'_>, l: &mut Vec<VariableValue>) {
         let local = |fmt: &str| strftime_local(now(), fmt);
-        // The C++ classes name their value with a constant, whatever the
+        // The value is named with a constant, whatever the
         // spelling of the variable in the rule.
         let (key, value): (&str, String) = match self {
-            // `std::to_string(double)` formats with "%f".
+            // Seconds with six decimals.
             Computed::Duration => ("DURATION", format!("{:.6}", cpu_seconds() - t.creation_time_stamp)),
-            // `std::setw(2) << std::setfill('0')` for each part.
+            // Each part is zero padded to two digits.
             Computed::ModsecBuild => (
                 "MODSEC_BUILD",
                 format!(
@@ -59,8 +59,8 @@ impl Computed {
                 return;
             }
             Computed::WebAppId => {
-                // Sic: the C++ code names the value with `m_name`, which is
-                // empty for `WEBAPPID` (there is no `:` in the name).
+                // Sic: the value is named with the part of the name after
+                // the `:`, which is empty for `WEBAPPID`.
                 l.push(VariableValue::new(var.name().as_bytes(), t.rules.properties.web_app_id()));
                 return;
             }
@@ -69,7 +69,7 @@ impl Computed {
             Computed::TimeEpoch => ("TIME_EPOCH", now().to_string()),
             Computed::TimeHour => ("TIME_HOUR", local("%H")),
             Computed::TimeMin => ("TIME_MIN", local("%M")),
-            // `tm_mon + 1` in C++: jiff months are already 1 to 12.
+            // jiff months are 1 to 12.
             Computed::TimeMon => ("TIME_MON", localtime(now()).month().to_string()),
             Computed::TimeSec => ("TIME_SEC", local("%S")),
             Computed::TimeWDay => ("TIME_WDAY", local("%u")),

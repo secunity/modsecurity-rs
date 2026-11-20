@@ -70,7 +70,7 @@ mod tests {
         let t = xml(&ms, &rules, b"<a><b></a>");
         assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document.");
         assert_eq!(t.vars.reqbody_processor_error.value, b"1");
-        // the (partial) document is kept, as in C++
+        // the (partial) document is kept
         assert!(t.body.xml.as_ref().unwrap().has_doc());
         assert_eq!(t.body.xml.as_ref().unwrap().well_formed(), 0);
     }
@@ -129,7 +129,7 @@ mod tests {
             let mut rules = new_rules();
             rules.properties.settings.sec_xml_parse_xml_into_args = mode;
             // (The SAX handler that parses into ARGS has no entity
-            // callbacks, so the document fails there, as in C++.)
+            // callbacks, so the document fails there.)
             let t = xml(&ms, &rules, body);
             assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document for ARGS.");
         }
@@ -244,7 +244,7 @@ mod tests {
 }
 
 /// A transaction (and so its XML parsers and document) can move to another
-/// thread, as before libxml2 was put behind `utils::libxml2`.
+/// thread, as before libxml2 was put behind `modsecurity_native::libxml2`.
 #[test]
 fn transaction_is_send() {
     fn send<T: Send>() {}

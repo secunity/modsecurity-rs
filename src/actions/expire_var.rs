@@ -32,7 +32,7 @@ impl Action for ExpireVar {
             Some(pos_equals) => {
                 let expiry = &expire_expression_expanded[pos_equals + 1..];
                 if expiry.iter().all(u8::is_ascii_digit) {
-                    // C++ `atoi` (an empty value gives 0).
+                    // An empty value gives 0.
                     expiry_seconds = atoi(expiry);
                 } else {
                     crate::ms_dbg!(cx, 5, "Non-numeric expiry seconds found in expirevar expression.");
@@ -71,7 +71,7 @@ impl Action for ExpireVar {
             }
         }
 
-        // Logged even for an invalid collection (as in C++).
+        // Logged even for an invalid collection.
         crate::ms_dbg!(
             cx,
             9,

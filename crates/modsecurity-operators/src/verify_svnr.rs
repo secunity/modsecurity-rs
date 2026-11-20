@@ -44,7 +44,7 @@ impl VerifySVNR {
         let mut s_svnr = [0u8; SVNR_LEN];
         let mut i = 0usize;
 
-        // The C code stops at the first NUL byte.
+        // The number ends at the first NUL byte.
         for &c in svnrnumber.iter().take_while(|&&c| c != 0) {
             if i < SVNR_LEN && c.is_ascii_digit() {
                 s_svnr[i] = c;
@@ -56,7 +56,7 @@ impl VerifySVNR {
         if i != SVNR_LEN {
             return false;
         }
-        // Quirk kept from C++: only the first 10 of the 12 known bad
+        // Known limitation: only the first 10 of the 12 known bad
         // numbers are checked.
         if BAD_SVNR.iter().take(SVNR_LEN).any(|bad| s_svnr == **bad) {
             return false;
@@ -96,7 +96,7 @@ impl Operator for VerifySVNR {
 
         let mut i = 0usize;
         while i + 1 < input.len() {
-            // Offsets are relative to the searched suffix, as in C++.
+            // Offsets are relative to the searched suffix `input[i..]`.
             let matches = self.re.search_all(&input[i..]);
             for m in &matches {
                 if self.verify(m.str()) {

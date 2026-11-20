@@ -43,7 +43,7 @@ impl Operator for ValidateDTD {
     }
 
     /// Without libxml2 the operator logs that it is not implemented and
-    /// matches, as the base `Operator::evaluate` does in C++.
+    /// matches.
     #[cfg(not(feature = "libxml2"))]
     fn evaluate(&self, cx: &mut dyn Context, _input: &[u8]) -> bool {
         crate::ms_dbg!(cx, 2, "Operator: {} is not implemented or malfunctioning.", self.name());

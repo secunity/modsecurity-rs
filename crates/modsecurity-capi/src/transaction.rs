@@ -125,7 +125,7 @@ pub unsafe extern "C" fn msc_append_request_body(t: *mut CTransaction, buf: *con
 pub unsafe extern "C" fn msc_request_body_from_file(t: *mut CTransaction, path: *const c_char) -> c_int {
     let t = tx!(t);
     let p = String::from_utf8_lossy(unsafe { bytes(path) }).into_owned();
-    // 0 when the file cannot be read, as in C++.
+    // 0 when the file cannot be read.
     t.request_body_from_file(&p).map_or(0, c_int::from)
 }
 
@@ -235,7 +235,7 @@ pub unsafe extern "C" fn msc_intervention(t: *mut CTransaction, it: *mut ModSecu
     if let Some(pending) = t.intervention() {
         it.fill_from(&pending);
     }
-    // C++ returns the caller's field (filled above when there was one).
+    // The C API returns the caller's field (filled above when there was one).
     it.disruptive
 }
 
@@ -256,8 +256,7 @@ pub unsafe extern "C" fn msc_get_response_body(t: *const CTransaction) -> *const
     let Some(t) = (unsafe { t.as_ref() }) else {
         return std::ptr::null();
     };
-    // strdup(m_responseBody.str().c_str()): the raw bytes up to the
-    // first NUL byte.
+    // A C string: the raw bytes of the body up to the first NUL byte.
     intervention::strdup(t.response_body())
 }
 

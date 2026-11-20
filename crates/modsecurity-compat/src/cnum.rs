@@ -1,5 +1,4 @@
-//! The number conversions of C and C++ that the C++ library relies on
-//! (`strtoll`, `atoi`, `std::stoi`),
+//! The number conversions of C and C++ (`strtoll`, `atoi`, `std::stoi`),
 //! with their corner cases: what counts as white space, where parsing
 //! stops, and what overflow gives.
 
@@ -86,7 +85,7 @@ pub fn stoi(s: &[u8]) -> Option<i32> {
 }
 
 /// Parses an integer in `base` as `strtol(s, NULL, base)` does, truncated
-/// to `int` (as the C++ code passes the result to `int` parameters).
+/// to `int` (what C gives when the `long` result is assigned to an `int`).
 pub fn strtol_int(s: &str, base: u32) -> i32 {
     strtoll(s.as_bytes(), base).value as i32
 }

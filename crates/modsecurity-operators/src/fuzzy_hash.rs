@@ -1,10 +1,9 @@
 //! The `@fuzzyHash` operator: matches when the ssdeep hash of the input is
 //! similar enough to one of the hashes listed in a file.
 //!
-//! ssdeep (libfuzzy) is bound through a small `extern "C"` block when the
-//! `ssdeep` feature is enabled (C++ `WITH_SSDEEP`; build.rs links the
-//! library). Without it the operator fails to initialise and never
-//! matches, like the C++ build without ssdeep.
+//! ssdeep (libfuzzy) is called through `modsecurity_native::ssdeep` when
+//! the `ssdeep` feature is enabled. Without it the operator fails to
+//! initialise and never matches.
 
 use crate::{Context, Operator, Param, Resources};
 
@@ -60,7 +59,7 @@ impl Operator for FuzzyHash {
             return Err(format!("Failed to open file: {}. {}", String::from_utf8_lossy(&param), lookup.looked_at));
         };
         let mut content = Vec::new();
-        // A read error ends the stream, like a failing std::getline.
+        // A read error is not reported: what was read so far is used.
         let _ = f.read_to_end(&mut content);
 
         let mut lines: Vec<&[u8]> = content.split(|&c| c == b'\n').collect();
@@ -68,7 +67,7 @@ impl Operator for FuzzyHash {
             lines.pop();
         }
         for line in lines {
-            // strdup(line.c_str()): up to the first NUL byte.
+            // A hash is a C string for ssdeep: the line up to its first NUL byte.
             self.chunks.push(std::ffi::CString::new(modsecurity_compat::chars::c_str(line)).unwrap_or_default());
         }
 

@@ -13,12 +13,12 @@ fn convert(val: &mut [u8], op: impl Fn(u8) -> u8) -> bool {
     changed
 }
 
-/// `t:lowercase` (`std::tolower` in the C locale).
+/// `t:lowercase`: ASCII letters only, other bytes are left as they are.
 pub fn lower(value: &mut [u8]) -> bool {
     convert(value, |c| c.to_ascii_lowercase())
 }
 
-/// `t:uppercase` (`std::toupper` in the C locale).
+/// `t:uppercase`: ASCII letters only, other bytes are left as they are.
 pub fn upper(value: &mut [u8]) -> bool {
     convert(value, |c| c.to_ascii_uppercase())
 }

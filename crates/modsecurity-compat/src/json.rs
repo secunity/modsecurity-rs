@@ -1,4 +1,5 @@
-//! JSON support replacing the yajl library used by the C++ code.
+//! JSON reading and writing with the observable behavior of the yajl C
+//! library: what it accepts, what it produces and its error texts.
 //!
 //! * [`JsonGen`] mirrors `yajl_gen` with the options used by ModSecurity
 //!   (compact output, no UTF-8 validation, `/` not escaped), producing byte

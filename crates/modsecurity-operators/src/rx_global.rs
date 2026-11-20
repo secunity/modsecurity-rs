@@ -55,7 +55,7 @@ impl RxGlobal {
             }
         };
 
-        // (`utils::regex` guards against dangling empty-slice pointers.)
+        // (`modsecurity_native::regex` guards against dangling empty-slice pointers.)
         let subject: &[u8] = input;
         let mut captures: Vec<SMatchCapture> = Vec::new();
         let match_limit = cx.pcre_match_limit();

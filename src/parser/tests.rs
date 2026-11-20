@@ -5,8 +5,8 @@
 //! are OWASP CRS (`CRS_DIR`, skipped when not set),
 //! `modsecurity.conf-recommended`, the rules of every regression test and
 //! the `.conf` files of `test/test-cases/data`. (Commit 4a83876 compared
-//! them, and a million mutations, with the port of the C++ flex/bison
-//! parser, removed since.)
+//! them, and a million mutations, with the flex/bison style parser that
+//! this front end replaced.)
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};

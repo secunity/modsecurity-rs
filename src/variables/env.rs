@@ -12,13 +12,13 @@ use crate::variables::variable_value::VariableValue;
 /// `ENV` (every variable) or `ENV:<name>`: the process environment plus
 /// what `setenv` set in the transaction.
 pub(crate) fn evaluate(var: &Variable, t: &Transaction<'_>, l: &mut Vec<VariableValue>) {
-    // The C++ code inserts the process environment into
-    // `m_variableEnvs` (`std::map::insert`, so the values set by
-    // `setenv` win) and then walks the map. The transaction is shared
-    // here, so the merge is done on a copy; the result is the same.
+    // The process environment is merged into the variables set by
+    // `setenv`, which win over an entry of the same name, and the
+    // result is walked in key order. The transaction is shared
+    // here, so the merge is done on a copy.
     // (`std::env::vars_os` splits each entry at the first `=` after the
-    // first character, where C++ splits at the first `=`: only an entry
-    // starting with `=` would differ.)
+    // first character, so the name of an entry starting with `=` keeps
+    // that `=`.)
     let mut envs: BTreeMap<Vec<u8>, Vec<u8>> = t.variable_envs.clone();
     for (k, v) in std::env::vars_os() {
         envs.entry(k.as_bytes().to_vec()).or_insert_with(|| v.as_bytes().to_vec());

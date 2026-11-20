@@ -2,7 +2,7 @@
 //! directives.
 //!
 //! The configuration state shared by the parser `Driver` and `RulesSet`
-//! (both derive from `RulesSetProperties` in C++; both embed it here).
+//! (both embed a [`RulesSetProperties`]).
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -16,8 +16,8 @@ use crate::phases::NUMBER_OF_PHASES;
 use crate::rules_set::exceptions::RulesExceptions;
 use modsecurity_operators::geo_lookup::GeoDb;
 
-/// Numeric configuration values (`ConfigInt`, `ConfigUnsignedInt`,
-/// `ConfigUnsignedLong` in C++), with the range of the C++ specialisation.
+/// Numeric configuration values (`i32`, `u32` and `u64`), each with the
+/// range a directive value is checked against.
 /// A value that no directive set is `None` in [`RulesSetProperties`].
 pub trait ConfigNumber: Copy + Default {
     const SIGNED: bool;
@@ -49,8 +49,8 @@ config_number!(i32, true, i32::MIN as i128);
 config_number!(u32, false, 0);
 config_number!(u64, false, 0);
 
-/// Parses a numeric directive value: `std::stoll` / `std::stoull` plus the
-/// range checks of the C++ type, with its error messages.
+/// Parses a numeric directive value as C++ `std::stoll` / `std::stoull`
+/// do (see [`parse_cxx_integer`]), then checks the range of `T`.
 pub fn parse_config_number<T: ConfigNumber>(a: &str) -> Result<T, String> {
     let val: i128 = match parse_cxx_integer(a, T::SIGNED) {
         CxxInt::Invalid => return Err("Invalid number format (not numeric)".to_string()),
@@ -72,9 +72,9 @@ enum CxxInt {
     Value(i128),
 }
 
-/// `std::stoll` / `std::stoull` semantics: leading white space, optional
-/// sign, decimal digits, trailing garbage ignored. `stoull` accepts a minus
-/// sign and negates modulo 2^64.
+/// C++ `std::stoll` / `std::stoull` number parsing: leading white space,
+/// optional sign, decimal digits, trailing garbage ignored. An unsigned
+/// value accepts a minus sign and is negated modulo 2^64.
 fn parse_cxx_integer(a: &str, signed: bool) -> CxxInt {
     let s = a.trim_start_matches([' ', '\t', '\n', '\r', '\x0b', '\x0c']);
     let (neg, rest) = match s.as_bytes().first() {
@@ -190,7 +190,7 @@ impl ConfigUnicodeMap {
                 let start = p.iter().position(|&c| c != b':').unwrap_or(p.len());
                 let end = p[start..].iter().position(|&c| c == b':').map_or(p.len(), |n| start + n);
                 let (ucode, hmap) = (&p[start..end], p.get(end + 1..).unwrap_or_default());
-                // Only colons: C++ passes a null pointer to strtol here.
+                // Only colons: there is no code, and the entry is ignored.
                 if !ucode.is_empty() {
                     let code = strtoll(ucode, 16).value as i32;
                     let map = strtoll(hmap, 16).value as i32;
@@ -209,8 +209,7 @@ impl ConfigUnicodeMap {
 }
 
 /// `SecParseXmlIntoArgs`: whether the XML body is also parsed into
-/// `ARGS` (the C++ `ConfigXMLParseXmlIntoArgs` without its not-set state,
-/// which is `None`).
+/// `ARGS`. A configuration that does not set it holds `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseXmlIntoArgs {
     On,
@@ -248,8 +247,8 @@ pub enum OnFailedRemoteRulesAction {
     Warn,
 }
 
-/// The name of a rule engine state as the logs print it (`None` is the
-/// C++ not-set state).
+/// The name of a rule engine state as the logs print it (`None`: no
+/// directive set it).
 pub fn rule_engine_state_string(i: Option<RuleEngine>) -> &'static str {
     match i {
         Some(RuleEngine::Disabled) => "Disabled",
@@ -259,8 +258,8 @@ pub fn rule_engine_state_string(i: Option<RuleEngine>) -> &'static str {
     }
 }
 
-/// The value of the C++ `ConfigBoolean` enumerator (`True`, `False`,
-/// `NotSet`), which some debug messages print as a number.
+/// The number some debug messages print for an on/off setting: 0 for
+/// on, 1 for off and 2 when no directive set it.
 pub fn config_boolean_code(i: Option<bool>) -> i32 {
     match i {
         Some(true) => 0,
@@ -425,7 +424,7 @@ impl RulesSetProperties {
             to.extend(from.iter().cloned());
         }
 
-        // A failure C++ does not report leaves the configuration accepted.
+        // A `SetupError::Unreported` failure leaves the configuration accepted.
         if let Err(SetupError::Reported(e)) = to.audit_log.merge(&from.audit_log) {
             return Err(e);
         }
@@ -452,15 +451,15 @@ mod tests {
         assert_eq!(parse_config_number::<u32>("99999999999").unwrap_err(), "Value is too big.");
         assert_eq!(parse_config_number::<u32>("x").unwrap_err(), "Invalid number format (not numeric)");
         assert_eq!(parse_config_number::<u64>("99999999999999999999999").unwrap_err(), "Number out of range");
-        // std::stoull negates modulo 2^64.
+        // A negative unsigned value is negated modulo 2^64.
         assert_eq!(parse_config_number::<u64>(" -1"), Ok(u64::MAX));
         assert_eq!(parse_octal_mode("0640"), Ok(0o640));
         assert_eq!(parse_octal_mode("08").unwrap_err(), "Invalid octal number");
     }
 
-    /// The entries of a unicode map are read as C++ reads them:
-    /// `strtok_r(.., ":")` and `(int) strtol(.., 16)` (each case below was
-    /// compared with the C++ library).
+    /// The entries of a unicode map are split and converted as C's
+    /// `strtok_r(.., ":")` and `(int) strtol(.., 16)` do (each case below
+    /// was compared with the C++ library).
     #[test]
     fn unicode_map_entries() {
         let dir = std::env::temp_dir().join(format!("msrs-unicode-map-{}", std::process::id()));
@@ -520,7 +519,7 @@ mod tests {
         assert_eq!(all.sec_rule_engine, Some(RuleEngine::Enabled));
         assert_eq!(all.request_body_limit, Some(10));
         // `SecRemoteRulesFailAction` is not one of them: it is not merged,
-        // as in C++.
+        // and the value of `to` stays.
         let mut from = RulesSetProperties::new();
         from.remote_rules_action_on_failed = Some(OnFailedRemoteRulesAction::Warn);
         let mut to = RulesSetProperties::new();
@@ -530,7 +529,7 @@ mod tests {
 
     #[test]
     fn c_display_values() {
-        // The C++ enumerator values and texts printed in the logs.
+        // The numbers and texts printed in the logs.
         assert_eq!([Some(true), Some(false), None].map(config_boolean_code), [0, 1, 2]);
         assert_eq!(rule_engine_state_string(None), "PropertyNotSet/DetectionOnly");
         assert_eq!(config_xml_parse_xml_into_args_string(Some(ParseXmlIntoArgs::On)), "True");

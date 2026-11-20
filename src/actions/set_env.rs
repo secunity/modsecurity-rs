@@ -32,11 +32,10 @@ impl Action for SetENV {
             String::from_utf8_lossy(&value)
         );
 
-        // `setenv(3)` with overwrite, as in C++. Names/values with an
-        // embedded NUL cannot be represented (C++ silently truncates them);
-        // an empty name makes setenv fail with EINVAL, which C++ ignores.
-        // `setenv(3)` rejects an empty name and one with `=` (EINVAL,
-        // which C++ ignores); `set_var` would panic on those and on NULs.
+        // `setenv(3)` with overwrite. It rejects an empty name and one with
+        // `=` (EINVAL), and a name or value with an embedded NUL cannot be
+        // passed to it: the process environment is left alone for those,
+        // without an error (`set_var` would panic on them).
         let valid = !name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0);
         if valid {
             crate::utils::system::set_env(&name, &value);

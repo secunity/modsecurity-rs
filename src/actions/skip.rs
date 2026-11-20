@@ -12,7 +12,7 @@ pub struct Skip {
 
 impl Skip {
     pub fn new(name: &str, payload: &str) -> Result<Self, String> {
-        // `std::stoi`: no digits or out of `int` range -> error.
+        // No digits, or a value out of the `int` range, is an error.
         let skip_next =
             stoi(payload.as_bytes()).ok_or_else(|| format!("Skip: The input \"{}\" is not a number.", payload))?;
         Ok(Skip { name: name.to_string(), skip_next })

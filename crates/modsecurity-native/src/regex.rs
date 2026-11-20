@@ -2,8 +2,9 @@
 //! expression variable keys (`ARGS:/^id/`) and other parts of the engine.
 //!
 //! The PCRE2 C library is used directly through `pcre2-sys` so that the
-//! compile options, JIT usage, match limits and error codes are exactly the
-//! ones of the C++ implementation. All `unsafe` code of the regex layer is
+//! engine chooses the compile options, decides when the JIT is used, sets
+//! the match limit and sees PCRE2's error codes (a match limit hit is told
+//! apart from other errors). All `unsafe` code of the regex layer is
 //! confined to this module.
 
 use pcre2_sys::*;
@@ -74,9 +75,9 @@ pub fn crlf_is_newline() -> bool {
 
 /// How far past the end of a subject PCRE2 may read. Its JIT code tests the
 /// byte at the end before comparing lengths (and scans in vector blocks),
-/// which C++ never notices: its subjects are `std::string`s, with a NUL
-/// after the end. The value read is never used (tested in
-/// `tests/guard_page.rs`).
+/// which a C caller with NUL terminated subjects never notices. A Rust
+/// slice has no byte after its end. The value read is never used (tested
+/// in `tests/guard_page.rs`).
 const READ_AHEAD: usize = 64;
 
 /// A page size every real one is a multiple of.
@@ -173,7 +174,7 @@ impl Drop for MatchContext {
 }
 
 /// Per-thread match data and match context, reused by every match on the
-/// thread (the C++ code creates and frees both for each match). The match
+/// thread (instead of creating and freeing both for each match). The match
 /// data grows to the largest pattern seen; PCRE2 also keeps its interpreter
 /// frames in it between matches.
 struct Scratch {
@@ -220,8 +221,8 @@ impl Drop for Regex {
 }
 
 /// Compiling: [`Regex::compile`] reports a pattern PCRE2 rejects; the
-/// other constructors are for patterns of the configuration whose errors
-/// the C++ code ignores, and give a regex that never matches.
+/// other constructors are for patterns whose errors are not reported, and
+/// give a regex that never matches.
 impl Regex {
     /// Compiles `pattern` (`.*` when empty) with the given options; `.`
     /// always matches newlines.
@@ -283,7 +284,7 @@ impl Regex {
     }
 
     /// Runs one match attempt, JIT first and interpreter on JIT stack
-    /// exhaustion (or when JIT is unavailable), as the C++ code does.
+    /// exhaustion (or when JIT is unavailable or `use_jit` is false).
     fn exec(
         &self,
         s: &Subject<'_>,
@@ -309,8 +310,8 @@ impl Regex {
 
     /// Runs `f` with match data large enough for this pattern and the match
     /// context for `match_limit` (null, i.e. PCRE2's defaults, for 0). Uses
-    /// the per-thread [`Scratch`]; falls back to fresh ones (as C++ always
-    /// does) if it is unavailable.
+    /// the per-thread [`Scratch`]; falls back to fresh ones, freed after the
+    /// call, if it is unavailable.
     fn with_match_data<R>(&self, match_limit: u64, f: impl FnOnce(&MatchData, *mut pcre2_match_context_8) -> R) -> R {
         let mut f = Some(f);
         let r = SCRATCH
@@ -356,12 +357,12 @@ impl Regex {
         }
     }
 
-    /// The groups of the successive matches in `s`, last first (the C++
-    /// code pushes them to the front of a list). Each search resumes after
-    /// the last group of the previous match, and an empty group ends it.
+    /// The groups of the successive matches in `s`, last first. Each search
+    /// resumes after the last group of the previous match, and an empty
+    /// group ends it.
     pub fn search_all(&self, s: &[u8]) -> Vec<SMatch> {
-        // std::list with push_front: pushed in match order and reversed at
-        // the end (front insertion into a Vec would be quadratic).
+        // Last first: pushed in match order and reversed at the end (front
+        // insertion into a Vec would be quadratic).
         let mut ret: Vec<SMatch> = Vec::new();
         if self.has_error() {
             return ret;
@@ -449,8 +450,8 @@ impl Regex {
         let mut start_offset = 0usize;
         while start_offset <= s.len() {
             let options = if prev_match_zero_length { PCRE2_NOTEMPTY_ATSTART | PCRE2_ANCHORED } else { 0 };
-            // The C++ code uses pcre2_match (JIT is still used implicitly
-            // unless the options require the interpreter).
+            // pcre2_match, not `exec`: PCRE2 still uses the JIT code itself
+            // unless the options require the interpreter.
             // SAFETY: as in `exec`.
             let rc = unsafe { pcre2_match_8(self.pc, subject.as_ptr(), s.len(), start_offset, options, md.0, ctx) };
             Self::to_result(rc)?;
@@ -550,8 +551,8 @@ mod tests {
         assert_eq!(g[0].offset, 0);
     }
 
-    /// A NUL byte in a pattern is a byte to match (C++ compiles the
-    /// pattern up to it).
+    /// A NUL byte in a pattern is a byte to match: the pattern is compiled
+    /// with its length, not up to its first NUL.
     #[test]
     fn nul_byte_in_a_pattern() {
         let r = Regex::new("a\0b");

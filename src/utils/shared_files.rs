@@ -3,7 +3,7 @@
 //! A [`SharedFile`] is opened by path; the logs of this process that open
 //! the same path share it (one descriptor, one mutex), and it is closed when
 //! the last of them drops its handle. Writes take an exclusive `fcntl` lock
-//! too, so that several processes can share one file, as in C++ (`flock(2)`
+//! too, so that several processes can share one file (`flock(2)`
 //! would not do: its locks are shared by the processes that inherited the
 //! descriptor, e.g. nginx workers; and `fcntl` locks do not exclude the
 //! threads of one process, hence the shared mutex).
@@ -30,7 +30,7 @@ fn registry() -> MutexGuard<'static, HashMap<String, Weak<SharedFile>>> {
 }
 
 /// An exclusive `fcntl` lock on a whole file, released on drop. Errors
-/// are ignored, as in C++.
+/// are ignored.
 struct FileLock<'f>(&'f File);
 
 impl<'f> FileLock<'f> {

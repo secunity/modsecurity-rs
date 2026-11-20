@@ -1,8 +1,8 @@
 //! The debug log (`SecDebugLog`, `SecDebugLogLevel`).
 //!
-//! The C++ `DebugLog` class is a concrete base with virtual methods that
-//! connectors (and the test utilities) override. Here the interface is the
-//! [`DebugLog`] trait and the stock implementation is [`DefaultDebugLog`].
+//! The interface is the [`DebugLog`] trait, which connectors (and the
+//! test utilities) can implement to take the messages themselves;
+//! the stock implementation is [`DefaultDebugLog`].
 //! Writing happens through `&self` because one `RulesSet` (and therefore
 //! one debug log) is shared by concurrent transactions.
 
@@ -49,7 +49,7 @@ impl DefaultDebugLog {
     }
 
     fn append(&self, line: String) {
-        // Write errors are ignored, as in C++.
+        // Write errors are ignored.
         if let Some(file) = &self.file {
             let _ = file.write(line.as_bytes());
         }

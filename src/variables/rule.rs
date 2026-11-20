@@ -1,9 +1,9 @@
 //! The `RULE` variable (`RULE:id`, `RULE:rev`, `RULE:severity`,
 //! `RULE:logdata` and `RULE:msg`): properties of the rule being evaluated.
 //! Inside a chain, a property the rule does not set is looked up in its
-//! chain parents. In C++ each rule pointed at its parent
-//! (`m_chainedRuleParent`); here the ancestors of the rule being evaluated
-//! are on `Transaction::chained_rule_parents`.
+//! chain parents. A rule has no pointer to its parent:
+//! the ancestors of the rule being evaluated
+//! are in the transaction (`eval.chained_rule_parents`).
 
 use crate::rule::Rule;
 use crate::transaction::Transaction;
@@ -110,7 +110,7 @@ pub(crate) fn evaluate(selector: &Selector, t: &Transaction<'_>, rule: Option<&R
                 property(t, rule, l);
             }
         }
-        // The element is compared case sensitively, as in C++; `rev` and
+        // The element is compared case sensitively; `rev` and
         // `severity` are only resolved inside a rule.
         Selector::Key(e) => {
             let needs_rule = e == RULE_REV || e == RULE_SEVERITY;

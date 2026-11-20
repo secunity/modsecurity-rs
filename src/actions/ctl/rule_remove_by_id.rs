@@ -12,8 +12,8 @@ pub struct RuleRemoveById {
     ids: Vec<i32>,
 }
 
-/// Parses a leading integer as `std::stoi` does; `None` when there are no
-/// digits or the value is out of `int` range.
+/// The integer that `s` starts with (see [`stoi`]); `None` when there are
+/// no digits or the value is out of `int` range.
 fn stoi_int(s: &str) -> Option<i32> {
     stoi(s.as_bytes())
 }

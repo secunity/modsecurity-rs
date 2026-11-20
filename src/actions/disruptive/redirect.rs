@@ -22,8 +22,8 @@ impl Redirect {
 
 impl Action for Redirect {
     fn name(&self) -> &str {
-        // "redirert" (sic): the action name used by C++, kept for identical
-        // debug output.
+        // "redirert" (sic): the name this action has always reported, kept
+        // so that the debug output does not change.
         "redirert"
     }
 
@@ -74,7 +74,7 @@ mod tests {
         a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert_eq!(t.outcome.intervention.status, 302);
 
-        // The URL is handed out as raw bytes (C++ copies them unchanged).
+        // The URL is handed out as raw bytes, unchanged.
         t.outcome.intervention.url = Some(b"/a\xffb".to_vec());
         assert_eq!(t.intervention().unwrap().url.as_deref(), Some(&b"/a\xffb"[..]));
     }

@@ -1,6 +1,6 @@
 //! `ctl:requestBodyProcessor=URLENCODED` — parses the request body as
 //! `application/x-www-form-urlencoded`. (Unlike the JSON and XML variants
-//! C++ sets the request body *type* here, not the processor; kept.)
+//! this sets the request body *type*, not the processor.)
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;

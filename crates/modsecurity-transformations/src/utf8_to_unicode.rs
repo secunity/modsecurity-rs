@@ -13,9 +13,9 @@ fn push_code_point(data: &mut Vec<u8>, d: u32) {
 fn encode(value: &mut Vec<u8>) -> bool {
     let input = value.as_slice();
     let input_len = input.len();
-    // C++ reads past the last byte into the string's NUL terminator
-    // (the length checks below use the whole input length, not the bytes
-    // left); such reads see 0, which fails every continuation-byte check.
+    // The length checks below use the whole input length, not the bytes
+    // left, so a sequence may be read past the last byte; such reads see
+    // 0, which fails every continuation-byte check.
     let at = |k: usize| input.get(k).copied().unwrap_or(0);
     let mut changed = false;
     let mut count: usize = 0;
@@ -38,10 +38,8 @@ fn encode(value: &mut Vec<u8>) -> bool {
             count += 1;
             if count <= len {
                 if c == 0 && input_len > i + 1 {
-                    // Quirk kept from C++: x2c(NUL, next) is written at the
-                    // output position without advancing it, so it is
-                    // overwritten by the next output byte (or cut off at
-                    // the end): a NUL that is not the last byte is dropped.
+                    // Known quirk: a NUL that is not the last byte is
+                    // dropped.
                 } else {
                     data.push(c);
                 }

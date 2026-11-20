@@ -1,10 +1,10 @@
-//! `variables` (C++ `src/variables/`): the targets of rules.
+//! `variables`: the targets of rules.
 //!
 //! [`variable::Variable`] is a target; [`new_variable`] builds it from its
-//! name in the rule (the `var:` rule of the C++ grammar). The C++ project
-//! has one header per variable, each defining one to three classes with the
-//! `DEFINE_VARIABLE*` macros; here those are rows of the table in
-//! [`new_variable`]. The variables with logic of their own have a module:
+//! name in the rule. The variables that only read a value of the
+//! transaction are rows of the tables in `names`, which
+//! [`new_variable`] looks up first.
+//! The variables with logic of their own have a module:
 //! the collections ([`persistent`], and `TX` in [`variable`]), [`rule`],
 //! [`env`], [`xml`] and the [`computed`] ones (`TIME*`, `DURATION`, ...).
 
@@ -27,7 +27,7 @@ use variable::{CollectionKey, Source, Variable, regex_name};
 
 /// How a variable is selected in a rule target: `ARGS`, `ARGS:foo`,
 /// `ARGS:/regex/` or, for the collections that accept it, a key built from
-/// macros (`TX:%{...}`, the C++ `*_DynamicElement` classes).
+/// macros (`TX:%{...}`).
 #[derive(Debug)]
 pub enum VariableSelector {
     None,
@@ -36,17 +36,17 @@ pub enum VariableSelector {
     Dynamic(crate::run_time_string::RunTimeString),
 }
 
-/// Creates the variable for the scanner token `name` with the given
-/// selector: the actions of the `var:` rule of the C++ grammar
-/// (`seclang-parser.yy`). Returns `None` for unknown names and for
-/// selectors the grammar does not accept for that variable (e.g.
-/// `REQUEST_METHOD:foo`, `ARGS:%{...}`, `WEBSERVER_ERROR_LOG`), which are
-/// syntax errors in C++. The `!` / `&` modifiers are applied by the caller.
+/// Creates the variable named `name` with the given
+/// selector. Returns `None` for unknown names and for
+/// selectors a variable does not accept (e.g.
+/// `REQUEST_METHOD:foo`, `ARGS:%{...}`) and for `WEBSERVER_ERROR_LOG`;
+/// the parser reports these as
+/// errors. The `!` / `&` modifiers are applied by the caller.
 ///
-/// `name` is matched case insensitively (the scanner's patterns are
-/// `(?i:...)`). For the `RUN_TIME_VAR_*` tokens (`DURATION`, `MODSEC_BUILD`,
-/// `HIGHEST_SEVERITY`, `REMOTE_USER`, `TIME*`) the C++ grammar names the
-/// variable with the text as written in the rule (`yytext`), so `name` is
+/// `name` is matched case insensitively.
+/// The computed variables (`DURATION`, `MODSEC_BUILD`,
+/// `HIGHEST_SEVERITY`, `REMOTE_USER`, `TIME*`) are named
+/// with the text as written in the rule, so `name` is
 /// used verbatim for those.
 ///
 /// | token(s) | `None` | `DictElement(e)` | `Regexp(r)` | `Dynamic(m)` |
@@ -57,15 +57,15 @@ pub enum VariableSelector {
 /// | `XML` | the document | `XML:e` (XPath) | `XML:r` (XPath) | - |
 /// | every single valued variable (`REQUEST_METHOD`, `TIME`, `DURATION`, ...) | the value | - | - | - |
 ///
-/// (The `ENV:/regex/` and `XML:/regex/` forms are not regular expressions
-/// in C++ either: the text between the slashes is used as the key.)
+/// (The `ENV:/regex/` and `XML:/regex/` forms are not regular
+/// expressions: the text between the slashes is used as the key.)
 pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> {
     use VariableSelector as S;
     use computed::Computed as C;
     use persistent::Persistent;
 
-    // A computed variable, named after the token text as written in the
-    // rule (the `RUN_TIME_VAR_*` tokens).
+    // A computed variable, named after the text as written in the
+    // rule.
     let computed = |selector: VariableSelector, c: C| match selector {
         S::None => Some(Variable::new(name, Source::Computed(c))),
         _ => None,
@@ -109,7 +109,7 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
             Some(Variable::new(&name, Source::Tx(key)))
         }
 
-        // RUN_TIME_VAR_ENV / RUN_TIME_VAR_XML
+        // `ENV` and `XML`: a regex selector is taken as a key.
         "ENV" => match selector {
             S::None => Some(Variable::new("ENV", Source::Env)),
             S::DictElement(e) | S::Regexp(e) => Some(Variable::new(&format!("ENV:{}", e), Source::Env)),
@@ -140,7 +140,7 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
         "TIME_WDAY" => computed(selector, C::TimeWDay),
         "TIME_YEAR" => computed(selector, C::TimeYear),
 
-        // `WEBSERVER_ERROR_LOG` is rejected by the C++ scanner ("not
+        // `WEBSERVER_ERROR_LOG` is rejected by the parser ("not
         // supported by libModSecurity"); anything else is unknown.
         _ => None,
     }
@@ -261,7 +261,7 @@ mod tests {
         "RULE",
     ];
     const COLLECTIONS: &[&str] = &["TX", "IP", "GLOBAL", "SESSION", "USER", "RESOURCE"];
-    /// (token, C++ variable name)
+    /// (token, name of the variable)
     const SINGLES: &[(&str, &str)] = &[
         ("RESPONSE_CONTENT_TYPE", "RESPONSE_CONTENT_TYPE"),
         ("ARGS_COMBINED_SIZE", "ARGS_COMBINED_SIZE"),
@@ -385,7 +385,7 @@ mod tests {
             assert!(new_variable(token, sel_re("x")).is_none(), "{}", token);
             assert!(new_variable(token, sel_dyn("x")).is_none(), "{}", token);
         }
-        // RUN_TIME_VAR_*: named after the text as written.
+        // The computed variables: named after the text as written.
         assert_eq!(var("time_hour", sel_none()).full_name(), "time_hour");
         // ENV and XML.
         assert_eq!(var("ENV", sel_none()).full_name(), "ENV");
@@ -618,7 +618,7 @@ mod tests {
             eval(&var("HIGHEST_SEVERITY", sel_none()), &t, None),
             vec![("HIGHEST_SEVERITY".into(), "255".into())]
         );
-        // Sic: WEBAPPID values are named with the (empty) `m_name`.
+        // Sic: WEBAPPID values have an empty name.
         assert_eq!(eval(&var("WEBAPPID", sel_none()), &t, None), vec![("".into(), "bisteka".into())]);
 
         let d = eval(&var("DURATION", sel_none()), &t, None);

@@ -171,9 +171,9 @@ const NAMES: &[(&str, Transformation)] = &[
     ("utf8tounicode", T::Utf8ToUnicode),
 ];
 
-/// The names of [`Transformation::from_name_prefix`], in the order the C++
-/// factory tests them (a longer name before its prefixes), with its
-/// spellings (`cmd_line`, `compress_whitespace`, `transformation`).
+/// The names of [`Transformation::from_name_prefix`], in the order they
+/// are tried (a longer name before its prefixes), with the spellings of
+/// that lookup (`cmd_line`, `compress_whitespace`, `transformation`).
 const PREFIX_NAMES: &[(&str, Transformation)] = &[
     ("base64DecodeExt", T::Base64DecodeExt),
     ("base64Decode", T::Base64Decode),
@@ -226,7 +226,7 @@ impl Transformation {
         NAMES.iter().find(|(n, _)| *n == name).map(|&(_, t)| t)
     }
 
-    /// The lookup of the C++ transformation factory, which the engine keeps
+    /// The lookup by prefix, which the engine uses
     /// where it is not the SecLang parser that names the transformation
     /// (Lua's `m.getvar`, the unit tests): the first name of its list that
     /// `text` starts with, case sensitively (so `trimLeftX` is `trimLeft`,

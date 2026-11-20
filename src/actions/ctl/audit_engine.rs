@@ -27,7 +27,7 @@ impl Action for AuditEngine {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        // C++ prints the numeric value of the enum.
+        // The debug log shows the setting as its number.
         crate::ms_dbg!(
             cx,
             8,

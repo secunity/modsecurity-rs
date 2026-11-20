@@ -181,8 +181,8 @@ y\r\n\
 
     #[test]
     fn header_errors_do_not_stop_parsing() {
-        // As in C++: process_part_header failures return 0, which is not
-        // treated as fatal; only the error is recorded.
+        // An error in a part header is not fatal: it is recorded and
+        // the parser goes on.
         let ms = ModSecurity::new();
         let rules = new_rules();
         let ct = ct("0000");

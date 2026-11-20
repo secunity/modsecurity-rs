@@ -1,10 +1,10 @@
 //! A multi valued transaction variable (e.g. `ARGS`), keyed case
 //! insensitively.
 //!
-//! The C++ class *is* a
-//! `std::unordered_multimap<std::string, VariableValue *, MyHash, MyEqual>`;
-//! [`UnorderedMultimap`] reproduces that container's iteration order, which
-//! decides the order targets are evaluated in.
+//! The entries are kept in an [`UnorderedMultimap`], which reproduces the
+//! iteration order of libstdc++'s `std::unordered_multimap` as the C++
+//! library uses it. That order decides the order targets are evaluated in,
+//! and it is kept because the upstream tests depend on it.
 
 use crate::transaction::Transaction;
 use crate::variables::anchored_set_variable_translation_proxy::translate;
@@ -102,7 +102,7 @@ impl AnchoredSetVariable {
         self.insert(key, var);
     }
 
-    /// Adds every value to `l`. As in C++, the values are inserted at the
+    /// Adds every value to `l`. The values are inserted at the
     /// front of `l`, so they come out in reverse container order.
     pub fn resolve(&self, l: &mut Vec<VariableValue>) {
         self.resolve_pick(Pick::Value, l)

@@ -9,8 +9,8 @@ use super::{Context, Entries, Multipart};
 const MIME_CHARSET_SPECIAL: &[u8] = b"!#$%&+-^_`{}~";
 const ATTR_CHAR_SPECIAL: &[u8] = b"!#$&+-.^_`~";
 
-/// Why the header was refused: the (negative) code of the C++ function,
-/// which the error message shows.
+/// Why the header was refused: a (negative) code, which the error message
+/// shows.
 type Code = i32;
 
 /// A position in the header value.

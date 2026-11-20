@@ -95,7 +95,7 @@ impl Operator for VerifySSN {
 
         let mut i = 0usize;
         while i + 1 < input.len() {
-            // Offsets are relative to the searched suffix, as in C++.
+            // Offsets are relative to the searched suffix `input[i..]`.
             let matches = self.re.search_all(&input[i..]);
             for m in &matches {
                 if self.verify(m.str()) {

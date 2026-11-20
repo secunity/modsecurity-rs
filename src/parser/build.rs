@@ -3,7 +3,7 @@
 //!
 //! Each statement is applied as soon as it is read, so that an `Include`d
 //! file is loaded in place and the first error stops the load, with the
-//! directives before it applied (as the C++ parser does).
+//! directives before it applied.
 //!
 //! The grammar only describes the shape of a directive. The names it reads
 //! (variables, operators, actions, transformations) are looked up here, in
@@ -109,8 +109,7 @@ impl Lines<'_> {
     }
 }
 
-/// The text of a piece of the configuration, as the C++ code reads it
-/// (`std::string`, shown as UTF-8).
+/// The text of a piece of the configuration: its bytes, shown as UTF-8.
 fn string(s: &str) -> String {
     if s.is_ascii() {
         return s.to_string();

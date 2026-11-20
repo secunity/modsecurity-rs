@@ -3,10 +3,10 @@
 //!
 //! Whoever loads the configuration owns the database and hands it to the
 //! operator through [`Context::geo_db`]: the ModSecurity engine keeps one
-//! per rule set (C++ keeps one per process). MaxMind databases are read
-//! with the `maxminddb` crate when the `maxmind` feature is enabled (C++
-//! `WITH_MAXMIND`). The legacy GeoIP library is not available, so this
-//! behaves like a C++ build without `WITH_GEOIP`.
+//! per rule set. MaxMind databases are read with the `maxminddb` crate
+//! when the `maxmind` feature is enabled. The legacy GeoIP library is not
+//! supported: without the feature no database can be opened and the
+//! operator never matches.
 
 use crate::{Context, Operator, ms_dbg};
 
@@ -165,7 +165,7 @@ fn maxmind_lookup(reader: &maxminddb::Reader<Vec<u8>>, target: &[u8], cx: &mut d
         [(b"LATITUDE", &[Key("location"), Key("latitude")]), (b"LONGITUDE", &[Key("location"), Key("longitude")])];
     for (name, path) in doubles {
         if let Ok(Some(v)) = r.decode_path::<f64>(path) {
-            // std::to_string(double)
+            // Six digits after the decimal point.
             cx.set_geo(name, format!("{:.6}", v).as_bytes());
         }
     }

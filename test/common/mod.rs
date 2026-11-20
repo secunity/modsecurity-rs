@@ -1,5 +1,5 @@
-//! Port of `test/common/` (shared by the regression and unit test
-//! utilities): test file loading, the custom debug log and helpers.
+//! Shared by the regression and unit test utilities: test file loading,
+//! the custom debug log and helpers.
 
 #![allow(dead_code)]
 
@@ -95,8 +95,8 @@ pub fn json2bin(s: &mut Vec<u8>) {
     fn hexval(d: &[u8]) -> Option<u32> {
         u32::from_str_radix(std::str::from_utf8(d).ok()?, 16).ok()
     }
-    // C++ loops "while regex_search(...)" replacing all occurrences of the
-    // first match each time; process \x first, then \u.
+    // Each pass finds the first escape and replaces all its occurrences;
+    // the \x escapes are processed first, then the \u ones.
     for (prefix, len) in [(b'x', 2usize), (b'u', 4usize)] {
         loop {
             let mut found = None;
@@ -114,8 +114,8 @@ pub fn json2bin(s: &mut Vec<u8>) {
             let Some(m) = found else {
                 break;
             };
-            // sscanf("%3x"/"%4x"): the leading hex digits of the group (C++
-            // leaves the value uninitialised when there are none; 0 here).
+            // The leading hex digits of the group, as sscanf("%x") reads
+            // them (0 when there are none).
             let digits: Vec<u8> = m[2..].iter().copied().take_while(u8::is_ascii_hexdigit).collect();
             let p = hexval(&digits).unwrap_or(0) as u8;
             let mut out = Vec::with_capacity(s.len());

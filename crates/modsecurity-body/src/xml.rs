@@ -1,11 +1,11 @@
-//! The XML request body processor (feature `libxml2`, the C++
-//! `WITH_LIBXML2`). The body is parsed with libxml2's push parser into a
+//! The XML request body processor (feature `libxml2`).
+//! The body is parsed with libxml2's push parser into a
 //! document, which the `XML` variable (XPath) and the `@validateDTD` /
 //! `@validateSchema` operators work on. With `SecParseXmlIntoArgs` set to
 //! `On` or `OnlyArgs` a second, SAX based, parser turns the leaf elements of
 //! the document into `ARGS` named after their path (`xml.root.child`).
 //!
-//! libxml2 itself is behind the safe API of `utils::libxml2`.
+//! libxml2 itself is behind the safe API of `modsecurity_native::libxml2`.
 
 /// Initialises libxml2 (`xmlInitParser()`), done once by the `ModSecurity`
 /// constructor.
@@ -90,7 +90,7 @@ mod with_libxml2 {
         fn on_start_element(&mut self, name: &[u8]) {
             self.nodes.push(NodeData::default());
             self.node_depth += 1;
-            // FIXME - later if we want to check the depth of XML tree
+            // Known limitation: the depth is counted but not limited.
             // if it's not the first (root) item, then append a '.'
             // note, the condition should always be true because there is
             // always a pseudo root element: 'xml'

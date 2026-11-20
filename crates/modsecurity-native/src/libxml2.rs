@@ -156,7 +156,7 @@ mod ffi {
     }
 
     impl xmlSAXHandler {
-        /// A handler with every callback unset (the C++ `memset(.., 0, ..)`).
+        /// A handler with every callback unset (what `memset(.., 0, ..)` gives in C).
         pub fn zeroed() -> Self {
             xmlSAXHandler {
                 sax1_head: [std::ptr::null(); 17],
@@ -741,8 +741,8 @@ pub enum SchemaError {
     ValidationContext,
 }
 
-/// A NUL terminated copy of `s`, cut at its first NUL byte (as the C++
-/// code's `c_str()` view of a `std::string` would be).
+/// A NUL terminated copy of `s`, cut at its first NUL byte (libxml2 takes
+/// C strings, which cannot hold one).
 fn c_string(s: &[u8]) -> CString {
     CString::new(crate::c_str(s)).expect("no NUL byte")
 }

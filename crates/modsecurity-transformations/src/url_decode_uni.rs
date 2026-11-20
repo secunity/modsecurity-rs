@@ -10,8 +10,8 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
     let input_len = input.len();
     let mut d = 0usize;
     let mut i = 0usize;
-    // Declared outside the loop as in C++ (only ever assigned while a map is
-    // configured, in which case it is reassigned for every %u sequence).
+    // The mapped byte of the current %u sequence, or -1. Without a map it
+    // stays -1; with one it is reassigned for every %u sequence.
     let mut hmap: i32 = -1;
 
     while i < input_len {
@@ -101,7 +101,6 @@ fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) -> bool {
                         changed = true;
                     } else {
                         // Not a valid encoding, skip this %
-                        // (C++ also counts these in an unused `count`.)
                         input[d] = input[i];
                         d += 1;
                         i += 1;

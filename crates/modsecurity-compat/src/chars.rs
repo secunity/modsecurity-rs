@@ -1,5 +1,6 @@
-//! Byte classes, hexadecimal conversions and the small string helpers of
-//! the C++ library (`std::string::find`, the log escaping and truncation).
+//! Byte classes, hexadecimal conversions and small string helpers: searching
+//! and splitting with the corner cases of `std::string::find` and
+//! `std::getline`, the log escaping and truncation, C string views.
 
 /// Whether `x` is an octal digit.
 #[inline]
@@ -150,8 +151,8 @@ pub fn chomp(s: &mut Vec<u8>) {
 }
 
 /// `s` as C code sees it through a `const char *`: up to its first NUL
-/// byte. The C++ library hands many byte strings to C functions
-/// (`c_str()`), which is why what follows a NUL byte is so often ignored.
+/// byte. Used where a value goes to a C function, and where a result the
+/// tests expect was defined by one: what follows a NUL byte is ignored.
 #[inline]
 pub fn c_str(s: &[u8]) -> &[u8] {
     match s.iter().position(|&c| c == 0) {

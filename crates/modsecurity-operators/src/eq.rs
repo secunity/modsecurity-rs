@@ -26,7 +26,7 @@ impl Operator for Eq {
     }
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
         let pt = cx.param(&self.param);
-        // A failing std::stoi counts as 0.
+        // A value that `stoi` cannot read counts as 0.
         let p = stoi(&pt).unwrap_or(0);
         let i = stoi(input).unwrap_or(0);
         p == i

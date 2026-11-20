@@ -17,7 +17,7 @@ pub enum AuditLogType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditLogStatus {
-    // The numbers are those of the C++ enum, which the debug log prints.
+    // The debug log prints these numbers.
     On = 1,
     Off = 2,
     RelevantOnly = 3,
@@ -36,8 +36,7 @@ pub enum PartsChange {
     Remove,
 }
 
-/// `SecAuditLogRelevantStatus`: the pattern and its compiled regex (C++
-/// compiles it for every transaction).
+/// `SecAuditLogRelevantStatus`: the pattern and its regex, compiled once.
 #[derive(Debug)]
 struct RelevantStatus {
     pattern: String,
@@ -56,8 +55,8 @@ impl RelevantStatus {
 pub enum SetupError {
     /// A configuration error, with its message.
     Reported(String),
-    /// A failure C++ does not report (a storage directory name it cannot
-    /// pass to `mkdir`): the configuration is accepted without a writer.
+    /// A failure that is not reported (a storage directory name that cannot
+    /// be passed to `mkdir`): the configuration is accepted without a writer.
     Unreported,
 }
 
@@ -91,9 +90,8 @@ pub struct AuditLog {
     /// `SecAuditLogRelevantStatus` (`None` when not set or empty).
     relevant: Option<RelevantStatus>,
 
-    /// The writer, with the files it opened. (The C++ writer keeps a back
-    /// pointer, `m_audit`, to its `AuditLog`; here the owner passes itself
-    /// to every write instead.)
+    /// The writer, with the files it opened. It has no reference to this
+    /// `AuditLog`: the owner passes itself to every write.
     writer: Option<Writer>,
     /// Rules have at least one `ctl:auditEngine` action On or RelevantOnly.
     ctl_audit_engine_active: bool,
@@ -106,9 +104,9 @@ impl Default for AuditLog {
 }
 
 bitflags::bitflags! {
-    /// The parts of an audit log entry (`SecAuditLogParts`). The bits are
-    /// those of the C++ `AuditLog::AuditLogParts` enumeration: the debug
-    /// log shows a set of parts as that number.
+    /// The parts of an audit log entry (`SecAuditLogParts`). The bit
+    /// values are fixed: the debug log shows a set of parts as that
+    /// number.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Parts: i32 {
         /// Audit log header (mandatory).
@@ -284,7 +282,7 @@ impl AuditLog {
         // The new writer opens its files before the previous one releases
         // its own (with the assignment), so a file both use stays open. If
         // it fails, what it opened is released and the previous writer is
-        // kept, as in C++.
+        // kept.
         let writer = Writer::open(self)?;
         self.writer = Some(writer);
         Ok(())
@@ -400,7 +398,8 @@ mod tests {
         d.join(f).to_str().unwrap().to_string()
     }
 
-    /// The transaction of the C++ comparison harness.
+    /// Runs one transaction (a POST with two request headers and a 200
+    /// response) through logging; `f` is called before the logging phase.
     fn run(rules: &RulesSet, id: &str, f: impl FnOnce(&mut Transaction<'_>)) {
         let ms = ModSecurity::new();
         let mut t = Transaction::with_id(&ms, rules, id, None);
@@ -749,7 +748,7 @@ mod tests {
             panic!("an error with a message");
         };
         assert!(e.starts_with("Not able to create directory: /nonexistent-dir/x: "), "{}", e);
-        // A name C++ cannot pass to mkdir: no message.
+        // A name that cannot be passed to mkdir: no message.
         a.set_storage_dir("/tmp/a\0b");
         assert_eq!(a.init().unwrap_err(), SetupError::Unreported);
     }

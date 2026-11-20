@@ -1,6 +1,6 @@
 //! A minimal HTTP(S) client used by `SecRemoteRules`, the remote
 //! `@pmFromFile`/`@ipMatchFromFile` resources and the HTTPS audit log
-//! writer. Built on libcurl (the `curl` feature, C++ `MSC_WITH_CURL`).
+//! writer. Built on libcurl (the `curl` feature).
 
 #[derive(Debug, Default)]
 pub struct HttpsClient {

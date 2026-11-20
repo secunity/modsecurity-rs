@@ -3,8 +3,8 @@
 //! engine's lookup by name (`m.getvar`, `variable::string_match_resolve*`)
 //! read.
 //!
-//! The two lookups reach different subsets, as their C++ counterparts do
-//! (the grammar's tokens and `Variable::stringMatchResolve`): Lua does not
+//! The two lookups reach different subsets (the `seclang` and `lua` flags
+//! of each entry): Lua does not
 //! know six of the `MULTIPART_*` flags nor `STATUS`, and its `RESOURCE` is
 //! the single variable set by `setrsc` where SecLang's is the persistent
 //! collection. The variables with logic of their own (the collections,
@@ -19,8 +19,8 @@ use crate::variables::anchored_variable::AnchoredVariable;
 pub(crate) struct Single {
     /// The name in rules and Lua (upper case).
     pub(crate) token: &'static str,
-    /// The name of the SecLang variable: the C++ class name, which for a
-    /// few differs from the token (sic: `UNIQUEID`, `PROCESSOR_ERROR_MSG`).
+    /// The name of the SecLang variable, as it shows in the logs. For a
+    /// few it differs from the token (sic: `UNIQUEID`, `PROCESSOR_ERROR_MSG`).
     pub(crate) name: &'static str,
     pub(crate) get: fn(&Vars) -> &AnchoredVariable,
     /// Whether SecLang targets know it.
@@ -35,7 +35,7 @@ pub(crate) struct Set {
     pub(crate) token: &'static str,
     pub(crate) get: fn(&Vars) -> &AnchoredSetVariable,
     /// Lua's lookup compares the whole name, key included, with the token
-    /// (sic, as in C++), so it finds the variable only without a key.
+    /// (sic), so it finds the variable only without a key.
     #[cfg_attr(not(feature = "lua"), allow(dead_code))]
     pub(crate) lua_whole_name: bool,
 }
@@ -93,7 +93,7 @@ macro_rules! names {
     };
 }
 
-/// The single valued variables (C++ `DEFINE_VARIABLE`).
+/// The single valued variables.
 pub(crate) static SINGLE: &[Single] = &[
     single!("RESPONSE_CONTENT_TYPE", "RESPONSE_CONTENT_TYPE", response_content_type, seclang: true, lua: true),
     single!("ARGS_COMBINED_SIZE", "ARGS_COMBINED_SIZE", args_combined_size, seclang: true, lua: true),
@@ -158,7 +158,7 @@ pub(crate) static SINGLE: &[Single] = &[
     single!("RESOURCE", "RESOURCE", resource, seclang: false, lua: true),
 ];
 
-/// The multi valued variables (C++ `DEFINE_VARIABLE_DICT`).
+/// The multi valued variables.
 pub(crate) static SETS: &[Set] = &[
     set!("ARGS", args, lua_whole_name: false),
     set!("ARGS_POST", args_post, lua_whole_name: false),
@@ -191,7 +191,7 @@ pub(crate) static NAMES: &[Names] = &[
     names!("ARGS_POST_NAMES", args_post_names, args_post),
 ];
 
-/// Where the two lookups differ, as in C++ (an old-against-new comparison
+/// Where the two lookups differ (an old-against-new comparison
 /// of both lookups on every name, spelling and selector was run when the
 /// tables replaced their three hand-written chains).
 #[cfg(all(test, feature = "lua"))]
@@ -223,7 +223,7 @@ mod tests {
         assert!(string_match_resolve(&t, "MULTIPART_LF_LINE").is_err());
         assert_eq!(seclang("STATUS_LINE").as_deref(), Some("STATUS"));
         assert!(string_match_resolve(&t, "STATUS").is_err());
-        // Names of the C++ classes (sic).
+        // Names that differ from the token (sic).
         assert_eq!(seclang("UNIQUE_ID").as_deref(), Some("UNIQUEID"));
         assert_eq!(seclang("REQBODY_PROCESSOR_ERROR_MSG").as_deref(), Some("PROCESSOR_ERROR_MSG"));
         assert_eq!(string_match_resolve(&t, "unique_id").unwrap(), b"uid");

@@ -88,7 +88,7 @@ pub(super) fn write(
         YEAR_MONTH_DAY_DIRECTORY | YEAR_MONTH_DAY_AND_TIME_DIRECTORY | YEAR_MONTH_DAY_AND_TIME_FILE_NAME,
     );
 
-    // As in C++, the format comes from the transaction's rule set.
+    // The format comes from the transaction's rule set.
     let log = if transaction.rules.properties.audit_log.format == Some(AuditLogFormat::Json) {
         format::json(transaction, parts)
     } else {
@@ -120,8 +120,7 @@ pub(super) fn write(
         .mode(audit.file_permission())
         .open(&file_name)
         .map_err(|e| format!("Not able to open: {}. {}", file_name, strerror(e.raw_os_error().unwrap_or(0))))?;
-    // The C++ code reopens the file with an std::ofstream (append) and
-    // ignores write errors.
+    // Write errors are ignored.
     let _ = file.write_all(&log);
     drop(file);
 

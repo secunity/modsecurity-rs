@@ -10,7 +10,7 @@ use modsecurity_types::KeyExclusions;
 use modsecurity_types::variable_value::{VariableValue, move_to_front_reversed};
 
 /// Process local collection: a case insensitive multimap guarded by a
-/// reader/writer lock (the C++ code uses a `std::shared_mutex`).
+/// reader/writer lock.
 pub struct InMemoryPerProcess {
     name: String,
     map: RwLock<UnorderedMultimap<CollectionData>>,

@@ -44,7 +44,7 @@ impl std::fmt::Display for LoadError {
 impl std::error::Error for LoadError {}
 
 /// A loaded configuration: the rules of every phase plus the configuration
-/// properties (`RulesSet : RulesSetProperties` in C++).
+/// properties.
 pub struct RulesSet {
     pub(crate) properties: RulesSetProperties,
     pub(crate) rules_set_phases: RulesSetPhases,
@@ -101,7 +101,7 @@ impl RulesSet {
             return self.failed();
         }
         self.merge_driver(&mut driver).or_else(|_| {
-            // The C++ code appends the parser errors once more here.
+            // The parser errors of the driver are added to the merge error.
             self.properties.parser_error.push_str(&driver.properties.parser_error);
             self.failed()
         })
@@ -248,7 +248,7 @@ impl RulesSet {
     /// The body of [`Self::merge`] and [`Self::merge_driver`]. The
     /// properties are merged even when the rules could not be (duplicated
     /// id), and a failure to merge them is only recorded in the parser
-    /// errors; both as in C++.
+    /// errors.
     fn merge_parts(
         &mut self,
         phases: &RulesSetPhases,

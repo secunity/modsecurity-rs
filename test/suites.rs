@@ -1,6 +1,7 @@
-//! `cargo test` entry point for the ported C++ test suites (the equivalent
-//! of `make check`): runs the `regression_tests` and `unit_tests` utilities
-//! from the `test/` directory, as the C++ build does.
+//! `cargo test` entry point for the test suites of the original ModSecurity
+//! (the equivalent of its `make check`): runs the `regression_tests` and
+//! `unit_tests` utilities from the `test/` directory, which their default
+//! test paths are relative to.
 
 use std::process::Command;
 
@@ -26,7 +27,7 @@ fn regression_suite() {
 /// Operator and transformation unit tests. The C++ reference build fails
 /// exactly 11 of them, all in `phpArgsNames.json` (a transformation that does
 /// not exist in libmodsecurity, so the value is returned unchanged); the
-/// Rust port must fail the same set and nothing else.
+/// engine must fail the same set and nothing else.
 #[test]
 fn unit_suite() {
     let (code, out) = run(env!("CARGO_BIN_EXE_unit_tests"), &[]);

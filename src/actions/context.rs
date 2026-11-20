@@ -176,8 +176,8 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
         self.set_reqbody_processor_variable(name);
     }
 
-    /// `ctl:requestBodyProcessor=URLENCODED`: as in C++, it sets the body
-    /// *type* (not the processor), and `REQBODY_PROCESSOR` to `name`.
+    /// `ctl:requestBodyProcessor=URLENCODED`: sets the body *type* (not the
+    /// processor), and `REQBODY_PROCESSOR` to `name`.
     pub fn set_request_body_type(&mut self, body_type: RequestBodyType, name: &[u8]) {
         self.t.body.request_body_type = body_type;
         self.set_reqbody_processor_variable(name);

@@ -26,8 +26,8 @@ use crate::rule::Rule;
 use crate::variables::variable_value::VariableValue;
 
 bitflags::bitflags! {
-    /// The optional parts of a log line ([`RuleMessage::log`]). The bits
-    /// are those of the C++ `LogMessageInfo` enumeration.
+    /// The optional parts of a log line ([`RuleMessage::log`]). The bit
+    /// values are fixed (a test checks them).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct LogParts: u8 {
         /// Ends the line with the error log tail (the server name, the URI
@@ -194,7 +194,7 @@ impl<'r> RuleMessage<'r> {
 
     /// The SecLang phase number (1..5) of the rule.
     pub fn phase_number(&self) -> i32 {
-        // C++ `m_phase - 1`, with -1 as the phase of an unknown name.
+        // One less than the `Phases` value; a rule without a phase gives -2.
         self.rule.phase().map_or(-1, |p| p as i32) - 1
     }
 }
@@ -248,7 +248,7 @@ mod tests {
         let (text, _) = logged(LogProperties::TEXT, "pass,log");
         assert_eq!(text.len(), 1);
         assert!(text[0].starts_with("text: ModSecurity: Warning. Matched "), "{text:?}");
-        // The text wins when both are asked for, as in C++.
+        // The text wins when both are asked for.
         let (both, _) = logged(LogProperties::TEXT | LogProperties::RULE_MESSAGE, "pass,log");
         assert!(both.len() == 1 && both[0].starts_with("text: "), "{both:?}");
 
@@ -271,7 +271,7 @@ mod tests {
             "{intervention}"
         );
 
-        // The bits of the C++ enumerations.
+        // The bit values are fixed.
         assert_eq!(
             (
                 LogProperties::TEXT.bits(),

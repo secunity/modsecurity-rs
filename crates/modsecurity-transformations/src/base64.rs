@@ -1,12 +1,13 @@
 //! Base64 encoding and decoding, strict (mbedtls) and forgiving.
 //!
-//! The C++ code delegates the strict encoder/decoder to mbedtls
-//! (`mbedtls_base64_encode` / `mbedtls_base64_decode`). Their exact semantics
-//! (which whitespace is tolerated, how padding is validated, ...) are
-//! observable through `t:base64Decode`, so they are hand-ported here
-//! (`mbedtls_encode` / `mbedtls_decode`, from mbedtls `base64.c`) instead of
-//! using a different base64 implementation. The forgiving decoder
-//! (`decode_forgiven_engine`) is ModSecurity's own code.
+//! The strict encoder and decoder follow mbedtls (`mbedtls_base64_encode` /
+//! `mbedtls_base64_decode`), which the original ModSecurity calls. Their
+//! exact semantics (which whitespace is tolerated, how padding is
+//! validated, ...) are observable through `t:base64Decode` and the tests of
+//! the original ModSecurity depend on them, so they are written out here
+//! (`mbedtls_encode` / `mbedtls_decode`, after mbedtls `base64.c`) instead
+//! of using a different base64 implementation. The forgiving decoder
+//! (`decode_forgiven_engine`) is ModSecurity's own algorithm.
 
 /// Base64 encoding and decoding.
 #[derive(Debug, Clone, Copy, Default)]
@@ -28,8 +29,7 @@ fn mbedtls_dec_value(c: u8) -> i8 {
     }
 }
 
-/// Encodes `src` as `mbedtls_base64_encode` does (with the output buffer
-/// sized by a first sizing call, as the C++ code does).
+/// Encodes `src` as `mbedtls_base64_encode` does.
 fn mbedtls_encode(src: &[u8]) -> Vec<u8> {
     let slen = src.len();
     if slen == 0 {
@@ -200,9 +200,7 @@ static B64_REVERSE_T: [i32; 256] = [
 ];
 
 impl Base64 {
-    /// Standard base64 with `=` padding. (The C++ version
-    /// can only fail on a null output pointer or a size overflow, so this
-    /// one is infallible.)
+    /// Standard base64 with `=` padding. Encoding cannot fail.
     pub fn encode(data: &[u8]) -> Vec<u8> {
         mbedtls_encode(data)
     }
@@ -211,8 +209,8 @@ impl Base64 {
     /// base64. Spaces at line ends and `\n` / `\r\n` line breaks are
     /// accepted.
     ///
-    /// As in C++ (`strlen(data.c_str())`), the input stops at the first NUL
-    /// byte.
+    /// The input stops at the first NUL byte: the original ModSecurity
+    /// reads it as a C string, and its tests depend on that.
     pub fn decode(data: &[u8]) -> Option<Vec<u8>> {
         mbedtls_decode(modsecurity_compat::chars::c_str(data))
     }
@@ -220,7 +218,7 @@ impl Base64 {
     /// Lenient decoding (`t:base64DecodeExt`).
     /// Never fails (always `Some`): invalid input decodes to an empty value.
     pub fn decode_forgiven(data: &[u8]) -> Option<Vec<u8>> {
-        // base64HelperForgiven: a sizing call, then the decoding call.
+        // A sizing call, then the decoding call.
         let out_len = Self::decode_forgiven_engine(&mut [], data);
         let mut ret = vec![0u8; out_len];
         if out_len > 0 {
@@ -249,8 +247,8 @@ impl Base64 {
             ch = i32::from(encoded[pos]);
             pos += 1;
             if ch == B64_PAD {
-                // C++ reads `*encoded`, which is the string's NUL terminator
-                // after the last byte.
+                // The byte after the padding; 0 (not a '=') when the padding
+                // is the last byte.
                 let next = encoded.get(pos).copied().unwrap_or(0);
                 if next != b'=' && (i % 4) == 1 {
                     return 0;
@@ -298,7 +296,7 @@ impl Base64 {
         }
 
         let mut k = j;
-        // Quirk kept from C++: after a digit `ch` holds its *decoded* value,
+        // Known quirk: after a digit `ch` holds its *decoded* value,
         // so a final '9' (value 61 == '=') is also taken as padding.
         if ch == B64_PAD {
             match i % 4 {

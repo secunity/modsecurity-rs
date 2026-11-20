@@ -143,8 +143,8 @@ impl Collection for Lmdb {
         ret
     }
 
-    /// Quirk (C++): the key exclusions are not applied, and a non empty
-    /// `var` selects every key it prefixes.
+    /// Known limitation: the key exclusions are not applied (`_ke` is
+    /// unused), and a non empty `var` selects every key it prefixes.
     fn resolve_multi_matches(&self, var: &[u8], l: &mut Vec<VariableValue>, _ke: &KeyExclusions) {
         let name = self.name.as_bytes();
         let start = l.len();

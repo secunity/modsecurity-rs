@@ -1,11 +1,9 @@
 //! The `multipart/form-data` request body processor. The parser is a line
 //! oriented state machine working on an internal buffer of
-//! [`MULTIPART_BUF_SIZE`] bytes, as the C++ (and ModSecurity 2)
-//! implementation: the data is accumulated until a line feed (or a full
-//! buffer) and every buffer is then examined as a possible boundary, part
-//! header or part data. Many of the checks treat the buffer as a C string
-//! (stopping at the first NUL byte); those semantics are reproduced through
-//! the `c_*` helpers below.
+//! [`MULTIPART_BUF_SIZE`] bytes: the data is accumulated until a line feed
+//! (or a full buffer) and every buffer is then examined as a possible
+//! boundary, part header or part data. A NUL byte is a byte like another
+//! in a line; in a part header it is an error.
 //!
 //! The parts of the parser: the boundary from the Content-Type header
 //! (`content_type`), the lines of a part (`part`), its Content-Disposition
@@ -195,7 +193,7 @@ pub struct Multipart {
     pub reqbody_no_files_length: usize,
     /// The most recent parsing error (`MULTIPART_*` failures and the
     /// upload file limit), reported as `REQBODY_ERROR_MSG`. A later error
-    /// replaces an earlier one, as in C++.
+    /// replaces an earlier one.
     error: Option<String>,
     /// The parts read so far.
     parts: Vec<MultipartPart>,
@@ -215,8 +213,8 @@ pub struct Multipart {
     buf: Vec<u8>,
     /// Whether `buf` starts where a line starts.
     buf_contains_line: bool,
-    /// Where `buf` starts in the body (unsigned int in C++, hence the
-    /// wrapping arithmetic).
+    /// Where `buf` starts in the body: 32 bits wide, with wrapping
+    /// arithmetic on larger bodies.
     buf_offset: u32,
 
     line_end: LineEnd,
@@ -245,7 +243,7 @@ pub struct Multipart {
     header: Vec<u8>,
     /// `SecUploadKeepFiles`, read by the cleanup.
     upload_keep_files: Option<bool>,
-    /// Whether `cleanup` (what the C++ destructor does) already ran.
+    /// Whether `cleanup` already ran.
     cleaned_up: bool,
 }
 
@@ -413,8 +411,8 @@ impl Multipart {
                 false
             }
             PartState::Headers => {
-                // Like C++, a failing part header records its error but
-                // does not stop the processing.
+                // A failing part header records its error but does not
+                // stop the processing.
                 self.process_part_header(cx, &mut mpp, buf, offset);
                 true
             }
@@ -609,11 +607,10 @@ impl Multipart {
     /// Finalizes multipart processing. This method is invoked at the end,
     /// when it is clear that there is no more data to be processed.
     ///
-    /// The cleanup the C++ destructor did (marking the temporary files for
-    /// deletion, with its debug messages) needs the transaction, so it runs
-    /// at the end of this method: the C++ `Transaction::processRequestBody`
-    /// always destroyed the processor right after calling
-    /// `multipart_complete`.
+    /// The cleanup (marking the temporary files for deletion, with its
+    /// debug messages) needs the transaction, so it runs at the end of this
+    /// method; dropping the parser only runs it, without the messages, when
+    /// this method was not called.
     pub fn multipart_complete(&mut self, cx: &mut dyn Context) -> bool {
         let ret = self.complete(cx);
         self.cleanup(Some(cx));
@@ -670,8 +667,8 @@ impl Multipart {
         report(cx, Flag::MultipartInvalidPart, flags.invalid_part, "invalid part parsing.");
         report(cx, Flag::MultipartInvalidHeaderFolding, flags.invalid_header_folding, "invalid header folding used.");
 
-        // Note: like the C++ code, MULTIPART_FILE_LIMIT_EXCEEDED is never
-        // set; the condition is only reflected in MULTIPART_STRICT_ERROR.
+        // Known limitation: MULTIPART_FILE_LIMIT_EXCEEDED is never set
+        // here; the condition is only reflected in MULTIPART_STRICT_ERROR.
         let strict = flags.error
             || flags.boundary_quoted
             || flags.boundary_whitespace
@@ -797,9 +794,9 @@ impl Multipart {
         }
     }
 
-    /// What the C++ destructor does: marks the temporary files of the parts
-    /// for deletion (unless `SecUploadKeepFiles` is on); they stay on disk
-    /// until the transaction is done with them.
+    /// Marks the temporary files of the parts for deletion (unless
+    /// `SecUploadKeepFiles` is on); they stay on disk until the transaction
+    /// is done with them. Runs once.
     fn cleanup(&mut self, cx: Option<&dyn Context>) {
         if self.cleaned_up {
             return;

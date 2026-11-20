@@ -43,9 +43,9 @@ impl UniqueId {
     /// whose hardware address does not start with three zero bytes, as
     /// `xx:xx:xx:xx:xx:xx`, or an empty string.
     ///
-    /// The C++ code asks the kernel for the interfaces with `SIOCGIFCONF`,
-    /// which lists the ones that have an IPv4 address, in index order;
-    /// `getifaddrs` gives the same interfaces in the same order.
+    /// The interfaces are taken from `getifaddrs`, in the order it gives
+    /// them. Those with an IPv4 address are the ones the `SIOCGIFCONF`
+    /// ioctl lists, in the same order.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     pub fn ethernet_mac_address() -> String {
         let Ok(addrs) = nix::ifaddrs::getifaddrs() else {
@@ -64,8 +64,8 @@ impl UniqueId {
             .unwrap_or_default()
     }
 
-    /// The MAC address on the other platforms: as the C++ code does
-    /// there (its Darwin branch can never match), no address is found.
+    /// The MAC address on the other platforms: none is looked up, and
+    /// the string is empty.
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     pub fn ethernet_mac_address() -> String {
         String::new()

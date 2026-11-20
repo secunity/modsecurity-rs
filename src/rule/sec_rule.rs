@@ -91,7 +91,7 @@ impl SecRule {
     /// Evaluates the rule: runs the operator on every transformed target
     /// value, then the chained rule and the actions. Returns whether the
     /// rule (with its chain) matched; `true` also for a rule removed by
-    /// `ctl:ruleRemoveById`, as in C++.
+    /// `ctl:ruleRemoveById`.
     pub fn evaluate<'a>(
         &'a self,
         rule: &'a Rule,
@@ -119,7 +119,7 @@ impl SecRule {
             return true;
         }
 
-        // Only needed for the debug log (C++ builds it unconditionally).
+        // Only needed for the debug log, so it is built on demand.
         let vars_str = || variables_to_string(&self.variables);
         if let Some(s) = &self.operator.param {
             if crate::DebugSink::debug_enabled(t, 4) {
@@ -211,7 +211,7 @@ impl SecRule {
 
         if rule.is_chained() {
             let Some(child) = rule.chained_rule_child.as_deref() else {
-                // FIXME (C++): this check should happen on the parser.
+                // A rule marked as chained without a rule after it does not match.
                 crate::ms_dbg!(t, 4, "Rule is marked as chained but there isn't a subsequent rule.");
                 return false;
             };

@@ -16,8 +16,9 @@ use crate::chars::NBSP;
 /// drifts from the specification (it is how &lcub;, &excl; and &Hat; came to
 /// be missing while &caret;, &hyphen; and &tilde; were mapped to ASCII
 /// characters the specification does not assign them).  Regenerate with
-/// the C++ project's generator (`tools/gen-html-entities.py`, which emits
-/// the C++ table; translate its output to the Rust array below):
+/// the generator of the original ModSecurity repository
+/// (`tools/gen-html-entities.py` there; it emits a C++ table, to be
+/// translated to the Rust array below):
 ///
 /// ```text
 /// curl -sSO https://html.spec.whatwg.org/entities.json

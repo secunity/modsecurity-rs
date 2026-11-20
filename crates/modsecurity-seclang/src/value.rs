@@ -2,9 +2,9 @@
 //! `SecAuditLog /var/log/audit.log`, `SecMarker "END"`).
 //!
 //! The grammar gives a setting as its keyword and the rest of its line.
-//! How that rest is read depends on the directive, and follows the C++
-//! scanner, which has one or more patterns per directive and takes the
-//! longest match (the first pattern among those of the same length). A
+//! How that rest is read depends on the directive: each has one or more
+//! patterns, and the longest match is the value (the first pattern among
+//! those of the same length). A
 //! caller that knows the directives names the [`Pattern`]s of each, and
 //! [`read`] or [`word`] gives the value, or says what is wrong with the
 //! text.
@@ -51,7 +51,7 @@ pub fn is_path(c: u8) -> bool {
     c.is_ascii_alphanumeric() || b"_/.*: \\()-".contains(&c)
 }
 
-/// A character class of the C++ scanner.
+/// A class of characters a value is made of.
 #[derive(Debug, Clone, Copy)]
 pub enum Class {
     /// A number: `[0-9]+`.
@@ -64,8 +64,8 @@ pub enum Class {
     Word,
     /// Audit log part letters (`ABCDEFGHJKIZ`).
     AuditParts,
-    /// Any byte but a quote (the C++ scanner's `FREE_TEXT` was
-    /// `([^"]|([^\\]\\"))+`).
+    /// Any byte but a quote. Between quotes ([`Pattern::SepQuoted`]) it is
+    /// `([^"]|([^\\]\\"))+`: a quote after a backslash is part of the text.
     FreeText,
 }
 
@@ -103,9 +103,9 @@ pub enum Pattern {
     Remote,
 }
 
-/// How the value is taken from the text the scanner matched (the keyword
-/// and the value): the C++ scanner cuts it out with `strchr` and the like,
-/// and what those keep is part of the language.
+/// How the value is taken from the matched text (the keyword and the
+/// value). It is cut out at a fixed place, as `strchr` would, and what that
+/// keeps (a closing quote, for instance) is part of the language.
 #[derive(Debug, Clone, Copy)]
 pub enum Extract {
     /// After the first space or tab.
@@ -143,7 +143,7 @@ impl Extract {
 /// A value read from the rest of a directive's line.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Value<'a> {
-    /// The value, as the C++ scanner hands it over.
+    /// The value: what the [`Extract`] of the matched pattern keeps.
     pub bytes: Vec<u8>,
     /// The text it was read from (what follows the keyword, up to the end
     /// of the value).
@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(value(" \"a", text), Err(Refused::NotAValue(b"\"a")));
         // Sanitizing after that does not remove the closing quote either:
         // the opening one is already gone (`SecWebAppId "my app"` is
-        // `my app"`, as in C++).
+        // `my app"`).
         assert_eq!(value(" \"my app\"", &[(SepQuoted(FreeText), SanStrchr2)]), got("my app\"", 0));
         assert_eq!(value("  \"my app\"", &[(SepQuoted(FreeText), SanStrchr2)]), got("my app", 0));
     }

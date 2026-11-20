@@ -1,8 +1,8 @@
 //! The operators as SecLang names them (`@rx`, `@pmFromFile`, ...): the
 //! table the configuration parser consults.
 //!
-//! It differs from [`instantiate`](crate::instantiate), as the C++
-//! grammar differs from `Operator::instantiate`: `@pmf` is `@pmFromFile`
+//! It differs from [`instantiate`](crate::instantiate), which looks an
+//! operator up by its own name: here `@pmf` is `@pmFromFile`
 //! (not the `PmF` operator), `@noMatch` is not a SecLang operator, and
 //! `@validateHash`, `@gsbLookup` and `@rsub` are recognised but rejected.
 //! It also names the operator the engine implements (`@inspectFile`).

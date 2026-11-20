@@ -9,7 +9,7 @@ pub fn set_env(name: &[u8], value: &[u8]) {
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
     debug_assert!(!name.is_empty() && !name.contains(&b'=') && !name.contains(&0) && !value.contains(&0));
-    // SAFETY: like the C++ code, this mutates the process environment, with
+    // SAFETY: this mutates the process environment (what `setenv` is for), with
     // the usual caveat about concurrent getenv(3) calls from other threads.
     unsafe { std::env::set_var(OsStr::from_bytes(name), OsStr::from_bytes(value)) };
 }

@@ -2,8 +2,8 @@
 //! phase by phase and inspected by the rules.
 //!
 //! A `Transaction` borrows its `ModSecurity` instance and `RulesSet` for its
-//! whole life (`'a`), exactly as the C++ object keeps raw pointers to them
-//! (the connector guarantees they outlive the transaction). The rule
+//! whole life (`'a`): whoever creates the transaction keeps both alive
+//! for as long as it exists. The rule
 //! messages it accumulates borrow the rules for the same lifetime.
 //!
 //! Its state is grouped by what it is for:
@@ -11,7 +11,7 @@
 //! - `http` ([`HttpData`]): the request and response as the connector
 //!   reported them (addresses, URI, bodies, status);
 //! - `vars` ([`TransactionAnchoredVariables`]), `collections` and
-//!   `variable_envs`: the variables rules inspect (C++ `m_variableArgs` is
+//!   `variable_envs`: the variables rules inspect (`ARGS` is
 //!   `t.vars.args`);
 //! - `body` ([`BodyProcessing`]): the request body processors' state;
 //! - `ctl` ([`CtlOverrides`]): the settings rules changed with `ctl:`;
@@ -327,8 +327,8 @@ pub(crate) struct EvalState<'a> {
     /// Set by a matching `allow` action, until the rules it covers are
     /// skipped.
     pub(crate) allow_type: Option<AllowType>,
-    /// Chain ancestors of the rule being evaluated (replaces the C++
-    /// `RuleWithActions::m_chainedRuleParent` back pointers).
+    /// Chain ancestors of the rule being evaluated, innermost last (a
+    /// rule has no pointer to its parent).
     pub(crate) chained_rule_parents: Vec<&'a Rule>,
     /// Matched strings, used by the `capture` action.
     pub(crate) matched: Vec<Vec<u8>>,
@@ -569,7 +569,7 @@ impl<'a> Transaction<'a> {
         let mut uri_s: &[u8] = uri;
 
         // any uri-fragment that was received should only be retained in
-        // m_uri, REQUEST_URI_RAW and REQUEST_LINE.
+        // `http.uri`, REQUEST_URI_RAW and REQUEST_LINE.
         if let Some(pos) = uri_s.iter().position(|&c| c == b'#') {
             uri_s = &uri_s[..pos];
         }
@@ -620,9 +620,9 @@ impl<'a> Transaction<'a> {
         // The more popular case is without domain
         if !self.http.uri_decoded.is_empty() && self.http.uri_decoded[0] != b'/' {
             let d = &self.http.uri_decoded;
-            // `find(":") + 1`: npos + 1 wraps to 0 in C++.
+            // The position after the first `:`, 0 when there is none.
             let scheme = d.iter().position(|&c| c == b':').map(|p| p + 1).unwrap_or(0);
-            // `find("//", scheme) + 2`; npos + 2 wraps to 1.
+            // The position after the next `//`, 1 when there is none.
             let netloc = crate::utils::string::find_from(d, b"//", scheme).map(|p| p + 2).unwrap_or(1);
             if netloc == scheme + 2
                 && let Some(path) = d.iter().skip(netloc).position(|&c| c == b'/').map(|p| p + netloc)
@@ -1002,7 +1002,7 @@ impl<'a> Transaction<'a> {
 
     /// The pending disruptive intervention, if any, with `%d` in its log
     /// replaced by the status code. Handing it out resets the status and
-    /// the disruptive flag (the url and log stay, as in C++).
+    /// the disruptive flag (the url and log stay).
     pub fn intervention(&mut self) -> Option<Intervention> {
         if !self.outcome.intervention.disruptive {
             return None;
@@ -1044,8 +1044,8 @@ impl<'a> Transaction<'a> {
 
 impl Drop for Transaction<'_> {
     fn drop(&mut self) {
-        // C++ `~MultipartPartTmpFile` (run when the transaction releases its
-        // temp files) logs while deleting; do it here while the transaction
+        // Releasing a multipart temp file writes to the debug log, so the
+        // files are released here, while the transaction
         // (and its debug log) is still alive.
         let me: &Transaction<'_> = self;
         for f in &me.body.multipart_part_tmp_files {

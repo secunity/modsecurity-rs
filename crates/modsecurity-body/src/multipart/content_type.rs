@@ -6,7 +6,7 @@ use modsecurity_types::ms_dbg;
 use super::{Context, Multipart, find};
 
 /// Why a Content-Type header was refused: with the message to report, or
-/// silently (an empty boundary, which C++ refuses without a word).
+/// silently (an empty boundary, which is refused without a message).
 pub(super) type Refused = Option<&'static str>;
 
 impl Multipart {
@@ -104,9 +104,7 @@ impl Multipart {
         let eq = after_name + eq;
 
         // Check parameter name ends well: only whitespace between the name
-        // and the = character. (The C++ code guarded this loop with a
-        // pointer comparison between two different strings, which is
-        // always true.)
+        // and the = character.
         for &c in &header[after_name..eq] {
             if !is_space(c) {
                 return Err(Some("Multipart: Invalid boundary in C-T (parameter name)."));

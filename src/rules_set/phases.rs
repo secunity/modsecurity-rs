@@ -7,7 +7,7 @@ use crate::rules_set::entry::Entry;
 
 #[derive(Debug, Default, Clone)]
 pub struct RulesSetPhases {
-    /// One list per phase, plus an eighth that C++ has and `dump` prints.
+    /// One list per phase, plus an eighth that `dump` prints as well.
     rules_at_phase: [Vec<Arc<Entry>>; NUMBER_OF_PHASES + 1],
 }
 
@@ -23,7 +23,7 @@ impl RulesSetPhases {
 
     /// Merges `from` into `self` phase by phase, refusing duplicated
     /// `SecRule` ids. Returns the number of appended rules. On a duplicate
-    /// the phases before it stay appended (as in C++).
+    /// the phases before it stay appended.
     pub fn append(&mut self, from: &RulesSetPhases) -> Result<usize, String> {
         let mut ids: Vec<i64> = self.rules_at_phase.iter().flatten().filter_map(|r| r.sec_rule_id()).collect();
         ids.sort();
@@ -42,7 +42,7 @@ impl RulesSetPhases {
     }
 
     pub fn dump(&self) {
-        // The C++ loop runs to `<= NUMBER_OF_PHASES` (index 7 exists).
+        // Every list is printed, the one at index `NUMBER_OF_PHASES` included.
         for (i, rules) in self.rules_at_phase.iter().enumerate() {
             println!("Phase: {} ({} rules)", i, rules.len());
             for rule in rules {

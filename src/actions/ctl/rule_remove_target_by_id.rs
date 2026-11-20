@@ -22,7 +22,7 @@ impl RuleRemoveTargetById {
         let (Some(id), Some(target)) = (param.next(), param.next()) else {
             return Err(format!("{} is not a valid 'ID;VARIABLE'", what));
         };
-        // `std::stoi`: no digits or out of `int` range -> error.
+        // No digits, or a value out of the `int` range, is an error.
         let Some(id) = stoi(id.as_bytes()) else {
             return Err(format!("Not able to convert '{}' into a number", id));
         };

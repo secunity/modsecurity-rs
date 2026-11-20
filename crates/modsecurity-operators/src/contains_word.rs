@@ -15,8 +15,8 @@ impl ContainsWord {
     }
 
     /// Whether `a[pos]` can border a word: true when it is not an ASCII
-    /// letter. A position out of range (including `0 - 1`, which wraps
-    /// around in C++) is not acceptable.
+    /// letter. A position out of range (including the one before position
+    /// 0, which callers pass as `0.wrapping_sub(1)`) is not acceptable.
     fn acceptable_char(a: &[u8], pos: usize) -> bool {
         if a.len().wrapping_sub(1) < pos {
             return false;

@@ -35,7 +35,8 @@ impl PmFromFile {
         }
     }
 
-    /// Adds the non comment lines of `content` (`std::getline` split).
+    /// Adds the non comment lines of `content` (split at `\n`; a final
+    /// newline does not start another line).
     fn add_lines(&mut self, content: &[u8]) {
         let mut lines: Vec<&[u8]> = content.split(|&c| c == b'\n').collect();
         if content.is_empty() || content.ends_with(b"\n") {
@@ -76,7 +77,7 @@ impl Operator for PmFromFile {
                     return Err(format!("Failed to open file: '{}'. {}", token, lookup.looked_at));
                 };
                 let mut content = Vec::new();
-                // A read error ends the stream, like a failing std::getline.
+                // A read error is not reported: what was read so far is used.
                 let _ = file.read_to_end(&mut content);
                 self.add_lines(&content);
             }

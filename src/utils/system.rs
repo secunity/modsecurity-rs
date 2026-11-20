@@ -18,7 +18,7 @@ pub fn cpu_seconds() -> f64 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceLookup {
     /// Where the resource was found. A name matched through shell expansion
-    /// is returned unexpanded (as in C++), so opening it can still fail.
+    /// is returned unexpanded, so opening it can still fail.
     pub path: Option<String>,
     /// `Looking at: '…', '…'`: the places tried before, for error messages
     /// (also when the resource was found).
@@ -43,9 +43,8 @@ pub fn find_resource(resource: &str, config: &str) -> ResourceLookup {
     ResourceLookup { path: None, looked_at }
 }
 
-/// The directory part of `file`. As in C++, a name without any
-/// separator is returned unchanged (`npos > 0` and `substr(0, npos)`), and a
-/// separator at position 0 yields an empty string.
+/// The directory part of `file`. A name without any separator is returned
+/// unchanged, and a separator at position 0 yields an empty string.
 pub fn parent_dir(file: &str) -> String {
     match file.rfind(['/', '\\']) {
         Some(0) => String::new(),
@@ -63,7 +62,7 @@ pub fn expand_env(var: &str, flags: i32) -> Vec<String> {
 
 /// Creates the directory `dir` (`mkdir(dir, mode)`), accepting an existing
 /// one. The error is the message to report, or `None` for a name with a
-/// NUL byte: C++ cannot pass one to `mkdir` and fails without a message.
+/// NUL byte, which cannot be passed to `mkdir`: that fails without a message.
 pub fn create_dir(dir: &str, mode: u32) -> Result<(), Option<String>> {
     use std::os::unix::fs::DirBuilderExt;
     if dir.contains('\0') {
@@ -97,8 +96,8 @@ pub fn localtime(t: i64) -> Zoned {
 /// Formats `t` in the local time zone: `strftime(fmt, localtime_r(t))`.
 ///
 /// Formatting is that of the C ("POSIX") locale: `%c` is
-/// `%a %b %e %H:%M:%S %Y` and names are English. C++'s `strftime` follows
-/// the process `LC_TIME` locale instead, which only differs when the
+/// `%a %b %e %H:%M:%S %Y` and names are English. The C library's `strftime`
+/// follows the process `LC_TIME` locale instead, which only differs when the
 /// embedding application changes it with `setlocale` (nginx does not).
 pub fn strftime_local(t: i64, fmt: &str) -> String {
     let config = strtime::Config::new().custom(strtime::PosixCustom::new());

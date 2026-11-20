@@ -4,7 +4,7 @@ use crate::chars::{isodigit, x2c};
 
 fn inplace(input: &mut Vec<u8>) -> bool {
     let input_len = input.len();
-    // C++ may read the string's NUL terminator at `input_len`.
+    // A read at `input_len` (one past the last byte) sees 0.
     let at = |input: &[u8], k: usize| input.get(k).copied().unwrap_or(0);
     let mut d = 0usize;
     let mut changed = false;

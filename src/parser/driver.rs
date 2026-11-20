@@ -68,7 +68,6 @@ impl Driver {
 
     /// Adds a `SecMarker` to every phase.
     pub fn add_sec_marker(&mut self, marker: &str, file_name: &str, line_number: i32) -> i32 {
-        // FIXME (C++): we might move this to the parser.
         for phase in Phases::ALL {
             let mut rule = Marker::new(marker, file_name, line_number);
             rule.phase = phase;

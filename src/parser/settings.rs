@@ -22,8 +22,8 @@ use crate::utils::system::{expand_env, find_resource};
 
 /// The value of a setting directive, as its effect gets it.
 struct Given<'a> {
-    /// The value as the C++ scanner hands it over; for a choice of words,
-    /// the word chosen.
+    /// The value taken from `token`; for a choice of words, the word
+    /// chosen.
     bytes: Vec<u8>,
     /// `bytes` as text.
     text: String,
@@ -42,8 +42,7 @@ impl Given<'_> {
 
 /// How the value of a directive is written.
 enum Form {
-    /// In one of these ways (in the order of the C++ scanner rules, which
-    /// breaks ties).
+    /// In one of these ways (their order breaks ties).
     Value(&'static [(Pattern, Extract)]),
     /// One of these words (case-insensitive); none for a directive without
     /// a value.
@@ -230,9 +229,9 @@ fn directive(keyword: &str) -> Option<Directive> {
             });
             Ok(())
         }),
-        // `[ \t]+FREE_TEXT_NEW_LINE` (`CONGIG_DIR_SEC_ARG_SEP`, an ignored
-        // directive of the C++ scanner) wins when it is longer: with a
-        // space after the separator.
+        // The third pattern (white space and free text up to the end of
+        // the line), which is accepted and ignored, wins when it is longer:
+        // with a space after the separator.
         "secargumentseparator" => {
             value(&[(SepQuoted(Word), SanFindSep), (Sep(Word), SanFindSep), (Sep(FreeTextNewLine), FindSep)], |b, v| {
                 if v.pattern == 2 {
@@ -468,7 +467,7 @@ impl Builder<'_, '_> {
         };
         match modsecurity_operators::geo_lookup::GeoDb::open(&file) {
             Ok(db) => self.driver.properties.settings.geo_db = Some(std::sync::Arc::new(db)),
-            // A database opened before stays in use, as in C++.
+            // A database opened before stays in use.
             Err(_) if self.driver.properties.settings.geo_db.is_some() => {}
             Err(err) => return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err)),
         }
@@ -541,7 +540,8 @@ impl Builder<'_, '_> {
                 Some(OnFailedRemoteRulesAction::Abort) => {
                     return self.fail(&format!("{} - Failed to download: {}", url, c.error));
                 }
-                // TODO (C++): Implement the server logging mechanism.
+                // Known limitation: the failed download is not reported in
+                // the server log.
                 _ => return Ok(()),
             }
         }
@@ -626,7 +626,7 @@ mod geo_lookup_db_tests {
     fn a_failed_database_after_one_that_opened() {
         // A file that is not a database.
         let bad = format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR"));
-        // The database that opened stays in use, as in C++.
+        // The database that opened stays in use.
         let mut rules = RulesSet::new();
         let conf = format!("SecGeoLookupDb {}\nSecGeoLookupDb {}\n{}", db(), bad, RULE);
         rules.load(&conf).unwrap();

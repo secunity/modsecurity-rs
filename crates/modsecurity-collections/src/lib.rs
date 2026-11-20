@@ -3,7 +3,7 @@
 //! Shared persistent key/value stores (`IP`, `SESSION`, ...). Persistent
 //! collections are shared by every transaction (and thread) of a
 //! `ModSecurity` instance, so the methods take `&self` and implementations
-//! synchronise internally, as the C++ backends do.
+//! synchronise internally.
 //! Transaction-owned `TX` variables use [`transaction::TransactionVariables`]
 //! instead: they need neither a storage backend nor shared mutation.
 

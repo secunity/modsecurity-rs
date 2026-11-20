@@ -88,7 +88,7 @@ impl Matcher {
 
     pub(crate) fn add_pattern(&mut self, pattern: &[u8]) {
         // No phrase is added once the automaton is built, and empty
-        // phrases are ignored (as in C++).
+        // phrases are ignored.
         if self.ac.is_none() && !pattern.is_empty() {
             self.patterns.push(pattern.to_vec());
         }
@@ -167,7 +167,7 @@ impl Operator for Pm {
     fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
         let op_parm = parse_pm_content(&self.param.literal);
 
-        // std::istream_iterator<std::string>: white space separated words.
+        // The phrases are the white space separated words of the parameter.
         for a in op_parm.split(|c| modsecurity_compat::chars::is_space(*c)).filter(|a| !a.is_empty()) {
             self.p.add_pattern(a);
         }

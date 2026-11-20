@@ -24,9 +24,9 @@ impl InspectFile {
         InspectFile { param, file: String::new(), is_script: false, lua: Lua::new() }
     }
 
-    /// Runs `self.file` with `arg` (posix_spawn of the C++ code: the path is
+    /// Runs `self.file` with `arg`, as `posix_spawn` would: the path is
     /// not searched in `PATH`, the environment, stdin and stderr are
-    /// inherited and stdout is captured). Returns the captured output when
+    /// inherited and stdout is captured. Returns the captured output when
     /// the program exited with status 0.
     #[cfg(unix)]
     fn run_program(&self, arg: &[u8]) -> Option<Vec<u8>> {
@@ -35,7 +35,7 @@ impl InspectFile {
         use std::os::unix::process::CommandExt;
         use std::process::{Command, Stdio};
 
-        // posix_spawn takes the path as is; std::process would search PATH
+        // The path is used as it is; `std::process` would search PATH
         // for a bare name, so make such a path explicitly relative.
         let program = if self.file.contains('/') { self.file.clone() } else { format!("./{}", self.file) };
         // The argument is passed as a C string.
@@ -57,7 +57,8 @@ impl InspectFile {
         Some(output.stdout)
     }
 
-    /// Windows variant (`CreateProcessW` in C++).
+    /// The variant for the other platforms: stdout is captured, and the
+    /// output is returned when the program exited with status 0.
     #[cfg(not(unix))]
     fn run_program(&self, arg: &[u8]) -> Option<Vec<u8>> {
         use std::process::{Command, Stdio};

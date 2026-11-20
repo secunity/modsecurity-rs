@@ -1,5 +1,5 @@
-//! `setrsc:'...'` — sets the key of the RESOURCE collection (the C++ action
-//! name is `setsrc`; kept as is).
+//! `setrsc:'...'` — sets the key of the RESOURCE collection. (The action
+//! reports its name as `setsrc`.)
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;

@@ -9,9 +9,9 @@ pub struct ValidateSchema {
     param: Param,
     #[cfg(feature = "libxml2")]
     resource: String,
-    /// The messages reported while loading the schema. As in the
-    /// C++ code they accumulate over the lifetime of the operator (the C++
-    /// member was written without synchronisation; a mutex is used here).
+    /// The messages reported while loading the schema. They accumulate
+    /// over the lifetime of the operator, across evaluations; the mutex
+    /// is there because evaluations may run on several threads.
     #[cfg(feature = "libxml2")]
     err: std::sync::Mutex<String>,
 }
@@ -29,8 +29,8 @@ impl ValidateSchema {
 }
 
 /// Formats a libxml2 message for the log (shared with `@validateDTD`):
-/// the message (formatted by the C++ code into a 1024 bytes buffer, hence
-/// at most 1023 bytes) prefixed by its level; `None` when it is empty.
+/// the message (its first 1023 bytes at most) prefixed by its level;
+/// `None` when it is empty.
 #[cfg(feature = "libxml2")]
 pub(crate) fn message(m: modsecurity_native::libxml2::Message<'_>) -> Option<String> {
     const PREFIX_WARNING: &str = "XML Warning: ";
@@ -64,7 +64,7 @@ impl Operator for ValidateSchema {
     }
 
     /// Without libxml2 the operator logs that it is not implemented and
-    /// matches, as the base `Operator::evaluate` does in C++.
+    /// matches.
     #[cfg(not(feature = "libxml2"))]
     fn evaluate(&self, cx: &mut dyn Context, _input: &[u8]) -> bool {
         crate::ms_dbg!(cx, 2, "Operator: {} is not implemented or malfunctioning.", self.name());
@@ -85,10 +85,10 @@ impl Operator for ValidateSchema {
             return true;
         }
 
-        // The errors of loading the schema accumulate in `m_err` (a member
-        // of the C++ operator: across evaluations too). Only the errors of
-        // the schema code are kept: the C++ (non structured) callbacks did
-        // not receive those of the parser reading the schema document.
+        // The errors of loading the schema accumulate in `m_err` (the
+        // `err` field of the operator: across evaluations too). Only the
+        // errors of the schema code are kept, not those of the parser
+        // reading the schema document.
         let mut m_err = self.err.lock().unwrap_or_else(|e| e.into_inner());
         let result = doc.validate_schema(
             &self.resource,
@@ -125,9 +125,9 @@ impl Operator for ValidateSchema {
                 true
             }
             Err(SchemaError::ValidationContext) => {
-                // The C++ code wrote " " + m_err over the start of the
-                // message (a std::stringstream constructed from a string
-                // starts writing at its beginning).
+                // " " + m_err is written over the start of the message, not
+                // appended to it: the debug log text of the original
+                // ModSecurity, kept as it is.
                 let mut err = b"XML: Failed to create validation context.".to_vec();
                 if !m_err.is_empty() {
                     let over = format!(" {}", m_err).into_bytes();

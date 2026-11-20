@@ -22,9 +22,9 @@ impl Transformation {
         Transformation { name: name.to_string(), kind }
     }
 
-    /// The transformation named `a` (`t:<name>`), looked up as the C++
-    /// factory does ([`TransformationKind::from_name_prefix`] on the text
-    /// after the first two characters); unknown names do nothing.
+    /// The transformation named `a` (`t:<name>`), looked up with
+    /// [`TransformationKind::from_name_prefix`] on the text after the
+    /// first two characters; unknown names do nothing.
     pub fn from_name(a: &str) -> Self {
         let kind = TransformationKind::from_name_prefix(a.as_bytes().get(2..).unwrap_or_default());
         Transformation::new(kind, a)

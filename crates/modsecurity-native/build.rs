@@ -1,5 +1,5 @@
-//! Links the system C libraries the optional features bind to directly (the
-//! C++ build linked the same libraries).
+//! Links the system C libraries the optional features bind to directly (no
+//! `-sys` crate links them).
 
 fn main() {
     if std::env::var_os("CARGO_FEATURE_LIBXML2").is_some() {

@@ -1,5 +1,5 @@
-//! PCRE2's JIT code reads the byte after the subject (C++ subjects are
-//! `std::string`s, so one is always there). Here the subjects end at, or
+//! PCRE2's JIT code reads the byte after the subject (a NUL terminated C
+//! string always has one, a Rust slice may not). Here the subjects end at, or
 //! just before, the end of mapped memory, where reading past them faults:
 //! the wrapper has to give PCRE2 a padded copy. A failure of these tests is
 //! a crash (SIGSEGV) of the test process.

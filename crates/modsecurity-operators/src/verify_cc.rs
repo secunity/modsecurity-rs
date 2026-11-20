@@ -1,6 +1,6 @@
 //! `@verifyCC`: finds credit card numbers. The pattern is tried at every
-//! offset of the input (as in C++), and a match counts when it passes the
-//! Luhn check.
+//! offset of the input, and a match counts when it passes the Luhn
+//! check.
 
 use crate::{Context, Operator, Param, Resources};
 use modsecurity_native::regex::{Regex, Subject};
@@ -61,14 +61,14 @@ impl Operator for VerifyCC {
     fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
         // `PCRE2_DOTALL | PCRE2_MULTILINE`; the pattern ends at its first
         // NUL byte.
-        // The C++ (PCRE2) code fails without an error message.
+        // A pattern that does not compile fails without an error message.
         self.re = Some(Regex::compile(&self.param.literal, false, true).map_err(|_| String::new())?);
         Ok(())
     }
 
     fn evaluate(&self, cx: &mut dyn Context, i: &[u8]) -> bool {
-        // Without a successful init() the C++ code would dereference a null
-        // pattern.
+        // Without a successful init() there is no pattern, and nothing
+        // matches.
         let Some(re) = self.re.as_ref() else {
             return false;
         };

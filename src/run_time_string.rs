@@ -83,7 +83,7 @@ impl RunTimeString {
             Content::Literal(text) => return text.clone(),
             Content::Interpolated(elements) => elements,
         };
-        // C++ only forwards operator rules to macro resolution.
+        // Only a `SecRule` is passed on to the variables of a macro.
         let rule = r.filter(|r| r.is_sec_rule());
         let mut s = Vec::new();
         for element in elements {

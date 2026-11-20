@@ -2,8 +2,8 @@
 //! valued variable, resolved as values.
 //!
 //! Exposes the *names* of an [`AnchoredSetVariable`] as a collection of its
-//! own (`ARGS_NAMES` over `ARGS`, ...). In C++ the proxy held a pointer to
-//! its source; here the source is passed in by the caller (both live in the
+//! own (`ARGS_NAMES` over `ARGS`, ...). The proxy holds no reference to
+//! its source; the source is passed in by the caller (both live in the
 //! same transaction).
 
 use crate::transaction::Transaction;
@@ -34,9 +34,9 @@ impl AnchoredSetVariableTranslationProxy {
         AnchoredSetVariableTranslationProxy { name: name.to_string() }
     }
 
-    /// Replaces each value (of the whole list, as in C++) by one whose key
-    /// and value are the original key, adjusting the origins to point at
-    /// the key.
+    /// Replaces each value (of the whole list, including what the caller
+    /// had put in it) by one whose key and value are the original key,
+    /// adjusting the origins to point at the key.
     fn translate(&self, l: &mut [VariableValue]) {
         for v in l.iter_mut() {
             *v = translate(&self.name, v);
@@ -44,8 +44,8 @@ impl AnchoredSetVariableTranslationProxy {
     }
 
     /// Whether `fount`'s stored name values can be used: they are the
-    /// translation of its entries, and `l` holds nothing else that the C++
-    /// translation of the whole list would rewrite.
+    /// translation of its entries, and `l` holds nothing else that
+    /// [`Self::translate`] of the whole list would rewrite.
     fn use_stored_names(&self, fount: &AnchoredSetVariable, l: &[VariableValue]) -> bool {
         l.is_empty() && fount.has_names(&self.name)
     }
@@ -103,7 +103,7 @@ mod tests {
 
     /// The values stored at `set` time are exactly what translating the
     /// fount's resolution gives, for every resolution; with a non-empty list
-    /// the whole list is still translated (C++ behaviour).
+    /// the whole list is still translated.
     #[test]
     fn stored_names_match_translation() {
         let proxy = AnchoredSetVariableTranslationProxy::new("ARGS_NAMES");

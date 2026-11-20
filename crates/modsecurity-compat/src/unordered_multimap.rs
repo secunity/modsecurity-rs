@@ -1,8 +1,8 @@
-//! Emulation of the C++ container used by `AnchoredSetVariable` and the
-//! in-memory collection backend:
-//! `std::unordered_multimap<std::string, T, MyHash, MyEqual>` (libstdc++).
+//! The multimap of `AnchoredSetVariable` and the in-memory collection
+//! backend. It iterates in the order of libstdc++'s
+//! `std::unordered_multimap<std::string, T, MyHash, MyEqual>`.
 //!
-//! ModSecurity iterates these containers to resolve collections such as
+//! The engine iterates these containers to resolve collections such as
 //! `ARGS` or `TX`, so their iteration order is externally visible (it
 //! decides the order in which targets are evaluated, which match is reported,
 //! and the order of debug/audit log lines). A Rust `HashMap` would change that
@@ -15,7 +15,7 @@
 //! [`my_hash`] sums `c.to_ascii_lowercase()` over the key's `char`s and [`my_equal`]
 //! compares with `tolower`. Because `char` is signed on some targets (x86_64)
 //! and unsigned on others (aarch64 Linux), the hash of non-ASCII keys follows
-//! the target's `c_char`, as the C++ build does.
+//! the target's `c_char`, as it does in a C++ program built for that target.
 
 use std::os::raw::c_char;
 

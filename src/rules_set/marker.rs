@@ -7,7 +7,7 @@ use crate::transaction::Transaction;
 pub struct Marker {
     pub file_name: String,
     pub line_number: i32,
-    /// FIXME (C++): phase may not be needed for SecMarker.
+    /// The phase whose list this copy is in (a marker is added to every phase).
     pub phase: Phases,
     pub name: String,
 }
@@ -22,7 +22,7 @@ impl Marker {
     pub fn evaluate(&self, t: &mut Transaction<'_>) -> bool {
         if t.is_inside_a_marker() && t.current_marker() == Some(self.name.as_str()) {
             t.remove_marker();
-            // FIXME (C++): ms_dbg(transaction, 4, "Out of a SecMarker " + *m_name);
+            // Leaving the section is not written to the debug log.
         }
         true
     }
