@@ -307,6 +307,15 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`@eq` compares 64 bit integers.** *C++:* `@eq` reads both sides
+  with `std::stoi` (the other comparisons, `@gt`, `@ge`, `@lt`, `@le`,
+  use 64 bit numbers), and a number that does not fit an `int` counts as
+  0. So `@eq 0` matches the value `99999999999`, and `@eq 3000000000`
+  matches every value that is not a small number. *Here:* `@eq` reads
+  numbers as the other comparisons do. Note for rules: a rule with `@eq
+  0` no longer matches a value that is a number too large for an `int`.
+  The tests of the original ModSecurity (`eq.json`) pass. Regression
+  test: `eq::tests::numbers_beyond_the_int_range`.
 - **`setvar` arithmetic is 64 bit.** *C++:* `setvar:tx.n=+5` and
   `=-5` read both numbers with `std::stoi` and compute in `int`. A value
   that does not fit an `int` counts as 0 (a counter at 3000000000 plus 1
