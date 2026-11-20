@@ -8,29 +8,24 @@
 //! evaluation (the `RULE` variable walks it). (In C++ these are the class
 //! `RuleWithActions` and its three subclasses.)
 
+mod actions;
 mod id;
 pub mod message;
 pub mod sec_action;
 pub mod sec_rule;
 pub mod sec_rule_script;
 
+pub use actions::Actions;
 pub use id::Id;
 
 use crate::actions::action::{Action, Kind};
-use crate::actions::context::ActionContext;
-use crate::actions::log_data::LogData;
-use crate::actions::msg::Msg;
 use crate::actions::rule_action::RuleAction;
-use crate::actions::set_var::SetVar;
-use crate::actions::severity::Severity;
-use crate::actions::tag::Tag;
 use crate::actions::transformation::Transformation;
 use crate::phases::Phases;
 use crate::rule::message::RuleMessage;
 use crate::rule::sec_rule::SecRule;
 use crate::rule::sec_rule_script::Script;
 use crate::rules_set::plan::Link;
-use crate::rules_set::properties::RuleEngine;
 use crate::transaction::Transaction;
 use crate::utils::string::limit_to;
 
@@ -91,13 +86,7 @@ pub struct Rule {
     pub chained_rule_child: Option<Box<Rule>>,
     pub chained_rule_parent: bool,
 
-    disruptive_action: Option<RuleAction>,
-    log_data: Option<LogData>,
-    msg: Option<Msg>,
-    severity: Option<Severity>,
-    actions_runtime_pos: Vec<RuleAction>,
-    actions_set_var: Vec<SetVar>,
-    actions_tag: Vec<Tag>,
+    actions: Actions,
     transformations: Vec<Transformation>,
 
     contains_capture_action: bool,
@@ -111,8 +100,8 @@ pub struct Rule {
 impl Rule {
     /// Builds a rule from its parsed actions and transformations and its
     /// kind specific part. Configuration actions (`id`, `phase`, ...)
-    /// are applied to the rule here and dropped; run time actions are sorted
-    /// into their slots.
+    /// are applied to the rule here and dropped; the run time actions are
+    /// its [`Actions`].
     pub fn new(
         actions: Option<Vec<RuleAction>>,
         transformations: Option<Vec<Transformation>>,
@@ -131,13 +120,7 @@ impl Rule {
             rule_id: Id::default(),
             chained_rule_child: None,
             chained_rule_parent: false,
-            disruptive_action: None,
-            log_data: None,
-            msg: None,
-            severity: None,
-            actions_runtime_pos: Vec::new(),
-            actions_set_var: Vec::new(),
-            actions_tag: Vec::new(),
+            actions: Actions::default(),
             transformations: transformations.unwrap_or_default(),
             contains_capture_action: false,
             contains_multi_match_action: false,
@@ -153,21 +136,15 @@ impl Rule {
                 }
                 RuleAction::Capture(_) => r.contains_capture_action = true,
                 RuleAction::MultiMatch(_) => r.contains_multi_match_action = true,
-                RuleAction::Severity(a) => r.severity = Some(a),
-                RuleAction::LogData(a) => r.log_data = Some(a),
-                RuleAction::Msg(a) => r.msg = Some(a),
-                RuleAction::SetVar(a) => r.actions_set_var.push(a),
-                RuleAction::Tag(a) => r.actions_tag.push(a),
                 RuleAction::Block(_) => {
-                    r.actions_runtime_pos.push(a);
                     r.contains_static_block_action = true;
+                    r.actions.add(a);
                 }
                 a => match a.kind() {
                     Kind::Configuration => {
                         a.configure(&mut r);
                     }
-                    Kind::RunTimeOnlyIfMatch if a.is_disruptive() => r.disruptive_action = Some(a),
-                    Kind::RunTimeOnlyIfMatch => r.actions_runtime_pos.push(a),
+                    Kind::RunTimeOnlyIfMatch => r.actions.add(a),
                     // A transformation given with the actions.
                     Kind::RunTimeBeforeMatchAttempt => {
                         if let RuleAction::Transformation(t) = a {
@@ -235,7 +212,7 @@ impl Rule {
         self.is_chained = b;
     }
     pub fn has_disruptive_action(&self) -> bool {
-        self.disruptive_action.is_some()
+        self.actions.disruptive().is_some()
     }
     pub fn has_block_action(&self) -> bool {
         self.contains_static_block_action
@@ -244,48 +221,37 @@ impl Rule {
         self.contains_multi_match_action
     }
     pub fn has_log_data(&self) -> bool {
-        self.log_data.is_some()
+        self.actions.log_data().is_some()
     }
     pub fn has_msg(&self) -> bool {
-        self.msg.is_some()
+        self.actions.msg().is_some()
     }
     pub fn has_severity(&self) -> bool {
-        self.severity.is_some()
+        self.actions.severity().is_some()
     }
 
     /// The expanded `logdata` of the rule (empty without one).
     pub fn log_data(&self, t: &Transaction<'_>) -> Vec<u8> {
-        self.log_data.as_ref().map(|l| l.data(t)).unwrap_or_default()
+        self.actions.log_data().map(|l| l.data(t)).unwrap_or_default()
     }
 
     /// The expanded `msg` of the rule (empty without one).
     pub fn msg(&self, t: &Transaction<'_>) -> Vec<u8> {
-        self.msg.as_ref().map(|m| m.data(t)).unwrap_or_default()
+        self.actions.msg().map(|m| m.data(t)).unwrap_or_default()
     }
 
     /// The `severity` of the rule (0 without one).
     pub fn severity(&self) -> i32 {
-        self.severity.as_ref().map(|s| s.severity).unwrap_or(0)
-    }
-
-    pub fn disruptive_action(&self) -> Option<&RuleAction> {
-        self.disruptive_action.as_ref()
+        self.actions.severity().map(|s| s.severity).unwrap_or(0)
     }
 
     pub fn transformations(&self) -> &[Transformation] {
         &self.transformations
     }
 
-    pub fn actions_runtime_pos(&self) -> &[RuleAction] {
-        &self.actions_runtime_pos
-    }
-
-    pub fn actions_tag(&self) -> &[Tag] {
-        &self.actions_tag
-    }
-
-    pub fn actions_set_var(&self) -> &[SetVar] {
-        &self.actions_set_var
+    /// The run time actions of the rule.
+    pub fn actions(&self) -> &Actions {
+        &self.actions
     }
 
     // --- evaluation ---
@@ -316,119 +282,6 @@ impl Rule {
     /// values are cleared at every new rule execution.
     pub fn evaluate_base(&self, t: &mut Transaction<'_>) {
         t.eval.matched.clear();
-    }
-
-    /// Runs the actions that do not depend on the result of the chain:
-    /// `setvar` and, for a `multiMatch` rule that is not a chain child,
-    /// `severity`, `logdata`, `msg` and `tag`.
-    pub fn execute_actions_independent_of_chained_rule_result<'a>(
-        &'a self,
-        t: &mut Transaction<'a>,
-        rm: &mut RuleMessage<'a>,
-    ) {
-        for a in &self.actions_set_var {
-            crate::ms_dbg!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
-            a.evaluate(&mut ActionContext::new(t, self, rm));
-        }
-
-        if self.contains_multi_match_action && !self.chained_rule_parent {
-            self.describe_match(t, rm);
-            for a in &self.actions_tag {
-                a.evaluate(&mut ActionContext::new(t, self, rm));
-            }
-        }
-    }
-
-    /// Runs `severity`, `logdata` and `msg`: what the rule says about a
-    /// match.
-    fn describe_match<'a>(&'a self, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>) {
-        if let Some(s) = &self.severity {
-            s.evaluate(&mut ActionContext::new(t, self, rm));
-        }
-        if let Some(l) = &self.log_data {
-            l.evaluate(&mut ActionContext::new(t, self, rm));
-        }
-        if let Some(m) = &self.msg {
-            m.evaluate(&mut ActionContext::new(t, self, rm));
-        }
-    }
-
-    /// Runs the actions of a rule whose chain matched, with what the rule
-    /// set adds to them (`link`): the `SecDefaultAction` ones, `tag`, the
-    /// `SecRuleUpdateActionById` ones, `severity`, `logdata`, `msg`, the
-    /// other run time actions and last the disruptive action.
-    pub fn execute_actions_after_full_match<'a>(
-        &'a self,
-        link: &'a Link,
-        t: &mut Transaction<'a>,
-        rm: &mut RuleMessage<'a>,
-    ) {
-        for a in &link.default_actions {
-            self.execute_action(link, t, rm, a, true);
-        }
-
-        for a in &self.actions_tag {
-            crate::ms_dbg!(t, 4, "Running (non-disruptive) action: {}", a.name());
-            a.evaluate(&mut ActionContext::new(t, self, rm));
-        }
-
-        for a in &link.update_actions {
-            self.execute_action(link, t, rm, a, false);
-        }
-        // A disruptive action (or a `block`) of a SecRuleUpdateActionById
-        // takes the place of the rule's own.
-        let updated = link.update_actions.iter().any(|a| a.is_disruptive() || matches!(**a, RuleAction::Block(_)));
-
-        self.describe_match(t, rm);
-        for a in &self.actions_runtime_pos {
-            if !(updated && matches!(a, RuleAction::Block(_))) {
-                self.execute_action(link, t, rm, a, false);
-            }
-        }
-        if !updated && let Some(d) = &self.disruptive_action {
-            self.execute_action(link, t, rm, d, false);
-        }
-    }
-
-    /// Runs one action. A disruptive action (or `block`) runs only when
-    /// the rule engine is `On`, and a `block` of `SecDefaultAction`
-    /// (`default_context`) only when the rule has one too.
-    fn execute_action<'a>(
-        &'a self,
-        link: &'a Link,
-        t: &mut Transaction<'a>,
-        rm: &mut RuleMessage<'a>,
-        a: &RuleAction,
-        default_context: bool,
-    ) {
-        if !a.is_disruptive() && !matches!(a, RuleAction::Block(_)) {
-            crate::ms_dbg!(t, 9, "Running action: {}", a.name());
-        } else if default_context && !self.contains_static_block_action {
-            crate::ms_dbg!(t, 4, "Ignoring action: {} (rule does not cotains block)", a.name());
-            return;
-        } else if t.rule_engine_state() == Some(RuleEngine::Enabled) {
-            crate::ms_dbg!(t, 4, "Running (disruptive)     action: {}.", a.name());
-        } else {
-            crate::ms_dbg!(
-                t,
-                4,
-                "Not running any disruptive action (or block): {}. SecRuleEngine is not On.",
-                a.name()
-            );
-            return;
-        }
-
-        let mut cx = ActionContext::new(t, self, rm);
-        match a {
-            // `block` is the disruptive action of SecDefaultAction.
-            RuleAction::Block(_) => {
-                crate::ms_dbg!(cx, 8, "Marking request as disruptive.");
-                for a in &link.block_actions {
-                    a.evaluate(&mut cx);
-                }
-            }
-            a => a.evaluate(&mut cx),
-        }
     }
 
     /// Applies `chain` (the transformations of the rule's [`Link`]) to
@@ -480,23 +333,23 @@ impl Rule {
     /// expands to nothing here (this is asked of a rule set, outside of
     /// any transaction).
     pub fn has_tag(&self, name: &str) -> bool {
-        self.actions_tag.iter().any(|tag| *tag.string.evaluate_cow(None) == *name.as_bytes())
+        self.actions.tags().any(|tag| *tag.string.evaluate_cow(None) == *name.as_bytes())
     }
 
     /// Whether the rule's `msg` is `name`, as written (see
     /// [`Self::has_tag`]).
     pub fn msg_is(&self, name: &str) -> bool {
-        self.msg.as_ref().is_some_and(|m| *m.string.evaluate_cow(None) == *name.as_bytes())
+        self.actions.msg().is_some_and(|m| *m.string.evaluate_cow(None) == *name.as_bytes())
     }
 
     /// Whether one of the rule's `tag`s expands to `name`.
     pub fn contains_tag(&self, name: &str, t: &Transaction<'_>) -> bool {
-        self.actions_tag.iter().any(|tag| *tag.string.evaluate_cow(Some(t)) == *name.as_bytes())
+        self.actions.tags().any(|tag| *tag.string.evaluate_cow(Some(t)) == *name.as_bytes())
     }
 
     /// Whether the rule's `msg` expands to `name`.
     pub fn contains_msg(&self, name: &str, t: &Transaction<'_>) -> bool {
-        self.msg.as_ref().is_some_and(|m| *m.string.evaluate_cow(Some(t)) == *name.as_bytes())
+        self.actions.msg().is_some_and(|m| *m.string.evaluate_cow(Some(t)) == *name.as_bytes())
     }
 
     /// The `(prefix, href)` of the rule's `xmlns` actions, including the
@@ -505,7 +358,8 @@ impl Rule {
     pub fn xml_namespaces<'s>(&'s self, t: &'s Transaction<'_>) -> Vec<(&'s str, &'s str)> {
         let ex = &t.rules.properties.exceptions;
         let updates = ex.action_pos_update_target_by_id.for_rule(self.rule_id).iter().map(|a| a.as_ref());
-        self.actions_runtime_pos
+        self.actions
+            .after_tags()
             .iter()
             .chain(updates)
             .filter_map(|a| match a {

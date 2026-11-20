@@ -1295,3 +1295,15 @@ and is gone.
 
 Not in the plan: the rule's own actions stay in the rule, in the slots
 `Rule::new` sorts them into, and the variables and operators themselves.
+
+## The run time actions of a rule: `rule::Actions`
+
+A rule kept its run time actions in seven fields (the disruptive action,
+`logdata`, `msg`, `severity`, the tags, the `setvar`s and the rest), and
+the order they run in was spelled out by the function that ran them.
+`rule::Actions` (`src/rule/actions.rs`) holds them as they run: the
+`setvar`s, which run on every match of the operator, and one list for a
+matched chain, kept in order (tags, `severity`, `logdata`, `msg`, the
+others as written, the disruptive action). The functions that run the
+actions moved there from `rule/mod.rs`. No behavior change.
+

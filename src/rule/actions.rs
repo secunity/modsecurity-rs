@@ -1,0 +1,265 @@
+//! The run time actions of a rule, and how they run.
+//!
+//! A rule has two moments for its actions. On every match of its operator
+//! the `setvar`s run, whatever becomes of the chain. Once the whole chain
+//! matched, the other actions run in a fixed order: the `tag`s,
+//! `severity`, `logdata`, `msg`, the remaining actions as written, and
+//! last the disruptive action. [`Actions`] keeps them in that order; what
+//! the rule set adds (`SecDefaultAction`, `SecRuleUpdateActionById`) comes
+//! from the rule's [`Link`].
+
+use crate::actions::action::Action;
+use crate::actions::context::ActionContext;
+use crate::actions::log_data::LogData;
+use crate::actions::msg::Msg;
+use crate::actions::rule_action::RuleAction;
+use crate::actions::set_var::SetVar;
+use crate::actions::severity::Severity;
+use crate::actions::tag::Tag;
+use crate::rule::Rule;
+use crate::rule::message::RuleMessage;
+use crate::rules_set::plan::Link;
+use crate::rules_set::properties::RuleEngine;
+use crate::transaction::Transaction;
+
+/// The run time actions of a rule.
+#[derive(Debug, Default)]
+pub struct Actions {
+    /// Run on every match of the operator.
+    set_vars: Vec<SetVar>,
+    /// Run once the chain matched, in the order they run: see [`stage`].
+    on_match: Vec<RuleAction>,
+    /// How many of `on_match` are tags (they come first).
+    tags: usize,
+}
+
+/// Where an action runs among those of a matched chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Stage {
+    Tag,
+    Severity,
+    LogData,
+    Msg,
+    Other,
+    Disruptive,
+}
+
+fn stage(a: &RuleAction) -> Stage {
+    match a {
+        RuleAction::Tag(_) => Stage::Tag,
+        RuleAction::Severity(_) => Stage::Severity,
+        RuleAction::LogData(_) => Stage::LogData,
+        RuleAction::Msg(_) => Stage::Msg,
+        a if a.is_disruptive() => Stage::Disruptive,
+        _ => Stage::Other,
+    }
+}
+
+impl Actions {
+    /// Adds a run time action. A rule has one `severity`, `logdata`, `msg`
+    /// and disruptive action: a later one replaces the earlier.
+    pub(super) fn add(&mut self, a: RuleAction) {
+        let a = match a {
+            RuleAction::SetVar(s) => return self.set_vars.push(s),
+            a => a,
+        };
+        let at = stage(&a);
+        if !matches!(at, Stage::Tag | Stage::Other) {
+            self.on_match.retain(|b| stage(b) != at);
+        }
+        // After the actions of its stage and of the ones before it.
+        let place = self.on_match.iter().position(|b| stage(b) > at).unwrap_or(self.on_match.len());
+        self.on_match.insert(place, a);
+        self.tags += usize::from(at == Stage::Tag);
+    }
+
+    pub fn set_vars(&self) -> &[SetVar] {
+        &self.set_vars
+    }
+
+    pub fn tags(&self) -> impl Iterator<Item = &Tag> {
+        self.on_match[..self.tags].iter().filter_map(|a| match a {
+            RuleAction::Tag(tag) => Some(tag),
+            _ => None,
+        })
+    }
+
+    /// The actions that run once the chain matched, after the tags.
+    pub fn after_tags(&self) -> &[RuleAction] {
+        &self.on_match[self.tags..]
+    }
+
+    pub fn severity(&self) -> Option<&Severity> {
+        self.after_tags().iter().find_map(|a| match a {
+            RuleAction::Severity(s) => Some(s),
+            _ => None,
+        })
+    }
+
+    pub fn log_data(&self) -> Option<&LogData> {
+        self.after_tags().iter().find_map(|a| match a {
+            RuleAction::LogData(l) => Some(l),
+            _ => None,
+        })
+    }
+
+    pub fn msg(&self) -> Option<&Msg> {
+        self.after_tags().iter().find_map(|a| match a {
+            RuleAction::Msg(m) => Some(m),
+            _ => None,
+        })
+    }
+
+    /// The disruptive action (`deny`, `pass`, ...): the last one.
+    pub fn disruptive(&self) -> Option<&RuleAction> {
+        self.on_match.last().filter(|a| a.is_disruptive())
+    }
+}
+
+/// Running the actions.
+impl Rule {
+    /// Runs the actions that do not depend on the result of the chain:
+    /// `setvar` and, for a `multiMatch` rule that is not a chain child,
+    /// `severity`, `logdata`, `msg` and `tag`.
+    pub fn execute_actions_independent_of_chained_rule_result<'a>(
+        &'a self,
+        t: &mut Transaction<'a>,
+        rm: &mut RuleMessage<'a>,
+    ) {
+        for a in self.actions.set_vars() {
+            crate::ms_dbg!(t, 4, "Running [independent] (non-disruptive) action: {}", a.name());
+            a.evaluate(&mut ActionContext::new(t, self, rm));
+        }
+
+        if self.has_multimatch() && !self.chained_rule_parent {
+            let describing = |a: &&RuleAction| stage(a) < Stage::Other;
+            for a in self.actions.after_tags().iter().filter(describing) {
+                a.evaluate(&mut ActionContext::new(t, self, rm));
+            }
+            for a in self.actions.tags() {
+                a.evaluate(&mut ActionContext::new(t, self, rm));
+            }
+        }
+    }
+
+    /// Runs the actions of a rule whose chain matched, with what the rule
+    /// set adds to them (`link`): the `SecDefaultAction` ones, `tag`, the
+    /// `SecRuleUpdateActionById` ones, then the rest in their order.
+    pub fn execute_actions_after_full_match<'a>(
+        &'a self,
+        link: &'a Link,
+        t: &mut Transaction<'a>,
+        rm: &mut RuleMessage<'a>,
+    ) {
+        for a in &link.default_actions {
+            self.execute_action(link, t, rm, a, true);
+        }
+
+        for a in self.actions.tags() {
+            crate::ms_dbg!(t, 4, "Running (non-disruptive) action: {}", a.name());
+            a.evaluate(&mut ActionContext::new(t, self, rm));
+        }
+
+        for a in &link.update_actions {
+            self.execute_action(link, t, rm, a, false);
+        }
+        // A disruptive action (or a `block`) of a SecRuleUpdateActionById
+        // takes the place of the rule's own.
+        let updated = link.update_actions.iter().any(|a| a.is_disruptive() || matches!(**a, RuleAction::Block(_)));
+
+        for a in self.actions.after_tags() {
+            match stage(a) {
+                // What the rule says about the match.
+                Stage::Severity | Stage::LogData | Stage::Msg => a.evaluate(&mut ActionContext::new(t, self, rm)),
+                Stage::Disruptive if updated => {}
+                Stage::Other if updated && matches!(a, RuleAction::Block(_)) => {}
+                _ => self.execute_action(link, t, rm, a, false),
+            }
+        }
+    }
+
+    /// Runs one action. A disruptive action (or `block`) runs only when
+    /// the rule engine is `On`, and a `block` of `SecDefaultAction`
+    /// (`default_context`) only when the rule has one too.
+    fn execute_action<'a>(
+        &'a self,
+        link: &'a Link,
+        t: &mut Transaction<'a>,
+        rm: &mut RuleMessage<'a>,
+        a: &RuleAction,
+        default_context: bool,
+    ) {
+        if !a.is_disruptive() && !matches!(a, RuleAction::Block(_)) {
+            crate::ms_dbg!(t, 9, "Running action: {}", a.name());
+        } else if default_context && !self.has_block_action() {
+            crate::ms_dbg!(t, 4, "Ignoring action: {} (rule does not cotains block)", a.name());
+            return;
+        } else if t.rule_engine_state() == Some(RuleEngine::Enabled) {
+            crate::ms_dbg!(t, 4, "Running (disruptive)     action: {}.", a.name());
+        } else {
+            crate::ms_dbg!(
+                t,
+                4,
+                "Not running any disruptive action (or block): {}. SecRuleEngine is not On.",
+                a.name()
+            );
+            return;
+        }
+
+        let mut cx = ActionContext::new(t, self, rm);
+        match a {
+            // `block` is the disruptive action of SecDefaultAction.
+            RuleAction::Block(_) => {
+                crate::ms_dbg!(cx, 8, "Marking request as disruptive.");
+                for a in &link.block_actions {
+                    a.evaluate(&mut cx);
+                }
+            }
+            a => a.evaluate(&mut cx),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::rules_set::RulesSet;
+
+    /// The actions of the first rule of `conf`, as they run on a match.
+    fn on_match(conf: &str) -> (Vec<String>, Vec<String>) {
+        let mut rules = RulesSet::new();
+        rules.load(conf).unwrap();
+        let entry = &rules.rules_set_phases.for_phase(crate::phases::Phases::RequestHeaders)[0];
+        let actions = entry.as_rule().unwrap().actions();
+        let tags = actions.tags().map(|t| crate::actions::action::Action::name(t).to_string());
+        let rest = actions.after_tags().iter().map(|a| a.name().to_string());
+        (actions.set_vars().iter().map(|_| "setvar".to_string()).collect(), tags.chain(rest).collect())
+    }
+
+    #[test]
+    fn order() {
+        let (each_match, chain_matched) = on_match(
+            "SecRule ARGS \"@rx x\" \"id:1,phase:1,deny,status:403,msg:'m',setvar:tx.a=1,ctl:ruleEngine=Off,\\
+             tag:'t1',logdata:'d',capture,severity:2,tag:'t2',setvar:tx.b=2,skip:1,t:none\"",
+        );
+        assert_eq!(each_match, ["setvar", "setvar"]);
+        // Tags, severity, logdata, msg, the others as written, the
+        // disruptive action.
+        assert_eq!(chain_matched, ["tag", "tag", "severity", "logdata", "msg", "status", "ctl", "skip", "deny"]);
+    }
+
+    /// A rule has one severity, logdata, msg and disruptive action.
+    #[test]
+    fn the_last_one_counts() {
+        let mut rules = RulesSet::new();
+        rules
+            .load("SecRule ARGS \"@rx x\" \"id:1,phase:1,deny,msg:'first',severity:2,pass,msg:'second',severity:5\"")
+            .unwrap();
+        let entry = &rules.rules_set_phases.for_phase(crate::phases::Phases::RequestHeaders)[0];
+        let rule = entry.as_rule().unwrap();
+        let actions = rule.actions();
+        assert_eq!(actions.after_tags().len(), 3);
+        assert_eq!(rule.severity(), 5);
+        assert_eq!(actions.msg().unwrap().string.evaluate_static(), b"second");
+        assert_eq!(actions.disruptive().unwrap().name(), "pass");
+    }
+}
