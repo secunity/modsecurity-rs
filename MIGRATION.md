@@ -314,7 +314,7 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   by a `ctl:` action. *Here:* an id is a decimal integer as in the `id`
   action, and the list of `ctl:ruleRemoveById` is read by the code that
   reads `SecRuleRemoveById`'s. Regression tests:
-  `rule::id::tests::lists`, `rule::id::tests::an_id_beyond_the_int_range`.
+  `rule::id::tests::lists`, `parser::tests::numbers_beyond_the_int_range`.
 - **`SecRuleRemoveById` reads ids and ranges as numbers.** *C++:*
   - the bounds of a range are compared as text, so `SecRuleRemoveById
     5-10` is refused ("Invalid range") and `10-5` is accepted (and
@@ -327,8 +327,7 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   needs `first <= last`; a rule is removed by its own id only. A list
   with an invalid item is refused as a whole. The tests of the original
   ModSecurity pass. Regression tests:
-  `rules_set::exceptions::tests::load_ids`,
-  `rule::id::tests::an_id_beyond_the_int_range`.
+  `rules_set::exceptions::tests::load_ids`, `rule::id::tests::lists`.
 - **`SecRuleUpdateActionById` and `SecRuleUpdateTargetById`: several
   for one rule apply in the order of the configuration.** *C++:* they
   are kept in a hash table that puts a new entry in front of the others
@@ -447,7 +446,7 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   configuration error. *Why:* approved by the owner; an id is an integer,
   and a typo in one is better reported than guessed. No test of the
   original ModSecurity depends on it. Regression tests:
-  `rule::id::tests::the_id_of_an_update_directive`,
+  `rule::id::tests::written_ids`, `parser::tests::numbers_beyond_the_int_range`,
   `parser::settings::unicode_map_tests::code_page`.
 - **Time formatting** (audit/error log timestamps, the JSON `time_stamp`,
   parallel audit log and upload directory names) always uses the C locale's

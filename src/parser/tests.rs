@@ -461,6 +461,11 @@ fn numbers_beyond_the_int_range() {
         ),
         (format!("SecRuleRemoveById {TWO_64_PLUS_1}"), "Not a number or range: 18446744073709551617"),
         (format!("SecAction \"id:1,phase:{TWO_64_PLUS_1},pass\""), "Unknown phase: 18446744073709551617"),
+        // An id is decimal digits, wherever one is written.
+        ("SecRuleUpdateTargetById 1e0 !ARGS".to_string(), "does not seems to be a valid rule id"),
+        ("SecRuleUpdateActionById 1abc \"pass\"".to_string(), "does not seems to be a valid rule id"),
+        ("SecAction \"id:1,phase:1,pass,ctl:ruleRemoveById=12abc\"".to_string(), "Not a number or range: 12abc"),
+        ("SecAction \"id:1,phase:1,pass,ctl:ruleRemoveTargetById=1.0;ARGS\"".to_string(), "Not able to convert '1.0'"),
     ];
     for (rule, error) in rejected {
         let mut d = Driver::new();
