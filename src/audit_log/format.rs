@@ -13,7 +13,7 @@ use modsecurity_compat::json::JsonGen;
 
 /// The index line of the native audit log format for an entry stored
 /// in its own file (`SecAuditLogType Concurrent`).
-pub(crate) fn native_index_line(t: &Transaction<'_>, filename: &str, size: f64, md5: &str) -> Vec<u8> {
+pub(crate) fn native_index_line(t: &Transaction<'_>, filename: &str, size: usize, md5: &str) -> Vec<u8> {
     let tstr = crate::utils::system::strftime_local(t.time_stamp, "[%d/%b/%Y:%H:%M:%S %z]");
     let mut ss: Vec<u8> = Vec::new();
     let rh = &t.vars.request_headers;
@@ -47,7 +47,7 @@ pub(crate) fn native_index_line(t: &Transaction<'_>, filename: &str, size: f64, 
     ss.extend_from_slice(filename.as_bytes());
     ss.push(b' ');
     ss.extend_from_slice(b"0 ");
-    ss.extend_from_slice(format!("{:.6}", size).as_bytes());
+    ss.extend_from_slice(size.to_string().as_bytes());
     ss.push(b' ');
     ss.extend_from_slice(b"md5:");
     ss.extend_from_slice(md5.as_bytes());

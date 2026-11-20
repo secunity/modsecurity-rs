@@ -281,7 +281,7 @@ pub(crate) struct HttpData {
     pub(crate) request_body: Vec<u8>,
     pub(crate) response_body: Vec<u8>,
     /// Combined size of all arguments (`ARGS_COMBINED_SIZE`).
-    pub(crate) args_combined_size_double: f64,
+    pub(crate) args_combined_size: usize,
     /// The HTTP status code, when known.
     pub(crate) http_code_returned: u16,
 }
@@ -421,7 +421,7 @@ impl<'a> Transaction<'a> {
                 uri_no_query_string_decoded: Vec::new(),
                 request_body: Vec::new(),
                 response_body: Vec::new(),
-                args_combined_size_double: 0.0,
+                args_combined_size: 0,
                 http_code_returned: 200,
             },
             vars: TransactionAnchoredVariables::new(),
@@ -537,7 +537,7 @@ impl<'a> Transaction<'a> {
     fn argument_writer(&mut self) -> ArgumentWriter<'_> {
         ArgumentWriter {
             vars: &mut self.vars,
-            combined_size: &mut self.http.args_combined_size_double,
+            combined_size: &mut self.http.args_combined_size,
             rules: self.rules,
             id: &self.id,
             uri: &self.http.uri,

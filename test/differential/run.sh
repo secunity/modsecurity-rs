@@ -86,7 +86,8 @@ echo "without debug log: outputs identical"
 # Third pass: the audit logs (an output format of the compatibility
 # contract). Run-specific values are normalized: dates, the random native
 # boundary, the Concurrent storage paths and the md5 of an entry (it covers
-# the date). Rule line numbers and `\"` as above.
+# the date). Rule line numbers and `\"` as above. The size in an index line
+# is a whole number here and has six decimals in C++ (see MIGRATION.md).
 audit_norm() {
     sed -E \
         -e 's#\[[0-9]{2}/[A-Za-z]{3}/[0-9]{4}:[0-9]{2}:[0-9]{2}:[0-9]{2} [+-][0-9]{4}\]#[DATE]#g' \
@@ -94,6 +95,7 @@ audit_norm() {
         -e 's#---[a-zA-Z0-9]{8,}---([A-Z])--$#---B---\1--#' \
         -e 's#'"$work"'/audit-[a-z]+-(cpp|rs)/store/[0-9]{8}/[0-9]{8}-[0-9]{4}/[0-9]{8}-[0-9]{6}-#STORE/#g' \
         -e 's#md5:[0-9a-f]{32}#md5:#g' \
+        -e 's# ([0-9]+)\.000000 md5:# \1 md5:#' \
         -e 's/\[line "[0-9]+"\]/[line ""]/g' \
         -e 's/"lineNumber":"[0-9]+"/"lineNumber":""/g' \
         -e '/with param/s/\\"/"/g' \

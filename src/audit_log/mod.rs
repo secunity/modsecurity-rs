@@ -649,13 +649,7 @@ mod tests {
         assert!(line.starts_with("example.com 1.2.3.4 - ["), "{}", line);
         assert_eq!(
             after_date,
-            format!(
-                " \"POST /a?x=1 HTTP/1.1\" 200 0 - \"UA\" {} - {} 0 {}.000000 md5:{}\n",
-                id,
-                file,
-                content.len(),
-                md5
-            )
+            format!(" \"POST /a?x=1 HTTP/1.1\" 200 0 - \"UA\" {} - {} 0 {} md5:{}\n", id, file, content.len(), md5)
         );
     }
 

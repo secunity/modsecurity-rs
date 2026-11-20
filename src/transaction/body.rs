@@ -74,7 +74,7 @@ impl Transaction<'_> {
                     let off = self.vars.offset;
                     ArgumentWriter {
                         vars: &mut self.vars,
-                        combined_size: &mut self.http.args_combined_size_double,
+                        combined_size: &mut self.http.args_combined_size,
                         rules: self.rules,
                         id: &self.id,
                         uri: &self.http.uri,
@@ -161,7 +161,7 @@ impl Transaction<'_> {
         }
         let mut arguments = ArgumentWriter {
             vars: &mut self.vars,
-            combined_size: &mut self.http.args_combined_size_double,
+            combined_size: &mut self.http.args_combined_size,
             rules: self.rules,
             id: &self.id,
             uri: &self.http.uri,

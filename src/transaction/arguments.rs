@@ -10,7 +10,7 @@ use modsecurity_transformations::url::urldecode_nonstrict_inplace;
 
 pub(super) struct ArgumentWriter<'a> {
     pub vars: &'a mut TransactionAnchoredVariables,
-    pub combined_size: &'a mut f64,
+    pub combined_size: &'a mut usize,
     pub rules: &'a RulesSet,
     pub id: &'a str,
     pub uri: &'a [u8],
@@ -52,8 +52,8 @@ impl ArgumentWriter<'_> {
             "POST" => self.vars.args_post.set(key, value, offset),
             _ => {}
         }
-        *self.combined_size += (key.len() + value.len()) as f64;
-        let size = format!("{:.6}", *self.combined_size);
+        *self.combined_size += key.len() + value.len();
+        let size = self.combined_size.to_string();
         self.vars.args_combined_size.set_with_len(size.as_bytes(), offset - key.len() - 1, key.len());
         self.vars.args_combined_size.set_with_len(size.as_bytes(), offset, value.len());
         true
@@ -110,7 +110,7 @@ mod tests {
         assert!(t.vars.args_get.is_empty());
         assert_eq!(t.vars.url_encoded_error.value, b"1");
         assert_eq!(t.vars.url_encoded_error.offset, 77);
-        assert_eq!(t.vars.args_combined_size.value, b"8.000000");
+        assert_eq!(t.vars.args_combined_size.value, b"8");
         let mut values = Vec::new();
         t.vars.args_combined_size.evaluate_into(&mut values);
         assert_eq!(

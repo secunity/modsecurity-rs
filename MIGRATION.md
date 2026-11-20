@@ -307,6 +307,18 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **Two sizes are whole numbers.** *C++* keeps them as `double` and
+  prints them with six decimals:
+  - `ARGS_COMBINED_SIZE` has the value `8.000000`. *Here:* `8`. A
+    comparison such as `@gt 1000` gives the same result; what changes is
+    the text when the variable is logged or copied (`setvar`, `logdata`).
+  - the index line of a concurrent audit log (`SecAuditLogType
+    Concurrent`) ends with the size of the entry as `247.000000`.
+    *Here:* `247`, as in the index format of ModSecurity 2 that log
+    collectors read.
+  Regression tests:
+  `transaction::arguments::tests::form_decoding_preserves_bytes_offsets_and_limit_logging`,
+  `audit_log::tests::parallel_writer`.
 - **An unknown phase is a configuration error.** *C++:* `phase:` takes a
   number or one of `request`, `response`, `logging`; any other word
   (`phase:reqeust`) is accepted without a message, and the rule is then
