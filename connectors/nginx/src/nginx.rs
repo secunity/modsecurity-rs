@@ -261,14 +261,14 @@ impl<'r> Request<'r> {
         unsafe { bytes(&(*(*self.as_ptr()).connection).addr_text) }
     }
 
-    pub fn client_port(&self) -> i32 {
+    pub fn client_port(&self) -> u16 {
         // SAFETY: a request has a connection with a socket address.
-        unsafe { ngx_inet_get_port((*(*self.as_ptr()).connection).sockaddr) as i32 }
+        unsafe { ngx_inet_get_port((*(*self.as_ptr()).connection).sockaddr) }
     }
 
-    pub fn server_port(&self) -> i32 {
+    pub fn server_port(&self) -> u16 {
         // SAFETY: a request has a connection with a local socket address.
-        unsafe { ngx_inet_get_port((*(*self.as_ptr()).connection).local_sockaddr) as i32 }
+        unsafe { ngx_inet_get_port((*(*self.as_ptr()).connection).local_sockaddr) }
     }
 
     /// The local address of the connection, as text; `None` when nginx

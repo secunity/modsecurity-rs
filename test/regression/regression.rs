@@ -284,7 +284,8 @@ fn run_one(t: &RegressionTest, resources: &[&str]) -> Outcome {
         }
         clear_audit_log(&audit_path);
 
-        tr.process_connection(&t.client_ip, t.client_port as i32, &t.server_ip, t.server_port as i32);
+        let port = |p: i64| u16::try_from(p).unwrap_or(0);
+        tr.process_connection(&t.client_ip, port(t.client_port), &t.server_ip, port(t.server_port));
         actions(&mut r, &mut tr, &server_log);
 
         tr.process_uri(&t.uri, &t.method, &t.http_version);

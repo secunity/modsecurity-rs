@@ -266,9 +266,9 @@ pub struct EvalScratch<'a> {
 /// from it directly (decoded URIs, the bodies, the status code).
 pub(crate) struct HttpData {
     pub(crate) client_ip_address: String,
-    pub(crate) client_port: i32,
+    pub(crate) client_port: u16,
     pub(crate) server_ip_address: String,
-    pub(crate) server_port: i32,
+    pub(crate) server_port: u16,
     pub(crate) request_host_name: String,
     /// The HTTP version: 1.1, 2.0, ...
     pub(crate) http_version: String,
@@ -508,12 +508,12 @@ impl<'a> Transaction<'a> {
     /// are written without brackets (`::1`), as servers report them.
     pub fn process_connection_addrs(&mut self, client: std::net::SocketAddr, server: std::net::SocketAddr) {
         let (c, s) = (client.ip().to_string(), server.ip().to_string());
-        self.process_connection(&c, client.port().into(), &s, server.port().into());
+        self.process_connection(&c, client.port(), &s, server.port());
     }
 
     /// Records the client and server addresses and ports and runs the
     /// rules of the connection phase.
-    pub fn process_connection(&mut self, client: &str, c_port: i32, server: &str, s_port: i32) {
+    pub fn process_connection(&mut self, client: &str, c_port: u16, server: &str, s_port: u16) {
         self.http.client_ip_address = client.to_string();
         self.http.server_ip_address = server.to_string();
         if self.http.request_host_name.is_empty() {

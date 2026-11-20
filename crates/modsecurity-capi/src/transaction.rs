@@ -78,7 +78,9 @@ pub unsafe extern "C" fn msc_process_connection(
     let t = tx!(t);
     let c = String::from_utf8_lossy(unsafe { bytes(client) }).into_owned();
     let s = String::from_utf8_lossy(unsafe { bytes(server) }).into_owned();
-    t.process_connection(&c, c_port, &s, s_port);
+    // A number that is not a port is reported as port 0.
+    let port = |p: c_int| u16::try_from(p).unwrap_or(0);
+    t.process_connection(&c, port(c_port), &s, port(s_port));
     1
 }
 

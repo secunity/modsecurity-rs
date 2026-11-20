@@ -178,9 +178,9 @@ pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
     g.add("client_ip", t.http.client_ip_address.as_bytes());
     g.add("time_stamp", ts.as_bytes());
     g.add("server_id", unique_id.as_bytes());
-    g.add_num("client_port", t.http.client_port as i64);
+    g.add_num("client_port", t.http.client_port.into());
     g.add("host_ip", t.http.server_ip_address.as_bytes());
-    g.add_num("host_port", t.http.server_port as i64);
+    g.add_num("host_port", t.http.server_port.into());
     g.add("unique_id", t.id.as_bytes());
     g.string(b"is_interrupted");
     g.bool(t.outcome.is_interrupted);
