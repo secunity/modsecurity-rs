@@ -6,6 +6,10 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// The last expiry time a record can hold, in seconds since the epoch: the
+/// format has ten digits for it (the year 2286).
+const LAST_EXPIRY: u64 = 9_999_999_999;
+
 #[derive(Debug, Clone, Default)]
 pub struct CollectionData {
     pub value: Option<Vec<u8>>,
@@ -26,9 +30,9 @@ impl CollectionData {
     }
 
     fn set_expiry_at(&mut self, now: SystemTime, seconds: u64) {
-        // A time too far away to represent is as far as times go.
-        let far = Duration::from_secs(u64::from(u32::MAX));
-        self.expiry = Some(now.checked_add(Duration::from_secs(seconds)).unwrap_or(now + far));
+        // A time beyond what a record can hold is the last one it can.
+        let last = UNIX_EPOCH + Duration::from_secs(LAST_EXPIRY);
+        self.expiry = Some(now.checked_add(Duration::from_secs(seconds)).map_or(last, |at| at.min(last)));
     }
 
     pub fn is_expired(&self) -> bool {
@@ -44,8 +48,9 @@ impl CollectionData {
         let mut s = b"{".to_vec();
         if let Some(expiry) = self.expiry {
             s.extend_from_slice(b"\"__expire_\":");
-            let secs = expiry.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            s.extend_from_slice(secs.to_string().as_bytes());
+            // Ten digits, which is what the reader takes.
+            let secs = expiry.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).min(LAST_EXPIRY);
+            s.extend_from_slice(format!("{secs:010}").as_bytes());
             if self.value.is_some() {
                 s.push(b',');
             }
@@ -141,7 +146,7 @@ mod tests {
         assert_eq!(record.serialize(), b"{\"__expire_\":1234567890,\"__value_\":\"a\xff\0\"b\"}");
         assert_eq!(CollectionData::default().serialize(), b"{}");
         let before_epoch = CollectionData { value: None, expiry: Some(UNIX_EPOCH - Duration::from_secs(1)) };
-        assert_eq!(before_epoch.serialize(), b"{\"__expire_\":0}");
+        assert_eq!(before_epoch.serialize(), b"{\"__expire_\":0000000000}");
     }
 
     #[test]
@@ -149,9 +154,14 @@ mod tests {
         let now = UNIX_EPOCH + Duration::from_secs(3_000_000_000);
         let mut record = CollectionData::default();
         assert!(!record.is_expired_at(now));
-        for seconds in [0, 1, u64::from(u32::MAX), u64::MAX] {
+        for seconds in [0, 1, u64::from(u32::MAX), 10_000_000_000, u64::MAX] {
             record.set_expiry_at(now, seconds);
             assert_eq!(record.is_expired_at(now), seconds == 0);
+            // What is written is read back the same.
+            record.set_value(b"v");
+            let read = CollectionData::from_bytes(&record.serialize());
+            assert_eq!((read.value.as_deref(), read.expiry), (Some(&b"v"[..]), record.expiry), "{seconds}");
+            record.value = None;
             let expiry = record.expiry.unwrap();
             assert!(record.is_expired_at(expiry));
             assert!(!record.is_expired_at(expiry - Duration::from_nanos(1)));
