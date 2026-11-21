@@ -3,11 +3,18 @@
 
 use crate::{Context, Operator};
 
-pub const UNICODE_ERROR_CHARACTERS_MISSING: i32 = -1;
-pub const UNICODE_ERROR_INVALID_ENCODING: i32 = -2;
-pub const UNICODE_ERROR_OVERLONG_CHARACTER: i32 = -3;
-pub const UNICODE_ERROR_RESTRICTED_CHARACTER: i32 = -4;
-pub const UNICODE_ERROR_DECODING_ERROR: i32 = -5;
+/// Why the bytes at a position are not a UTF-8 character.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Utf8Error {
+    /// The value ends before the character does.
+    CharactersMissing,
+    /// A byte that cannot be where it is.
+    InvalidEncoding,
+    /// A character written with more bytes than it needs.
+    OverlongCharacter,
+    /// A surrogate, or a code point above U+10FFFF.
+    RestrictedCharacter,
+}
 
 #[derive(Debug)]
 pub struct ValidateUtf8Encoding;
@@ -23,15 +30,15 @@ impl ValidateUtf8Encoding {
         ValidateUtf8Encoding
     }
 
-    /// The length of the UTF-8 character at the start of `p_read`, or one
-    /// of the `UNICODE_ERROR_*` codes.
-    pub fn detect_utf8_character(p_read: &[u8]) -> i32 {
+    /// The length of the UTF-8 character at the start of `p_read`.
+    pub fn detect_utf8_character(p_read: &[u8]) -> Result<usize, Utf8Error> {
+        use Utf8Error::*;
         let length = p_read.len();
-        let unicode_len;
-        let mut d: u32 = 0;
+        let unicode_len: usize;
+        let d: u32;
 
         let Some(&c) = p_read.first() else {
-            return UNICODE_ERROR_DECODING_ERROR;
+            return Err(CharactersMissing);
         };
         let c32 = u32::from(c);
         let at = |n: usize| u32::from(p_read[n]);
@@ -40,15 +47,15 @@ impl ValidateUtf8Encoding {
             // If the first byte begins with binary 0 it is a single byte
             // encoding: single byte unicode (7 bit ASCII equivalent) has no
             // validation.
-            return 1;
+            return Ok(1);
         } else if (c & 0xE0) == 0xC0 {
             // If the first byte begins with binary 110 it is a two byte
             // encoding; check we have at least two bytes.
             if length < 2 {
-                unicode_len = UNICODE_ERROR_CHARACTERS_MISSING;
+                return Err(CharactersMissing);
             } else if (at(1) & 0xC0) != 0x80 {
                 // check the second byte starts with binary 10
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
+                return Err(InvalidEncoding);
             } else {
                 unicode_len = 2;
                 // compute the character number
@@ -58,10 +65,10 @@ impl ValidateUtf8Encoding {
             // If the first byte begins with binary 1110 it is a three byte
             // encoding; check we have at least three bytes.
             if length < 3 {
-                unicode_len = UNICODE_ERROR_CHARACTERS_MISSING;
+                return Err(CharactersMissing);
             } else if (at(1) & 0xC0) != 0x80 || (at(2) & 0xC0) != 0x80 {
                 // check the second and third bytes start with binary 10
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
+                return Err(InvalidEncoding);
             } else {
                 unicode_len = 3;
                 d = ((c32 & 0x0F) << 12) | ((at(1) & 0x3F) << 6) | (at(2) & 0x3F);
@@ -71,33 +78,33 @@ impl ValidateUtf8Encoding {
             // encoding; restrict characters to the UTF-8 range
             // (U+0000 - U+10FFFF).
             if c >= 0xF5 {
-                return UNICODE_ERROR_RESTRICTED_CHARACTER;
+                return Err(RestrictedCharacter);
             }
             if length < 4 {
-                unicode_len = UNICODE_ERROR_CHARACTERS_MISSING;
+                return Err(CharactersMissing);
             } else if (at(1) & 0xC0) != 0x80 || (at(2) & 0xC0) != 0x80 || (at(3) & 0xC0) != 0x80 {
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
+                return Err(InvalidEncoding);
             } else {
                 unicode_len = 4;
                 d = ((c32 & 0x07) << 18) | ((at(1) & 0x3F) << 12) | ((at(2) & 0x3F) << 6) | (at(3) & 0x3F);
             }
         } else {
             // any other first byte is invalid (RFC 3629)
-            return UNICODE_ERROR_INVALID_ENCODING;
+            return Err(InvalidEncoding);
         }
 
         // invalid UTF-8 character number range (RFC 3629)
         if (0xD800..=0xDFFF).contains(&d) {
-            return UNICODE_ERROR_RESTRICTED_CHARACTER;
+            return Err(RestrictedCharacter);
         }
 
         // check for overlong
         if (unicode_len == 4 && d < 0x010000) || (unicode_len == 3 && d < 0x0800) || (unicode_len == 2 && d < 0x80) {
             // could be represented with less bytes
-            return UNICODE_ERROR_OVERLONG_CHARACTER;
+            return Err(OverlongCharacter);
         }
 
-        unicode_len
+        Ok(unicode_len)
     }
 }
 
@@ -108,10 +115,15 @@ impl Operator for ValidateUtf8Encoding {
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
         let mut i = 0usize;
         while i < input.len() {
-            let rc = Self::detect_utf8_character(&input[i..]);
-
-            let msg = match rc {
-                UNICODE_ERROR_CHARACTERS_MISSING => {
+            let error = match Self::detect_utf8_character(&input[i..]) {
+                Ok(len) => {
+                    i += len;
+                    continue;
+                }
+                Err(error) => error,
+            };
+            let msg = match error {
+                Utf8Error::CharactersMissing => {
                     crate::ms_dbg!(
                         cx,
                         8,
@@ -119,25 +131,15 @@ impl Operator for ValidateUtf8Encoding {
                         String::from_utf8_lossy(input),
                         i
                     );
-
                     return true;
                 }
-                UNICODE_ERROR_INVALID_ENCODING => Some("Invalid UTF-8 encoding: invalid byte value in character at "),
-                UNICODE_ERROR_OVERLONG_CHARACTER => Some("Invalid UTF-8 encoding: overlong character detected at "),
-                UNICODE_ERROR_RESTRICTED_CHARACTER => Some("Invalid UTF-8 encoding: use of restricted character at "),
-                UNICODE_ERROR_DECODING_ERROR => Some("Error validating UTF-8 decoding at "),
-                _ if rc <= 0 => Some("Internal error during UTF-8 validation at "),
-                _ => None,
+                Utf8Error::InvalidEncoding => "Invalid UTF-8 encoding: invalid byte value in character at ",
+                Utf8Error::OverlongCharacter => "Invalid UTF-8 encoding: overlong character detected at ",
+                Utf8Error::RestrictedCharacter => "Invalid UTF-8 encoding: use of restricted character at ",
             };
-
-            if let Some(msg) = msg {
-                crate::ms_dbg!(cx, 8, "{}{}. [offset \"{}\"]", msg, String::from_utf8_lossy(input), i);
-                cx.offset(i, input.len());
-
-                return true;
-            }
-
-            i += rc as usize;
+            crate::ms_dbg!(cx, 8, "{}{}. [offset \"{}\"]", msg, String::from_utf8_lossy(input), i);
+            cx.offset(i, input.len());
+            return true;
         }
 
         false
@@ -150,19 +152,18 @@ mod tests {
 
     #[test]
     fn detect() {
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character(b"a"), 1);
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character("é".as_bytes()), 2);
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character("€".as_bytes()), 3);
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character("😀".as_bytes()), 4);
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character(b"\xC3"), UNICODE_ERROR_CHARACTERS_MISSING);
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character(b"\xC3\x41"), UNICODE_ERROR_INVALID_ENCODING);
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character(b"\xC0\x80"), UNICODE_ERROR_OVERLONG_CHARACTER);
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character(b"\xED\xA0\x80"), UNICODE_ERROR_RESTRICTED_CHARACTER);
-        assert_eq!(
-            ValidateUtf8Encoding::detect_utf8_character(b"\xF5\x80\x80\x80"),
-            UNICODE_ERROR_RESTRICTED_CHARACTER
-        );
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character(b"\xFF"), UNICODE_ERROR_INVALID_ENCODING);
-        assert_eq!(ValidateUtf8Encoding::detect_utf8_character(b""), UNICODE_ERROR_DECODING_ERROR);
+        use Utf8Error::*;
+        let detect = ValidateUtf8Encoding::detect_utf8_character;
+        assert_eq!(detect(b"a"), Ok(1));
+        assert_eq!(detect("é".as_bytes()), Ok(2));
+        assert_eq!(detect("€".as_bytes()), Ok(3));
+        assert_eq!(detect("😀".as_bytes()), Ok(4));
+        assert_eq!(detect(b"\xC3"), Err(CharactersMissing));
+        assert_eq!(detect(b"\xC3\x41"), Err(InvalidEncoding));
+        assert_eq!(detect(b"\xC0\x80"), Err(OverlongCharacter));
+        assert_eq!(detect(b"\xED\xA0\x80"), Err(RestrictedCharacter));
+        assert_eq!(detect(b"\xF5\x80\x80\x80"), Err(RestrictedCharacter));
+        assert_eq!(detect(b"\xFF"), Err(InvalidEncoding));
+        assert_eq!(detect(b""), Err(CharactersMissing));
     }
 }
