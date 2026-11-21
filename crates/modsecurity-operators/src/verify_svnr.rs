@@ -94,24 +94,16 @@ impl Operator for VerifySVNR {
             return false;
         }
 
-        let mut i = 0usize;
-        while i + 1 < input.len() {
-            // Offsets are relative to the searched suffix `input[i..]`.
-            let matches = self.re.search_all(&input[i..]);
-            for m in &matches {
-                if self.verify(m.str()) {
-                    cx.offset(m.offset(), m.str().len());
-                    if cx.captures() {
-                        cx.set_capture(b"0", m.str().to_vec());
-                        crate::ms_dbg!(cx, 7, "Added VerifySVNR match TX.0: {}", String::from_utf8_lossy(m.str()));
-                    }
-                    return true;
-                }
-            }
-            i += 1;
+        let Some((offset, number)) = crate::candidates::first_verified_in_a_suffix(&self.re, input, |m| self.verify(m))
+        else {
+            return false;
+        };
+        cx.offset(offset, number.len());
+        if cx.captures() {
+            crate::ms_dbg!(cx, 7, "Added VerifySVNR match TX.0: {}", String::from_utf8_lossy(&number));
+            cx.set_capture(b"0", number);
         }
-
-        false
+        true
     }
 }
 

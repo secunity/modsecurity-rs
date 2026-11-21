@@ -3,7 +3,7 @@
 //! check.
 
 use crate::{Context, Operator, Param};
-use modsecurity_native::regex::{Regex, Subject};
+use modsecurity_native::regex::Regex;
 
 #[derive(Debug)]
 pub struct VerifyCC {
@@ -63,34 +63,22 @@ impl Operator for VerifyCC {
     }
 
     fn evaluate(&self, cx: &mut dyn Context, i: &[u8]) -> bool {
-        let re = &self.re;
-        let subject = Subject::new(i);
-        for offset in 0..i.len() {
-            // If there was no match, then we are done.
-            let Some((start, end)) = re.find_at(&subject, offset) else { break };
-            if start > end || end > i.len() {
-                continue;
-            }
-            let m = &i[start..end];
-            if Self::luhn_verify(m) {
-                if cx.captures() {
-                    cx.set_capture(b"0", m.to_vec());
-                    crate::ms_dbg!(cx, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
-                }
-                crate::ms_dbg!(
-                    cx,
-                    9,
-                    "CC# match \"{}\" at {}. [offset {}]",
-                    String::from_utf8_lossy(&self.param.literal),
-                    String::from_utf8_lossy(i),
-                    offset
-                );
-
-                return true;
-            }
+        let Some((offset, m)) = crate::candidates::first_verified(&self.re, i, Self::luhn_verify) else {
+            return false;
+        };
+        if cx.captures() {
+            cx.set_capture(b"0", m.to_vec());
+            crate::ms_dbg!(cx, 7, "Added VerifyCC match TX.0: {}", String::from_utf8_lossy(m));
         }
-
-        false
+        crate::ms_dbg!(
+            cx,
+            9,
+            "CC# match \"{}\" at {}. [offset {}]",
+            String::from_utf8_lossy(&self.param.literal),
+            String::from_utf8_lossy(i),
+            offset
+        );
+        true
     }
 }
 

@@ -20,6 +20,7 @@ pub use modsecurity_types::DebugSink;
 pub(crate) use modsecurity_types::ms_dbg;
 
 pub mod begins_with;
+mod candidates;
 pub mod contains;
 pub mod contains_word;
 pub mod detect_sqli;
