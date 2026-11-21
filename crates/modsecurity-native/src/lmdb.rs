@@ -209,15 +209,27 @@ pub struct Cursor<'txn> {
 
 impl Cursor<'_> {
     /// The next pair (`MDB_NEXT`), valid until the next cursor operation.
-    /// Unlike seek operations, this returns keys owned by LMDB, never the
-    /// caller's buffers.
     #[allow(clippy::should_implement_trait)] // The items borrow the cursor.
     pub fn next(&mut self) -> Result<(&[u8], &[u8]), Code> {
-        let mut key = empty_val();
+        self.get(empty_val(), ffi::MDB_NEXT)
+    }
+
+    /// Moves to the first pair whose key is `from` or comes after it
+    /// (`MDB_SET_RANGE`) and gives it, valid until the next cursor
+    /// operation.
+    pub fn seek(&mut self, from: &[u8]) -> Result<(&[u8], &[u8]), Code> {
+        self.get(val(from), ffi::MDB_SET_RANGE)
+    }
+
+    /// `mdb_cursor_get` with `op`; `key` is what the operation looks for,
+    /// when it looks for one.
+    fn get(&mut self, mut key: MDB_val, op: ffi::MDB_cursor_op) -> Result<(&[u8], &[u8]), Code> {
         let mut data = empty_val();
-        // SAFETY: the cursor and its transaction are live; both output
-        // values remain valid throughout the call.
-        let rc = unsafe { ffi::mdb_cursor_get(self.ptr, &mut key, &mut data, ffi::MDB_NEXT) };
+        // SAFETY: the cursor and its transaction are live; `key` points at
+        // nothing or at bytes the caller keeps alive for this call (LMDB
+        // only reads them), and both values are valid out parameters. On
+        // success LMDB makes them point at its own pages.
+        let rc = unsafe { ffi::mdb_cursor_get(self.ptr, &mut key, &mut data, op) };
         if rc != 0 {
             return Err(rc);
         }

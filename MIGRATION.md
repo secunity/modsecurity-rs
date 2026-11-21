@@ -307,6 +307,22 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **The LMDB backend answers as the in-memory one does.** With
+  persistent collections stored in LMDB, *C++* (and this engine until
+  now):
+  - a variable looked up by name (`IP:counter`) also gave every variable
+    whose name begins with it (`IP:counter2`);
+  - exclusions (`!IP:name`) were not applied;
+  - a variable selected by regular expression was reported without the
+    collection (`1.2.3.4::app::name` where the in-memory backend reports
+    `IP:1.2.3.4::app::name`);
+  - every lookup read the whole database.
+  *Here:* a name selects that variable alone, exclusions apply, the
+  collection is part of the reported name, and a lookup reads the key or
+  the compartment it asks for. One difference remains: names are case
+  sensitive in LMDB and not in memory. Regression test:
+  `backend::contract` in `modsecurity-collections`, the same assertions
+  for both backends.
 - **`setvar:!session.name` removes the variable.** *C++:* a variable of
   the `SESSION` collection is stored under the session key and the web
   application id, and deleted under the session key and the key of the

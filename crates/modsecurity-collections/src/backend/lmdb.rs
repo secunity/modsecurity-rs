@@ -78,19 +78,33 @@ impl Lmdb {
         txn.commit().map_err(failed("commit"))
     }
 
-    /// Walks the database with a cursor in a read-only transaction, calling
-    /// `f(key, data)` for every non expired entry holding a value; the
-    /// expired entries are deleted afterwards ([`Self::del_if_expired`]).
-    ///
-    /// The walk starts at the first database entry.
-    fn walk(&self, mut f: impl FnMut(&[u8], &[u8])) -> Result<(), StorageError> {
+    /// Calls `f(key, data)` for the entries whose key `selected` accepts,
+    /// among those that start with `prefix` (keys are sorted: the walk
+    /// begins at the first of them and ends after the last). Entries that
+    /// have expired are left out and deleted afterwards
+    /// ([`Self::del_if_expired`]); so are entries without a value.
+    fn walk(
+        &self,
+        prefix: &[u8],
+        selected: impl Fn(&[u8]) -> bool,
+        mut f: impl FnMut(&[u8], &[u8]),
+    ) -> Result<(), StorageError> {
         let mut expired_vars: Vec<Vec<u8>> = Vec::new();
 
         let txn = self.txn_begin(true)?;
         let mut cursor = txn.cursor().map_err(failed("cursor"))?;
-        // The walk ends at the last entry (or at an entry that cannot be
-        // read).
-        while let Ok((key, data)) = cursor.next() {
+        let mut first = true;
+        loop {
+            let entry =
+                if std::mem::take(&mut first) && !prefix.is_empty() { cursor.seek(prefix) } else { cursor.next() };
+            // The end of the database (or an entry that cannot be read).
+            let Ok((key, data)) = entry else { break };
+            if !key.starts_with(prefix) {
+                break;
+            }
+            if !selected(key) {
+                continue;
+            }
             let record = CollectionData::from_bytes(data);
             if record.is_expired() {
                 expired_vars.push(key.to_vec());
@@ -158,27 +172,20 @@ impl Collection for Lmdb {
         }
     }
 
-    /// Known limitation: the key exclusions are not applied (`_ke` is
-    /// unused), and a non empty `var` selects every key it prefixes.
     fn resolve_multi_matches(
         &self,
         var: &[u8],
         l: &mut Vec<VariableValue>,
-        _ke: &KeyExclusions,
+        ke: &KeyExclusions,
     ) -> Result<(), StorageError> {
         let name = self.name.as_bytes();
         let start = l.len();
-        if var.is_empty() {
-            self.walk(|k, d| {
-                l.push(VariableValue::with_collection(name, k, d));
-            })?;
-        } else {
-            self.walk(|k, d| {
-                if k.starts_with(var) {
-                    l.push(VariableValue::with_collection(name, k, d));
-                }
-            })?;
-        }
+        // Every key, or the key `var` alone.
+        self.walk(
+            var,
+            |k| (var.is_empty() || k == var) && !ke.to_omit(k),
+            |k, d| l.push(VariableValue::with_collection(name, k, d)),
+        )?;
         move_to_front_reversed(l, start);
         Ok(())
     }
@@ -190,26 +197,20 @@ impl Collection for Lmdb {
         l: &mut Vec<VariableValue>,
         ke: &KeyExclusions,
     ) -> Result<(), StorageError> {
+        let name = self.name.as_bytes();
         let start = l.len();
-        self.walk(|k, d| {
-            if !k.strip_prefix(prefix).is_some_and(|name| r.is_match(name)) {
-                return;
-            }
-            if ke.to_omit(k) {
-                return;
-            }
-            l.push(VariableValue::new(k, d));
-        })?;
+        let selected = |k: &[u8]| r.is_match(&k[prefix.len()..]) && !ke.to_omit(k);
+        self.walk(prefix, selected, |k, d| l.push(VariableValue::with_collection(name, k, d)))?;
         move_to_front_reversed(l, start);
         Ok(())
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn provider_in_temp_dir() {
+    pub(in crate::backend) fn provider_in_temp_dir() {
         let dir = std::env::temp_dir().join(format!("msrs-lmdb-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = std::ffi::CString::new(dir.join("modsec-shared-collections").to_str().unwrap()).unwrap();
@@ -265,24 +266,24 @@ mod tests {
         c.set_expiry(&k("b"), 0).unwrap();
         assert_eq!(c.resolve_first(&k("b")).unwrap(), None);
 
-        // multi matches: prefix selection, collection name, reverse order
+        // multi matches: the key alone, with the collection name
         c.store_or_update_first(&k("ab"), b"4").unwrap();
         let mut l = Vec::new();
         c.resolve_multi_matches(&k("a"), &mut l, &KeyExclusions::default()).unwrap();
-        assert_eq!(keys(&l), vec![k("ab"), k("a")]);
-        assert_eq!(l[1].key_with_collection(), [b"IP:".as_slice(), &k("a")].concat());
-        assert_eq!(l[1].value(), b"3");
+        assert_eq!(keys(&l), vec![k("a")]);
+        assert_eq!(l[0].key_with_collection(), [b"IP:".as_slice(), &k("a")].concat());
+        assert_eq!(l[0].value(), b"3");
 
         let mut l = Vec::new();
         c.resolve_multi_matches(b"", &mut l, &KeyExclusions::default()).unwrap();
         assert!(keys(&l).contains(&k("ab")));
 
-        // regular expression (case insensitive), no collection prefix
+        // regular expression (case insensitive), in reverse key order
         let mut l = Vec::new();
         let prefix = format!("{p}::");
         c.resolve_regex(prefix.as_bytes(), &Regex::new_case("^A", true), &mut l, &KeyExclusions::default()).unwrap();
         assert_eq!(keys(&l), vec![k("ab"), k("a")]);
-        assert_eq!(l[0].key_with_collection(), k("ab").as_slice());
+        assert_eq!(l[0].key_with_collection(), [b"IP:".as_slice(), &k("ab")].concat());
 
         // delete
         c.del(&k("a")).unwrap();
