@@ -354,14 +354,8 @@ impl Multipart {
                     return Err(-15);
                 }
 
-                let mut invalid_count = 0;
                 let mut decoded_value = value;
-                modsecurity_transformations::url::urldecode_nonstrict_inplace_ext(
-                    &mut decoded_value,
-                    false,
-                    &mut invalid_count,
-                );
-                if invalid_count > 0 {
+                if modsecurity_transformations::url::urldecode_nonstrict_inplace_ext(&mut decoded_value, false) > 0 {
                     self.flags.invalid_part = true;
                 }
                 mpp.filename_star = decoded_value;

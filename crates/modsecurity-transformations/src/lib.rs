@@ -273,7 +273,9 @@ impl Transformation {
             T::Trim => trim::trim(value),
             T::TrimLeft => trim::ltrim(value),
             T::TrimRight => trim::rtrim(value),
-            T::UrlDecode => url::urldecode_nonstrict_inplace(value, &mut 0),
+            T::UrlDecode => {
+                url::urldecode_nonstrict_inplace(value);
+            }
             T::UrlDecodeUni => url_decode_uni::transform(value, context.unicode_map),
             T::UrlEncode => url_encode::transform(value),
             T::Utf8ToUnicode => utf8_to_unicode::transform(value),

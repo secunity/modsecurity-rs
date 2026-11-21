@@ -74,9 +74,8 @@ impl ArgumentWriter<'_> {
         for part in body.split_inclusive(|&byte| byte == separator) {
             let part = part.strip_suffix(&[separator]).unwrap_or(part);
             let (mut key, mut value) = ssplit_pair(part, b'=');
-            let mut invalid_count = 0;
-            urldecode_nonstrict_inplace(&mut key, &mut invalid_count);
-            urldecode_nonstrict_inplace(&mut value, &mut invalid_count);
+            // A bad escape in the name counts as well as one in the value.
+            let invalid_count = urldecode_nonstrict_inplace(&mut key) + urldecode_nonstrict_inplace(&mut value);
             if invalid_count > 0 {
                 self.vars.url_encoded_error.set(b"1", self.vars.offset);
             }
@@ -126,6 +125,19 @@ mod tests {
             "Adding request argument (POST): name \"bad\", value \"%Q0\"".into(),
             "Skipping request argument, over limit (2)".into(),
         ]));
+    }
+
+    /// An invalid escape in the name of an argument sets URLENCODED_ERROR,
+    /// as one in its value does.
+    #[test]
+    fn invalid_escape_in_an_argument_name() {
+        let ms = ModSecurity::new();
+        for (body, error) in [(&b"a%zz=b"[..], true), (b"a=b%zz", true), (b"a%41=b%20", false), (b"a%=b", true)] {
+            let rules = new_rules();
+            let mut t = Transaction::new(&ms, &rules, None);
+            t.extract_arguments("GET", body, 0);
+            assert_eq!(t.vars.url_encoded_error.value == b"1", error, "{body:?}");
+        }
     }
 
     #[test]
