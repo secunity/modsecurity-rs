@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::phases::Phases;
+use crate::phases::{NUMBER_OF_PHASES, Phases};
 use crate::rule::Rule;
 use crate::rules_set::entry::Entry;
 use crate::rules_set::marker::Marker;
@@ -38,6 +38,11 @@ pub struct Driver {
 
     /// The last `SecRule` added, which a chained rule attaches to.
     last_rule: Option<LastRule>,
+
+    /// The phases for which the rule set this driver loads into has a
+    /// `SecDefaultAction` already: a second one is refused as within one
+    /// load.
+    pub(crate) default_actions_taken: [bool; NUMBER_OF_PHASES],
 }
 
 impl Default for Driver {
@@ -53,7 +58,14 @@ impl Driver {
             rules_set_phases: RulesSetPhases::default(),
             filenames: Vec::new(),
             last_rule: None,
+            default_actions_taken: [false; NUMBER_OF_PHASES],
         }
+    }
+
+    /// Whether a `SecDefaultAction` is set for the phase with the index
+    /// `phase`, by this load or by the rule set it loads into.
+    pub(crate) fn has_default_actions(&self, phase: usize) -> bool {
+        self.default_actions_taken[phase] || !self.properties.default_actions[phase].is_empty()
     }
 
     /// Records a file name and returns its index.

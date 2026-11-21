@@ -308,8 +308,10 @@ impl RulesSetProperties {
     }
 
     /// Merges `from` into `to`: values set in `to` win, lists (exceptions,
-    /// default actions, ...) are appended. A failure (audit log or debug log
-    /// file) stops the merge of the remaining logging properties.
+    /// components, ...) are appended. The default actions of a phase come
+    /// from one configuration: `to`'s when it has some for that phase,
+    /// `from`'s otherwise. A failure (audit log or debug log file) stops the
+    /// merge of the remaining logging properties.
     pub fn merge_properties(from: &mut RulesSetProperties, to: &mut RulesSetProperties) -> Result<(), String> {
         to.settings.merge_unset(&from.settings);
         to.unicode_map_table.merge(&from.unicode_map_table);
@@ -328,8 +330,13 @@ impl RulesSetProperties {
             to.response_body_type_to_be_inspected.set = true;
         }
 
+        // A phase's SecDefaultAction is one list with one disruptive action:
+        // two lists put together would run both, and the disruptive action
+        // of `from` would be the one `block` uses.
         for (to, from) in to.default_actions.iter_mut().zip(&from.default_actions) {
-            to.extend(from.iter().cloned());
+            if to.is_empty() {
+                to.clone_from(from);
+            }
         }
 
         // A `SetupError::Unreported` failure leaves the configuration accepted.

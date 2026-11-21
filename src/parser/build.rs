@@ -454,7 +454,7 @@ impl Builder<'_, '_> {
             return self.fail("SecDefaultAction must specify a disruptive action.");
         }
         let index = phase.index();
-        if !self.driver.properties.default_actions[index].is_empty() {
+        if self.driver.has_default_actions(index) {
             let msg = format!(
                 "SecDefaultActions can only be placed once per phase and configuration context. Phase {} was informed already.",
                 phase.number()

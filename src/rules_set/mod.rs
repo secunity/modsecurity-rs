@@ -82,9 +82,16 @@ impl RulesSet {
         Err(LoadError { message: self.properties.parser_error.clone() })
     }
 
+    /// A driver to load rules into this rule set.
+    fn driver(&self) -> Driver {
+        let mut driver = Driver::new();
+        driver.default_actions_taken = self.properties.default_actions.each_ref().map(|list| !list.is_empty());
+        driver
+    }
+
     /// Loads the rules of a file. Returns the number of rules loaded.
     pub fn load_from_uri(&mut self, uri: &str) -> Result<usize, LoadError> {
-        let mut driver = Driver::new();
+        let mut driver = self.driver();
         if !driver.parse_file(uri) {
             self.properties.parser_error.push_str(&driver.properties.parser_error);
             return self.failed();
@@ -119,7 +126,7 @@ impl RulesSet {
     /// names their origin in messages (a file name or URL). Returns the
     /// number of rules loaded.
     pub fn load_bytes(&mut self, rules: &[u8], reference: &str) -> Result<usize, LoadError> {
-        let mut driver = Driver::new();
+        let mut driver = self.driver();
         if !driver.parse_bytes(rules, reference) {
             self.properties.parser_error.push_str(&driver.properties.parser_error);
             return self.failed();
@@ -364,5 +371,59 @@ mod tests {
         let missing = missing.unwrap_err();
         assert!(missing.message().starts_with("Failed to open the file: "), "{missing}");
         assert!(missing.message().ends_with("absent\u{fffd}.conf\n"), "{missing}");
+    }
+
+    /// The status of the intervention after phase 2 for `/?a=x`.
+    fn status_of(rules: &RulesSet) -> Option<u16> {
+        let ms = crate::ModSecurity::new();
+        let mut t = Transaction::new(&ms, rules, None);
+        t.process_uri(b"/?a=x", b"GET", b"1.1");
+        t.process_request_headers();
+        t.process_request_body();
+        t.intervention().map(|it| it.status)
+    }
+
+    /// A merged rule set keeps the `SecDefaultAction` of the configuration
+    /// it is merged into for a phase that has one, and takes the other's
+    /// for the other phases. (The lists used to be put one after the other:
+    /// both ran, and `block` did what the parent's disruptive action said.)
+    #[test]
+    fn merged_default_actions_come_from_one_configuration() {
+        let rule = "SecRuleEngine On\nSecRule ARGS \"@rx x\" \"id:1,phase:2,block\"\n";
+        let mut child = RulesSet::new();
+        child.load(&format!("SecDefaultAction \"phase:2,log,deny,status:403\"\n{rule}")).unwrap();
+        let mut parent = RulesSet::new();
+        parent.load("SecDefaultAction \"phase:2,log,pass\"\n").unwrap();
+        child.merge(&mut parent).unwrap();
+        assert_eq!(status_of(&child), Some(403));
+        assert_eq!(child.properties.default_actions[Phases::RequestBody.index()].len(), 3, "log, deny, status");
+
+        // Without one of its own, the child takes the parent's.
+        let mut child = RulesSet::new();
+        child.load(rule).unwrap();
+        let mut parent = RulesSet::new();
+        parent.load("SecDefaultAction \"phase:2,log,deny,status:401\"\n").unwrap();
+        child.merge(&mut parent).unwrap();
+        assert_eq!(status_of(&child), Some(401));
+    }
+
+    /// A second `SecDefaultAction` for a phase is refused in a later load
+    /// into the same rule set as it is within one load.
+    #[test]
+    fn default_actions_once_per_phase_across_loads() {
+        let mut rules = RulesSet::new();
+        rules.load("SecDefaultAction \"phase:2,log,deny,status:403\"\n").unwrap();
+        // Another phase is fine.
+        rules.load("SecDefaultAction \"phase:1,log,pass\"\n").unwrap();
+        let error = rules.load("SecDefaultAction \"phase:2,log,pass\"\n").unwrap_err();
+        assert!(
+            error.message().contains(
+                "SecDefaultActions can only be placed once per phase and configuration context. Phase 2 was informed already."
+            ),
+            "{error}"
+        );
+        // The first one stays.
+        rules.load("SecRuleEngine On\nSecRule ARGS \"@rx x\" \"id:1,phase:2,block\"\n").unwrap();
+        assert_eq!(status_of(&rules), Some(403));
     }
 }
