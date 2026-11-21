@@ -50,8 +50,7 @@ impl VerifyCPF {
         let mut s_cpf = [0u8; CPF_LEN];
         let mut i = 0usize;
 
-        // The number ends at the first NUL byte.
-        for &c in cpfnumber.iter().take_while(|&&c| c != 0) {
+        for &c in cpfnumber {
             if i < CPF_LEN && c.is_ascii_digit() {
                 s_cpf[i] = c;
                 cpf[i] = Self::convert_to_int(c);
@@ -134,5 +133,13 @@ mod tests {
         assert!(!op.verify(b"529.982.247-26"));
         assert!(!op.verify(b"111.111.111-11"));
         assert!(!op.verify(b"5299822472"));
+    }
+
+    /// A NUL byte is a byte like any other: the digits after it count.
+    #[test]
+    fn nul_byte_in_a_candidate() {
+        let op = VerifyCPF::new(Param::from_text("x")).unwrap();
+        assert!(op.verify(b"529.982\0.247-25"));
+        assert!(!op.verify(b"529.982\0.247-26"));
     }
 }

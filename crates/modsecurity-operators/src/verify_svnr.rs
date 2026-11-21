@@ -46,8 +46,7 @@ impl VerifySVNR {
         let mut s_svnr = [0u8; SVNR_LEN];
         let mut i = 0usize;
 
-        // The number ends at the first NUL byte.
-        for &c in svnrnumber.iter().take_while(|&&c| c != 0) {
+        for &c in svnrnumber {
             if i < SVNR_LEN && c.is_ascii_digit() {
                 s_svnr[i] = c;
                 svnr[i] = Self::convert_to_int(c);
@@ -58,9 +57,7 @@ impl VerifySVNR {
         if i != SVNR_LEN {
             return false;
         }
-        // Known limitation: only the first 10 of the 12 known bad
-        // numbers are checked.
-        if BAD_SVNR.iter().take(SVNR_LEN).any(|bad| s_svnr == **bad) {
+        if BAD_SVNR.iter().any(|bad| s_svnr == **bad) {
             return false;
         }
 
@@ -126,5 +123,28 @@ mod tests {
         assert!(!op.verify(b"1238 010180"));
         assert!(!op.verify(b"0000000000"));
         assert!(!op.verify(b"123"));
+    }
+
+    /// Every known bad number is refused, the last two included (their
+    /// check digit is right).
+    #[test]
+    fn known_bad_numbers() {
+        let op = VerifySVNR::new(Param::from_text("x")).unwrap();
+        for bad in BAD_SVNR {
+            assert!(!op.verify(bad), "{}", String::from_utf8_lossy(bad));
+        }
+        assert!(!op.verify(b"8888888888"));
+        assert!(!op.verify(b"9999 999999"));
+        let op = VerifySVNR::new(Param::from_text(r"\d{4} ?\d{6}")).unwrap();
+        assert!(!crate::test_support::eval(&op, b"svnr: 8888888888"));
+        assert!(crate::test_support::eval(&op, b"svnr: 1237 010180"));
+    }
+
+    /// A NUL byte is a byte like any other: the digits after it count.
+    #[test]
+    fn nul_byte_in_a_candidate() {
+        let op = VerifySVNR::new(Param::from_text("x")).unwrap();
+        assert!(op.verify(b"1237\x00010180"));
+        assert!(!op.verify(b"1238\x00010180"));
     }
 }
