@@ -360,8 +360,10 @@ impl Regex {
     }
 
     /// The groups of the successive matches in `s`, last first. Each search
-    /// resumes after the last group of the previous match, and an empty
-    /// group ends it.
+    /// resumes after the last group of the previous match, or after the
+    /// whole match when that group does not end past where the previous
+    /// search started (a group in a lookbehind, as in `(?<=(a))b`, would
+    /// otherwise find the same match forever). An empty group ends it.
     pub fn search_all(&self, s: &[u8]) -> Vec<SMatch> {
         // Last first: pushed in match order and reversed at the end (front
         // insertion into a Vec would be quadratic).
@@ -373,26 +375,29 @@ impl Regex {
         self.with_match_data(0, |md, _| {
             let mut offset = 0usize;
             loop {
-                let mut rc = self.exec(&subject, offset, 0, md, ptr::null_mut(), true);
-                let mut i = 0;
-                while i < rc {
-                    let (start, end) = Self::ovec(md, i as usize);
+                let rc = self.exec(&subject, offset, 0, md, ptr::null_mut(), true);
+                let mut resume = None;
+                for i in 0..rc.max(0) as usize {
+                    let (start, end) = Self::ovec(md, i);
                     if end > s.len() || start > end {
-                        rc = -1;
-                        break;
+                        return;
                     }
-                    let len = end - start;
-                    offset = start + len;
                     ret.push(SMatch::new(&s[start..end], start));
-                    if len == 0 {
-                        rc = 0;
-                        break;
+                    if start == end {
+                        return;
                     }
-                    i += 1;
+                    resume = Some(end);
                 }
-                if rc <= 0 {
-                    break;
+                let Some(last_group_end) = resume else {
+                    return;
+                };
+                // Group 0 is not empty (an empty group ended the search) and
+                // starts at or after `offset`, so this always moves forward.
+                let next = if last_group_end > offset { last_group_end } else { Self::ovec(md, 0).1 };
+                if next <= offset {
+                    return;
                 }
+                offset = next;
             }
         });
         ret.reverse();
@@ -540,6 +545,28 @@ mod tests {
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].str(), b"bb");
         assert_eq!(all[1].str(), b"b");
+    }
+
+    /// A search resumes after the last group of the previous match, so
+    /// matches can overlap.
+    #[test]
+    fn search_all_resumes_after_the_last_group() {
+        let found: Vec<(Vec<u8>, usize)> =
+            Regex::new("(a)a").search_all(b"aaaa").iter().map(|m| (m.str().to_vec(), m.offset())).collect();
+        let expected = [("a", 2), ("aa", 2), ("a", 1), ("aa", 1), ("a", 0), ("aa", 0)];
+        assert_eq!(found, expected.map(|(m, o)| (m.as_bytes().to_vec(), o)));
+    }
+
+    /// A group that ends where the previous search started (here, in a
+    /// lookbehind) does not make the next search start at the same place
+    /// again: it goes on after the whole match.
+    #[test]
+    fn search_all_always_moves_forward() {
+        let found: Vec<(Vec<u8>, usize)> =
+            Regex::new("(?<=(a))b").search_all(b"ab").iter().map(|m| (m.str().to_vec(), m.offset())).collect();
+        let expected = [("a", 0), ("b", 1), ("a", 0), ("b", 1)];
+        assert_eq!(found, expected.map(|(m, o)| (m.as_bytes().to_vec(), o)));
+        assert_eq!(Regex::new("(?<=(a))b").search_all(b"xabab").len(), 8);
     }
 
     #[test]

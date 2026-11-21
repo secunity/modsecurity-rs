@@ -110,4 +110,13 @@ mod tests {
         // The last byte alone is not searched.
         assert_eq!(first_verified_in_a_suffix(&Regex::new(r"^\d$"), b"ab1", any), None);
     }
+
+    /// A group that ends before the match (in a lookbehind) does not keep
+    /// the search of a suffix at the same place.
+    #[test]
+    fn a_group_in_a_lookbehind() {
+        let re = Regex::new(r"(?<=(a))b");
+        assert_eq!(first_verified_in_a_suffix(&re, b"xab", |_| false), None);
+        assert_eq!(first_verified_in_a_suffix(&re, b"xab", |m| m == b"b"), Some((2, b"b".to_vec())));
+    }
 }
