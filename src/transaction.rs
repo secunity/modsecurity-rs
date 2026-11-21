@@ -363,8 +363,17 @@ pub(crate) struct Outcome<'a> {
     /// Sticky flag set the first time a disruptive intervention is consumed
     /// through [`Transaction::intervention`].
     pub(crate) is_interrupted: bool,
-    /// Set by the `severity` action (`HIGHEST_SEVERITY`).
-    pub(crate) highest_severity_action: u8,
+    /// The highest severity (the lowest number) of the rules that matched
+    /// so far, set by the `severity` action; see [`Outcome::highest_severity_value`].
+    pub(crate) highest_severity: Option<u8>,
+}
+
+impl Outcome<'_> {
+    /// `HIGHEST_SEVERITY`: 255, above every severity (0 to 7), until a
+    /// rule with a severity matched.
+    pub(crate) fn highest_severity_value(&self) -> u8 {
+        self.highest_severity.unwrap_or(u8::MAX)
+    }
 }
 
 pub struct Transaction<'a> {
@@ -480,7 +489,7 @@ impl<'a> Transaction<'a> {
                 rules_messages: Vec::new(),
                 intervention: PendingIntervention::default(),
                 is_interrupted: false,
-                highest_severity_action: 255,
+                highest_severity: None,
             },
             log_cb_data,
         };

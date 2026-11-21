@@ -102,13 +102,17 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
         self.t.outcome.intervention = PendingIntervention::default();
     }
 
-    /// The highest severity so far (`HIGHEST_SEVERITY`; 255 when none).
+    /// `HIGHEST_SEVERITY`: the highest severity (the lowest number) so
+    /// far, 255 when there is none.
     pub fn highest_severity(&self) -> u8 {
-        self.t.outcome.highest_severity_action
+        self.t.outcome.highest_severity_value()
     }
 
-    pub fn set_highest_severity(&mut self, severity: u8) {
-        self.t.outcome.highest_severity_action = severity;
+    /// Records a matched rule's severity in `HIGHEST_SEVERITY` (kept when
+    /// it is higher than the one so far).
+    pub fn raise_highest_severity(&mut self, severity: u8) {
+        let highest = &mut self.t.outcome.highest_severity;
+        *highest = Some(highest.map_or(severity, |h| h.min(severity)));
     }
 
     // --- rule evaluation -----------------------------------------------

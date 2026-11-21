@@ -46,7 +46,7 @@ impl Computed {
                 ),
             ),
             // This one is named as written in the rule.
-            Computed::HighestSeverity => (var.full_name(), t.outcome.highest_severity_action.to_string()),
+            Computed::HighestSeverity => (var.full_name(), t.outcome.highest_severity_value().to_string()),
             Computed::RemoteUser => {
                 if let Some((header, user)) = remote_user(t) {
                     let mut value = VariableValue::new(header.key_with_collection(), &user);
