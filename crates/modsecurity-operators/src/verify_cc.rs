@@ -13,10 +13,7 @@ pub struct VerifyCC {
 
 impl VerifyCC {
     pub fn new(param: Param) -> Result<Self, String> {
-        // `PCRE2_DOTALL | PCRE2_MULTILINE`; the pattern ends at its first
-        // NUL byte.
-        // A pattern that does not compile fails without an error message.
-        let re = Regex::compile(&param.literal, false, true).map_err(|_| String::new())?;
+        let re = crate::candidates::compile(&param)?;
         Ok(VerifyCC { param, re })
     }
 
@@ -101,6 +98,6 @@ mod tests {
         let op = VerifyCC::new(Param::from_text("\\d{13,16}")).unwrap();
         assert!(eval(&op, b"cc: 4111111111111111 x"));
         assert!(!eval(&op, b"cc: 4111111111112 x"));
-        assert_eq!(VerifyCC::new(Param::from_text("((")).unwrap_err(), "");
+        assert_eq!(VerifyCC::new(Param::from_text("((")).unwrap_err(), "Invalid regular expression: ((");
     }
 }

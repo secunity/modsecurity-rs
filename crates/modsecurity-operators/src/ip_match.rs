@@ -14,10 +14,7 @@ pub struct IpMatch {
 impl IpMatch {
     pub fn new(param: Param) -> Result<Self, String> {
         let mut tree = IpSet::new();
-        // An invalid list fails without a message.
-        if !tree.add_from_buffer(&param.literal) {
-            return Err(String::new());
-        }
+        tree.add_from_buffer(&param.literal)?;
         Ok(Self::with_set("IpMatch", param, tree))
     }
 
@@ -55,6 +52,13 @@ mod tests {
         assert!(!eval(&op, b"192.168.1.77"));
         assert!(eval(&op, b"::1"));
         assert!(!eval(&op, b"localhost"));
-        assert_eq!(IpMatch::new(Param::from_text("300.1.1.1")).unwrap_err(), "");
+        assert_eq!(
+            IpMatch::new(Param::from_text("300.1.1.1")).unwrap_err(),
+            "Invalid IP address or network: 300.1.1.1"
+        );
+        assert_eq!(
+            IpMatch::new(Param::from_text("1.2.3.4, 10.0.0.0/33 ,x")).unwrap_err(),
+            "Invalid IP address or network: 10.0.0.0/33"
+        );
     }
 }

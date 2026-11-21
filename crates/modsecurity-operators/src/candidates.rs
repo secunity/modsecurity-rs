@@ -3,7 +3,15 @@
 //! their regular expression matches, each of which may or may not be a
 //! valid number.
 
+use crate::Param;
 use modsecurity_native::regex::{Regex, Subject};
+
+/// The regular expression of the parameter (case sensitive, multi-line);
+/// a pattern that does not compile fails with the message of `@rx`.
+pub(crate) fn compile(param: &Param) -> Result<Regex, String> {
+    Regex::compile(&param.literal, false, true)
+        .map_err(|_| format!("Invalid regular expression: {}", String::from_utf8_lossy(&param.literal)))
+}
 
 /// The first match of `re` in `input` that `verify` accepts, with where it
 /// starts. Matches may overlap: after a match that is not accepted, the

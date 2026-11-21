@@ -10,9 +10,11 @@ pub struct VerifySSN {
 }
 
 impl VerifySSN {
-    pub fn new(param: Param) -> Self {
-        let re = Regex::with_options(&param.literal, false, true);
-        VerifySSN { param, re }
+    /// Compiles the expression of `param`; a pattern that does not
+    /// compile is an error.
+    pub fn new(param: Param) -> Result<Self, String> {
+        let re = crate::candidates::compile(&param)?;
+        Ok(VerifySSN { param, re })
     }
 
     /// The value of a hexadecimal digit (0 for any other byte).
@@ -110,9 +112,15 @@ impl Operator for VerifySSN {
 mod tests {
     use super::*;
 
+    /// A pattern that does not compile is a configuration error.
+    #[test]
+    fn invalid_pattern() {
+        assert_eq!(VerifySSN::new(Param::from_text("(")).unwrap_err(), "Invalid regular expression: (");
+    }
+
     #[test]
     fn ssn() {
-        let op = VerifySSN::new(Param::from_text("x"));
+        let op = VerifySSN::new(Param::from_text("x")).unwrap();
         assert!(op.verify(b"078-05-1120"));
         assert!(!op.verify(b"123-45-6789"));
         assert!(!op.verify(b"111-11-1111"));

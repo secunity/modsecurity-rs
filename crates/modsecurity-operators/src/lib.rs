@@ -275,9 +275,9 @@ pub fn instantiate(
         "validateurlencoding" => ready(validate_url_encoding::ValidateUrlEncoding::new()),
         "validateutf8encoding" => ready(validate_utf8_encoding::ValidateUtf8Encoding::new()),
         "verifycc" => built(verify_cc::VerifyCC::new(param)),
-        "verifycpf" => ready(verify_cpf::VerifyCPF::new(param)),
-        "verifyssn" => ready(verify_ssn::VerifySSN::new(param)),
-        "verifysvnr" => ready(verify_svnr::VerifySVNR::new(param)),
+        "verifycpf" => built(verify_cpf::VerifyCPF::new(param)),
+        "verifyssn" => built(verify_ssn::VerifySSN::new(param)),
+        "verifysvnr" => built(verify_svnr::VerifySVNR::new(param)),
         "within" => ready(within::Within::new(param)),
         _ => return None,
     })

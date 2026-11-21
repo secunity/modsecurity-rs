@@ -31,15 +31,15 @@ impl IpSet {
 
     /// Adds the entries of `buffer`: any number of comma separated entries
     /// per line, with or without spaces around them; `#` starts a comment,
-    /// and lines may end with a carriage return. Returns `false` if an
-    /// entry is invalid; there is no error message saying which one.
-    pub fn add_from_buffer(&mut self, buffer: &[u8]) -> bool {
+    /// and lines may end with a carriage return. An invalid entry is an
+    /// error that names it.
+    pub fn add_from_buffer(&mut self, buffer: &[u8]) -> Result<(), String> {
         // A trailing newline does not produce an extra (empty) line.
         let mut lines: Vec<&[u8]> = buffer.split(|&c| c == b'\n').collect();
         if buffer.is_empty() || buffer.ends_with(b"\n") {
             lines.pop();
         }
-        lines.into_iter().all(|line| {
+        lines.into_iter().try_for_each(|line| {
             let line = match line.iter().position(|&c| c == b'#') {
                 Some(p) => &line[..p],
                 None => line,
@@ -48,45 +48,39 @@ impl IpSet {
         })
     }
 
-    /// The result of loading entries: an invalid entry fails with an empty
-    /// message.
-    fn loaded(ok: bool) -> Result<(), String> {
-        if ok { Ok(()) } else { Err(String::new()) }
-    }
-
     /// Adds the entries of the file `file`.
     pub fn add_from_file(&mut self, file: &str) -> Result<(), String> {
         // A file that cannot be read completely is not used at all.
         let Ok(content) = std::fs::read(file) else {
             return Err(format!("Failed to open file: {}", file));
         };
-        Self::loaded(self.add_from_buffer(&content))
+        self.add_from_buffer(&content)
     }
 
     /// Adds the entries of `content` (a downloaded list).
     pub fn add_from_content(&mut self, content: &[u8]) -> Result<(), String> {
-        Self::loaded(self.add_from_buffer(content))
+        self.add_from_buffer(content)
     }
 
     /// Adds the comma separated entries of `entries`, without the
-    /// whitespace around each (empty ones are skipped); `false` when one
-    /// is invalid: the ones before it stay.
-    fn add_entries(&mut self, entries: &[u8]) -> bool {
+    /// whitespace around each (empty ones are skipped). An invalid entry
+    /// is an error that names it; the entries before it stay.
+    fn add_entries(&mut self, entries: &[u8]) -> Result<(), String> {
         entries
             .split(|&c| c == b',')
             .map(<[u8]>::trim_ascii)
             .filter(|entry| !entry.is_empty())
-            .all(|entry| self.add_entry(entry))
+            .try_for_each(|entry| self.add_entry(entry))
     }
 
-    /// Adds an address or a network; `false` when it is invalid.
-    fn add_entry(&mut self, entry: &[u8]) -> bool {
+    /// Adds an address or a network.
+    fn add_entry(&mut self, entry: &[u8]) -> Result<(), String> {
         match parse_entry(entry) {
             Some(IpNet::V4(net)) => self.v4.insert(net),
             Some(IpNet::V6(net)) => self.v6.insert(net),
-            None => return false,
+            None => return Err(format!("Invalid IP address or network: {}", String::from_utf8_lossy(entry))),
         };
-        true
+        Ok(())
     }
 
     /// Whether `ip` is one of the addresses, or in one of the networks, of
@@ -204,7 +198,7 @@ mod tests {
     /// The set of the entries of `param`; `None` when one is invalid.
     fn set(param: &str) -> Option<IpSet> {
         let mut set = IpSet::new();
-        set.add_entries(param.as_bytes()).then_some(set)
+        set.add_entries(param.as_bytes()).ok().map(|()| set)
     }
 
     fn tree(param: &str) -> IpSet {
@@ -369,7 +363,7 @@ mod tests {
     #[test]
     fn buffer_with_comments_and_lines() {
         let mut t = IpSet::new();
-        assert!(t.add_from_buffer(b"# comment\n127.0.0.1 # x\n10.0.0.0/8,::1\n\n"));
+        assert_eq!(t.add_from_buffer(b"# comment\n127.0.0.1 # x\n10.0.0.0/8,::1\n\n"), Ok(()));
         assert!(t.contains(b"127.0.0.1"));
         assert!(t.contains(b"10.1.2.3"));
         assert!(t.contains(b"::1"));
@@ -384,7 +378,7 @@ mod tests {
         let t = tree(" 1.2.3.4 ,\t10.0.0.0/8 , ,::1\t");
         assert!(t.contains(b"1.2.3.4") && t.contains(b"10.9.9.9") && t.contains(b"::1"));
         let mut t = IpSet::new();
-        assert!(t.add_from_buffer(b"127.0.0.1\r\n  10.0.0.0/8   # office\r\n\r\n# all\r\n::1\r\n"));
+        assert_eq!(t.add_from_buffer(b"127.0.0.1\r\n  10.0.0.0/8   # office\r\n\r\n# all\r\n::1\r\n"), Ok(()));
         assert!(t.contains(b"127.0.0.1") && t.contains(b"10.1.2.3") && t.contains(b"::1"));
         // Inside an entry it is an error.
         assert!(set("1.2.3.4 /8").is_none());

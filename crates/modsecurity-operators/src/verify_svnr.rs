@@ -26,9 +26,11 @@ pub struct VerifySVNR {
 }
 
 impl VerifySVNR {
-    pub fn new(param: Param) -> Self {
-        let re = Regex::with_options(&param.literal, false, true);
-        VerifySVNR { param, re }
+    /// Compiles the expression of `param`; a pattern that does not
+    /// compile is an error.
+    pub fn new(param: Param) -> Result<Self, String> {
+        let re = crate::candidates::compile(&param)?;
+        Ok(VerifySVNR { param, re })
     }
 
     /// The value of a decimal digit (0 for any other byte).
@@ -111,9 +113,15 @@ impl Operator for VerifySVNR {
 mod tests {
     use super::*;
 
+    /// A pattern that does not compile is a configuration error.
+    #[test]
+    fn invalid_pattern() {
+        assert_eq!(VerifySVNR::new(Param::from_text("(")).unwrap_err(), "Invalid regular expression: (");
+    }
+
     #[test]
     fn svnr() {
-        let op = VerifySVNR::new(Param::from_text("x"));
+        let op = VerifySVNR::new(Param::from_text("x")).unwrap();
         assert!(op.verify(b"1237 010180"));
         assert!(!op.verify(b"1238 010180"));
         assert!(!op.verify(b"0000000000"));

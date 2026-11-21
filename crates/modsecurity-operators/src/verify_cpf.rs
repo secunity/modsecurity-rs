@@ -25,9 +25,11 @@ pub struct VerifyCPF {
 }
 
 impl VerifyCPF {
-    pub fn new(param: Param) -> Self {
-        let re = Regex::with_options(&param.literal, false, true);
-        VerifyCPF { param, re }
+    /// Compiles the expression of `param`; a pattern that does not
+    /// compile is an error.
+    pub fn new(param: Param) -> Result<Self, String> {
+        let re = crate::candidates::compile(&param)?;
+        Ok(VerifyCPF { param, re })
     }
 
     /// The value of a hexadecimal digit (0 for any other byte).
@@ -119,9 +121,15 @@ impl Operator for VerifyCPF {
 mod tests {
     use super::*;
 
+    /// A pattern that does not compile is a configuration error.
+    #[test]
+    fn invalid_pattern() {
+        assert_eq!(VerifyCPF::new(Param::from_text("(")).unwrap_err(), "Invalid regular expression: (");
+    }
+
     #[test]
     fn cpf() {
-        let op = VerifyCPF::new(Param::from_text("x"));
+        let op = VerifyCPF::new(Param::from_text("x")).unwrap();
         assert!(op.verify(b"529.982.247-25"));
         assert!(!op.verify(b"529.982.247-26"));
         assert!(!op.verify(b"111.111.111-11"));
