@@ -307,6 +307,12 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`FILES_COMBINED_SIZE` is the sum of the file sizes, however large.**
+  *C++* adds the sizes in an `int`: past 2 GB in total the variable
+  wraps around and turns negative, so a rule such as
+  `FILES_COMBINED_SIZE "@gt 1000000"` stops matching an upload that is
+  very large. *Here:* the sum in a 64 bit integer. Regression test:
+  `multipart::tests::combined_size_of_large_files`.
 - **`ModSecurity::process_content_offset` is removed.** The C++ class
   has `processContentOffset`, which renders the "ref" of a rule message
   as JSON. It is not part of the C API, nothing in the engine or the

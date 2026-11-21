@@ -738,7 +738,7 @@ impl Multipart {
     /// Adds the parts to the variables: form fields to `ARGS` and
     /// `ARGS_POST`, files to the `FILES*` ones.
     fn report_parts(&self, cx: &mut dyn Context) {
-        let mut file_combined_size: i32 = 0;
+        let mut file_combined_size: usize = 0;
         for m in &self.parts {
             if m.name.is_empty() {
                 continue;
@@ -779,8 +779,7 @@ impl Multipart {
 
             cx.add(Entries::FilesTmpContent, &m.name, &m.value, m.value_offset);
 
-            // int + size_t, stored back into an int
-            file_combined_size = (file_combined_size as usize).wrapping_add(file.size) as i32;
+            file_combined_size += file.size;
 
             cx.set_with_len(Flag::FilesCombinedSize, file_combined_size.to_string().as_bytes(), file.offset, file.size);
         }
@@ -825,5 +824,60 @@ impl Drop for Multipart {
     /// `multipart_complete` was not called.
     fn drop(&mut self) {
         self.cleanup(None);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use modsecurity_types::DebugSink;
+
+    /// A context that keeps the values of `FILES_COMBINED_SIZE`.
+    #[derive(Default)]
+    struct Sizes(Vec<Vec<u8>>);
+
+    impl DebugSink for Sizes {
+        fn debug_enabled(&self, _level: u8) -> bool {
+            false
+        }
+        fn debug(&self, _level: u8, _message: &str) {}
+    }
+
+    impl Context for Sizes {
+        fn offset(&self) -> usize {
+            0
+        }
+        fn set(&mut self, _flag: Flag, _value: &[u8], _offset: usize) {}
+        fn set_with_len(&mut self, flag: Flag, value: &[u8], _offset: usize, _len: usize) {
+            if flag == Flag::FilesCombinedSize {
+                self.0.push(value.to_vec());
+            }
+        }
+        fn add(&mut self, _entries: Entries, _key: &[u8], _value: &[u8], _offset: usize) {}
+        fn add_with_len(&mut self, _entries: Entries, _key: &[u8], _value: &[u8], _offset: usize, _len: usize) {}
+        fn uploads(&self) -> Uploads {
+            Uploads::default()
+        }
+        fn upload_file_prefix(&self) -> String {
+            String::new()
+        }
+        fn keep_tmp_file(&mut self, _file: Arc<MultipartPartTmpFile>) {}
+    }
+
+    /// `FILES_COMBINED_SIZE` is the sum of the sizes, however large. (It
+    /// was kept in a 32 bit integer: two files of 2 GB gave a negative
+    /// total, as in C++.)
+    #[test]
+    fn combined_size_of_large_files() {
+        let mut parser = Multipart::new(b"multipart/form-data; boundary=x");
+        for name in [&b"a"[..], b"b"] {
+            let mut part = MultipartPart::new();
+            part.name = name.to_vec();
+            part.kind = PartKind::File(part::FilePart { tmp_file: None, size: 2_000_000_000, offset: 1 });
+            parser.parts.push(part);
+        }
+        let mut cx = Sizes::default();
+        parser.report_parts(&mut cx);
+        assert_eq!(cx.0, [b"2000000000".to_vec(), b"4000000000".to_vec()]);
     }
 }
