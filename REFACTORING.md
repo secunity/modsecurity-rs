@@ -1535,3 +1535,50 @@ unquoted. The cleaning helpers, `Extract`/`Part`, `Value::lead` and
 old reader on 316.6M generated inputs and the old engine on 4.2M generated
 lines, with identical results. The quirks the old code kept were removed
 in three separate behavior-change commits (see MIGRATION.md).
+
+
+## Interventions
+
+`intervention.rs` has the public `Intervention` (status, url, log as a
+`String`: what `Transaction::intervention` hands out, always disruptive;
+no `Default`, no `disruptive` field) and the internal
+`PendingIntervention` enum (None / Status / Disruptive). An
+`InterventionLog` holds a fixed text or a rule message's line in two parts
+around the status code. Actions use `ActionContext::disrupt(status, url)`
+and `intervention_status() -> Option<u16>`. The C API sets `disruptive =
+1` when it fills its struct.
+
+
+## AnchoredVariable
+
+Fields are private; the value lives only in its `VariableValue`, and
+`value()`/`offset()` read it. `set*` replaces the origin;
+`set_adding_origins` is for values computed from several places
+(ARGS_COMBINED_SIZE, FILES_COMBINED_SIZE). `VariableValue::clear_origins`
+was added.
+
+
+## Body append
+
+`Transaction::append_body(BodyDirection, buf)` holds the limit logic for
+both bodies; `append_request_body`/`append_response_body` keep their debug
+lines and the response's content-type check.
+
+
+## Middleware streaming
+
+The middleware reads bodies frame by frame up to the end or the limit
+(`inspection::{RequestBody,ResponseBody}::limit_reached`) and passes them
+on as `middleware::InspectedBody<B>`, which is the frames read and then
+the rest. The inner service takes `Request<InspectedBody<ReqBody>>`, and
+`ResponseBody<B> = Either<Full<Bytes>, InspectedBody<B>>`. Trailers are
+forwarded.
+
+
+## Types
+
+`ArgumentOrigin` {Get, Post, Json, Xml}; `Option<RequestBodyType>`
+{Multipart, UrlEncoded} for the Content-Type and
+`Option<RequestBodyProcessor>` {Json, Xml} for `ctl:requestBodyProcessor`;
+`Outcome::highest_severity: Option<u8>` with `highest_severity_value()`
+giving 255 when none.

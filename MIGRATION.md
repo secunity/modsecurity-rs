@@ -879,6 +879,52 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   test request-body-parser-multipart-crlf.json relies on that. *Why:* a
   configuration edited on Windows must build what it builds with LF line
   ends. Regression test: `parser::tests::crlf_line_ends`.
+- **The status code is put into an intervention's log, not replaced in
+  it.** *C++:* the log of a disruptive rule message is a template with
+  `%d` where the status goes, and `Transaction::intervention` replaces
+  every `%d` of the line with the status, including those in
+  `msg`/`logdata` and in request data that macros put there. *Here:* the
+  line is kept in two parts and the status code goes between them when the
+  intervention is handed out; any other `%d` stays as written.
+  `RuleMessage::log` without a code writes `Access denied (phase N).` for
+  a disruptive message. *Why:* a client could rewrite the log line by
+  sending `%d`. Regression test:
+  `rule::message::tests::log_properties_and_parts`.
+- **A single valued variable has the origin of its current value.** *C++:*
+  every `AnchoredVariable::set` adds an origin and `unset` keeps them, so
+  MATCHED_VAR and MATCHED_VAR_NAME collect one origin per match in the
+  transaction, and a rule matching them reports all of them in `[ref]`
+  (CRS 932240: `v259,1v259,1…`). *Here:* setting a variable replaces its
+  value and origin, and unsetting clears both. ARGS_COMBINED_SIZE and
+  FILES_COMBINED_SIZE still carry the origins of every argument or file.
+  *Why:* memory grew with the number of matches, and the reference was
+  wrong. Regression test:
+  `variables::anchored_variable::tests::matched_var_has_the_origin_of_its_value`.
+- **A handed-out intervention leaves nothing behind.** *C++:*
+  `intervention::reset` after `msc_intervention` resets status and
+  `disruptive` but keeps `url` and `log`, so a `deny` in a later phase
+  after a `redirect` was handed out carries the redirect's URL (and is
+  answered as a redirect). *Here:* handing out clears the intervention,
+  and a disruptive action replaces whatever was pending; a status set by
+  `status` is still used by a later `deny`/`redirect`. *Why:* stale URL
+  and log leaked into later interventions. Regression test:
+  `intervention::tests::a_later_intervention_has_no_url_of_an_earlier_redirect`.
+- **Rules that only detect see a body up to its limit.** *C++:* with
+  `SecRequestBodyLimitAction Reject` (or `SecResponseBodyLimitAction
+  Reject`) and the engine not `On`, a piece that crosses the limit is
+  dropped whole, so DetectionOnly sees nothing of a body sent in one
+  piece. *Here:* the piece is kept up to the limit, as with
+  `ProcessPartial`; INBOUND_DATA_ERROR (OUTBOUND_DATA_ERROR) is 1; the
+  return value is unchanged (1); `On` still rejects with 403. *Why:*
+  DetectionOnly should show what `On` would block. Regression test:
+  `transaction::tests::detection_only_sees_the_body_up_to_the_limit`.
+- **Debug log wording: response body access and `redirect`.** *C++:*
+  "Response body is disabled, returning... 1" (a 0/1/2 code for on/off/not
+  set), and the redirect action is named "redirert". *Here:* "Response
+  body is disabled (SecResponseBodyAccess Off), returning..." or "(no
+  SecResponseBodyAccess)", and "redirect". *Why:* readable log; a typo.
+  Regression tests: `transaction::tests::response_body_disabled`,
+  `actions::disruptive::redirect::tests::redirect`.
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
