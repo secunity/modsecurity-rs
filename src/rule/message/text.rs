@@ -7,30 +7,43 @@ use crate::utils::string::{limit_to, to_hex_if_needed};
 
 impl RuleMessage<'_> {
     /// The log line of the message, with the optional `parts`. `code` is
-    /// the status code of a disruptive message; without one the line keeps
-    /// a `%d` placeholder for it.
+    /// the status code of a disruptive message (`Access denied with code
+    /// 403`); without one the line says `Access denied`.
     pub fn log(&self, t: &Transaction<'_>, parts: LogParts, code: Option<u16>) -> String {
-        let mut msg: Vec<u8> = Vec::with_capacity(2048);
+        let (mut line, after_code) = self.log_around_code(t, parts);
+        if let (true, Some(code)) = (self.is_disruptive, code) {
+            line.push_str(" with code ");
+            line.push_str(&code.to_string());
+        }
+        line.push_str(&after_code);
+        line
+    }
+
+    /// The log line of the message in two parts: the status code of a
+    /// disruptive message goes between them (`... Access denied` and
+    /// ` (phase 1). ...`). For a message that does not disrupt the line is
+    /// their concatenation.
+    pub(crate) fn log_around_code(&self, t: &Transaction<'_>, parts: LogParts) -> (String, String) {
+        let mut before: Vec<u8> = Vec::with_capacity(64);
         if parts.contains(LogParts::CLIENT) {
-            msg.extend_from_slice(format!("[client {}] ", t.http.client_ip_address).as_bytes());
+            before.extend_from_slice(format!("[client {}] ", t.http.client_ip_address).as_bytes());
         }
+        let mut after: Vec<u8> = Vec::with_capacity(2048);
         if self.is_disruptive {
-            msg.extend_from_slice(b"ModSecurity: Access denied with code ");
-            match code {
-                Some(code) => msg.extend_from_slice(code.to_string().as_bytes()),
-                None => msg.extend_from_slice(b"%d"),
-            }
-            msg.extend_from_slice(format!(" (phase {}). ", self.phase_number()).as_bytes());
+            before.extend_from_slice(b"ModSecurity: Access denied");
+            after.extend_from_slice(format!(" (phase {}). ", self.phase_number()).as_bytes());
         } else {
-            msg.extend_from_slice(b"ModSecurity: Warning. ");
+            before.extend_from_slice(b"ModSecurity: Warning. ");
         }
-        msg.extend_from_slice(&self.match_message());
-        msg.extend_from_slice(&Self::details(self, t));
+        after.extend_from_slice(&self.match_message());
+        after.extend_from_slice(&Self::details(self, t));
         if parts.contains(LogParts::ERROR_LOG_TAIL) {
-            msg.push(b' ');
-            msg.extend_from_slice(&Self::error_log_tail(t));
+            after.push(b' ');
+            after.extend_from_slice(&Self::error_log_tail(t));
         }
-        to_hex_if_needed(&msg, false)
+        // Escaping works byte by byte: escaping the parts apart is
+        // escaping the line.
+        (to_hex_if_needed(&before, false), to_hex_if_needed(&after, false))
     }
 
     /// The error log line: [`Self::log`] with the client address and the

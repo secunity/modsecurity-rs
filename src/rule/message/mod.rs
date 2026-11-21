@@ -270,6 +270,16 @@ mod tests {
             "{intervention}"
         );
 
+        // A `%d` of the rule's message (or of the request, through a macro)
+        // is text: only the status part of the line has the status code.
+        let (_, intervention) = logged(LogProperties::TEXT, "deny,status:403,log,msg:'100%d sure, %{ARGS.a} %d'");
+        let intervention = intervention.unwrap();
+        assert!(
+            intervention.starts_with("[client 192.0.2.1] ModSecurity: Access denied with code 403 (phase 1). "),
+            "{intervention}"
+        );
+        assert!(intervention.contains("[msg \"100%d sure, x %d\"]"), "{intervention}");
+
         // The bit values are fixed.
         assert_eq!(
             (
@@ -332,6 +342,10 @@ mod tests {
         assert_eq!((denial.rule_id(), denial.is_disruptive(), denial.message()), (Some(11), true, &b"blocked"[..]));
         assert_eq!(denial.severity(), None);
         assert_eq!(denial.operator(), Some("Rx"));
+        // Its log line has the status code given, or none.
+        let line = |code| denial.log(&t, LogParts::empty(), code);
+        assert!(line(Some(403)).starts_with("ModSecurity: Access denied with code 403 (phase 1). Matched "));
+        assert!(line(None).starts_with("ModSecurity: Access denied (phase 1). Matched "), "{}", line(None));
 
         // The callback gets the messages that do not interrupt.
         assert_eq!(*seen.lock().unwrap(), [(Some(10), b"SQL in ARGS:q".to_vec(), Some(2))]);

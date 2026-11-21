@@ -32,7 +32,7 @@ use crate::actions::disruptive::allow::AllowType;
 use crate::audit_log::{AuditLogStatus, Parts, PartsChange};
 use crate::collection::collections::Collections;
 use crate::instance::ModSecurity;
-use crate::intervention::Intervention;
+use crate::intervention::{Intervention, InterventionLog, PendingIntervention};
 use crate::phases::Phases;
 use crate::rule::message::RuleMessage;
 use crate::rule::{Rule, TransformationResults};
@@ -343,7 +343,7 @@ pub(crate) struct Outcome<'a> {
     pub(crate) rules_messages: Vec<RuleMessage<'a>>,
     /// The pending disruptive action, handed out by
     /// [`Transaction::intervention`].
-    pub(crate) intervention: Intervention,
+    pub(crate) intervention: PendingIntervention,
     /// Sticky flag set the first time a disruptive intervention is consumed
     /// through [`Transaction::intervention`].
     pub(crate) is_interrupted: bool,
@@ -462,7 +462,7 @@ impl<'a> Transaction<'a> {
             },
             outcome: Outcome {
                 rules_messages: Vec::new(),
-                intervention: Intervention::default(),
+                intervention: PendingIntervention::default(),
                 is_interrupted: false,
                 highest_severity_action: 255,
             },
@@ -796,10 +796,10 @@ impl<'a> Transaction<'a> {
                 if props.settings.request_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg!(self, 5, "Request body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
-                        self.outcome.intervention = Intervention {
+                        self.outcome.intervention = PendingIntervention {
                             status: 403,
                             url: None,
-                            log: Some("Request body limit is marked to reject the request".into()),
+                            log: Some(InterventionLog::Text("Request body limit is marked to reject the request")),
                             disruptive: true,
                         };
                     } else {
@@ -939,10 +939,10 @@ impl<'a> Transaction<'a> {
                 if props.settings.response_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg!(self, 5, "Response body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
-                        self.outcome.intervention = Intervention {
+                        self.outcome.intervention = PendingIntervention {
                             status: 403,
                             url: None,
-                            log: Some("Response body limit is marked to reject the request".into()),
+                            log: Some(InterventionLog::Text("Response body limit is marked to reject the request")),
                             disruptive: true,
                         };
                     } else {
@@ -1007,18 +1007,15 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    /// The pending disruptive intervention, if any, with `%d` in its log
-    /// replaced by the status code. Handing it out resets the status and
-    /// the disruptive flag (the url and log stay).
+    /// The pending disruptive intervention, if any, its log with the
+    /// status code. Handing it out resets the status and the disruptive
+    /// flag (the url and log stay).
     pub fn intervention(&mut self) -> Option<Intervention> {
         if !self.outcome.intervention.disruptive {
             return None;
         }
         self.outcome.is_interrupted = true;
-        let mut it = self.outcome.intervention.clone();
-        if let Some(log) = &mut it.log {
-            *log = log.replace("%d", &it.status.to_string());
-        }
+        let it = self.outcome.intervention.to_intervention();
         self.outcome.intervention.reset();
         Some(it)
     }

@@ -3,7 +3,7 @@
 use crate::actions::disruptive::allow::AllowType;
 use crate::audit_log::{AuditLogStatus, Parts, PartsChange};
 use crate::collection::Persistent;
-use crate::intervention::Intervention;
+use crate::intervention::{InterventionLog, PendingIntervention};
 use crate::rule::Rule;
 use crate::rule::message::{LogParts, RuleMessage};
 use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
@@ -96,12 +96,13 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
     pub fn disrupt(&mut self) {
         self.t.outcome.intervention.disruptive = true;
         self.rm.is_disruptive = true;
-        self.t.outcome.intervention.log = Some(self.rm.log(self.t, LogParts::CLIENT, None));
+        let (before_code, after_code) = self.rm.log_around_code(self.t, LogParts::CLIENT);
+        self.t.outcome.intervention.log = Some(InterventionLog::RuleMessage { before_code, after_code });
     }
 
     /// Drops the pending intervention (`pass`): status, URL and log.
     pub fn reset_intervention(&mut self) {
-        self.t.outcome.intervention = Intervention::default();
+        self.t.outcome.intervention = PendingIntervention::default();
     }
 
     /// The highest severity so far (`HIGHEST_SEVERITY`; 255 when none).

@@ -59,11 +59,11 @@ mod tests {
         assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (403, true));
         assert!(rm.is_disruptive);
         let log = t.outcome.intervention.log.clone().unwrap();
-        assert!(log.contains("ModSecurity: Access denied with code %d (phase 1)."), "{}", log);
+        assert!(log.render(403).contains("ModSecurity: Access denied with code 403 (phase 1)."), "{log:?}");
 
         Pass::new("pass").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Running action pass"));
-        assert_eq!(t.outcome.intervention, crate::intervention::Intervention::default());
+        assert_eq!(t.outcome.intervention, crate::intervention::PendingIntervention::default());
 
         // A status set before is kept.
         let s = Status::new("status", "404").unwrap();
