@@ -151,6 +151,11 @@ pub unsafe extern "C" fn ngx_http_modsecurity_header_filter(r: *mut ngx_http_req
 }
 
 fn header_filter(request: &Request<'_>) -> ngx_int_t {
+    // The response of a subrequest is not the response to the client: it
+    // passes untouched.
+    if request.is_subrequest() {
+        return next_header_filter(request);
+    }
     // XXX (C): if NOT_MODIFIED, do we need to process it at all? see
     // xslt_header_filter()
     //

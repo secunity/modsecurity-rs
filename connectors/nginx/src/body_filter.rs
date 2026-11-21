@@ -131,7 +131,9 @@ unsafe fn body_filter(request: &Request<'_>, input: *mut ngx_chain_t) -> ngx_int
             }
         }
     };
-    if input.is_null() {
+    // The output of a subrequest (an SSI include, `add_after_body`) passes
+    // untouched: the transaction is the main request's.
+    if input.is_null() || request.is_subrequest() {
         return next();
     }
     // SAFETY: the context lives until the request pool is destroyed, and

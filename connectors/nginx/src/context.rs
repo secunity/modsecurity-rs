@@ -171,10 +171,15 @@ impl Ctx {
     }
 
     /// The context of `request`, or null (`ngx_http_modsecurity_get_module_ctx`).
+    ///
+    /// A subrequest has none: the transaction is the client's request's,
+    /// and a subrequest (an `auth_request`, an SSI include) is not that
+    /// request. It shares the pool of its main request, so the lookup of
+    /// the pool cleanup below would find the main request's context.
     pub fn find(request: &Request<'_>) -> *mut Ctx {
         // SAFETY: this module is an HTTP module.
         let ctx = unsafe { request.module_ctx(ptr::addr_of!(ngx_http_modsecurity_module)) } as *mut Ctx;
-        if !ctx.is_null() {
+        if !ctx.is_null() || request.is_subrequest() {
             return ctx;
         }
         // refer <nginx>/src/http/modules/ngx_http_realip_module.c: if module

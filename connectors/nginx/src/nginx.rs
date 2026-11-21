@@ -368,6 +368,13 @@ impl<'r> Request<'r> {
         unsafe { for_each_header(&(*self.as_ptr()).headers_in.headers.part, |name, value| f(name, &bytes(value))) };
     }
 
+    /// Whether the request is a subrequest (of `auth_request`, SSI,
+    /// `add_before_body`, ...) rather than the request of the client.
+    pub fn is_subrequest(&self) -> bool {
+        // SAFETY: a read of a valid request.
+        unsafe { (*self.as_ptr()).main != self.as_ptr() }
+    }
+
     /// Whether nginx is serving an `error_page` for the request.
     pub fn error_page(&self) -> bool {
         // SAFETY: a read of a valid request.
