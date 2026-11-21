@@ -246,6 +246,62 @@ fn whole_file_and_statement_reads_are_identical() {
     assert!(failures.is_empty(), "{} of {} differ:\n{}", failures.len(), configs.len(), failures.join("\n\n"));
 }
 
+/// What directives get as their values: the white space and the quotes
+/// around a value are not part of it.
+#[test]
+fn values_without_what_surrounds_them() {
+    use crate::phases::Phases;
+    let conf = concat!(
+        "SecMarker END\n",
+        "SecMarker \"QUOTED\"\n",
+        "SecMarker 'SINGLE' # comment\n",
+        "SecMarker\t\"'BOTH'\"\n",
+        // Only the first space or tab separates a marker.
+        "SecMarker  SPACED\n",
+        "SecRuleRemoveById 1 2  4-5\n",
+        "SecRuleRemoveById  '7 8'  \n",
+        "SecRuleRemoveByTag  'a b' \n",
+        "SecRuleRemoveByMsg \" m \"\n",
+        // The closing quote is part of the value: it starts two bytes
+        // after the first space.
+        "SecWebAppId \"my app\"\n",
+        "SecComponentSignature \"sig/1\"\n",
+        "SecUploadDir  \"/tmp/a b\" \n",
+        "SecRule ARGS \"@rx a\" \"id:10,phase:1,pass,tag:t\"\n",
+        "SecRuleUpdateTargetByTag  \"' t '\" ARGS:x\n",
+        "SecRuleUpdateTargetById '10' ARGS:y\n",
+        // A tab after the separator is part of the value.
+        "SecRuleUpdateTargetByMsg \t'm' ARGS:z\n",
+    );
+    let mut d = Driver::new();
+    assert!(d.parse(conf, "t"), "{}", d.properties.parser_error);
+    let markers: Vec<&str> = d
+        .rules_set_phases
+        .for_phase(Phases::RequestHeaders)
+        .iter()
+        .filter_map(|e| e.as_marker().map(|m| m.name.as_str()))
+        .collect();
+    assert_eq!(markers, ["END", "QUOTED", "SINGLE", "BOTH", " SPACED"]);
+    let p = &d.properties;
+    let removed: Vec<u64> = (0..10).filter(|&id| p.exceptions.contains(id)).collect();
+    assert_eq!(removed, [1, 2, 4, 5, 7, 8]);
+    assert_eq!(p.exceptions.remove_rule_by_tag, ["a b"]);
+    assert_eq!(p.exceptions.remove_rule_by_msg, [" m "]);
+    assert_eq!(p.settings.sec_web_app_id.as_deref(), Some("my app\""));
+    assert_eq!(p.components, ["sig/1\""]);
+    assert_eq!(p.settings.upload_directory.as_deref(), Some("/tmp/a b"));
+    let by_tag: Vec<&str> = p.exceptions.variable_update_target_by_tag.iter().map(|(t, _)| t.as_str()).collect();
+    assert_eq!(by_tag, [" t "]);
+    let by_msg: Vec<&str> = p.exceptions.variable_update_target_by_msg.iter().map(|(m, _)| m.as_str()).collect();
+    assert_eq!(by_msg, ["\t'm'"]);
+    assert_eq!(p.exceptions.variable_update_target_by_id.for_rule(10).len(), 1);
+
+    // A double quote ends the list of `SecRuleRemoveById`.
+    let (n, err) = load("SecRuleRemoveById \"1 2  4-5\"\n", "t");
+    assert_eq!(n, -1);
+    assert!(err.contains("Invalid value for SecRuleRemoveById: \"1 2  4-5\""), "{err}");
+}
+
 /// The C API view of a load: the number of rules or -1, and the errors.
 fn load(rules: &str, reference: &str) -> (i32, String) {
     let mut r = crate::rules_set::RulesSet::new();
@@ -658,6 +714,17 @@ fn generated_lines(tmp: &str) -> Vec<String> {
         " abc # comment",
         " \"abc\" # comment",
         " \"abc\" x",
+        "   ",
+        " \t",
+        " \tabc",
+        "  \t \"abc\"",
+        "  \"a b\"  ",
+        " 'a b' ",
+        " \"'a'\"",
+        " \"' a '\"",
+        " ' a '",
+        " a\r",
+        " 'a",
     ];
     let mut lines = Vec::new();
     for setting in SETTINGS {
@@ -851,6 +918,38 @@ fn generated_lines(tmp: &str) -> Vec<String> {
         for v in CTL_VALUES {
             lines.push(format!("SecAction \"id:7,phase:1,pass,ctl:{name}{v}\""));
         }
+    }
+    // The values of the directives with a grammar of their own.
+    const SELECTORS: &[&str] = &[
+        " 7",
+        "  7",
+        "\t7",
+        " \t7",
+        "\t \t7",
+        " \"7\"",
+        "  \"7\"",
+        " \t\"7\"",
+        " '7'",
+        " \"'7'\"",
+        " ''",
+        " \"\"",
+        " '",
+        " \"'\"",
+        " \" 7 \"",
+        " \"' 7 '\"",
+        " 7-9",
+        " 'a'b'",
+        " a",
+        " \"a b\"",
+        " 'a",
+    ];
+    const RULE: &str = "SecRule ARGS \"@rx a\" \"id:7,phase:1,pass,tag:'a b',msg:'a b'\"\n";
+    for v in SELECTORS {
+        for by in ["Id", "Tag", "Msg"] {
+            lines.push(format!("{RULE}SecRuleUpdateTargetBy{by}{v} ARGS:x"));
+        }
+        lines.push(format!("{RULE}SecRuleUpdateActionById{v} \"t:lowercase\""));
+        lines.push(format!("SecRuleScript{v} \"id:8\""));
     }
     lines
 }
