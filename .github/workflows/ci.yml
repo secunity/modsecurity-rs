@@ -1,8 +1,8 @@
-# The checks of AGENT.md that need nothing but this repository: formatting,
+# The checks of CLAUDE.md that need nothing but this repository: formatting,
 # and clippy and the tests for the default, the minimal and the full
 # feature set. The differential test, the CRS suite, the fuzz targets and
 # the benchmarks need a C++ libmodsecurity build, nginx or a quiet machine,
-# and are run by hand (see AGENT.md).
+# and are run by hand (see CLAUDE.md).
 name: CI
 
 on:

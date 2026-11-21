@@ -17,7 +17,7 @@ from the C++ library, `MIGRATION.md`; for the rules of working on it,
 | `modsecurity-collections` | `crates/modsecurity-collections` | The persistent collections (`IP`, `SESSION`, `USER`, `GLOBAL`, `RESOURCE`) with an in-memory and an LMDB backend, and a transaction's `TX` variables. |
 | `modsecurity-types` | `crates/modsecurity-types` | What the crates above share with the engine: `VariableValue`, `VariableOrigin`, key exclusions, the debug log interface (`DebugSink`, `ms_dbg!`). |
 | `modsecurity-compat` | `crates/modsecurity-compat` | Code that reproduces a C or C++ library on purpose, because tests of the original ModSecurity depend on the result: a multimap that iterates like libstdc++'s, a JSON writer and parser that behave like yajl, C number parsing. |
-| `modsecurity-native` | `crates/modsecurity-native` | Safe wrappers of the C libraries: PCRE2, libxml2, LMDB, ssdeep, Lua helpers, libc. With `modsecurity-capi`, the only place with `unsafe`. |
+| `modsecurity-native` | `crates/modsecurity-native` | Safe wrappers of the C libraries: PCRE2, libxml2, LMDB, ssdeep, Lua helpers, libc. With `modsecurity-capi` and the nginx connector, the only places with `unsafe`. |
 | `modsecurity-capi` | `crates/modsecurity-capi` | The C API (`msc_*`) over the engine: builds `libmodsecurity.so.3`. |
 | `modsecurity-nginx` | `connectors/nginx` | The nginx module. It uses the engine's Rust API directly, not the C API. |
 | `libinjection` | `others/libinjection` | SQL injection and XSS detection, in Rust, used by `@detectSQLi` and `@detectXSS`. |
@@ -141,9 +141,10 @@ outcome; the caller reads it after the phase.
 
 ## Where the boundaries are
 
-- **`unsafe`** is only in `modsecurity-native` (calls into C libraries)
-  and `modsecurity-capi` (pointers from C callers). The engine crate
-  forbids it.
+- **`unsafe`** is only in `modsecurity-native` (calls into C libraries),
+  `modsecurity-capi` (pointers from C callers) and the nginx connector
+  (`connectors/nginx`, the nginx C structures; its handlers are safe code
+  on top of `nginx.rs`). The engine crate forbids it.
 - **The C API** is a thin layer: `crates/modsecurity-capi/src/` has one
   file per C object (`modsecurity.rs`, `rules_set.rs`, `transaction.rs`,
   `intervention.rs`), each converting arguments and calling the engine.

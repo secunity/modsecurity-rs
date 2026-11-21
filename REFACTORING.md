@@ -71,7 +71,8 @@ and 30 PL4 corpus iterations per run. Median transactions per second:
 These short, noisy runs show no large regression; they do not establish a
 general speedup or measure persistent-collection-heavy workloads.
 
-Checks used:
+Checks used (at the time; the `pm-aho-corasick` and `ipmatch-prefix-trie`
+features were removed later):
 
 ```sh
 cargo build --release --lib

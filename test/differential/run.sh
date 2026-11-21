@@ -14,7 +14,7 @@
 #        test/differential/run.sh
 # (CRS_DIR must contain crs-setup.conf and rules/; the Rust release cdylib is
 # built if needed.) FEATURES: extra cargo features for the Rust build (e.g.
-# pm-aho-corasick).
+# regex-dollar-endonly).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)

@@ -1,9 +1,10 @@
 # Restructuring plan
 
 Where the crate split stands, what is left, and how each step has been
-done so far. Updated on 2026-11-16 at commit `cf443a9`. `REFACTORING.md`
-has the details of every finished step; this file is the map and the
-to-do list.
+done so far. `REFACTORING.md` has the details of every finished step
+(and of the redesigns that followed the split: the compiled rule plan,
+the staged `inspection` API, rule ids as `u64`, ...); this file is the
+map of the split and what was decided against.
 
 ## Where things stand
 
@@ -27,15 +28,17 @@ because each one is verified on its own.
    the engine implementing it. Tests that need a whole transaction stay in
    the engine; the crate gets tests against a small fake context.
 
-Code that genuinely needs the engine stays there and says so. Two
-operators do (`@geoLookup` fills the `GEO` collection, `@inspectFile`
-runs Lua with the transaction); they reach it through
-`MatchContext::transaction()`. Likewise three actions (`setvar`, `exec`,
-`block`) use `ActionContext::engine()`.
+Code that genuinely needs the engine stays there and says so:
+`@inspectFile` (it runs Lua with the transaction) is an engine operator
+(`src/operators/inspect_file.rs`); `@geoLookup` moved to the operators
+crate once the `Context` trait offered the database and the `GEO`
+setter. Three actions (`setvar`, `exec`, `block`) use
+`ActionContext::engine()`.
 
 ## What is left
 
-Nothing is planned. The owner ended the restructuring here on 2026-11-16.
+The crate split ended on 2026-11-16. Later redesigns (see
+`REFACTORING.md`) are planned and recorded one at a time.
 
 ## Decided against
 
@@ -48,15 +51,15 @@ Nothing is planned. The owner ended the restructuring here on 2026-11-16.
   `AuditLogStatus`, ...) in `modsecurity-types`. `setvar`, `exec` and
   `block` stay in the engine regardless. Most actions are a few lines, so
   the gain is small next to the work.
-- **Typed errors everywhere.** 55 signatures return `Result<_, String>`.
-  No caller looks inside those strings: every one is printed as it is
+- **Typed errors everywhere.** Many signatures return `Result<_, String>`
+  where no caller looks inside the string: every one is printed as it is
   (the parser's error message, the C API's error string), and the
   regression tests compare the text. Enums would add types nobody
   matches on and a risk of changing the messages. The one place a
   string carried a signal (an empty error meaning "fails without a
   report", in the audit log setup) is typed now: `audit_log::SetupError`.
-  The remaining `Err(String::new())` (`@ipMatch` with an invalid list)
-  is a message that happens to be empty, as in C++.
+  Errors that callers do tell apart are enums (`StorageError`,
+  `Utf8Error`, `UrlEncodingError`, ...).
 
 ## Open items
 
@@ -69,14 +72,14 @@ Nothing is planned. The owner ended the restructuring here on 2026-11-16.
 
 ## Verification, and what was learned doing it
 
-The rules are in `AGENT.md`. These points cost time to find out:
+The rules are in `CLAUDE.md`. These points cost time to find out:
 
 - **The release profile is `lto = "fat"`, `codegen-units = 1`.** Without
   LTO each crate split cost about 1% of throughput; with thin LTO some
   still did. With fat LTO crate boundaries are free. A release build of
   the C library takes about 30 seconds.
 - **Benchmark with an A/A control.** Run the baseline library under two
-  names next to the candidate. On the machine used so far, the control
+  names next to the candidate (`build_variant.sh control HEAD~1`). On the machine used so far, the control
   agreed with itself to about 0.5% on an idle machine; under other load,
   gaps of 2% appeared and disappeared. Compare only runs from the same
   interleaved session.
@@ -99,5 +102,5 @@ The rules are in `AGENT.md`. These points cost time to find out:
   against the parent's build.
 - **Paths on the first machine** (set your own): the C++ tree for
   `CPP_TREE`, a CRS checkout for `CRS_DIR`, an nginx source tree, `go-ftw`
-  and `albedo` for `test/crs/run.sh`. `AGENT.md` and the scripts' headers
+  and `albedo` for `test/crs/run.sh`. `CLAUDE.md` and the scripts' headers
   say what each needs.
