@@ -1418,7 +1418,10 @@ order in a running nginx.
 
 Every function nginx calls in the connector runs under
 `nginx::catch_panic` (log, then a 500 or a configuration error), and every
-`msc_*` function under `capi::catch_panic` (its error value). The C API
+`msc_*` function under `capi::catch_panic` (its error value). A
+`CTransaction` wraps the engine's transaction with a `failed` flag: after a
+panic, later calls do nothing and `msc_intervention` reports a disruptive
+500 (fail closed). The C API
 crate denies `clippy::undocumented_unsafe_blocks`. `msc_new_transaction*`
 check for NULL, and `msc_rules_merge(x, x)` is a no-op returning 0.
 

@@ -41,6 +41,15 @@ impl ModSecurityIntervention {
         }
     }
 
+    /// Fills the caller's struct for a transaction that failed (a call on
+    /// it panicked): a disruptive 500, so the request is not let through
+    /// unchecked. The `log` is written like `fill_from` writes one.
+    pub(crate) fn fill_internal_error(&mut self) {
+        self.status = 500;
+        self.disruptive = 1;
+        self.log = strdup(b"ModSecurity: internal error: the transaction cannot be inspected further");
+    }
+
     /// Releases the strings and resets the struct to a cleaned intervention.
     pub(crate) fn free_and_clean(&mut self) {
         for p in [&mut self.url, &mut self.log] {

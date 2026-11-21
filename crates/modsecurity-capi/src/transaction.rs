@@ -9,9 +9,43 @@ use engine::Transaction;
 use std::ffi::{CStr, c_char, c_int, c_uchar, c_void};
 use std::ptr;
 
-/// The C API hands out transactions without a lifetime; the connector
-/// guarantees the `ModSecurity` and `RulesSet` outlive them.
-pub type CTransaction = Transaction<'static>;
+/// A transaction of the C API. It has no lifetime: the caller keeps the
+/// `ModSecurity` and `RulesSet` alive for as long as the transaction.
+pub struct CTransaction {
+    t: Transaction<'static>,
+    /// A call on the transaction panicked: its state is unknown, so every
+    /// later call does nothing, and `msc_intervention` reports a 500
+    /// (fail closed).
+    failed: bool,
+}
+
+impl CTransaction {
+    fn new(t: Transaction<'static>) -> *mut CTransaction {
+        Box::into_raw(Box::new(CTransaction { t, failed: false }))
+    }
+}
+
+/// Runs `f` on the transaction. `none` when there is none (NULL) or a call
+/// on it panicked before; a panic in `f` gives `none` and fails the
+/// transaction.
+fn run<R>(t: Option<&mut CTransaction>, none: R, f: impl FnOnce(&mut Transaction<'static>) -> R) -> R {
+    let Some(ct) = t else { return none };
+    if ct.failed {
+        return none;
+    }
+    let r = catch_panic(None, || Some(f(&mut ct.t)));
+    ct.failed = r.is_none();
+    r.unwrap_or(none)
+}
+
+/// Runs `f`, which only reads, on the transaction: `none` when there is
+/// none, a call on it panicked before, or `f` panics.
+fn read<R: Copy>(t: Option<&CTransaction>, none: R, f: impl FnOnce(&Transaction<'static>) -> R) -> R {
+    match t {
+        Some(ct) if !ct.failed => catch_panic(none, || f(&ct.t)),
+        _ => none,
+    }
+}
 
 /// The bytes of a C string (none for NULL).
 ///
@@ -62,7 +96,7 @@ pub unsafe extern "C" fn msc_new_transaction(
         let Some((ms, rules)) = (unsafe { instance(ms, rules) }) else {
             return ptr::null_mut();
         };
-        Box::into_raw(Box::new(Transaction::new(ms, rules, Some(Box::new(CLogData(log_cb_data))))))
+        CTransaction::new(Transaction::new(ms, rules, Some(Box::new(CLogData(log_cb_data)))))
     })
 }
 
@@ -81,18 +115,8 @@ pub unsafe extern "C" fn msc_new_transaction_with_id(
             return ptr::null_mut();
         };
         let id = String::from_utf8_lossy(id);
-        Box::into_raw(Box::new(Transaction::with_id(ms, rules, &id, Some(Box::new(CLogData(log_cb_data))))))
+        CTransaction::new(Transaction::with_id(ms, rules, &id, Some(Box::new(CLogData(log_cb_data)))))
     })
-}
-
-macro_rules! tx {
-    ($t:expr) => {
-        // SAFETY: the C API contract: null or a live transaction pointer.
-        match unsafe { $t.as_mut() } {
-            Some(t) => t,
-            None => return 0,
-        }
-    };
 }
 
 /// # Safety
@@ -105,8 +129,8 @@ pub unsafe extern "C" fn msc_process_connection(
     server: *const c_char,
     s_port: c_int,
 ) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: C strings or null (caller contract).
         let (client, server) = unsafe { (bytes(client), bytes(server)) };
         // A number that is not a port is reported as port 0.
@@ -130,8 +154,8 @@ pub unsafe extern "C" fn msc_process_uri(
     protocol: *const c_char,
     http_version: *const c_char,
 ) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: C strings or null (caller contract).
         let (uri, protocol, http_version) = unsafe { (bytes(uri), bytes(protocol), bytes(http_version)) };
         t.process_uri(uri, protocol, http_version);
@@ -143,8 +167,9 @@ pub unsafe extern "C" fn msc_process_uri(
 /// As above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_process_request_headers(t: *mut CTransaction) -> c_int {
-    catch_panic(0, || {
-        tx!(t).process_request_headers();
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
+        t.process_request_headers();
         1
     })
 }
@@ -153,8 +178,9 @@ pub unsafe extern "C" fn msc_process_request_headers(t: *mut CTransaction) -> c_
 /// As above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_process_request_body(t: *mut CTransaction) -> c_int {
-    catch_panic(0, || {
-        tx!(t).process_request_body();
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
+        t.process_request_body();
         1
     })
 }
@@ -163,8 +189,8 @@ pub unsafe extern "C" fn msc_process_request_body(t: *mut CTransaction) -> c_int
 /// As above; `buf` points to `len` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_append_request_body(t: *mut CTransaction, buf: *const c_uchar, len: usize) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: `buf` points to `len` bytes, or is null (caller contract).
         let buf = unsafe { slice(buf, len) };
         c_int::from(t.append_request_body(buf))
@@ -175,8 +201,8 @@ pub unsafe extern "C" fn msc_append_request_body(t: *mut CTransaction, buf: *con
 /// As above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_request_body_from_file(t: *mut CTransaction, path: *const c_char) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: a C string or null (caller contract).
         let p = String::from_utf8_lossy(unsafe { bytes(path) });
         // 0 when the file cannot be read.
@@ -192,8 +218,8 @@ pub unsafe extern "C" fn msc_process_response_headers(
     code: c_int,
     protocol: *const c_char,
 ) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: a C string or null (caller contract).
         let p = String::from_utf8_lossy(unsafe { bytes(protocol) });
         t.process_response_headers(u16::try_from(code).unwrap_or(0), &p);
@@ -205,8 +231,9 @@ pub unsafe extern "C" fn msc_process_response_headers(
 /// As above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_process_response_body(t: *mut CTransaction) -> c_int {
-    catch_panic(0, || {
-        tx!(t).process_response_body();
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
+        t.process_response_body();
         1
     })
 }
@@ -215,8 +242,8 @@ pub unsafe extern "C" fn msc_process_response_body(t: *mut CTransaction) -> c_in
 /// As above; `buf` points to `len` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_append_response_body(t: *mut CTransaction, buf: *const c_uchar, len: usize) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: `buf` points to `len` bytes, or is null (caller contract).
         let buf = unsafe { slice(buf, len) };
         c_int::from(t.append_response_body(buf))
@@ -231,8 +258,8 @@ pub unsafe extern "C" fn msc_add_request_header(
     key: *const c_uchar,
     value: *const c_uchar,
 ) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: C strings or null (caller contract).
         let (key, value) = unsafe { (bytes(key as *const c_char), bytes(value as *const c_char)) };
         t.add_request_header(key, value);
@@ -250,8 +277,8 @@ pub unsafe extern "C" fn msc_add_n_request_header(
     value: *const c_uchar,
     len_value: usize,
 ) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: `key` and `value` point to `len_key` and `len_value`
         // bytes, or are null (caller contract).
         let (key, value) = unsafe { (slice(key, len_key), slice(value, len_value)) };
@@ -268,8 +295,8 @@ pub unsafe extern "C" fn msc_add_response_header(
     key: *const c_uchar,
     value: *const c_uchar,
 ) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: C strings or null (caller contract).
         let (key, value) = unsafe { (bytes(key as *const c_char), bytes(value as *const c_char)) };
         t.add_response_header(key, value);
@@ -287,8 +314,8 @@ pub unsafe extern "C" fn msc_add_n_response_header(
     value: *const c_uchar,
     len_value: usize,
 ) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: `key` and `value` point to `len_key` and `len_value`
         // bytes, or are null (caller contract).
         let (key, value) = unsafe { (slice(key, len_key), slice(value, len_value)) };
@@ -315,13 +342,16 @@ pub unsafe extern "C" fn msc_transaction_cleanup(t: *mut CTransaction) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_intervention(t: *mut CTransaction, it: *mut ModSecurityIntervention) -> c_int {
     catch_panic(0, || {
-        let t = tx!(t);
-        // SAFETY: valid out-pointer per contract.
-        let Some(it) = (unsafe { it.as_mut() }) else {
+        // SAFETY: the C API contract: null or a live transaction pointer,
+        // and a valid out-pointer.
+        let (Some(ct), Some(it)) = (unsafe { (t.as_mut(), it.as_mut()) }) else {
             return 0;
         };
-        if let Some(pending) = t.intervention() {
+        if let Some(pending) = run(Some(&mut *ct), None, |t| t.intervention()) {
             it.fill_from(&pending);
+        }
+        if ct.failed {
+            it.fill_internal_error();
         }
         // The C API returns the caller's field (filled above when there was one).
         it.disruptive
@@ -344,11 +374,8 @@ pub unsafe extern "C" fn msc_intervention_cleanup(it: *mut ModSecurityInterventi
 /// `t` as above. The returned string is `malloc`ed (free with `free`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_get_response_body(t: *const CTransaction) -> *const c_char {
-    catch_panic(ptr::null(), || {
-        // SAFETY: live transaction per contract.
-        let Some(t) = (unsafe { t.as_ref() }) else {
-            return ptr::null();
-        };
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    read(unsafe { t.as_ref() }, ptr::null(), |t| {
         // A C string: the raw bytes of the body up to the first NUL byte.
         intervention::strdup(t.response_body())
     })
@@ -358,22 +385,25 @@ pub unsafe extern "C" fn msc_get_response_body(t: *const CTransaction) -> *const
 /// `t` as above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_get_response_body_length(t: *mut CTransaction) -> usize {
-    catch_panic(0, || tx!(t).response_body_length())
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| t.response_body_length())
 }
 
 /// # Safety
 /// `t` as above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_get_request_body_length(t: *mut CTransaction) -> usize {
-    catch_panic(0, || tx!(t).request_body_length())
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| t.request_body_length())
 }
 
 /// # Safety
 /// `t` as above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_process_logging(t: *mut CTransaction) -> c_int {
-    catch_panic(0, || {
-        tx!(t).process_logging();
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
+        t.process_logging();
         1
     })
 }
@@ -382,9 +412,10 @@ pub unsafe extern "C" fn msc_process_logging(t: *mut CTransaction) -> c_int {
 /// `t` as above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_update_status_code(t: *mut CTransaction, status: c_int) -> c_int {
-    catch_panic(0, || {
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // A number that is not a status code is recorded as 0.
-        tx!(t).update_status_code(u16::try_from(status).unwrap_or(0));
+        t.update_status_code(u16::try_from(status).unwrap_or(0));
         1
     })
 }
@@ -393,8 +424,8 @@ pub unsafe extern "C" fn msc_update_status_code(t: *mut CTransaction, status: c_
 /// `t` as above; `hostname` is a C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_set_request_hostname(t: *mut CTransaction, hostname: *const c_uchar) -> c_int {
-    catch_panic(0, || {
-        let t = tx!(t);
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    run(unsafe { t.as_mut() }, 0, |t| {
         // SAFETY: a C string or null (caller contract).
         let h = String::from_utf8_lossy(unsafe { bytes(hostname as *const c_char) });
         t.set_request_host_name(&h);
@@ -406,10 +437,8 @@ pub unsafe extern "C" fn msc_set_request_hostname(t: *mut CTransaction, hostname
 /// `t` as above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_get_rules_messages_size(t: *const CTransaction) -> usize {
-    catch_panic(0, || {
-        // SAFETY: live transaction per contract.
-        unsafe { t.as_ref() }.map(|t| t.rule_messages().len()).unwrap_or(0)
-    })
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    read(unsafe { t.as_ref() }, 0, |t| t.rule_messages().len())
 }
 
 /// # Safety
@@ -420,11 +449,8 @@ pub unsafe extern "C" fn msc_get_rules_messages_rule_ids(
     ids: *mut i64,
     ids_len: usize,
 ) -> usize {
-    catch_panic(0, || {
-        // SAFETY: live transaction per contract.
-        let Some(t) = (unsafe { t.as_ref() }) else {
-            return 0;
-        };
+    // SAFETY: the C API contract: null or a live transaction pointer.
+    read(unsafe { t.as_ref() }, 0, |t| {
         if ids.is_null() || ids_len == 0 {
             return 0;
         }
@@ -446,6 +472,29 @@ pub unsafe extern "C" fn msc_get_rules_messages_rule_ids(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_transaction_that_panicked_fails_closed() {
+        let ms = crate::modsecurity::msc_init();
+        let rules = crate::rules_set::msc_create_rules_set();
+        // SAFETY: valid pointers; what is created is released.
+        unsafe {
+            let t = msc_new_transaction(ms, rules, ptr::null_mut());
+            let mut it = ModSecurityIntervention::default();
+            assert_eq!(msc_intervention(t, &mut it), 0);
+            assert_eq!(run(t.as_mut(), 0, |_| panic!("a bug")), 0);
+            // Every later call does nothing; the intervention is a 500.
+            assert_eq!(msc_process_request_headers(t), 0);
+            assert_eq!(msc_get_rules_messages_size(t), 0);
+            assert_eq!(msc_intervention(t, &mut it), 1);
+            assert_eq!(it.status, 500);
+            assert!(!it.log.is_null());
+            msc_intervention_cleanup(&mut it);
+            msc_transaction_cleanup(t);
+            crate::rules_set::msc_rules_cleanup(rules);
+            crate::modsecurity::msc_cleanup(ms);
+        }
+    }
 
     #[test]
     fn a_transaction_needs_an_engine_and_rules() {

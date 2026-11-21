@@ -735,10 +735,13 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   process. *Here:* the nginx connector answers the request with 500
   (configuration callbacks fail) and logs "ModSecurity: internal error in
   <handler>: <message>"; every `msc_*` function returns its error value
-  (NULL, -1 with an error string, or 0; `msc_intervention`: not
-  disruptive). *Why:* one bad request must not kill a worker and every
-  request it serves. Regression test: `modsecurity-capi`
-  `tests::a_panic_gives_the_error_value`.
+  (NULL, -1 with an error string, or 0), and a transaction a call panicked
+  on fails closed: later calls on it do nothing and `msc_intervention`
+  reports a disruptive 500. *Why:* one bad request must not kill a worker
+  and every request it serves, nor let the request through unchecked.
+  Regression tests: `modsecurity-capi`
+  `tests::a_panic_gives_the_error_value`,
+  `transaction::tests::a_transaction_that_panicked_fails_closed`.
 - **nginx: subrequests are not the client's request.** *C++:* the header
   and body filters of a subrequest (`auth_request`, SSI) find the main
   request's transaction, so an `auth_request` answering 204 runs phase 3
