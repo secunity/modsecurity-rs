@@ -26,7 +26,7 @@ pub fn process_intervention(ctx: &mut Ctx, request: &Request<'_>, early_log: boo
     // logging to nginx error log can be disable by setting
     // `modsecurity_use_error_log` to off
     if conf.use_error_log != 0 {
-        let log = it.log.as_deref().map_or(&b"(no log message was specified)"[..], str::as_bytes);
+        let log = it.log.as_bytes();
         request.log().error(NGX_LOG_ERR as ngx_uint_t, log);
     }
 

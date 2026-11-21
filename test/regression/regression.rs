@@ -201,9 +201,7 @@ fn actions(r: &mut Status, t: &mut Transaction<'_>, server_log: &Mutex<String>) 
         if let Some(u) = &it.url {
             r.location.push_str(&String::from_utf8_lossy(u));
         }
-        if let Some(l) = &it.log {
-            server_log.lock().unwrap().push_str(l);
-        }
+        server_log.lock().unwrap().push_str(&it.log);
     }
 }
 

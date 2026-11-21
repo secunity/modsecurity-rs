@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn interventions_as_responses() {
-        let it = |status, url: Option<&[u8]>| Intervention { status, url: url.map(<[u8]>::to_vec), log: None };
+        let it = |status, url: Option<&[u8]>| Intervention { status, url: url.map(<[u8]>::to_vec), log: String::new() };
         let r: Response<()> = it(403, None).to_response().unwrap();
         assert_eq!(r.status(), StatusCode::FORBIDDEN);
         assert!(r.headers().is_empty());

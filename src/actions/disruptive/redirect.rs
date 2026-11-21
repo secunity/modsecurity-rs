@@ -63,7 +63,7 @@ mod tests {
         assert!(rm.is_disruptive);
         let it = t.intervention().unwrap();
         assert_eq!((it.status, it.url.as_deref()), (302, Some(&b"https://www.example.com/"[..])));
-        assert!(it.log.is_some());
+        assert!(!it.log.is_empty());
 
         // A 301..307 status set before is kept, others are replaced.
         t.outcome.intervention.set_status(301);

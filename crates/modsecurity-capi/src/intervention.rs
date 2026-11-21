@@ -28,17 +28,15 @@ impl Default for ModSecurityIntervention {
 
 impl ModSecurityIntervention {
     /// Fills the caller's struct for `msc_intervention` with a disruptive
-    /// intervention: `url` and `log` are only written when there is one to
-    /// copy, and the caller's `disruptive` field is what the C API returns.
+    /// intervention: `log` is always written, `url` only when there is one,
+    /// and the caller's `disruptive` field is what the C API returns.
     pub(crate) fn fill_from(&mut self, it: &Intervention) {
         if let Some(url) = &it.url {
             self.url = strdup(url);
         }
         self.disruptive = 1;
         self.status = it.status.into();
-        if let Some(log) = &it.log {
-            self.log = strdup(log.as_bytes());
-        }
+        self.log = strdup(it.log.as_bytes());
     }
 
     /// Fills the caller's struct for a transaction that failed (a call on
@@ -94,7 +92,7 @@ mod tests {
         assert!(c.url.is_null() && c.log.is_null());
         assert_eq!((c.status, c.disruptive), (200, 0));
 
-        let it = Intervention { status: 302, url: Some(b"/\xff\x00tail".to_vec()), log: Some("denied".into()) };
+        let it = Intervention { status: 302, url: Some(b"/\xff\x00tail".to_vec()), log: "denied".into() };
         c.fill_from(&it);
         assert_eq!((c.status, c.disruptive), (302, 1));
         // Raw bytes are kept, up to the first NUL byte.
@@ -108,10 +106,10 @@ mod tests {
     }
 
     #[test]
-    fn fill_keeps_caller_strings_when_absent() {
-        // url/log are only overwritten when the intervention has one.
+    fn fill_keeps_the_caller_url_when_absent() {
+        // url is only overwritten when the intervention has one.
         let mut c = ModSecurityIntervention { url: strdup(b"caller"), ..Default::default() };
-        c.fill_from(&Intervention { status: 403, url: None, log: None });
+        c.fill_from(&Intervention { status: 403, url: None, log: "denied".into() });
         // SAFETY: allocated above.
         assert_eq!(unsafe { CStr::from_ptr(c.url) }.to_bytes(), b"caller");
         c.free_and_clean();

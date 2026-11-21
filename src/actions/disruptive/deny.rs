@@ -59,7 +59,7 @@ mod tests {
         assert!(t.outcome.intervention.is_disruptive() && rm.is_disruptive);
         let it = t.outcome.intervention.clone().take().unwrap();
         assert_eq!(it.status, 403);
-        let log = it.log.unwrap();
+        let log = it.log;
         assert!(log.contains("ModSecurity: Access denied with code 403 (phase 1)."), "{log}");
 
         Pass::new("pass").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));

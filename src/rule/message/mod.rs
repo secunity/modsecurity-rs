@@ -235,7 +235,7 @@ mod tests {
         t.process_connection("192.0.2.1", 1, "127.0.0.1", 80);
         t.process_uri(b"/?a=x", b"GET", b"1.1");
         t.process_request_headers();
-        let intervention = t.intervention().and_then(|it| it.log);
+        let intervention = t.intervention().map(|it| it.log);
         drop(t);
         let lines = seen.lock().unwrap().clone();
         (lines, intervention)

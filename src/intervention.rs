@@ -11,7 +11,7 @@ pub struct Intervention {
     /// The redirect target (`redirect` action), as raw bytes.
     pub url: Option<Vec<u8>>,
     /// The log message (`[client ...] ModSecurity: Access denied ...`).
-    pub log: Option<String>,
+    pub log: String,
 }
 
 /// The log of a pending intervention.
@@ -83,7 +83,7 @@ impl PendingIntervention {
     pub(crate) fn take(&mut self) -> Option<Intervention> {
         match std::mem::take(self) {
             PendingIntervention::Disruptive { status, url, log } => {
-                Some(Intervention { status, url, log: Some(log.render(status)) })
+                Some(Intervention { status, url, log: log.render(status) })
             }
             other => {
                 *self = other;
@@ -110,7 +110,7 @@ mod tests {
         p.disrupt(302, Some(b"/a".to_vec()), InterventionLog::Text("x"));
         p.set_status(301);
         let it = p.take().unwrap();
-        assert_eq!((it.status, it.url.as_deref(), it.log.as_deref()), (301, Some(&b"/a"[..]), Some("x")));
+        assert_eq!((it.status, it.url.as_deref(), it.log.as_str()), (301, Some(&b"/a"[..]), "x"));
         assert_eq!(p, PendingIntervention::None);
     }
 
@@ -137,6 +137,6 @@ mod tests {
         t.process_request_body();
         let deny = t.intervention().unwrap();
         assert_eq!((deny.status, deny.url), (403, None));
-        assert!(deny.log.unwrap().contains("[id \"2\"]"));
+        assert!(deny.log.contains("[id \"2\"]"));
     }
 }
