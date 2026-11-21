@@ -166,16 +166,6 @@ pub fn rule_engine_state_string(i: Option<RuleEngine>) -> &'static str {
     }
 }
 
-/// The number some debug messages print for an on/off setting: 0 for
-/// on, 1 for off and 2 when no directive set it.
-pub fn config_boolean_code(i: Option<bool>) -> i32 {
-    match i {
-        Some(true) => 0,
-        Some(false) => 1,
-        None => 2,
-    }
-}
-
 pub fn config_xml_parse_xml_into_args_string(i: Option<ParseXmlIntoArgs>) -> &'static str {
     match i {
         Some(ParseXmlIntoArgs::On) => "True",
@@ -438,8 +428,7 @@ mod tests {
 
     #[test]
     fn c_display_values() {
-        // The numbers and texts printed in the logs.
-        assert_eq!([Some(true), Some(false), None].map(config_boolean_code), [0, 1, 2]);
+        // The texts printed in the logs.
         assert_eq!(rule_engine_state_string(None), "PropertyNotSet/DetectionOnly");
         assert_eq!(config_xml_parse_xml_into_args_string(Some(ParseXmlIntoArgs::On)), "True");
     }

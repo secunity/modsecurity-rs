@@ -37,7 +37,7 @@ use crate::phases::Phases;
 use crate::rule::message::RuleMessage;
 use crate::rule::{Rule, TransformationResults};
 use crate::rules_set::RulesSet;
-use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine, config_boolean_code};
+use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine};
 use crate::utils::string::{is_space, split, ssplit};
 use crate::variables::anchored_set_variable::AnchoredSetVariable;
 use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
@@ -917,12 +917,11 @@ impl<'a> Transaction<'a> {
 
         let props = &self.rules.properties;
         if props.settings.sec_response_body_access != Some(true) {
-            crate::ms_dbg!(
-                self,
-                4,
-                "Response body is disabled, returning... {}",
-                config_boolean_code(props.settings.sec_response_body_access)
-            );
+            let setting = match props.settings.sec_response_body_access {
+                Some(_) => "SecResponseBodyAccess Off",
+                None => "no SecResponseBodyAccess",
+            };
+            crate::ms_dbg!(self, 4, "Response body is disabled ({}), returning...", setting);
             return;
         }
 
@@ -1194,6 +1193,22 @@ mod tests {
         interrupted |= t.intervention().is_some();
         t.process_response_body();
         (t.rule_messages().iter().filter_map(|m| m.rule_id()).collect(), interrupted)
+    }
+
+    /// Why the response body is not inspected, in words.
+    #[test]
+    fn response_body_disabled() {
+        use crate::actions::block::test_support::{has_log, rules};
+        for (access, said) in
+            [("SecResponseBodyAccess Off\n", "SecResponseBodyAccess Off"), ("", "no SecResponseBodyAccess")]
+        {
+            let ms = ModSecurity::new();
+            let mut rules = rules();
+            rules.load(&format!("SecRuleEngine On\n{access}")).unwrap();
+            let mut t = Transaction::new(&ms, &rules, None);
+            t.process_response_body();
+            assert!(has_log(&t, &format!("Response body is disabled ({said}), returning...")), "{said}");
+        }
     }
 
     /// With `Reject` and an engine that only detects, the rules see the
