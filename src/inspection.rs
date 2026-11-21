@@ -173,6 +173,12 @@ impl<'a> RequestBody<'a> {
         self.0.proceed(RequestBody)
     }
 
+    /// Whether the body went past `SecRequestBodyLimit`: the rules see no
+    /// more of it, so the rest need not be written.
+    pub fn limit_reached(&self) -> bool {
+        self.0.0.request_body_limit_reached()
+    }
+
     /// The end of the request body (phase 2). The request can go to the
     /// application.
     pub fn finish(mut self) -> Result<ResponseHead<'a>, Blocked<'a>> {
@@ -232,6 +238,12 @@ impl<'a> ResponseBody<'a> {
     pub fn write(mut self, piece: &[u8]) -> Result<Self, Blocked<'a>> {
         self.0.0.append_response_body(piece);
         self.0.proceed(ResponseBody)
+    }
+
+    /// Whether the body went past `SecResponseBodyLimit`: the rules see
+    /// no more of it, so the rest need not be written.
+    pub fn limit_reached(&self) -> bool {
+        self.0.0.response_body_limit_reached()
     }
 
     /// The end of the response body (phase 4). The response can be sent;

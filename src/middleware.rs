@@ -23,14 +23,20 @@
 //!
 //! `examples/axum` in the repository is a complete server.
 //!
-//! Bodies: the request body is read completely before the inner service is
-//! called, as nginx reads it for the connector, so put a body size limit in
-//! front of the middleware. The inner service gets it back in the same body
-//! type, rebuilt from the bytes read (any body type that converts from
-//! [`Bytes`], such as axum's `Body` or [`Full`]). A request body that cannot
-//! be read is answered with 400, a response body with 502. The response
-//! body is buffered only when `SecResponseBodyAccess` is `On` and the rule
-//! engine is not off; otherwise it streams through.
+//! Bodies: the middleware reads a body frame by frame and gives each piece
+//! to the transaction, up to the end of the body or until the body goes
+//! past its limit (`SecRequestBodyLimit`, `SecResponseBodyLimit`): the
+//! rules see no more of it then. A limit that rejects interrupts the
+//! exchange there; otherwise the rules of the phase run, and the body goes
+//! on as an [`InspectedBody`]: the frames read, then the rest, read as it
+//! is polled. So the middleware holds at most the part of a body the rules
+//! inspect (the whole body when no limit is set). The inner service gets
+//! the request body as an `InspectedBody` of the request's body type (axum
+//! routers accept any body). A request body that cannot be read before
+//! phase 2 is answered with 400, a response body with 502; an error after
+//! that reaches the reader of the body. The response body is inspected
+//! only when `SecResponseBodyAccess` is `On` and the rule engine is not
+//! off; otherwise it streams through.
 //!
 //! The middleware's error type is the inner service's: it adds no errors
 //! of its own (axum requires infallible services).
@@ -38,26 +44,79 @@
 //! The addresses of the connection come from a [`Connection`] request
 //! extension, which the server inserts.
 
+use std::collections::VecDeque;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, ready};
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use http::{Request, Response, StatusCode};
-use http_body::Body;
+use http_body::{Body, Frame, SizeHint};
 use http_body_util::{BodyExt, Either, Full};
 use tower_layer::Layer;
 use tower_service::Service;
 
-use crate::inspection::{Blocked, Inspection};
+use crate::inspection::{self, Blocked, Inspection};
 use crate::instance::ModSecurity;
 use crate::rules_set::RulesSet;
 
-/// The response body: buffered by the middleware (its own responses, and
-/// inspected bodies), or the inner service's.
-pub type ResponseBody<B> = Either<Full<Bytes>, B>;
+/// The response body: the middleware's own responses, or the inner
+/// service's body.
+pub type ResponseBody<B> = Either<Full<Bytes>, InspectedBody<B>>;
+
+/// A body passed on after inspection: the frames the middleware read, then
+/// the rest of the body, which is read only as it is polled.
+pub struct InspectedBody<B> {
+    read: VecDeque<Frame<Bytes>>,
+    /// The rest of the body; `None` once it ended.
+    rest: Option<Pin<Box<B>>>,
+}
+
+impl<B> InspectedBody<B> {
+    /// The body of the frames `read`, then of `rest`.
+    fn new(read: VecDeque<Frame<Bytes>>, rest: Option<Pin<Box<B>>>) -> Self {
+        InspectedBody { read, rest }
+    }
+}
+
+impl<B: Body> Body for InspectedBody<B> {
+    type Data = Bytes;
+    type Error = B::Error;
+
+    fn poll_frame(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, B::Error>>> {
+        let this = self.get_mut();
+        if let Some(frame) = this.read.pop_front() {
+            return Poll::Ready(Some(Ok(frame)));
+        }
+        let Some(rest) = this.rest.as_mut() else {
+            return Poll::Ready(None);
+        };
+        match ready!(rest.as_mut().poll_frame(cx)) {
+            Some(frame) => Poll::Ready(Some(frame.map(|f| f.map_data(|mut d| d.copy_to_bytes(d.remaining()))))),
+            None => {
+                this.rest = None;
+                Poll::Ready(None)
+            }
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.read.is_empty() && self.rest.as_ref().is_none_or(|rest| rest.is_end_stream())
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        let read: u64 = self.read.iter().filter_map(Frame::data_ref).map(|d| d.len() as u64).sum();
+        let rest = self.rest.as_ref().map_or_else(|| SizeHint::with_exact(0), |rest| rest.size_hint());
+        let mut hint = SizeHint::new();
+        if let Some(upper) = rest.upper() {
+            hint.set_upper(upper.saturating_add(read));
+        }
+        hint.set_lower(rest.lower().saturating_add(read));
+        hint
+    }
+}
 
 /// The client and server addresses of a request, given to the middleware
 /// as a request extension. Without it, the connection phase sees both
@@ -100,12 +159,13 @@ pub struct ModSecurityService<S> {
 
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for ModSecurityService<S>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
+    S: Service<Request<InspectedBody<ReqBody>>, Response = Response<ResBody>> + Clone + Send + 'static,
     S::Future: Send,
     S::Error: Send + 'static,
-    ReqBody: Body + From<Bytes> + Send + 'static,
+    ReqBody: Body + Send + 'static,
     ReqBody::Data: Send,
-    ResBody: Body<Data = Bytes> + Send + 'static,
+    ResBody: Body + Send + 'static,
+    ResBody::Data: Send,
 {
     type Response = Response<ResponseBody<ResBody>>;
     type Error = S::Error;
@@ -140,6 +200,67 @@ fn empty<B>(status: StatusCode) -> Response<ResponseBody<B>> {
     response
 }
 
+/// The stage of an exchange that takes a body.
+trait BodyStage<'a>: Sized {
+    fn write(self, piece: &[u8]) -> Result<Self, Blocked<'a>>;
+    fn limit_reached(&self) -> bool;
+}
+
+impl<'a> BodyStage<'a> for inspection::RequestBody<'a> {
+    fn write(self, piece: &[u8]) -> Result<Self, Blocked<'a>> {
+        inspection::RequestBody::write(self, piece)
+    }
+
+    fn limit_reached(&self) -> bool {
+        inspection::RequestBody::limit_reached(self)
+    }
+}
+
+impl<'a> BodyStage<'a> for inspection::ResponseBody<'a> {
+    fn write(self, piece: &[u8]) -> Result<Self, Blocked<'a>> {
+        inspection::ResponseBody::write(self, piece)
+    }
+
+    fn limit_reached(&self) -> bool {
+        inspection::ResponseBody::limit_reached(self)
+    }
+}
+
+/// Why a body was not read to its end or its limit.
+enum Unread<'a, St> {
+    /// The rules interrupted the exchange (a limit that rejects).
+    Blocked(Blocked<'a>),
+    /// The body failed.
+    Failed(St),
+}
+
+/// What was read of a body: the stage after it, the frames read, and the
+/// rest of the body (`None` when it ended).
+type Read<St, B> = (St, VecDeque<Frame<Bytes>>, Option<Pin<Box<B>>>);
+
+/// Gives `body` to `stage` frame by frame, until its end or until it goes
+/// past its limit.
+async fn read_body<'a, St: BodyStage<'a>, B: Body>(
+    mut stage: St,
+    mut body: Pin<Box<B>>,
+) -> Result<Read<St, B>, Unread<'a, St>> {
+    let mut read = VecDeque::new();
+    while !stage.limit_reached() {
+        let Some(frame) = body.frame().await else {
+            return Ok((stage, read, None));
+        };
+        let Ok(frame) = frame else {
+            return Err(Unread::Failed(stage));
+        };
+        let frame = frame.map_data(|mut d| d.copy_to_bytes(d.remaining()));
+        if let Some(data) = frame.data_ref() {
+            stage = stage.write(data).map_err(Unread::Blocked)?;
+        }
+        read.push_back(frame);
+    }
+    Ok((stage, read, Some(body)))
+}
+
 async fn inspect<S, ReqBody, ResBody>(
     engine: &ModSecurity,
     rules: &RulesSet,
@@ -147,9 +268,9 @@ async fn inspect<S, ReqBody, ResBody>(
     request: Request<ReqBody>,
 ) -> Result<Response<ResponseBody<ResBody>>, S::Error>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    ReqBody: Body + From<Bytes>,
-    ResBody: Body<Data = Bytes>,
+    S: Service<Request<InspectedBody<ReqBody>>, Response = Response<ResBody>>,
+    ReqBody: Body,
+    ResBody: Body,
 {
     let unknown = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0));
     let c = request.extensions().get::<Connection>().copied();
@@ -161,35 +282,42 @@ where
     };
 
     let (parts, body) = request.into_parts();
-    let Ok(body) = body.collect().await.map(|b| b.to_bytes()) else {
-        request_body.abort(StatusCode::BAD_REQUEST.as_u16());
-        return Ok(empty(StatusCode::BAD_REQUEST));
+    let (request_body, read, rest) = match read_body(request_body, Box::pin(body)).await {
+        Ok(read) => read,
+        Err(Unread::Blocked(blocked)) => return Ok(intercepted(blocked)),
+        Err(Unread::Failed(stage)) => {
+            stage.abort(StatusCode::BAD_REQUEST.as_u16());
+            return Ok(empty(StatusCode::BAD_REQUEST));
+        }
     };
-    let response_head = match request_body.write(&body).and_then(|stage| stage.finish()) {
+    let response_head = match request_body.finish() {
         Ok(stage) => stage,
         Err(blocked) => return Ok(intercepted(blocked)),
     };
 
-    let response = inner.call(Request::from_parts(parts, ReqBody::from(body))).await?;
+    let response = inner.call(Request::from_parts(parts, InspectedBody::new(read, rest))).await?;
     let response_body = match response_head.response(&response) {
         Ok(stage) => stage,
         Err(blocked) => return Ok(intercepted(blocked)),
     };
 
-    // An inspected body is read completely; another one streams through.
-    let (response, verdict) = if response_body.is_inspected() {
-        let (parts, body) = response.into_parts();
-        let Ok(body) = body.collect().await.map(|b| b.to_bytes()) else {
-            response_body.abort(StatusCode::BAD_GATEWAY.as_u16());
-            return Ok(empty(StatusCode::BAD_GATEWAY));
-        };
-        let verdict = response_body.write(&body).and_then(|stage| stage.finish());
-        (Response::from_parts(parts, Either::Left(Full::new(body))), verdict)
+    // An inspected body is read up to its limit; another one streams
+    // through.
+    let (parts, body) = response.into_parts();
+    let (read, rest, verdict) = if response_body.is_inspected() {
+        match read_body(response_body, Box::pin(body)).await {
+            Ok((stage, read, rest)) => (read, rest, stage.finish()),
+            Err(Unread::Blocked(blocked)) => return Ok(intercepted(blocked)),
+            Err(Unread::Failed(stage)) => {
+                stage.abort(StatusCode::BAD_GATEWAY.as_u16());
+                return Ok(empty(StatusCode::BAD_GATEWAY));
+            }
+        }
     } else {
-        (response.map(Either::Right), response_body.finish())
+        (VecDeque::new(), Some(Box::pin(body)), response_body.finish())
     };
     match verdict {
-        Ok(()) => Ok(response),
+        Ok(()) => Ok(Response::from_parts(parts, Either::Right(InspectedBody::new(read, rest)))),
         Err(blocked) => Ok(intercepted(blocked)),
     }
 }
@@ -215,7 +343,7 @@ mod tests {
         content_type: &'static str,
     }
 
-    impl Service<Request<Full<Bytes>>> for Echo {
+    impl<B: Body<Error: std::fmt::Debug>> Service<Request<B>> for Echo {
         type Response = Response<Full<Bytes>>;
         type Error = std::convert::Infallible;
         type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
@@ -224,7 +352,7 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
-        fn call(&mut self, request: Request<Full<Bytes>>) -> Self::Future {
+        fn call(&mut self, request: Request<B>) -> Self::Future {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let body = block_on(request.into_body().collect()).unwrap().to_bytes();
             let response = Response::builder().header("Content-Type", self.content_type).body(Full::new(body));
@@ -335,13 +463,19 @@ mod tests {
         let mut service = ModSecurityLayer::new(Arc::new(ModSecurity::new()), Arc::new(rules)).layer(echo);
         block_on(std::future::poll_fn(|cx| Service::<Request<Full<Bytes>>>::poll_ready(&mut service, cx))).unwrap();
         let response = block_on(service.call(post("/", "x"))).unwrap();
-        assert!(matches!(response.body(), Either::Right(_)));
+        assert!(matches!(response.body(), Either::Right(body) if body.read.is_empty()));
     }
 
-    /// A body that yields its bytes, or fails.
-    enum TestBody {
-        Data(Option<Bytes>),
-        Broken,
+    /// A body that yields its pieces, then fails or ends.
+    struct TestBody {
+        pieces: VecDeque<&'static [u8]>,
+        fails: bool,
+    }
+
+    impl TestBody {
+        fn new(pieces: &[&'static [u8]], fails: bool) -> Self {
+            TestBody { pieces: pieces.iter().copied().collect(), fails }
+        }
     }
 
     impl Body for TestBody {
@@ -351,17 +485,12 @@ mod tests {
         fn poll_frame(
             mut self: Pin<&mut Self>,
             _cx: &mut Context<'_>,
-        ) -> Poll<Option<Result<http_body::Frame<Bytes>, std::io::Error>>> {
-            Poll::Ready(match &mut *self {
-                TestBody::Data(data) => data.take().map(|b| Ok(http_body::Frame::data(b))),
-                TestBody::Broken => Some(Err(std::io::Error::other("broken"))),
+        ) -> Poll<Option<Result<Frame<Bytes>, std::io::Error>>> {
+            Poll::Ready(match self.pieces.pop_front() {
+                Some(piece) => Some(Ok(Frame::data(Bytes::from_static(piece)))),
+                None if self.fails => Some(Err(std::io::Error::other("broken"))),
+                None => None,
             })
-        }
-    }
-
-    impl From<Bytes> for TestBody {
-        fn from(b: Bytes) -> Self {
-            TestBody::Data(Some(b))
         }
     }
 
@@ -369,7 +498,7 @@ mod tests {
     #[derive(Clone)]
     struct BrokenResponse(Arc<AtomicUsize>);
 
-    impl Service<Request<TestBody>> for BrokenResponse {
+    impl<B> Service<Request<B>> for BrokenResponse {
         type Response = Response<TestBody>;
         type Error = std::convert::Infallible;
         type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
@@ -378,9 +507,9 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
-        fn call(&mut self, _request: Request<TestBody>) -> Self::Future {
+        fn call(&mut self, _request: Request<B>) -> Self::Future {
             self.0.fetch_add(1, Ordering::SeqCst);
-            let response = Response::builder().header("Content-Type", "text/plain").body(TestBody::Broken);
+            let response = Response::builder().header("Content-Type", "text/plain").body(TestBody::new(&[], true));
             std::future::ready(Ok(response.unwrap()))
         }
     }
@@ -397,10 +526,50 @@ mod tests {
             block_on(service.call(Request::post("/").body(body).unwrap())).unwrap().status().as_u16()
         };
         // The request body: 400, without calling the service.
-        assert_eq!(status(TestBody::Broken), 400);
+        assert_eq!(status(TestBody::new(&[b"x"], true)), 400);
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         // The response body: 502.
-        assert_eq!(status(TestBody::from(Bytes::from_static(b"x"))), 502);
+        assert_eq!(status(TestBody::new(&[b"x"], false)), 502);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// Sends a request with `body` through `rules`: the status, and the
+    /// body the inner service answered (it echoes the request body).
+    fn send_body(conf: &str, body: TestBody) -> (u16, Vec<u8>) {
+        let mut rules = RulesSet::new();
+        rules
+            .load(&format!(
+                "SecRuleEngine On\nSecRequestBodyAccess On\nSecResponseBodyAccess On\n\
+                 SecResponseBodyMimeType text/plain\n{conf}"
+            ))
+            .unwrap();
+        let echo = Echo { calls: Arc::new(AtomicUsize::new(0)), content_type: "text/plain" };
+        let mut service = ModSecurityLayer::new(Arc::new(ModSecurity::new()), Arc::new(rules)).layer(echo);
+        block_on(std::future::poll_fn(|cx| Service::<Request<TestBody>>::poll_ready(&mut service, cx))).unwrap();
+        let response = block_on(service.call(Request::post("/").body(body).unwrap())).unwrap();
+        let status = response.status().as_u16();
+        (status, block_on(response.into_body().collect()).unwrap().to_bytes().to_vec())
+    }
+
+    /// A body past a limit that rejects is not read further: the request
+    /// is answered before the rest (here, a failure) is read.
+    #[test]
+    fn a_body_over_a_rejecting_limit_is_not_read_further() {
+        let conf = "SecRequestBodyLimit 5\nSecRequestBodyLimitAction Reject\n";
+        assert_eq!(send_body(conf, TestBody::new(&[b"abc", b"defgh"], true)).0, 403);
+        // Within the limit, the failure is read: 400.
+        assert_eq!(send_body(conf, TestBody::new(&[b"abc"], true)).0, 400);
+    }
+
+    /// Past a limit that processes partially, the rules see the body up to
+    /// the limit and the whole body goes on, to the service and back.
+    #[test]
+    fn a_body_over_a_partial_limit_goes_through_whole() {
+        let conf = "SecRequestBodyLimit 5\nSecRequestBodyLimitAction ProcessPartial\n\
+                    SecResponseBodyLimit 5\nSecResponseBodyLimitAction ProcessPartial\n\
+                    SecRule REQUEST_BODY \"!@streq abcde\" \"id:1,phase:2,deny,status:401\"\n\
+                    SecRule RESPONSE_BODY \"!@streq abcde\" \"id:2,phase:4,deny,status:500\"\n";
+        let body = TestBody::new(&[b"abc", b"defgh", b"ij"], false);
+        assert_eq!(send_body(conf, body), (200, b"abcdefghij".to_vec()));
     }
 }

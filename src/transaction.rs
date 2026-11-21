@@ -964,6 +964,18 @@ impl<'a> Transaction<'a> {
         self.append_body(BodyDirection::Response, buf)
     }
 
+    /// Whether the request body went past `SecRequestBodyLimit`: no more
+    /// of it is kept for the rules.
+    pub(crate) fn request_body_limit_reached(&self) -> bool {
+        self.vars.inbound_data_error.value() == b"1"
+    }
+
+    /// Whether the response body went past `SecResponseBodyLimit`: no
+    /// more of it is kept for the rules.
+    pub(crate) fn response_body_limit_reached(&self) -> bool {
+        self.vars.outbound_data_error.value() == b"1"
+    }
+
     /// The response body kept so far.
     pub fn response_body(&self) -> &[u8] {
         &self.http.response_body
