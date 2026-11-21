@@ -151,14 +151,15 @@ mod tests {
         crate::operators::operator::test_support::eval_in(op, t, b"")
     }
 
-    /// `@validateDTD file`, as the engine builds it.
-    fn dtd_op(file: &str) -> Operator {
-        crate::operators::operator::instantiate("validateDTD", file).unwrap()
+    /// `@validateDTD file`, as the engine builds it for a rule of `x.conf`.
+    fn dtd_op(file: &str) -> Result<Operator, String> {
+        crate::operators::operator::instantiate("validateDTD", file, "x.conf").unwrap()
     }
 
-    /// `@validateSchema file`, as the engine builds it.
-    fn schema_op(file: &str) -> Operator {
-        crate::operators::operator::instantiate("validateSchema", file).unwrap()
+    /// `@validateSchema file`, as the engine builds it for a rule of
+    /// `x.conf`.
+    fn schema_op(file: &str) -> Result<Operator, String> {
+        crate::operators::operator::instantiate("validateSchema", file, "x.conf").unwrap()
     }
 
     #[test]
@@ -170,12 +171,10 @@ mod tests {
         let mut rules = new_rules();
         rules.properties.settings.sec_xml_external_entity = Some(true);
         let dtd_path = format!("{}SoapEnvelope.dtd", DATA);
-        let mut dtd = dtd_op(&dtd_path);
-        dtd.init("x.conf").unwrap();
-        let mut bad_dtd = dtd_op(&format!("{}SoapEnvelope-bad.dtd", DATA));
-        bad_dtd.init("x.conf").unwrap();
-        let mut missing = dtd_op("missing.dtd");
-        assert!(missing.init("x.conf").unwrap_err().starts_with("XML: File not found: missing.dtd. Looking at:"));
+        let dtd = dtd_op(&dtd_path).unwrap();
+        let bad_dtd = dtd_op(&format!("{}SoapEnvelope-bad.dtd", DATA)).unwrap();
+        let missing = dtd_op("missing.dtd");
+        assert!(missing.unwrap_err().starts_with("XML: File not found: missing.dtd. Looking at:"));
 
         let mut t = xml(&ms, &rules, envelope);
         assert!(!validate(&dtd, &mut t));
@@ -195,8 +194,7 @@ mod tests {
         let soap = br#"<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><x/></soap:Body></soap:Envelope>"#;
         let xsd_path = format!("{}SoapEnvelope.xsd", DATA);
-        let mut xsd = schema_op(&xsd_path);
-        xsd.init("x.conf").unwrap();
+        let xsd = schema_op(&xsd_path).unwrap();
         let mut t = xml(&ms, &rules, soap);
         assert!(!validate(&xsd, &mut t), "{:?}", log(&rules));
         assert!(log(&rules).contains(&format!("XML: Successfully validated payload against Schema: {}", xsd_path)));
@@ -207,8 +205,7 @@ mod tests {
         )));
 
         let bad_xsd_path = format!("{}SoapEnvelope-bad.xsd", DATA);
-        let mut bad_xsd = schema_op(&bad_xsd_path);
-        bad_xsd.init("x.conf").unwrap();
+        let bad_xsd = schema_op(&bad_xsd_path).unwrap();
         let mut t = xml(&ms, &rules, soap);
         assert!(validate(&bad_xsd, &mut t));
         assert!(log(&rules).contains(&format!(
@@ -234,8 +231,7 @@ mod tests {
         let ms = ModSecurity::new();
         let mut rules = new_rules();
         rules.properties.settings.sec_xml_external_entity = Some(false);
-        let mut dtd = dtd_op(&format!("{}SoapEnvelope.dtd", DATA));
-        dtd.init("x.conf").unwrap();
+        let dtd = dtd_op(&format!("{}SoapEnvelope.dtd", DATA)).unwrap();
         let mut t = xml(&ms, &rules, body);
         // the DTD cannot be loaded either: the loader is libxml2-wide
         assert!(validate(&dtd, &mut t));

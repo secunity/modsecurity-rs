@@ -1,7 +1,7 @@
 //! The `@pm` operator: matches when the input contains one of a set of
 //! phrases (case insensitive).
 
-use crate::{Context, Operator, Param, Resources};
+use crate::{Context, Operator, Param};
 
 /// Strips optional surrounding quotes and decodes the `|hex|` blocks and
 /// the `\:`, `\;`, `\\` and `\"` escapes. On any invalid sequence the
@@ -78,36 +78,24 @@ pub fn parse_pm_content(op_parm: &[u8]) -> Vec<u8> {
 #[derive(Debug)]
 pub(crate) struct Matcher {
     patterns: Vec<Vec<u8>>,
-    ac: Option<aho_corasick::AhoCorasick>,
+    ac: aho_corasick::AhoCorasick,
 }
 
 impl Matcher {
-    fn new() -> Self {
-        Matcher { patterns: Vec::new(), ac: None }
-    }
-
-    pub(crate) fn add_pattern(&mut self, pattern: &[u8]) {
-        // No phrase is added once the automaton is built, and empty
-        // phrases are ignored.
-        if self.ac.is_none() && !pattern.is_empty() {
-            self.patterns.push(pattern.to_vec());
-        }
-    }
-
-    fn prepare(&mut self) {
-        if self.ac.is_some() {
-            return;
-        }
+    /// The matcher of `phrases`.
+    pub(crate) fn new<'a>(phrases: impl IntoIterator<Item = &'a [u8]>) -> Self {
+        // Empty phrases are ignored.
+        let patterns: Vec<Vec<u8>> = phrases.into_iter().filter(|p| !p.is_empty()).map(<[u8]>::to_vec).collect();
         let ac = aho_corasick::AhoCorasick::builder()
             .ascii_case_insensitive(true)
             .match_kind(aho_corasick::MatchKind::Standard)
-            .build(&self.patterns)
+            .build(&patterns)
             .expect("aho-corasick automaton within default size limits");
-        self.ac = Some(ac);
+        Matcher { patterns, ac }
     }
 
     fn find(&self, input: &[u8]) -> Option<(usize, &[u8])> {
-        let m = self.ac.as_ref()?.find(input)?;
+        let m = self.ac.find(input)?;
         Some((m.end() - 1, &self.patterns[m.pattern().as_usize()]))
     }
 }
@@ -115,24 +103,22 @@ impl Matcher {
 #[derive(Debug)]
 pub struct Pm {
     name: &'static str,
-    pub(crate) param: Param,
-    pub(crate) p: Matcher,
+    param: Param,
+    p: Matcher,
 }
 
 impl Pm {
-    pub fn new(param: Param) -> Self {
-        Self::with_name("Pm", param)
+    pub fn new(param: Param) -> Result<Self, String> {
+        let op_parm = parse_pm_content(&param.literal);
+        // The phrases are the white space separated words of the parameter.
+        let p = Matcher::new(op_parm.split(|c| modsecurity_compat::chars::is_space(*c)));
+        Ok(Self::with_matcher("Pm", param, p))
     }
 
-    /// An operator named `name` in messages: used by `@pmFromFile` /
-    /// `@pmf`.
-    pub fn with_name(name: &'static str, param: Param) -> Self {
-        Pm { name, param, p: Matcher::new() }
-    }
-
-    /// Makes the matcher ready for searching once all patterns were added.
-    pub(crate) fn prepare(&mut self) {
-        self.p.prepare();
+    /// An operator named `name` in messages that searches the phrases of
+    /// `p`: used by `@pmFromFile` / `@pmf`.
+    pub(crate) fn with_matcher(name: &'static str, param: Param, p: Matcher) -> Self {
+        Pm { name, param, p }
     }
 
     /// Searches `input` for the first phrase; a match is logged with its
@@ -164,18 +150,6 @@ impl Operator for Pm {
         Some(&self.param)
     }
 
-    fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
-        let op_parm = parse_pm_content(&self.param.literal);
-
-        // The phrases are the white space separated words of the parameter.
-        for a in op_parm.split(|c| modsecurity_compat::chars::is_space(*c)).filter(|a| !a.is_empty()) {
-            self.p.add_pattern(a);
-        }
-
-        self.prepare();
-        Ok(())
-    }
-
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
         self.evaluate_pm(cx, input)
     }
@@ -200,12 +174,7 @@ mod tests {
     }
 
     fn matcher_of(patterns: &[&[u8]]) -> Matcher {
-        let mut m = Matcher::new();
-        for p in patterns {
-            m.add_pattern(p);
-        }
-        m.prepare();
-        m
+        Matcher::new(patterns.iter().copied())
     }
 
     /// Case insensitive, the first match is the one that ends first, and
@@ -238,8 +207,7 @@ mod tests {
 
     #[test]
     fn pm_matches() {
-        let mut op = Pm::new(Param::from_text("foo bar"));
-        op.init("", &crate::test_support::LocalFiles).unwrap();
+        let op = Pm::new(Param::from_text("foo bar")).unwrap();
         assert!(eval(&op, b"xxBARxx"));
         assert!(!eval(&op, b"baz"));
     }

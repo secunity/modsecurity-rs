@@ -149,15 +149,6 @@ impl Operator {
         }
     }
 
-    /// Compiles or loads what the parameter names, when the rule is read;
-    /// `file` is the configuration file of the rule.
-    pub fn init(&mut self, file: &str) -> Result<(), String> {
-        match self {
-            Operator::Matcher(op) => op.init(file, &EngineResources),
-            Operator::InspectFile(op) => op.init(file),
-        }
-    }
-
     /// Whether `input` matches (before the negation of `!@op`).
     pub fn evaluate(&self, cx: &mut MatchContext<'_, '_, '_>, input: &[u8]) -> bool {
         match self {
@@ -218,19 +209,21 @@ impl RuleOperator {
     }
 }
 
-/// The operator named `op` (case
-/// insensitive, without the `@`) with a literal parameter.
-pub fn instantiate(op: &str, param_str: &str) -> Option<Operator> {
-    instantiate_with_param(op, &RunTimeString::from_text(param_str))
+/// Builds the operator named `op` (case insensitive, without the `@`)
+/// with a literal parameter, compiling or loading what the parameter
+/// names; `file` is the configuration file of the rule. `None` when there
+/// is no such operator, `Some(Err(message))` when it cannot be built.
+pub fn instantiate(op: &str, param_str: &str, file: &str) -> Option<Result<Operator, String>> {
+    instantiate_with_param(op, &RunTimeString::from_text(param_str), file)
 }
 
 /// Like [`instantiate`] but with an already parsed (possibly macro bearing)
 /// parameter, as built by the configuration parser.
-pub fn instantiate_with_param(op: &str, param: &RunTimeString) -> Option<Operator> {
+pub fn instantiate_with_param(op: &str, param: &RunTimeString, file: &str) -> Option<Result<Operator, String>> {
     let param = Param::new(param.evaluate_static(), param.contains_macro());
     Some(match op.to_ascii_lowercase().as_str() {
-        "inspectfile" => Operator::InspectFile(InspectFile::new(param)),
-        name => Operator::Matcher(modsecurity_operators::instantiate(name, param)?),
+        "inspectfile" => InspectFile::new(param, file).map(Operator::InspectFile),
+        name => modsecurity_operators::instantiate(name, param, file, &EngineResources)?.map(Operator::Matcher),
     })
 }
 

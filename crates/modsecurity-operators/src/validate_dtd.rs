@@ -3,7 +3,7 @@
 //! the DTD cannot be loaded or the document is missing, not well formed or
 //! not valid.
 
-use crate::{Context, Operator, Param};
+use crate::{Context, Operator, Param, Resources};
 
 #[derive(Debug)]
 pub struct ValidateDTD {
@@ -13,12 +13,22 @@ pub struct ValidateDTD {
 }
 
 impl ValidateDTD {
-    pub fn new(param: Param) -> Self {
-        ValidateDTD {
-            param,
-            #[cfg(feature = "libxml2")]
-            resource: String::new(),
-        }
+    /// Finds the file `param` names; `file` is the configuration file of
+    /// the rule.
+    #[cfg(feature = "libxml2")]
+    pub fn new(param: Param, file: &str, resources: &dyn Resources) -> Result<Self, String> {
+        let name = param.literal_lossy();
+        let lookup = resources.find(&name, file);
+        let Some(resource) = lookup.path else {
+            return Err(format!("XML: File not found: {}. {}", name, lookup.looked_at));
+        };
+        Ok(ValidateDTD { param, resource })
+    }
+
+    /// Without libxml2 the file is not looked for.
+    #[cfg(not(feature = "libxml2"))]
+    pub fn new(param: Param, _file: &str, _resources: &dyn Resources) -> Result<Self, String> {
+        Ok(ValidateDTD { param })
     }
 }
 
@@ -29,17 +39,6 @@ impl Operator for ValidateDTD {
 
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
-    }
-
-    #[cfg(feature = "libxml2")]
-    fn init(&mut self, file: &str, resources: &dyn crate::Resources) -> Result<(), String> {
-        let param = self.param.literal_lossy();
-        let lookup = resources.find(&param, file);
-        let Some(resource) = lookup.path else {
-            return Err(format!("XML: File not found: {}. {}", param, lookup.looked_at));
-        };
-        self.resource = resource;
-        Ok(())
     }
 
     /// Without libxml2 the operator logs that it is not implemented and

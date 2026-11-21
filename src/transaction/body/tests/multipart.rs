@@ -427,13 +427,12 @@ mod regression_dump {
                 }
             }
             let (name, param) = op.split_once(' ').unwrap_or((op, ""));
-            let mut o: Operator = match name {
+            let o: Operator = match name {
                 "@validateDTD" | "@validateSchema" => {
-                    crate::operators::operator::instantiate(&name[1..], param).unwrap()
+                    crate::operators::operator::instantiate(&name[1..], param, "x.json").unwrap().unwrap()
                 }
                 _ => continue,
             };
-            o.init("x.json").unwrap();
             let mut rm = crate::rule::message::RuleMessage::new(&rule);
             println!(
                 "OP {} -> {}",

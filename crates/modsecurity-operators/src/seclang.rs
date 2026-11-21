@@ -124,7 +124,8 @@ mod tests {
             if op.not_supported.is_some() || op.name == "inspectFile" {
                 continue;
             }
-            assert!(crate::instantiate(op.name, crate::Param::from_text("1")).is_some(), "{n}");
+            let param = crate::Param::from_text("1");
+            assert!(crate::instantiate(op.name, param, "", &crate::test_support::LocalFiles).is_some(), "{n}");
         }
         assert_eq!(seclang_operator("pmf").unwrap().name, "pmFromFile");
         assert_eq!(seclang_operator("validateHash").unwrap().not_supported, Some("ValidateHash"));

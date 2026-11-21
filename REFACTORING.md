@@ -1353,3 +1353,16 @@ which each had a copy of that parser). A transaction keeps the rules
 removed by `ctl:ruleRemoveById` as one list of ranges instead of a list of
 ids and a list of ranges.
 
+
+## Operators are built ready
+
+An operator was made in two steps: `X::new(param)`, then a fallible
+`Operator::init(file, resources)` that compiled the regular expression or
+loaded the file. Between the two the value existed half built, and each
+operator had its own answer for being evaluated in that state. Construction
+is fallible instead: those constructors return `Result<Self, String>` with
+the messages `init` had, and take the configuration file name and the
+`Resources` when they need them. `instantiate` returns
+`Option<Result<_, String>>` (`None`: no such operator), in the operators
+crate and in the engine, and `@inspectFile` is built the same way. `@rx` and
+`@rxGlobal` are one type, `Rx`, with two constructors.

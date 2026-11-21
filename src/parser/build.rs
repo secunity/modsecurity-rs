@@ -350,15 +350,13 @@ impl Builder<'_, '_> {
                 (op.name, param)
             }
         };
-        let Some(o2) = instantiate_with_param(name, &param) else {
-            return self.fail(&format!("Unknown operator: {}", name));
+        let o2 = match instantiate_with_param(name, &param, &self.file_name()) {
+            None => return self.fail(&format!("Unknown operator: {}", name)),
+            Some(Err(error)) => return self.fail(&error),
+            Some(Ok(o2)) => o2,
         };
         let mut op = RuleOperator::new(o2, param);
         op.negated = o.negated;
-        let file = self.file_name();
-        if let Err(error) = op.op.init(&file) {
-            return self.fail(&error);
-        }
         Ok(op)
     }
 

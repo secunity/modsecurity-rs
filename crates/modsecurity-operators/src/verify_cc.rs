@@ -2,18 +2,22 @@
 //! offset of the input, and a match counts when it passes the Luhn
 //! check.
 
-use crate::{Context, Operator, Param, Resources};
+use crate::{Context, Operator, Param};
 use modsecurity_native::regex::{Regex, Subject};
 
 #[derive(Debug)]
 pub struct VerifyCC {
     param: Param,
-    re: Option<Regex>,
+    re: Regex,
 }
 
 impl VerifyCC {
-    pub fn new(param: Param) -> Self {
-        VerifyCC { param, re: None }
+    pub fn new(param: Param) -> Result<Self, String> {
+        // `PCRE2_DOTALL | PCRE2_MULTILINE`; the pattern ends at its first
+        // NUL byte.
+        // A pattern that does not compile fails without an error message.
+        let re = Regex::compile(&param.literal, false, true).map_err(|_| String::new())?;
+        Ok(VerifyCC { param, re })
     }
 
     /// Luhn Mod-10 Method (ISO 2894/ANSI 4.13). Only the
@@ -58,20 +62,8 @@ impl Operator for VerifyCC {
         Some(&self.param)
     }
 
-    fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
-        // `PCRE2_DOTALL | PCRE2_MULTILINE`; the pattern ends at its first
-        // NUL byte.
-        // A pattern that does not compile fails without an error message.
-        self.re = Some(Regex::compile(&self.param.literal, false, true).map_err(|_| String::new())?);
-        Ok(())
-    }
-
     fn evaluate(&self, cx: &mut dyn Context, i: &[u8]) -> bool {
-        // Without a successful init() there is no pattern, and nothing
-        // matches.
-        let Some(re) = self.re.as_ref() else {
-            return false;
-        };
+        let re = &self.re;
         let subject = Subject::new(i);
         for offset in 0..i.len() {
             // If there was no match, then we are done.
@@ -118,11 +110,9 @@ mod tests {
 
     #[test]
     fn verify_cc() {
-        let mut op = VerifyCC::new(Param::from_text("\\d{13,16}"));
-        op.init("", &crate::test_support::LocalFiles).unwrap();
+        let op = VerifyCC::new(Param::from_text("\\d{13,16}")).unwrap();
         assert!(eval(&op, b"cc: 4111111111111111 x"));
         assert!(!eval(&op, b"cc: 4111111111112 x"));
-        let mut bad = VerifyCC::new(Param::from_text("(("));
-        assert!(bad.init("", &crate::test_support::LocalFiles).is_err());
+        assert_eq!(VerifyCC::new(Param::from_text("((")).unwrap_err(), "");
     }
 }

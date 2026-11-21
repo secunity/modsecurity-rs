@@ -2,24 +2,29 @@
 //! of the listed addresses or networks.
 
 use crate::ip_set::IpSet;
-use crate::{Context, Operator, Param, Resources};
+use crate::{Context, Operator, Param};
 
 #[derive(Debug)]
 pub struct IpMatch {
     name: &'static str,
-    pub(crate) param: Param,
-    pub(crate) tree: IpSet,
+    param: Param,
+    tree: IpSet,
 }
 
 impl IpMatch {
-    pub fn new(param: Param) -> Self {
-        Self::with_name("IpMatch", param)
+    pub fn new(param: Param) -> Result<Self, String> {
+        let mut tree = IpSet::new();
+        // An invalid list fails without a message.
+        if !tree.add_from_buffer(&param.literal) {
+            return Err(String::new());
+        }
+        Ok(Self::with_set("IpMatch", param, tree))
     }
 
-    /// An operator named `name` in messages: used by `@ipMatchFromFile` /
-    /// `@ipMatchF`.
-    pub fn with_name(name: &'static str, param: Param) -> Self {
-        IpMatch { name, param, tree: IpSet::new() }
+    /// An operator named `name` in messages that matches the addresses of
+    /// `tree`: used by `@ipMatchFromFile` / `@ipMatchF`.
+    pub(crate) fn with_set(name: &'static str, param: Param, tree: IpSet) -> Self {
+        IpMatch { name, param, tree }
     }
 }
 
@@ -30,11 +35,6 @@ impl Operator for IpMatch {
 
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
-    }
-
-    fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
-        // An invalid list fails without a message.
-        if self.tree.add_from_buffer(&self.param.literal) { Ok(()) } else { Err(String::new()) }
     }
 
     fn evaluate(&self, _cx: &mut dyn Context, input: &[u8]) -> bool {
@@ -49,14 +49,12 @@ mod tests {
 
     #[test]
     fn ip_match() {
-        let mut op = IpMatch::new(Param::from_text("127.0.0.1,192.168.0.0/24,::1"));
-        op.init("", &crate::test_support::LocalFiles).unwrap();
+        let op = IpMatch::new(Param::from_text("127.0.0.1,192.168.0.0/24,::1")).unwrap();
         assert!(eval(&op, b"127.0.0.1"));
         assert!(eval(&op, b"192.168.0.77"));
         assert!(!eval(&op, b"192.168.1.77"));
         assert!(eval(&op, b"::1"));
         assert!(!eval(&op, b"localhost"));
-        let mut bad = IpMatch::new(Param::from_text("300.1.1.1"));
-        assert!(bad.init("", &crate::test_support::LocalFiles).is_err());
+        assert_eq!(IpMatch::new(Param::from_text("300.1.1.1")).unwrap_err(), "");
     }
 }

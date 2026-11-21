@@ -1,7 +1,7 @@
 //! The `@validateByteRange` operator: matches when the input holds a byte
 //! outside the allowed values and ranges.
 
-use crate::{Context, Operator, Param, Resources};
+use crate::{Context, Operator, Param};
 
 #[derive(Debug)]
 pub struct ValidateByteRange {
@@ -11,16 +11,18 @@ pub struct ValidateByteRange {
 }
 
 impl ValidateByteRange {
-    pub fn new(param: Param) -> Self {
-        ValidateByteRange { param, table: [0; 32] }
+    pub fn new(param: Param) -> Result<Self, String> {
+        let mut table = [0; 32];
+        // Comma separated list of ranges (empty pieces fail to convert).
+        for range in param.literal.split(|&c| c == b',') {
+            Self::add_range(&mut table, range)?;
+        }
+        Ok(ValidateByteRange { param, table })
     }
 
-    fn set(&mut self, b: u8) {
-        self.table[usize::from(b >> 3)] |= 1 << (b & 0x7);
-    }
-
-    /// Adds `N` or `N-M` to the table.
-    pub fn add_range(&mut self, range_representation: &[u8]) -> Result<(), String> {
+    /// Adds `N` or `N-M` to `table`.
+    fn add_range(table: &mut [u8; 32], range_representation: &[u8]) -> Result<(), String> {
+        let mut set = |b: u8| table[usize::from(b >> 3)] |= 1 << (b & 0x7);
         // A number in decimal digits, with white space around it allowed
         // (`37-102, 127-255`); what it is too large for is said by the
         // caller.
@@ -35,7 +37,7 @@ impl ValidateByteRange {
 
         let Some(pos) = range_representation.iter().position(|&c| c == b'-') else {
             let value = byte(number(range_representation)?, "byte")?;
-            self.set(value);
+            set(value);
             return Ok(());
         };
         let (start, end) = (number(&range_representation[..pos])?, number(&range_representation[pos + 1..])?);
@@ -44,7 +46,7 @@ impl ValidateByteRange {
             return Err(format!("Invalid range: {}-{}", start, end));
         }
         for b in start..=end {
-            self.set(b);
+            set(b);
         }
         Ok(())
     }
@@ -57,15 +59,6 @@ impl Operator for ValidateByteRange {
 
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
-    }
-
-    fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
-        let param = self.param.literal.clone();
-        // Comma separated list of ranges (empty pieces fail to convert).
-        for range in param.split(|&c| c == b',') {
-            self.add_range(range)?;
-        }
-        Ok(())
     }
 
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
@@ -87,8 +80,7 @@ mod tests {
     use crate::test_support::eval;
 
     fn op(p: &str) -> Result<ValidateByteRange, String> {
-        let mut o = ValidateByteRange::new(Param::from_text(p));
-        o.init("", &crate::test_support::LocalFiles).map(|_| o)
+        ValidateByteRange::new(Param::from_text(p))
     }
 
     #[test]

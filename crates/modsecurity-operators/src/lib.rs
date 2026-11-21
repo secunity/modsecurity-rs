@@ -1,9 +1,10 @@
 //! The SecLang operators: `@rx`, `@pm`, `@contains`, `@detectSQLi`,
 //! `@ipMatch`, `@rbl`, `@validateSchema`, `@geoLookup`, ... (37 of them).
 //!
-//! An [`Operator`] is built from its [`Param`] by [`instantiate`], prepared
-//! once with [`Operator::init`] (which may load files through
-//! [`Resources`]), and then asked whether values match. What it may do
+//! An [`Operator`] is built from its [`Param`] by [`instantiate`], which
+//! compiles or loads what the parameter names (files and URLs through
+//! [`Resources`]) and fails with a message when it cannot: an operator
+//! that exists is ready to be asked whether values match. What it may do
 //! while matching is the [`Context`] it is given: read its parameter for
 //! the transaction at hand, record captures and match positions, write to
 //! the debug log. Nothing here knows about rules or transactions; the
@@ -43,7 +44,6 @@ pub mod pm_from_file;
 pub mod rbl;
 pub mod rsub;
 pub mod rx;
-pub mod rx_global;
 pub mod seclang;
 pub mod str_eq;
 pub mod str_match;
@@ -188,12 +188,6 @@ pub trait Operator: Send + Sync + std::fmt::Debug {
         None
     }
 
-    /// Compiles or loads what the parameter names, when the rule is read;
-    /// `file` is the configuration file of the rule.
-    fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
-        Ok(())
-    }
-
     /// Whether `input` matches (before the negation of `!@op`).
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool;
 
@@ -227,51 +221,65 @@ pub fn match_message(name: &str, param: &[u8], key: &[u8], value: &[u8]) -> Vec<
     ret
 }
 
-/// The operator named `name` (case insensitive, without the `@`) with the
-/// parameter `param`; `None` when it is not one of this crate's.
-pub fn instantiate(name: &str, param: Param) -> Option<Box<dyn Operator>> {
-    let b: Box<dyn Operator> = match name.to_ascii_lowercase().as_str() {
-        "beginswith" => Box::new(begins_with::BeginsWith::new(param)),
-        "contains" => Box::new(contains::Contains::new(param)),
-        "containsword" => Box::new(contains_word::ContainsWord::new(param)),
-        "detectsqli" => Box::new(detect_sqli::DetectSQLi::new()),
-        "detectxss" => Box::new(detect_xss::DetectXSS::new()),
-        "endswith" => Box::new(ends_with::EndsWith::new(param)),
-        "eq" => Box::new(eq::Eq::new(param)),
-        "fuzzyhash" => Box::new(fuzzy_hash::FuzzyHash::new(param)),
-        "ge" => Box::new(ge::Ge::new(param)),
-        "geolookup" => Box::new(geo_lookup::GeoLookup::new()),
-        "gsblookup" => Box::new(gsblookup::GsbLookup::new(param)),
-        "gt" => Box::new(gt::Gt::new(param)),
-        "ipmatch" => Box::new(ip_match::IpMatch::new(param)),
-        "ipmatchf" | "ipmatchfromfile" => Box::new(ip_match_from_file::IpMatchFromFile::new(param)),
-        "le" => Box::new(le::Le::new(param)),
-        "lt" => Box::new(lt::Lt::new(param)),
-        "nomatch" => Box::new(no_match::NoMatch::new()),
-        "pm" => Box::new(pm::Pm::new(param)),
-        "pmf" => Box::new(pm_from_file::PmFromFile::with_name("PmFromF", param)),
-        "pmfromfile" => Box::new(pm_from_file::PmFromFile::new(param)),
-        "rbl" => Box::new(rbl::Rbl::new(param)),
-        "rsub" => Box::new(rsub::Rsub::new(param)),
-        "rx" => Box::new(rx::Rx::new(param)),
-        "rxglobal" => Box::new(rx_global::RxGlobal::new(param)),
-        "streq" => Box::new(str_eq::StrEq::new(param)),
-        "strmatch" => Box::new(str_match::StrMatch::new(param)),
-        "unconditionalmatch" => Box::new(unconditional_match::UnconditionalMatch::new()),
-        "validatebyterange" => Box::new(validate_byte_range::ValidateByteRange::new(param)),
-        "validatedtd" => Box::new(validate_dtd::ValidateDTD::new(param)),
-        "validatehash" => Box::new(validate_hash::ValidateHash::new(param)),
-        "validateschema" => Box::new(validate_schema::ValidateSchema::new(param)),
-        "validateurlencoding" => Box::new(validate_url_encoding::ValidateUrlEncoding::new()),
-        "validateutf8encoding" => Box::new(validate_utf8_encoding::ValidateUtf8Encoding::new()),
-        "verifycc" => Box::new(verify_cc::VerifyCC::new(param)),
-        "verifycpf" => Box::new(verify_cpf::VerifyCPF::new(param)),
-        "verifyssn" => Box::new(verify_ssn::VerifySSN::new(param)),
-        "verifysvnr" => Box::new(verify_svnr::VerifySVNR::new(param)),
-        "within" => Box::new(within::Within::new(param)),
+/// Builds the operator named `name` (case insensitive, without the `@`)
+/// with the parameter `param`, compiling or loading what the parameter
+/// names; `file` is the configuration file of the rule. `None` when it is
+/// not one of this crate's, `Some(Err(message))` when it cannot be built.
+pub fn instantiate(
+    name: &str,
+    param: Param,
+    file: &str,
+    resources: &dyn Resources,
+) -> Option<Result<Box<dyn Operator>, String>> {
+    /// An operator that cannot fail to be built.
+    fn ready(op: impl Operator + 'static) -> Result<Box<dyn Operator>, String> {
+        Ok(Box::new(op))
+    }
+    /// An operator that compiles or loads something to be built.
+    fn built(op: Result<impl Operator + 'static, String>) -> Result<Box<dyn Operator>, String> {
+        op.map(|op| Box::new(op) as Box<dyn Operator>)
+    }
+    Some(match name.to_ascii_lowercase().as_str() {
+        "beginswith" => ready(begins_with::BeginsWith::new(param)),
+        "contains" => ready(contains::Contains::new(param)),
+        "containsword" => ready(contains_word::ContainsWord::new(param)),
+        "detectsqli" => ready(detect_sqli::DetectSQLi::new()),
+        "detectxss" => ready(detect_xss::DetectXSS::new()),
+        "endswith" => ready(ends_with::EndsWith::new(param)),
+        "eq" => ready(eq::Eq::new(param)),
+        "fuzzyhash" => built(fuzzy_hash::FuzzyHash::new(param, file, resources)),
+        "ge" => ready(ge::Ge::new(param)),
+        "geolookup" => ready(geo_lookup::GeoLookup::new()),
+        "gsblookup" => ready(gsblookup::GsbLookup::new(param)),
+        "gt" => ready(gt::Gt::new(param)),
+        "ipmatch" => built(ip_match::IpMatch::new(param)),
+        "ipmatchf" | "ipmatchfromfile" => built(ip_match_from_file::IpMatchFromFile::new(param, file, resources)),
+        "le" => ready(le::Le::new(param)),
+        "lt" => ready(lt::Lt::new(param)),
+        "nomatch" => ready(no_match::NoMatch::new()),
+        "pm" => built(pm::Pm::new(param)),
+        "pmf" => built(pm_from_file::PmFromFile::with_name("PmFromF", param, file, resources)),
+        "pmfromfile" => built(pm_from_file::PmFromFile::new(param, file, resources)),
+        "rbl" => ready(rbl::Rbl::new(param)),
+        "rsub" => ready(rsub::Rsub::new(param)),
+        "rx" => built(rx::Rx::new(param)),
+        "rxglobal" => built(rx::Rx::global(param)),
+        "streq" => ready(str_eq::StrEq::new(param)),
+        "strmatch" => ready(str_match::StrMatch::new(param)),
+        "unconditionalmatch" => ready(unconditional_match::UnconditionalMatch::new()),
+        "validatebyterange" => built(validate_byte_range::ValidateByteRange::new(param)),
+        "validatedtd" => built(validate_dtd::ValidateDTD::new(param, file, resources)),
+        "validatehash" => ready(validate_hash::ValidateHash::new(param)),
+        "validateschema" => built(validate_schema::ValidateSchema::new(param, file, resources)),
+        "validateurlencoding" => ready(validate_url_encoding::ValidateUrlEncoding::new()),
+        "validateutf8encoding" => ready(validate_utf8_encoding::ValidateUtf8Encoding::new()),
+        "verifycc" => built(verify_cc::VerifyCC::new(param)),
+        "verifycpf" => ready(verify_cpf::VerifyCPF::new(param)),
+        "verifyssn" => ready(verify_ssn::VerifySSN::new(param)),
+        "verifysvnr" => ready(verify_svnr::VerifySVNR::new(param)),
+        "within" => ready(within::Within::new(param)),
         _ => return None,
-    };
-    Some(b)
+    })
 }
 
 /// Evaluating operators in tests, against a context that records nothing.

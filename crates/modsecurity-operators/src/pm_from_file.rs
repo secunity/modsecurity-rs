@@ -1,6 +1,6 @@
 //! The `@pmFromFile` (`@pmf`) operator.
 
-use crate::pm::Pm;
+use crate::pm::{Matcher, Pm};
 use crate::{Context, Operator, Param, Resources};
 use modsecurity_compat::chars::{is_space, split};
 
@@ -12,13 +12,41 @@ pub struct PmFromFile {
 }
 
 impl PmFromFile {
-    pub fn new(param: Param) -> Self {
-        Self::with_name("PmFromFile", param)
+    /// Reads the phrases of the files and URLs `param` names; `config` is
+    /// the configuration file of the rule.
+    pub fn new(param: Param, config: &str, resources: &dyn Resources) -> Result<Self, String> {
+        Self::with_name("PmFromFile", param, config, resources)
     }
 
     /// An operator named `name` in messages (`PmFromF` for `@pmf`).
-    pub fn with_name(name: &'static str, param: Param) -> Self {
-        PmFromFile { pm: Pm::with_name(name, param) }
+    pub fn with_name(
+        name: &'static str,
+        param: Param,
+        config: &str,
+        resources: &dyn Resources,
+    ) -> Result<Self, String> {
+        let mut contents: Vec<Vec<u8>> = Vec::new();
+
+        for token in split(&param.literal, b' ') {
+            if token.is_empty() {
+                continue;
+            }
+            let token = String::from_utf8_lossy(&token).into_owned();
+
+            if token.starts_with("https://") {
+                contents.push(resources.download(&token)?);
+            } else {
+                let lookup = resources.find(&token, config);
+                // A file that cannot be read completely is not used at all.
+                let Ok(content) = std::fs::read(lookup.path.unwrap_or_default()) else {
+                    return Err(format!("Failed to open file: '{}'. {}", token, lookup.looked_at));
+                };
+                contents.push(content);
+            }
+        }
+
+        let p = Matcher::new(contents.iter().flat_map(|content| Self::phrases(content)));
+        Ok(PmFromFile { pm: Pm::with_matcher(name, param, p) })
     }
 
     /// Whether a line is a comment: empty lines and lines whose first non
@@ -33,18 +61,14 @@ impl PmFromFile {
         }
     }
 
-    /// Adds the non comment lines of `content` (split at `\n`; a final
-    /// newline does not start another line).
-    fn add_lines(&mut self, content: &[u8]) {
+    /// The non comment lines of `content` (split at `\n`; a final newline
+    /// does not start another line).
+    fn phrases(content: &[u8]) -> impl Iterator<Item = &[u8]> {
         let mut lines: Vec<&[u8]> = content.split(|&c| c == b'\n').collect();
         if content.is_empty() || content.ends_with(b"\n") {
             lines.pop();
         }
-        for line in lines {
-            if !Self::is_comment(line) {
-                self.pm.p.add_pattern(line);
-            }
-        }
+        lines.into_iter().filter(|line| !Self::is_comment(line))
     }
 }
 
@@ -55,32 +79,6 @@ impl Operator for PmFromFile {
 
     fn param(&self) -> Option<&Param> {
         self.pm.param()
-    }
-
-    fn init(&mut self, config: &str, resources: &dyn Resources) -> Result<(), String> {
-        let tokens = split(&self.pm.param.literal, b' ');
-
-        for token in tokens {
-            if token.is_empty() {
-                continue;
-            }
-            let token = String::from_utf8_lossy(&token).into_owned();
-
-            if token.starts_with("https://") {
-                let content = resources.download(&token)?;
-                self.add_lines(&content);
-            } else {
-                let lookup = resources.find(&token, config);
-                // A file that cannot be read completely is not used at all.
-                let Ok(content) = std::fs::read(lookup.path.unwrap_or_default()) else {
-                    return Err(format!("Failed to open file: '{}'. {}", token, lookup.looked_at));
-                };
-                self.add_lines(&content);
-            }
-        }
-
-        self.pm.prepare();
-        Ok(())
     }
 
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
@@ -102,8 +100,8 @@ mod tests {
 
     #[test]
     fn missing_file() {
-        let mut op = PmFromFile::new(Param::from_text("/nonexistent/x.txt"));
-        let e = op.init("/etc/modsec.conf", &crate::test_support::LocalFiles).unwrap_err();
+        let param = Param::from_text("/nonexistent/x.txt");
+        let e = PmFromFile::new(param, "/etc/modsec.conf", &crate::test_support::LocalFiles).unwrap_err();
         assert!(e.starts_with("Failed to open file: '/nonexistent/x.txt'. Looking at: "), "{}", e);
     }
 }

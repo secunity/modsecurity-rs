@@ -1,56 +1,75 @@
-//! The `@rx` operator: matches a PCRE2 regular expression.
+//! The `@rx` operator: matches a PCRE2 regular expression. `@rxGlobal` is
+//! the same, but with `capture` it stores the groups of every match,
+//! numbered consecutively in `TX`.
 
-use crate::{Context, Operator, Param, Resources};
-use modsecurity_native::regex::{CompileError, MatchError, Regex, SMatchCapture};
+use crate::{Context, Operator, Param};
+use modsecurity_native::regex::{MatchError, Regex, SMatchCapture};
 
 /// Whether patterns are multi-line: `$` only matches at the very end of
 /// the subject when built with `MODSEC_REGEX_DOLLAR_ENDONLY` (cargo feature
 /// `regex-dollar-endonly`), otherwise the pattern is multi-line.
 const MULTI_LINE: bool = !cfg!(feature = "regex-dollar-endonly");
 
+/// The regular expression of the parameter.
+#[derive(Debug)]
+enum Pattern {
+    /// A parameter without macros, compiled when the operator is built.
+    Compiled(Regex),
+    /// A parameter with macros: compiled at each evaluation, from the
+    /// parameter expanded for the transaction.
+    Expanded,
+}
+
+/// `@rx` and `@rxGlobal`.
 #[derive(Debug)]
 pub struct Rx {
     param: Param,
-    /// The parameter compiled by `init` (without macros).
-    re: Option<Result<Regex, CompileError>>,
+    pattern: Pattern,
+    /// `@rxGlobal`: every match is searched, not only the first.
+    global: bool,
 }
 
 impl Rx {
-    pub fn new(param: Param) -> Self {
-        Rx { param: param.expanded_in_message(), re: None }
+    /// `@rx`.
+    pub fn new(param: Param) -> Result<Self, String> {
+        Self::build(param, false)
     }
 
-    fn contains_macro(&self) -> bool {
-        self.param.contains_macro()
+    /// `@rxGlobal`.
+    pub fn global(param: Param) -> Result<Self, String> {
+        Self::build(param, true)
     }
-}
 
-impl Rx {
+    fn build(param: Param, global: bool) -> Result<Self, String> {
+        let pattern = if param.contains_macro() {
+            Pattern::Expanded
+        } else {
+            let re = Regex::compile(&param.literal, false, MULTI_LINE)
+                .map_err(|_| format!("Invalid regular expression: {}", String::from_utf8_lossy(&param.literal)))?;
+            Pattern::Compiled(re)
+        };
+        Ok(Rx { param: param.expanded_in_message(), pattern, global })
+    }
+
     /// Whether `input` matches; `None` when the regular expression failed
     /// (it does not compile, or it hit the match limits), which is neither
     /// a match nor a mismatch.
     fn try_match(&self, cx: &mut dyn Context, input: &[u8]) -> Option<bool> {
-        if self.param.literal.is_empty() && !self.contains_macro() {
-            return Some(true);
-        }
-
         let re_owned;
-        let re = if self.contains_macro() {
-            let eparam = cx.param(&self.param);
-            re_owned = Regex::compile(&eparam, false, MULTI_LINE);
-            &re_owned
-        } else if let Some(re) = self.re.as_ref() {
-            re
-        } else {
-            // init() was not called: compile the parameter now.
-            re_owned = Regex::compile(&self.param.literal, false, MULTI_LINE);
-            &re_owned
-        };
-        let re = match re {
-            Ok(re) => re,
-            Err(e) => {
-                cx.regex_compile_error(&e.pattern);
-                return None;
+        let re = match &self.pattern {
+            // An empty expression matches everything.
+            Pattern::Compiled(_) if self.param.literal.is_empty() => return Some(true),
+            Pattern::Compiled(re) => re,
+            Pattern::Expanded => {
+                let eparam = cx.param(&self.param);
+                re_owned = Regex::compile(&eparam, false, MULTI_LINE);
+                match &re_owned {
+                    Ok(re) => re,
+                    Err(e) => {
+                        cx.regex_compile_error(&e.pattern);
+                        return None;
+                    }
+                }
             }
         };
 
@@ -58,8 +77,14 @@ impl Rx {
         let subject: &[u8] = input;
         let mut captures: Vec<SMatchCapture> = Vec::new();
         let match_limit = cx.pcre_match_limit();
-        if let Err(e) = re.search_one_match(subject, &mut captures, match_limit) {
-            cx.regex_search_error(&re.pattern, e == MatchError::MatchLimit, "rx");
+        let searched = if self.global {
+            re.search_global(subject, &mut captures, match_limit)
+        } else {
+            re.search_one_match(subject, &mut captures, match_limit)
+        };
+        if let Err(e) = searched {
+            let op_name = if self.global { "rxGlobal" } else { "rx" };
+            cx.regex_search_error(&re.pattern, e == MatchError::MatchLimit, op_name);
             return None;
         }
 
@@ -89,23 +114,11 @@ impl Rx {
 
 impl Operator for Rx {
     fn name(&self) -> &'static str {
-        "Rx"
+        if self.global { "RxGlobal" } else { "Rx" }
     }
 
     fn param(&self) -> Option<&Param> {
         Some(&self.param)
-    }
-
-    fn init(&mut self, _file: &str, _resources: &dyn Resources) -> Result<(), String> {
-        if !self.contains_macro() {
-            let re = Regex::compile(&self.param.literal, false, MULTI_LINE);
-            let failed = re.is_err();
-            self.re = Some(re);
-            if failed {
-                return Err(format!("Invalid regular expression: {}", String::from_utf8_lossy(&self.param.literal)));
-            }
-        }
-        Ok(())
     }
 
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
@@ -121,15 +134,58 @@ impl Operator for Rx {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::eval;
+    use crate::test_support::{TestContext, eval};
 
     #[test]
     fn empty_input_and_captures() {
-        let mut op = Rx::new(Param::from_text("a(b)?c"));
-        op.init("", &crate::test_support::LocalFiles).unwrap();
+        let op = Rx::new(Param::from_text("a(b)?c")).unwrap();
+        assert_eq!(op.name(), "Rx");
         assert!(!eval(&op, b""));
         assert!(eval(&op, b"xac"));
-        let mut bad = Rx::new(Param::from_text("("));
-        assert_eq!(bad.init("", &crate::test_support::LocalFiles).unwrap_err(), "Invalid regular expression: (");
+        assert_eq!(Rx::new(Param::from_text("(")).unwrap_err(), "Invalid regular expression: (");
+    }
+
+    #[test]
+    fn global_empty_input_and_captures() {
+        let op = Rx::global(Param::from_text("a(b)?c")).unwrap();
+        assert_eq!(op.name(), "RxGlobal");
+        assert!(!eval(&op, b""));
+        assert!(eval(&op, b"xac"));
+        assert_eq!(Rx::global(Param::from_text("(")).unwrap_err(), "Invalid regular expression: (");
+    }
+
+    /// `@rx` records the first match, `@rxGlobal` every match.
+    #[test]
+    fn first_match_or_every_match() {
+        let matched = |op: Rx| {
+            let mut cx = TestContext::default();
+            assert!(op.evaluate(&mut cx, b"a1 a2"));
+            cx.matched
+        };
+        assert_eq!(matched(Rx::new(Param::from_text("a\\d")).unwrap()), [b"a1".to_vec()]);
+        assert_eq!(matched(Rx::global(Param::from_text("a\\d")).unwrap()), [b"a1".to_vec(), b"a2".to_vec()]);
+    }
+
+    /// With a macro nothing is compiled when the operator is built, and an
+    /// expression that does not compile at evaluation matches nothing,
+    /// negated or not. (The test context expands a parameter to its
+    /// literal.)
+    #[test]
+    fn parameter_with_macro() {
+        let op = Rx::new(Param::new(b"(".to_vec(), true)).unwrap();
+        let mut cx = TestContext::default();
+        assert!(!op.evaluate(&mut cx, b"("));
+        assert!(!op.evaluate_negatable(false, &mut cx, b"("));
+        assert!(!op.evaluate_negatable(true, &mut cx, b"("));
+
+        let op = Rx::global(Param::new(b"a+".to_vec(), true)).unwrap();
+        assert!(eval(&op, b"xaa"));
+        assert!(op.evaluate_negatable(true, &mut cx, b"x"));
+    }
+
+    #[test]
+    fn empty_parameter_always_matches() {
+        assert!(eval(&Rx::new(Param::from_text("")).unwrap(), b"anything"));
+        assert!(eval(&Rx::global(Param::from_text("")).unwrap(), b""));
     }
 }

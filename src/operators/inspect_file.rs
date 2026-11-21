@@ -14,14 +14,26 @@ use crate::utils::system::find_resource;
 #[derive(Debug)]
 pub struct InspectFile {
     param: Param,
+    /// The program or script.
     file: String,
-    is_script: bool,
-    lua: Lua,
+    /// The script, when `file` is a Lua script.
+    script: Option<Lua>,
 }
 
 impl InspectFile {
-    pub fn new(param: Param) -> Self {
-        InspectFile { param, file: String::new(), is_script: false, lua: Lua::new() }
+    /// Finds the program or script `param` names; `param2` is the
+    /// configuration file of the rule.
+    pub fn new(param: Param, param2: &str) -> Result<Self, String> {
+        let name = param.literal_lossy();
+
+        let lookup = find_resource(&name, param2);
+        let file = lookup.path.unwrap_or_default();
+        if std::fs::File::open(&file).is_err() {
+            return Err(format!("Failed to open file: {}. {}", name, lookup.looked_at));
+        }
+
+        let script = Lua::from_script(&file).ok();
+        Ok(InspectFile { param, file, script })
     }
 
     /// Runs `self.file` with `arg`, as `posix_spawn` would: the path is
@@ -84,31 +96,12 @@ impl InspectFile {
         &self.param
     }
 
-    /// Finds the program or script; `param2` is the configuration file of
-    /// the rule.
-    pub fn init(&mut self, param2: &str) -> Result<(), String> {
-        let param = self.param.literal_lossy();
-
-        let lookup = find_resource(&param, param2);
-        self.file = lookup.path.unwrap_or_default();
-        if std::fs::File::open(&self.file).is_err() {
-            return Err(format!("Failed to open file: {}. {}", param, lookup.looked_at));
-        }
-
-        if let Ok(lua) = Lua::from_script(&self.file) {
-            self.lua = lua;
-            self.is_script = true;
-        }
-
-        Ok(())
-    }
-
     /// Whether the script or program reports a match for `input` (a file
     /// name).
     pub fn evaluate(&self, t: &mut Transaction<'_>, input: &[u8]) -> bool {
-        if self.is_script {
+        if let Some(lua) = &self.script {
             // Lua scripts need a transaction to run against.
-            return self.lua.run(t, input);
+            return lua.run(t, input);
         }
 
         let Some(res) = self.run_program(input, &t.variable_envs) else {
@@ -129,12 +122,10 @@ mod tests {
     use crate::operators::operator::Operator;
     use crate::operators::operator::test_support::eval;
 
-    /// The operator with its program set (init() also asks the Lua engine
-    /// whether the file is a script).
+    /// The operator of the program `file`, without asking the Lua engine
+    /// whether the file is a script.
     fn op(file: &str) -> Operator {
-        let mut o = InspectFile::new(Param::from_text(file));
-        o.file = file.to_string();
-        Operator::InspectFile(o)
+        Operator::InspectFile(InspectFile { param: Param::from_text(file), file: file.to_string(), script: None })
     }
 
     #[test]
@@ -161,8 +152,7 @@ mod tests {
 
     #[test]
     fn missing_file() {
-        let mut o = InspectFile::new(Param::from_text("/nonexistent/prog"));
-        let e = o.init("/etc/x.conf").unwrap_err();
+        let e = InspectFile::new(Param::from_text("/nonexistent/prog"), "/etc/x.conf").unwrap_err();
         assert!(e.starts_with("Failed to open file: /nonexistent/prog. Looking at: "), "{}", e);
     }
 }
