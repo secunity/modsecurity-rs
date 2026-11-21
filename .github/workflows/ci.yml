@@ -55,3 +55,41 @@ jobs:
           restore-keys: cargo-${{ runner.os }}-${{ matrix.features }}-
       - run: cargo clippy --all-targets ${{ matrix.features }} -- -D warnings
       - run: cargo test ${{ matrix.features }}
+
+  # The members outside default-members, and the fuzz targets (their own
+  # workspace): built and linted, not run.
+  others:
+    runs-on: ubuntu-latest
+    name: nginx connector, axum example, fuzz targets
+    steps:
+      - uses: actions/checkout@v4
+      # The engine's libraries (as above), and what nginx-sys's `vendored`
+      # feature needs to configure and build the nginx it binds to.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libpcre2-dev libxml2-dev libfuzzy-dev libcurl4-openssl-dev \
+            libssl-dev zlib1g-dev
+      - run: rustup toolchain install stable --profile minimal --component clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            fuzz/target
+          key: cargo-${{ runner.os }}-others-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-others-
+      # Without NGINX_SOURCE_DIR/NGINX_BUILD_DIR, `vendored` builds the nginx
+      # source that nginx-sys ships.
+      - name: clippy (nginx connector)
+        run: cargo clippy -p modsecurity-nginx --features nginx-sys/vendored --all-targets -- -D warnings
+      - name: clippy (nginx connector, all features)
+        run: cargo clippy -p modsecurity-nginx --features nginx-sys/vendored --all-features --all-targets -- -D warnings
+      - name: clippy (axum example)
+        run: cargo clippy -p modsecurity-axum-example --all-targets -- -D warnings
+      # `cargo fuzz build` needs nightly (sanitizers); checking the targets
+      # does not.
+      - name: check (fuzz targets)
+        working-directory: fuzz
+        run: cargo check --bins
