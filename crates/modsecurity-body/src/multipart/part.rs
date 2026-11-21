@@ -11,11 +11,8 @@ use super::{Context, MULTIPART_BUF_SIZE, Multipart, MultipartPartTmpFile, find};
 /// What a part holds: a form field or a file, as its headers say.
 #[derive(Debug)]
 pub(super) enum PartKind {
-    /// A form field: the pieces of its value, with the offset of the
-    /// buffer each came from (joined into the value when the part ends).
-    Field {
-        pieces: Vec<(Vec<u8>, usize)>,
-    },
+    /// A form field: its value is [`MultipartPart::value`].
+    Field,
     File(FilePart),
 }
 
@@ -47,9 +44,11 @@ pub(super) struct MultipartPart {
     pub(super) name: Vec<u8>,
     pub(super) name_offset: usize,
 
-    /// The value of a form field (put together when the part ends), or
-    /// the content of a file that is saved.
+    /// The value of a form field, or the content of a file that is saved.
     pub(super) value: Vec<u8>,
+    /// Where the value starts: for a form field, the offset of the first
+    /// of its buffers that has a non-zero one; for a file, of the data
+    /// written last.
     pub(super) value_offset: usize,
 
     /// The file name as supplied by the browser. The headers are read
@@ -85,7 +84,7 @@ pub(super) struct MultipartPart {
 impl MultipartPart {
     pub(super) fn new() -> Self {
         MultipartPart {
-            kind: PartKind::Field { pieces: Vec::new() },
+            kind: PartKind::Field,
             name: Vec::new(),
             name_offset: 0,
             value: Vec::new(),
@@ -128,7 +127,7 @@ impl MultipartPart {
     pub(super) fn file(&self) -> Option<&FilePart> {
         match &self.kind {
             PartKind::File(file) => Some(file),
-            PartKind::Field { .. } => None,
+            PartKind::Field => None,
         }
     }
 
@@ -215,7 +214,7 @@ impl Multipart {
 
             mpp.kind = PartKind::File(FilePart::default());
         } else {
-            mpp.kind = PartKind::Field { pieces: Vec::new() };
+            mpp.kind = PartKind::Field;
         }
 
         self.part_state = PartState::Data;
@@ -356,22 +355,31 @@ impl Multipart {
             mpp.offset = self.buf_offset;
         }
 
-        match &mut mpp.kind {
+        match mpp.kind {
             PartKind::File(_) => {
                 if !self.add_file_data(cx, mpp, buf, offset) {
                     return false;
                 }
             }
-            PartKind::Field { pieces } => {
+            PartKind::Field => {
                 // The buffer contains data so increase the data length
                 // counter.
-                self.reqbody_no_files_length += buf.len() + self.reserve.len();
+                let len = self.reserve.len() + buf.len();
+                self.reqbody_no_files_length += len;
+                mpp.length = mpp.length.wrapping_add(len);
 
-                let d = [self.reserve, buf].concat();
-                mpp.length = mpp.length.wrapping_add(d.len());
-
-                ms_dbg!(cx, 9, "Multipart: Added data to variable: {}", String::from_utf8_lossy(&d));
-                pieces.push((d, self.buf_offset));
+                ms_dbg!(
+                    cx,
+                    9,
+                    "Multipart: Added data to variable: {}{}",
+                    String::from_utf8_lossy(self.reserve),
+                    String::from_utf8_lossy(buf)
+                );
+                if mpp.value_offset == 0 {
+                    mpp.value_offset = self.buf_offset;
+                }
+                mpp.value.extend_from_slice(self.reserve);
+                mpp.value.extend_from_slice(buf);
             }
         }
 

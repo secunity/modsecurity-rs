@@ -524,7 +524,7 @@ impl Multipart {
     /// new one unless this is the last boundary.
     fn process_boundary(&mut self, cx: &mut dyn Context, last_part: bool) {
         // if there was a part being built finish it
-        if let Some(mut mpp) = self.mpp.take() {
+        if let Some(mpp) = self.mpp.take() {
             // record all the part header lines from the part into the
             // transaction collection
             for (off, line) in &mpp.header_lines {
@@ -532,24 +532,12 @@ impl Multipart {
                 ms_dbg!(cx, 9, "Multipart: Added part header line:{}", String::from_utf8_lossy(line));
             }
 
-            match &mpp.kind {
-                PartKind::File(file) => {
-                    // close the temp file
-                    if let Some(f) = &file.tmp_file
-                        && f.is_valid()
-                    {
-                        f.close();
-                    }
-                }
-                PartKind::Field { pieces } => {
-                    // now construct a single string out of the pieces
-                    for (d, off) in pieces {
-                        if mpp.value_offset == 0 {
-                            mpp.value_offset = *off;
-                        }
-                        mpp.value.extend_from_slice(d);
-                    }
-                }
+            if let PartKind::File(file) = &mpp.kind
+                && let Some(f) = &file.tmp_file
+                && f.is_valid()
+            {
+                // close the temp file
+                f.close();
             }
 
             if mpp.name.is_empty() {

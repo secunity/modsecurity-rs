@@ -1337,6 +1337,487 @@ debug[4] Multipart: Cleanup started (keep files set to Not set)
 complete -> true
 error: None
 no files length: 92
+=== a value of many short lines
+debug[9] Multipart: Boundary: XyZ
+init -> true
+debug[9] Multipart: Added part header "Content-Disposition" "form-data; name="a"".
+add MultipartName a = a @2046
+debug[9] Multipart: Content-Disposition name: a.
+debug[9] Multipart: Added data to variable: 1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+1
+debug[9] Multipart: Added data to variable: 
+
+debug[9] Multipart: Added data to variable: 
+2
+debug[9] Multipart: Added data to variable: 
+end
+add MultipartPartHeaders a = Content-Disposition: form-data; name=\x22a\x22 @2011
+debug[9] Multipart: Added part header line:Content-Disposition: form-data; name="a"
+debug[9] Multipart: Added part to the list: name "a" (offset 51, length 303)
+set MultipartUnmatchedBoundary = 2 @1000
+set MultipartDataBefore = 0 @1000
+set MultipartDataAfter = 0 @1000
+set MultipartDuplicatePartHeader = 0 @1000
+set MultipartBoundaryQuoted = 0 @1000
+set MultipartBoundaryWhiteSpace = 0 @1000
+set MultipartHeaderFolding = 0 @1000
+set MultipartLfLine = 0 @1000
+set MultipartCrlfLfLines = 0 @1000
+set MultipartMissingSemicolon = 0 @1000
+set MultipartInvalidQuoting = 0 @1000
+set MultipartInvalidPart = 0 @1000
+set MultipartInvalidHeaderFolding = 0 @1000
+set MultipartStrictError = 0 @1000
+debug[4] Adding request argument (BODY): name "a", value "1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+1
+
+2
+end"
+add Args a = 1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0aend @1052
+add ArgsPost a = 1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0a1\x0a\x0a2\x0d\x0aend @1052
+debug[4] Multipart: Cleanup started (keep files set to Not set)
+complete -> true
+error: None
+no files length: 347
 === long value
 debug[9] Multipart: Boundary: XyZ
 init -> true

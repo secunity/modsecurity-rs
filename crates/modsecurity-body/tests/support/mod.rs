@@ -396,6 +396,15 @@ pub fn cases() -> Vec<(&'static str, Vec<u8>, Vec<u8>, Uploads)> {
         ),
     ];
 
+    // A value of many short lines, each a buffer of the parser.
+    let lines = "1\n\n2\r\n".repeat(50);
+    cases.push((
+        "a value of many short lines",
+        CT.to_vec(),
+        lf(&format!("--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n{lines}end\r\n--XyZ--\r\n")),
+        none,
+    ));
+
     // Lines longer than the parser's buffer: in a value, in a saved file
     // (with a carriage return at the buffer's end), and in a header.
     let long = "v".repeat(5000);
