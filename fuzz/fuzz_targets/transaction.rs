@@ -1,7 +1,12 @@
 //! Runs arbitrary requests and responses through a fixed rule set that
 //! applies every transformation and the input-sensitive operators to every
 //! part of the transaction, with the URL-encoded, JSON, XML and multipart
-//! body processors.
+//! body processors; persistent collections, `ctl:` actions and disruptive
+//! actions driven by the input; and the audit log (native, or JSON with the
+//! debug log at level 9), written to `/dev/null`.
+//!
+//! Not covered: `request_body_from_file` (it would read a path from the
+//! input) and the concurrent audit log (it writes a file per entry).
 
 #![no_main]
 
@@ -32,7 +37,7 @@ const TARGETS: &str = "ARGS|ARGS_NAMES|REQUEST_HEADERS|REQUEST_HEADERS_NAMES|REQ
 REQUEST_URI|REQUEST_URI_RAW|REQUEST_FILENAME|REQUEST_BASENAME|QUERY_STRING|REQUEST_LINE|REQUEST_BODY|XML:/*|\
 FILES|FILES_NAMES|MULTIPART_PART_HEADERS|MULTIPART_NAME|MULTIPART_FILENAME|PATH_INFO";
 
-fn rules() -> String {
+fn rules(json_audit_log: bool) -> String {
     let mut r = String::from(
         "SecRuleEngine On\n\
          SecRequestBodyAccess On\n\
@@ -43,6 +48,11 @@ fn rules() -> String {
          SecArgumentsLimit 200\n\
          SecRequestBodyJsonDepthLimit 32\n\
          SecPcreMatchLimit 5000\n\
+         SecAuditEngine On\n\
+         SecAuditLogType Serial\n\
+         SecAuditLog /dev/null\n\
+         SecAuditLogParts ABCDEFGHIJKZ\n\
+         SecAuditLogRelevantStatus \"^(?:5|4(?!04))\"\n\
          SecRule REQUEST_HEADERS:Content-Type \"@rx (?i)^application/json\" \"id:1,phase:1,pass,nolog,ctl:requestBodyProcessor=JSON\"\n\
          SecRule REQUEST_HEADERS:Content-Type \"@rx (?i)xml\" \"id:2,phase:1,pass,nolog,ctl:requestBodyProcessor=XML\"\n",
     );
@@ -55,6 +65,54 @@ fn rules() -> String {
         id += 1;
         r.push_str(&format!("SecRule {TARGETS} \"{o}\" \"id:{id},phase:2,pass,log,capture,t:none,t:urlDecodeUni\"\n"));
     }
+    // The level 9 debug log costs about 3x the run time: only in one set.
+    if json_audit_log {
+        r.push_str("SecAuditLogFormat JSON\nSecDebugLog /dev/null\nSecDebugLogLevel 9\n");
+    }
+    r.push_str(&format!("SecUnicodeMapFile {}/../unicode.mapping 20127\n", env!("CARGO_MANIFEST_DIR")));
+    // Persistent collections. The keys come from a small set, so the
+    // in-memory collections do not grow from one run to the next.
+    r.push_str(
+        "SecAction \"id:10,phase:1,pass,nolog,initcol:global=global,initcol:ip=%{REMOTE_ADDR}\"\n\
+         SecRule REQUEST_COOKIES:sid \"@rx ^[a-c]{1,2}$\" \"id:11,phase:1,pass,nolog,setsid:%{matched_var},\
+         setvar:session.hits=+1,expirevar:session.hits=1,setvar:ip.score=+%{session.hits}\"\n\
+         SecRule REQUEST_COOKIES:uid \"@rx ^[a-c]$\" \"id:12,phase:1,pass,nolog,setuid:%{matched_var},\
+         setvar:user.seen=1,setvar:ip.score=-1,setvar:global.n=+1\"\n\
+         SecRule IP:SCORE|SESSION:HITS|USER|GLOBAL:N \"@gt 2\" \"id:13,phase:2,pass,log,msg:'%{matched_var_name}'\"\n",
+    );
+    // ctl: actions chosen by the input (the argument `ctl`).
+    let ctls = [
+        "ruleRemoveById=101-130",
+        "ruleRemoveById=300",
+        "ruleRemoveByTag=t1",
+        "ruleRemoveTargetById=110;ARGS:a",
+        "ruleRemoveTargetByTag=t1;REQUEST_HEADERS",
+        "ruleEngine=DetectionOnly",
+        "ruleEngine=Off",
+        "auditEngine=Off",
+        "auditEngine=RelevantOnly",
+        "auditLogParts=+E",
+        "requestBodyAccess=Off",
+        "forceRequestBodyVariable=On",
+        "requestBodyProcessor=URLENCODED",
+        "requestBodyProcessor=JSON",
+    ];
+    for (i, c) in ctls.iter().enumerate() {
+        r.push_str(&format!(
+            "SecRule ARGS_GET:ctl \"@streq {i}\" \"id:{},phase:1,pass,nolog,tag:t1,ctl:{c}\"\n",
+            20 + i
+        ));
+    }
+    // Disruptive actions with macros, chosen by the argument `do`.
+    r.push_str(
+        "SecRule ARGS:do \"@streq deny\" \"id:50,phase:2,deny,status:403,msg:'%{ARGS.do}'\"\n\
+         SecRule ARGS:do \"@streq redirect\" \"id:51,phase:2,redirect:'http://example.com/%{ARGS.to}'\"\n\
+         SecRule ARGS:do \"@streq drop\" \"id:52,phase:2,drop\"\n\
+         SecRule ARGS:do \"@streq allow\" \"id:53,phase:1,allow:request\"\n\
+         SecRule ARGS:do \"@streq skip\" \"id:54,phase:2,pass,skipAfter:END\"\n\
+         SecRule ARGS \"@rx a\" \"id:55,phase:2,pass,log,tag:t1,multiMatch,t:none,t:lowercase,t:urlDecodeUni\"\n\
+         SecMarker END\n",
+    );
     r.push_str(
         "SecRule ARGS \"@rx (a)(b)?\" \"id:300,phase:2,pass,capture,setvar:'tx.%{tx.1}=%{matched_var}',\
          msg:'%{MATCHED_VAR_NAME}',logdata:'%{tx.0}',setvar:tx.score=+1\"\n\
@@ -82,6 +140,9 @@ enum Body {
 
 #[derive(Arbitrary, Debug)]
 struct Exchange {
+    /// Whether the rule set with the JSON audit log and the debug log runs
+    /// (or the one with the native audit log).
+    json_audit_log: bool,
     method: Vec<u8>,
     uri: Vec<u8>,
     headers: Vec<(Vec<u8>, Vec<u8>)>,
@@ -92,19 +153,23 @@ struct Exchange {
 }
 
 thread_local! {
-    static ENGINE: &'static (ModSecurity, RulesSet) = {
+    /// The engine, and the rule sets with the native and the JSON audit log.
+    static ENGINE: &'static (ModSecurity, [RulesSet; 2]) = {
         let mut ms = ModSecurity::new();
         ms.set_server_log_cb(Box::new(|_, _| {}));
-        let mut set = RulesSet::new();
-        set.load(&rules()).expect("the fuzz rules load");
-        Box::leak(Box::new((ms, set)))
+        let sets = [false, true].map(|json| {
+            let mut set = RulesSet::new();
+            set.load(&rules(json)).expect("the fuzz rules load");
+            set
+        });
+        Box::leak(Box::new((ms, sets)))
     };
 }
 
 fuzz_target!(|x: Exchange| {
     ENGINE.with(|engine| {
-        let (ms, rules) = *engine;
-        let mut t = Transaction::new(ms, rules, None);
+        let (ms, sets) = *engine;
+        let mut t = Transaction::new(ms, &sets[usize::from(x.json_audit_log)], None);
         t.process_connection("10.0.0.7", 12345, "10.0.0.1", 80);
         t.process_uri(&x.uri, &x.method, b"1.1");
         let (content_type, body): (&[u8], &[u8]) = match &x.body {
