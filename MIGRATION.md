@@ -307,6 +307,14 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   them; the C++ suites and CRS only use plain integers. The C++ library
   was run on the eight ids of this entry and differs exactly as said.
   Regression test: `actions::rule_id::tests::init_and_configure`.
+- **`ModSecurity::process_content_offset` is removed.** The C++ class
+  has `processContentOffset`, which renders the "ref" of a rule message
+  as JSON. It is not part of the C API, nothing in the engine or the
+  connector calls it, and its output is not usable: the last variable or
+  operator entry is never rendered, an operator entry makes it fail (it
+  reads the whole entry as a number), and the JSON it writes closes
+  containers it did not open. The Rust port reproduced all of that. It is
+  gone; `RuleMessage::reference` documents the format.
 - **The LMDB backend answers as the in-memory one does.** With
   persistent collections stored in LMDB, *C++* (and this engine until
   now):

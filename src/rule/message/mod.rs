@@ -184,10 +184,10 @@ impl<'r> RuleMessage<'r> {
         self.matched.as_ref().map(|m| (m.value.key_with_collection(), m.value.value()))
     }
 
-    /// Where the match is in the request: the offsets of the variable and
-    /// of the match in it, and the transformations
-    /// (`o0,4v64,13t:lowercase`, see
-    /// [`ModSecurity::process_content_offset`](crate::ModSecurity::process_content_offset)).
+    /// Where the match is in the request, as the logs write it
+    /// (`o0,4v64,13t:lowercase`): `v<start>,<size>` is where the variable
+    /// is in the request, `o<start>,<size>` where the match is in its
+    /// value, and `t:<name>` each transformation applied before matching.
     pub fn reference(&self) -> &[u8] {
         &self.reference
     }
