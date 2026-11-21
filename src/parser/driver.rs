@@ -150,6 +150,7 @@ impl Driver {
     /// Parses the rules in `f`; `reference` names their
     /// origin in the error messages. Returns whether the rules were valid
     /// (the errors are in `properties.parser_error`).
+    #[cfg(test)]
     pub fn parse(&mut self, f: &str, reference: &str) -> bool {
         self.parse_bytes(f.as_bytes(), reference)
     }

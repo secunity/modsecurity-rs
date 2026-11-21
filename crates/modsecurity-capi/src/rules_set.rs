@@ -25,12 +25,14 @@ fn c_result(result: Result<usize, LoadError>, error: *mut *const c_char) -> c_in
     }
 }
 
-unsafe fn cstr<'a>(p: *const c_char) -> &'a str {
+/// The bytes of a C string (none for NULL). Rules are bytes: they need not
+/// be UTF-8.
+unsafe fn cbytes<'a>(p: *const c_char) -> &'a [u8] {
     if p.is_null() {
-        return "";
+        return b"";
     }
     // SAFETY: the C API contract: NUL terminated strings.
-    unsafe { CStr::from_ptr(p) }.to_str().unwrap_or("")
+    unsafe { CStr::from_ptr(p) }.to_bytes()
 }
 
 /// [`catch_panic`] for the functions that load or merge rules: a panic
@@ -40,6 +42,19 @@ fn catch_load_panic(error: *mut *const c_char, f: impl FnOnce() -> c_int) -> c_i
         set_error(error, "ModSecurity: internal error while loading the rules\n".to_string());
         -1
     })
+}
+
+/// A file name as the C caller gave it: any bytes but NUL on unix.
+#[cfg(unix)]
+fn path(name: &[u8]) -> std::borrow::Cow<'_, std::path::Path> {
+    use std::os::unix::ffi::OsStrExt;
+    std::borrow::Cow::Borrowed(std::path::Path::new(std::ffi::OsStr::from_bytes(name)))
+}
+
+/// A file name as the C caller gave it.
+#[cfg(not(unix))]
+fn path(name: &[u8]) -> std::borrow::Cow<'_, std::path::Path> {
+    std::borrow::Cow::Owned(String::from_utf8_lossy(name).into_owned().into())
 }
 
 #[unsafe(no_mangle)]
@@ -87,7 +102,10 @@ pub unsafe extern "C" fn msc_rules_add_remote(
         let Some(r) = (unsafe { rules.as_mut() }) else {
             return -1;
         };
-        c_result(r.load_remote(unsafe { cstr(key) }, unsafe { cstr(uri) }), error)
+        // The key and the URL are text; the rules downloaded are bytes.
+        let key = String::from_utf8_lossy(unsafe { cbytes(key) });
+        let uri = String::from_utf8_lossy(unsafe { cbytes(uri) });
+        c_result(r.load_remote(&key, &uri), error)
     })
 }
 
@@ -103,7 +121,7 @@ pub unsafe extern "C" fn msc_rules_add_file(
         let Some(r) = (unsafe { rules.as_mut() }) else {
             return -1;
         };
-        c_result(r.load_from_uri(unsafe { cstr(file) }), error)
+        c_result(r.load_file(&path(unsafe { cbytes(file) })), error)
     })
 }
 
@@ -120,7 +138,7 @@ pub unsafe extern "C" fn msc_rules_add(
         let Some(r) = (unsafe { rules.as_mut() }) else {
             return -1;
         };
-        c_result(r.load(unsafe { cstr(plain_rules) }), error)
+        c_result(r.load_bytes(unsafe { cbytes(plain_rules) }, ""), error)
     })
 }
 
@@ -167,6 +185,55 @@ mod tests {
             e
         });
         (n, error)
+    }
+
+    /// A rule set made of Latin-1 bytes (not UTF-8): `@rx \xe9`.
+    const LATIN1_RULES: &[u8] = b"SecRuleEngine On\nSecRule ARGS \"@rx \xe9\" \"id:1,phase:1,deny,status:403\"";
+
+    /// Whether `rules` deny a request whose argument is the byte 0xE9.
+    fn denies_latin1(rules: *mut RulesSet) -> bool {
+        let ms = engine::ModSecurity::new();
+        // SAFETY: `rules` is live.
+        let mut t = engine::Transaction::new(&ms, unsafe { &*rules }, None);
+        t.process_connection("127.0.0.1", 1, "127.0.0.1", 80);
+        t.process_uri(b"/?a=%E9", b"GET", b"1.1");
+        t.process_request_headers();
+        t.intervention().is_some_and(|it| it.status == 403)
+    }
+
+    #[test]
+    fn rules_that_are_not_utf8_load() {
+        let rules = msc_create_rules_set();
+        let text = CString::new(LATIN1_RULES).unwrap();
+        let mut error: *const c_char = std::ptr::null();
+        // SAFETY: valid rule set, string and out-pointer.
+        assert_eq!(unsafe { msc_rules_add(rules, text.as_ptr(), &mut error) }, 1);
+        assert!(error.is_null());
+        assert!(denies_latin1(rules));
+        // SAFETY: created above.
+        unsafe { msc_rules_cleanup(rules) };
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_of_rules_that_are_not_utf8_at_a_path_that_is_not_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = std::env::temp_dir().join(format!("modsec-capi-latin1-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(std::ffi::OsStr::from_bytes(b"r\xe8gles.conf"));
+        std::fs::write(&path, LATIN1_RULES).unwrap();
+
+        let rules = msc_create_rules_set();
+        let file = CString::new(path.as_os_str().as_bytes()).unwrap();
+        let mut error: *const c_char = std::ptr::null();
+        // SAFETY: valid rule set, string and out-pointer.
+        let n = unsafe { msc_rules_add_file(rules, file.as_ptr(), &mut error) };
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(n, 1);
+        assert!(error.is_null());
+        assert!(denies_latin1(rules));
+        // SAFETY: created above.
+        unsafe { msc_rules_cleanup(rules) };
     }
 
     #[test]

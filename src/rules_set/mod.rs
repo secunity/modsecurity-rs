@@ -92,11 +92,35 @@ impl RulesSet {
         self.merge_driver(&mut driver)
     }
 
+    /// Loads the rules of the file at `path`, which need not be UTF-8 (the
+    /// messages show it with its invalid bytes replaced). Returns the number
+    /// of rules loaded.
+    pub fn load_file(&mut self, path: &std::path::Path) -> Result<usize, LoadError> {
+        if let Some(uri) = path.to_str() {
+            return self.load_from_uri(uri);
+        }
+        let reference = path.to_string_lossy();
+        let content = if path.is_file() { std::fs::read(path).ok() } else { None };
+        let Some(content) = content else {
+            self.properties.parser_error.push_str(&format!("Failed to open the file: {}\n", reference));
+            return self.failed();
+        };
+        self.load_bytes(&content, &reference)
+    }
+
     /// Loads rules from text; `reference` names their origin in messages
     /// (a file name or URL). Returns the number of rules loaded.
     pub fn load_with_ref(&mut self, rules: &str, reference: &str) -> Result<usize, LoadError> {
+        self.load_bytes(rules.as_bytes(), reference)
+    }
+
+    /// Loads rules from bytes, which need not be UTF-8: a rule can match
+    /// any byte (`@rx \xe9` written in Latin-1, for example). `reference`
+    /// names their origin in messages (a file name or URL). Returns the
+    /// number of rules loaded.
+    pub fn load_bytes(&mut self, rules: &[u8], reference: &str) -> Result<usize, LoadError> {
         let mut driver = Driver::new();
-        if !driver.parse(rules, reference) {
+        if !driver.parse_bytes(rules, reference) {
             self.properties.parser_error.push_str(&driver.properties.parser_error);
             return self.failed();
         }
@@ -113,8 +137,8 @@ impl RulesSet {
         let mut client = HttpsClient::new();
         client.set_key(key);
         if client.download(uri) {
-            let content = String::from_utf8_lossy(&client.content).into_owned();
-            return self.load_with_ref(&content, uri);
+            let content = std::mem::take(&mut client.content);
+            return self.load_bytes(&content, uri);
         }
         self.failed()
     }
@@ -299,5 +323,46 @@ mod tests {
 
         let boxed: Box<dyn std::error::Error> = Box::new(second);
         assert!(!boxed.to_string().is_empty());
+    }
+
+    /// A Latin-1 rule: `@rx \xe9t\xe9` ("été" in Latin-1).
+    const LATIN1_RULES: &[u8] = b"SecRuleEngine On\nSecRule ARGS \"@rx \xe9t\xe9\" \"id:1,phase:1,deny,status:403\"\n";
+
+    /// The status a `GET` of `uri` is denied with.
+    fn denied(rules: &RulesSet, uri: &[u8]) -> Option<u16> {
+        let ms = crate::ModSecurity::new();
+        let mut t = Transaction::new(&ms, rules, None);
+        t.process_connection("127.0.0.1", 1, "127.0.0.1", 80);
+        t.process_uri(uri, b"GET", b"1.1");
+        t.process_request_headers();
+        t.intervention().map(|it| it.status)
+    }
+
+    #[test]
+    fn rules_that_are_not_utf8_load_and_match_their_bytes() {
+        let mut rules = RulesSet::new();
+        assert_eq!(rules.load_bytes(LATIN1_RULES, "latin1.conf"), Ok(1));
+        assert_eq!(denied(&rules, b"/?a=%E9t%E9"), Some(403));
+        assert_eq!(denied(&rules, b"/?a=%C3%A9t%C3%A9"), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_of_rules_that_are_not_utf8_at_a_path_that_is_not_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = std::env::temp_dir().join(format!("modsec-latin1-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(std::ffi::OsStr::from_bytes(b"r\xe8gles.conf"));
+        std::fs::write(&path, LATIN1_RULES).unwrap();
+
+        let mut rules = RulesSet::new();
+        let loaded = rules.load_file(&path);
+        let missing = RulesSet::new().load_file(&dir.join(std::ffi::OsStr::from_bytes(b"absent\xe8.conf")));
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(loaded, Ok(1));
+        assert_eq!(denied(&rules, b"/?a=%E9t%E9"), Some(403));
+        let missing = missing.unwrap_err();
+        assert!(missing.message().starts_with("Failed to open the file: "), "{missing}");
+        assert!(missing.message().ends_with("absent\u{fffd}.conf\n"), "{missing}");
     }
 }

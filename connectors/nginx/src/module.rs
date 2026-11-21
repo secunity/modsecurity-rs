@@ -4,6 +4,9 @@
 use core::ffi::{c_char, c_void};
 use core::mem::offset_of;
 use core::ptr;
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 
 use modsecurity::{
     LoadError, MODSECURITY_MAJOR, MODSECURITY_MINOR, MODSECURITY_PATCHLEVEL, ModSecurity, RulesSet, ServerLogEntry,
@@ -135,7 +138,7 @@ unsafe extern "C" fn ngx_conf_set_rules(
     unsafe {
         conf_catch_panic(cf, "modsecurity_rules", NGX_CONF_ERROR, || {
             let rules = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
-            let res = (*mcf).rules_set.load(&String::from_utf8_lossy(&rules));
+            let res = (*mcf).rules_set.load_bytes(&rules, "");
             rules_result(cf, res, |m| &mut m.rules_inline)
         })
     }
@@ -152,7 +155,7 @@ unsafe extern "C" fn ngx_conf_set_rules_file(
     unsafe {
         conf_catch_panic(cf, "modsecurity_rules_file", NGX_CONF_ERROR, || {
             let file = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
-            let res = (*mcf).rules_set.load_from_uri(&String::from_utf8_lossy(&file));
+            let res = (*mcf).rules_set.load_file(Path::new(OsStr::from_bytes(&file)));
             rules_result(cf, res, |m| &mut m.rules_file)
         })
     }
@@ -170,6 +173,7 @@ unsafe extern "C" fn ngx_conf_set_rules_remote(
         conf_catch_panic(cf, "modsecurity_rules_remote", NGX_CONF_ERROR, || {
             let key = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
             let server = ngx_str_to_bytes(&arg(cf, 2)).unwrap_or_default();
+            // The key and the URL are text; the rules downloaded are bytes.
             let res = (*mcf).rules_set.load_remote(&String::from_utf8_lossy(&key), &String::from_utf8_lossy(&server));
             rules_result(cf, res, |m| &mut m.rules_remote)
         })
