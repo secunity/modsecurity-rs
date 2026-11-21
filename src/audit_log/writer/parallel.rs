@@ -17,40 +17,27 @@ use crate::transaction::Transaction;
 use crate::utils::shared_files::SharedFile;
 use crate::utils::system::{create_dir, strerror, strftime_local};
 
-/// Audit log file is saved into a directory structure. This directory
-/// structure is based on the timestamp of the transaction creation, at
-/// the exact moment that ModSecurity be aware of a particular
-/// request/transaction.
-/// The expect fromat is:
-///
-/// `[...]/YearMonthDay/YearMonthDayAndTime/YearMonthDayAndTime-RequestId`
-///
-/// Example:
+/// Where the entry of a transaction is stored: a directory per day, in
+/// it a directory per minute, and in that a file named after the second
+/// and the request id (all from the time the transaction was created):
 ///
 /// `/20150710/20150710-1353/20150710-135353-143654723362.584244`
-///
-/// These constants describe the subpaths of this structure.
-pub const YEAR_MONTH_DAY_DIRECTORY: i32 = 2;
-pub const YEAR_MONTH_DAY_AND_TIME_DIRECTORY: i32 = 4;
-pub const YEAR_MONTH_DAY_AND_TIME_FILE_NAME: i32 = 8;
+struct EntryPaths {
+    /// `/20150710`
+    day: String,
+    /// `/20150710/20150710-1353`
+    minute: String,
+    /// `/20150710/20150710-1353/20150710-135353`: the file name up to the
+    /// request id.
+    second: String,
+}
 
-/// The requested subpaths for the time `t` (local time).
-pub fn log_file_path(t: i64, part: i32) -> String {
-    let mut name = String::new();
-
-    if part & YEAR_MONTH_DAY_DIRECTORY != 0 {
-        name.push_str(&strftime_local(t, "/%Y%m%d"));
-    }
-
-    if part & YEAR_MONTH_DAY_AND_TIME_DIRECTORY != 0 {
-        name.push_str(&strftime_local(t, "/%Y%m%d-%H%M"));
-    }
-
-    if part & YEAR_MONTH_DAY_AND_TIME_FILE_NAME != 0 {
-        name.push_str(&strftime_local(t, "/%Y%m%d-%H%M%S"));
-    }
-
-    name
+/// The subpaths of an entry for the time `t` (local time).
+fn entry_paths(t: i64) -> EntryPaths {
+    let day = strftime_local(t, "/%Y%m%d");
+    let minute = format!("{day}{}", strftime_local(t, "/%Y%m%d-%H%M"));
+    let second = format!("{minute}{}", strftime_local(t, "/%Y%m%d-%H%M%S"));
+    EntryPaths { day, minute, second }
 }
 
 /// Writes the index line of an entry into `index`.
@@ -83,10 +70,7 @@ pub(super) fn write(
     parts: Parts,
 ) -> Result<(), String> {
     let ts = transaction.time_stamp;
-    let mut file_name = log_file_path(
-        ts,
-        YEAR_MONTH_DAY_DIRECTORY | YEAR_MONTH_DAY_AND_TIME_DIRECTORY | YEAR_MONTH_DAY_AND_TIME_FILE_NAME,
-    );
+    let paths = entry_paths(ts);
 
     // The format comes from the transaction's rule set.
     let log = if transaction.rules.properties.audit_log.format == Some(AuditLogFormat::Json) {
@@ -97,7 +81,7 @@ pub(super) fn write(
     };
 
     let log_path = &audit.storage_dir;
-    file_name = format!("{}{}-{}", log_path, file_name, transaction.id);
+    let file_name = format!("{}{}-{}", log_path, paths.second, transaction.id);
 
     if log_path.is_empty() {
         return Err("Log path is not valid.".to_string());
@@ -105,13 +89,8 @@ pub(super) fn write(
 
     let dir_mode = audit.directory_permission();
     // (Writing only needs to know that it failed.)
-    create_dir(&format!("{}{}", log_path, log_file_path(ts, YEAR_MONTH_DAY_DIRECTORY)), dir_mode)
-        .map_err(Option::unwrap_or_default)?;
-    create_dir(
-        &format!("{}{}", log_path, log_file_path(ts, YEAR_MONTH_DAY_DIRECTORY | YEAR_MONTH_DAY_AND_TIME_DIRECTORY)),
-        dir_mode,
-    )
-    .map_err(Option::unwrap_or_default)?;
+    create_dir(&format!("{}{}", log_path, paths.day), dir_mode).map_err(Option::unwrap_or_default)?;
+    create_dir(&format!("{}{}", log_path, paths.minute), dir_mode).map_err(Option::unwrap_or_default)?;
 
     // open(fileName, O_CREAT | O_WRONLY | O_APPEND, filePermission)
     let mut file = OpenOptions::new()
