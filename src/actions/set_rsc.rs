@@ -1,5 +1,4 @@
-//! `setrsc:'...'` — sets the key of the RESOURCE collection. (The action
-//! reports its name as `setsrc`.)
+//! `setrsc:'...'` — sets the key of the RESOURCE collection.
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
@@ -18,7 +17,7 @@ impl SetRSC {
 
 impl Action for SetRSC {
     fn name(&self) -> &str {
-        "setsrc"
+        "setrsc"
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {

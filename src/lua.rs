@@ -68,7 +68,7 @@ mod without_lua {
 #[cfg(feature = "lua")]
 mod with_lua {
     use mlua::chunk::ChunkMode;
-    use mlua::{Function, IntoLuaMulti, LightUserData, MultiValue, Table, Value};
+    use mlua::{Function, IntoLuaMulti, MultiValue, Table, Value};
     use std::cell::RefCell;
 
     use super::Transaction;
@@ -276,8 +276,7 @@ end
             self.script_name = script.to_string();
 
             let compiled = load_file(&lua, script).map_err(|luaerr| {
-                // Sic: the message has no closing quote.
-                let mut err = format!("Failed to compile script '{}", script);
+                let mut err = format!("Failed to compile script '{}'", script);
                 if let Some(e) = luaerr {
                     err.push_str(": ");
                     err.push_str(&e);
@@ -312,7 +311,6 @@ end
         }
 
         fn run_in(&self, lua: &mlua::Lua, t: &mut Transaction<'_>, s: &[u8]) -> mlua::Result<bool> {
-            let transaction_ptr = t as *mut Transaction<'_> as *mut std::ffi::c_void;
             let t = RefCell::new(t);
             lua.scope(|scope| {
                 let globals = lua.globals();
@@ -324,7 +322,6 @@ end
                 lua.set_named_registry_value("luaL_msc", &msc)?;
 
                 let m = lua.create_table()?;
-                globals.set("__transaction", LightUserData(transaction_ptr))?;
                 // The errors of these functions (bad arguments) are raised
                 // as strings, as luaL_error raises them. Errors returned by
                 // mlua callbacks are userdata, so each function is wrapped
@@ -538,7 +535,7 @@ end
     /// collection variable.
     fn setvar(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
         if args.len() != 2 {
-            crate::ms_dbg!(&**t.borrow(), 8, "m.setvar: Failed m.setvar funtion must has 2 arguments");
+            crate::ms_dbg!(&**t.borrow(), 8, "m.setvar: Failed m.setvar function must have 2 arguments");
             // Logged, and the script gets no value and no error.
             return Ok(());
         }
@@ -584,7 +581,8 @@ end
                     let item: Value = tbl.raw_get(i)?;
                     let name = check_string(lua, Some(&item), -1)?;
 
-                    // A "none" means start over
+                    // `none` is skipped: it does not undo the
+                    // transformations before it.
                     if name == b"none" {
                         continue;
                     }
@@ -701,13 +699,13 @@ mod tests {
 
         assert_eq!(
             Lua::from_script("/nonexistent/x.lua").unwrap_err(),
-            "Problems load script: Failed to compile script '/nonexistent/x.lua: cannot open /nonexistent/x.lua: No such file or directory."
+            "Problems load script: Failed to compile script '/nonexistent/x.lua': cannot open /nonexistent/x.lua: No such file or directory."
         );
 
         let p = temp_script("syntax.lua", "function main()\n  return (\nend\n");
         assert_eq!(
             Lua::from_script(&p).unwrap_err(),
-            format!("Problems load script: Failed to compile script '{p}: {p}:3: unexpected symbol near 'end'.")
+            format!("Problems load script: Failed to compile script '{p}': {p}:3: unexpected symbol near 'end'.")
         );
     }
 
@@ -816,7 +814,7 @@ mod tests {
         let mut l = Lua::new();
         l.load(&p).unwrap();
         assert!(!l.run(&mut t, b""));
-        assert!(log.lock().unwrap().contains("[8] m.setvar: Failed m.setvar funtion must has 2 arguments\n"));
+        assert!(log.lock().unwrap().contains("[8] m.setvar: Failed m.setvar function must have 2 arguments\n"));
         assert!(
             log.lock().unwrap().contains(
                 "[8] m.setvar: Must specify a collection using dot character - ie m.setvar(tx.myvar,mydata)\n"
@@ -834,7 +832,7 @@ mod tests {
     }
 
     /// The expected lines are the debug log of libmodsecurity 3.0.17 for
-    /// the same script.
+    /// the same script, but for the spelling of the m.setvar message.
     #[test]
     fn callback_errors_match_cpp() {
         let ms = ModSecurity::new();
@@ -843,7 +841,7 @@ mod tests {
         let p = temp_script(
             "probe.lua",
             r#"function main()
-  m.log(1, "count=" .. select('#', m.getvar('tx.nothere')) .. " modsec=" .. tostring(modsec.__name) .. " tr=" .. tostring(__transaction ~= nil))
+  m.log(1, "count=" .. select('#', m.getvar('tx.nothere')) .. " modsec=" .. tostring(modsec.__name))
   m.setvar('x')
   local ok, e = pcall(m.setvar, 'tx.a', {})
   m.log(1, "E1:" .. tostring(e))
@@ -865,8 +863,8 @@ end
         let got = log.lock().unwrap().clone();
         assert!(ret, "{}", got);
         let expected = format!(
-            "[1] count=0 modsec=luaL_msc tr=true
-[8] m.setvar: Failed m.setvar funtion must has 2 arguments
+            "[1] count=0 modsec=luaL_msc
+[8] m.setvar: Failed m.setvar function must have 2 arguments
 [1] E1:bad argument #2 to '?' (string expected, got table)
 [1] E2:bad argument #-1 to '?' (string expected, got table)
 [1] E3:bad argument #1 to '?' (number expected, got string)

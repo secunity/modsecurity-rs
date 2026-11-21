@@ -230,6 +230,8 @@ impl RulesSet {
                     t.eval.skip_next
                 );
             } else if t.eval.allow_type.is_some() {
+                // Sic: "trough". The regression test action-allow.json
+                // looks for this text in the debug log.
                 crate::ms_dbg!(
                     t,
                     9,

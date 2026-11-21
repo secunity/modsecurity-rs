@@ -192,7 +192,7 @@ impl Rule {
         if !a.is_disruptive() && !matches!(a, RuleAction::Block(_)) {
             crate::ms_dbg!(t, 9, "Running action: {}", a.name());
         } else if default_context && !self.has_block_action() {
-            crate::ms_dbg!(t, 4, "Ignoring action: {} (rule does not cotains block)", a.name());
+            crate::ms_dbg!(t, 4, "Ignoring action: {} (rule does not contain block)", a.name());
             return;
         } else if t.rule_engine_state() == Some(RuleEngine::Enabled) {
             crate::ms_dbg!(t, 4, "Running (disruptive)     action: {}.", a.name());
