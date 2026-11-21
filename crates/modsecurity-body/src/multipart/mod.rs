@@ -26,7 +26,7 @@ mod content_type;
 mod part;
 mod tmp_file;
 
-use part::{MultipartPart, PartState, PartType};
+use part::{MultipartPart, PartKind, PartState};
 pub use tmp_file::MultipartPartTmpFile;
 
 /// The size of the parser's buffer: the longest line it looks at as a
@@ -541,20 +541,23 @@ impl Multipart {
                 ms_dbg!(cx, 9, "Multipart: Added part header line:{}", String::from_utf8_lossy(line));
             }
 
-            if mpp.type_ == PartType::File {
-                // close the temp file
-                if let Some(f) = &mpp.tmp_file
-                    && f.is_valid()
-                {
-                    f.close();
-                }
-            } else {
-                // now construct a single string out of the parts
-                for (d, off) in &mpp.value_parts {
-                    if mpp.value_offset == 0 {
-                        mpp.value_offset = *off as usize;
+            match &mpp.kind {
+                PartKind::File(file) => {
+                    // close the temp file
+                    if let Some(f) = &file.tmp_file
+                        && f.is_valid()
+                    {
+                        f.close();
                     }
-                    mpp.value.extend_from_slice(d);
+                }
+                PartKind::Field { pieces } => {
+                    // now construct a single string out of the pieces
+                    for (d, off) in pieces {
+                        if mpp.value_offset == 0 {
+                            mpp.value_offset = *off as usize;
+                        }
+                        mpp.value.extend_from_slice(d);
+                    }
                 }
             }
 
@@ -569,7 +572,7 @@ impl Multipart {
                 );
             } else {
                 // add the part to the list of parts
-                if mpp.type_ == PartType::File {
+                if mpp.file().is_some() {
                     // filename* takes precedence over filename
                     let fname = if !mpp.filename_star.is_empty() { &mpp.filename_star } else { &mpp.filename };
                     ms_dbg!(
@@ -741,7 +744,7 @@ impl Multipart {
                 continue;
             }
 
-            if m.type_ != PartType::File {
+            let Some(file) = m.file() else {
                 ms_dbg!(
                     cx,
                     4,
@@ -753,9 +756,9 @@ impl Multipart {
                 cx.add(Entries::Args, &m.name, &m.value, offset);
                 cx.add(Entries::ArgsPost, &m.name, &m.value, offset);
                 continue;
-            }
+            };
 
-            if let Some(f) = &m.tmp_file
+            if let Some(f) = &file.tmp_file
                 && !f.filename().is_empty()
             {
                 let n = f.filename().as_bytes();
@@ -772,25 +775,14 @@ impl Multipart {
 
             cx.add(Entries::FilesNames, &m.name, &m.name, m.name_offset);
 
-            cx.add_with_len(
-                Entries::FilesSizes,
-                &m.name,
-                m.file_size.to_string().as_bytes(),
-                m.file_offset,
-                m.file_size,
-            );
+            cx.add_with_len(Entries::FilesSizes, &m.name, file.size.to_string().as_bytes(), file.offset, file.size);
 
             cx.add(Entries::FilesTmpContent, &m.name, &m.value, m.value_offset);
 
             // int + size_t, stored back into an int
-            file_combined_size = (file_combined_size as usize).wrapping_add(m.file_size) as i32;
+            file_combined_size = (file_combined_size as usize).wrapping_add(file.size) as i32;
 
-            cx.set_with_len(
-                Flag::FilesCombinedSize,
-                file_combined_size.to_string().as_bytes(),
-                m.file_offset,
-                m.file_size,
-            );
+            cx.set_with_len(Flag::FilesCombinedSize, file_combined_size.to_string().as_bytes(), file.offset, file.size);
         }
     }
 
@@ -815,9 +807,7 @@ impl Multipart {
         );
 
         for m in &self.parts {
-            if m.type_ == PartType::File
-                && let Some(f) = &m.tmp_file
-            {
+            if let Some(f) = m.file().and_then(|file| file.tmp_file.as_ref()) {
                 if self.upload_keep_files == Some(true) {
                     f.keep();
                 } else {

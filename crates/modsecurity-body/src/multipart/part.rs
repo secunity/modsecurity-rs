@@ -8,11 +8,25 @@ use modsecurity_types::ms_dbg;
 
 use super::{Context, MULTIPART_BUF_SIZE, Multipart, MultipartPartTmpFile, find};
 
-/// Whether a part is a form field or a file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum PartType {
-    FormData,
-    File,
+/// What a part holds: a form field or a file, as its headers say.
+#[derive(Debug)]
+pub(super) enum PartKind {
+    /// A form field: the pieces of its value, with the offset of the
+    /// buffer each came from (joined into the value when the part ends).
+    Field {
+        pieces: Vec<(Vec<u8>, u32)>,
+    },
+    File(FilePart),
+}
+
+/// The data of a file part.
+#[derive(Debug, Default)]
+pub(super) struct FilePart {
+    /// The temporary file holding the data, when the data is saved.
+    pub(super) tmp_file: Option<Arc<MultipartPartTmpFile>>,
+    /// The size of the file, and where it starts (0 until the first data).
+    pub(super) size: usize,
+    pub(super) offset: usize,
 }
 
 /// What the lines of a part are read as.
@@ -28,7 +42,7 @@ type PartHeaders = Vec<(Vec<u8>, (usize, Vec<u8>))>;
 /// A part of the body: a form field or a file.
 #[derive(Debug)]
 pub(super) struct MultipartPart {
-    pub(super) type_: PartType,
+    pub(super) kind: PartKind,
 
     pub(super) name: Vec<u8>,
     pub(super) name_offset: usize,
@@ -38,18 +52,9 @@ pub(super) struct MultipartPart {
     pub(super) value: Vec<u8>,
     pub(super) value_offset: usize,
 
-    /// Form fields only: the pieces of the value, with the offset of the
-    /// buffer each came from.
-    pub(super) value_parts: Vec<(Vec<u8>, u32)>,
-
-    /// Files only: the temporary file holding the data.
-    pub(super) tmp_file: Option<Arc<MultipartPartTmpFile>>,
-    /// Files only: the size of the file, and where it starts (0 until
-    /// the first data).
-    pub(super) file_size: usize,
-    pub(super) file_offset: usize,
-
-    /// Files only: the file name as supplied by the browser.
+    /// The file name as supplied by the browser. The headers are read
+    /// before the part is known to be a file: a file name is what makes it
+    /// one.
     pub(super) filename: Vec<u8>,
     // Note: Every consumer reading the filename must evaluate filename_star
     // first to respect RFC precedence rules before falling back to filename.
@@ -80,15 +85,11 @@ pub(super) struct MultipartPart {
 impl MultipartPart {
     pub(super) fn new() -> Self {
         MultipartPart {
-            type_: PartType::FormData,
+            kind: PartKind::Field { pieces: Vec::new() },
             name: Vec::new(),
             name_offset: 0,
             value: Vec::new(),
             value_offset: 0,
-            value_parts: Vec::new(),
-            tmp_file: None,
-            file_size: 0,
-            file_offset: 0,
             filename: Vec::new(),
             filename_star: Vec::new(),
             filename_offset: 0,
@@ -123,11 +124,21 @@ impl MultipartPart {
         }
     }
 
+    /// The file, for a file part.
+    pub(super) fn file(&self) -> Option<&FilePart> {
+        match &self.kind {
+            PartKind::File(file) => Some(file),
+            PartKind::Field { .. } => None,
+        }
+    }
+
     /// Counts `n` more bytes of file data read up to `offset`.
     fn grow_file(&mut self, n: usize, offset: usize) {
-        self.file_size += n;
-        if self.file_offset == 0 {
-            self.file_offset = offset.wrapping_sub(self.file_size);
+        if let PartKind::File(file) = &mut self.kind {
+            file.size += n;
+            if file.offset == 0 {
+                file.offset = offset.wrapping_sub(file.size);
+            }
         }
         self.length = self.length.wrapping_add(n as u32);
     }
@@ -202,9 +213,9 @@ impl Multipart {
                 return self.fail(cx, 1, "Multipart: Invalid Content-Disposition header (filename).");
             }
 
-            mpp.type_ = PartType::File;
+            mpp.kind = PartKind::File(FilePart::default());
         } else {
-            mpp.type_ = PartType::FormData;
+            mpp.kind = PartKind::Field { pieces: Vec::new() };
         }
 
         self.part_state = PartState::Data;
@@ -345,13 +356,13 @@ impl Multipart {
             mpp.offset = self.buf_offset;
         }
 
-        match mpp.type_ {
-            PartType::File => {
+        match &mut mpp.kind {
+            PartKind::File(_) => {
                 if !self.add_file_data(cx, mpp, buf, offset) {
                     return false;
                 }
             }
-            PartType::FormData => {
+            PartKind::Field { pieces } => {
                 // The buffer contains data so increase the data length
                 // counter.
                 self.reqbody_no_files_length += buf.len() + self.reserve.len();
@@ -360,7 +371,7 @@ impl Multipart {
                 mpp.length = mpp.length.wrapping_add(d.len() as u32);
 
                 ms_dbg!(cx, 9, "Multipart: Added data to variable: {}", String::from_utf8_lossy(&d));
-                mpp.value_parts.push((d, self.buf_offset));
+                pieces.push((d, self.buf_offset));
             }
         }
 
@@ -408,10 +419,11 @@ impl Multipart {
         }
 
         // first create a temporary file if we don't have it already
-        if !mpp.tmp_file.as_ref().is_some_and(|f| f.is_valid()) {
+        let PartKind::File(file) = &mut mpp.kind else { unreachable!("file data of a form field") };
+        if !file.tmp_file.as_ref().is_some_and(|f| f.is_valid()) {
             let tmp = Arc::new(MultipartPartTmpFile::open(cx));
             cx.keep_tmp_file(Arc::clone(&tmp));
-            mpp.tmp_file = Some(Arc::clone(&tmp));
+            file.tmp_file = Some(Arc::clone(&tmp));
 
             // do we have an opened file?
             if !tmp.is_open() {
@@ -430,7 +442,7 @@ impl Multipart {
                 tmp.filename()
             );
         }
-        let tmp = Arc::clone(mpp.tmp_file.as_ref().expect("temporary file"));
+        let tmp = Arc::clone(file.tmp_file.as_ref().expect("temporary file"));
 
         // write the reserve first
         if !self.reserve.is_empty() {
