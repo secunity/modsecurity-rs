@@ -256,8 +256,7 @@ fn values_without_what_surrounds_them() {
         "SecMarker \"QUOTED\"\n",
         "SecMarker 'SINGLE' # comment\n",
         "SecMarker\t\"'BOTH'\"\n",
-        // Only the first space or tab separates a marker.
-        "SecMarker  SPACED\n",
+        "SecMarker \t SPACED \n",
         "SecRuleRemoveById 1 2  4-5\n",
         "SecRuleRemoveById  '7 8'  \n",
         "SecRuleRemoveByTag  'a b' \n",
@@ -268,8 +267,8 @@ fn values_without_what_surrounds_them() {
         "SecRule ARGS \"@rx a\" \"id:10,phase:1,pass,tag:t\"\n",
         "SecRuleUpdateTargetByTag  \"' t '\" ARGS:x\n",
         "SecRuleUpdateTargetById '10' ARGS:y\n",
-        // A tab after the separator is part of the value.
         "SecRuleUpdateTargetByMsg \t'm' ARGS:z\n",
+        "SecDebugLogLevel  3\n",
     );
     let mut d = Driver::new();
     assert!(d.parse(conf, "t"), "{}", d.properties.parser_error);
@@ -279,7 +278,7 @@ fn values_without_what_surrounds_them() {
         .iter()
         .filter_map(|e| e.as_marker().map(|m| m.name.as_str()))
         .collect();
-    assert_eq!(markers, ["END", "QUOTED", "SINGLE", "BOTH", " SPACED"]);
+    assert_eq!(markers, ["END", "QUOTED", "SINGLE", "BOTH", "SPACED"]);
     let p = &d.properties;
     let removed: Vec<u64> = (0..10).filter(|&id| p.exceptions.contains(id)).collect();
     assert_eq!(removed, [1, 2, 4, 5, 7, 8]);
@@ -291,7 +290,8 @@ fn values_without_what_surrounds_them() {
     let by_tag: Vec<&str> = p.exceptions.variable_update_target_by_tag.iter().map(|(t, _)| t.as_str()).collect();
     assert_eq!(by_tag, [" t "]);
     let by_msg: Vec<&str> = p.exceptions.variable_update_target_by_msg.iter().map(|(m, _)| m.as_str()).collect();
-    assert_eq!(by_msg, ["\t'm'"]);
+    assert_eq!(by_msg, ["m"]);
+    assert_eq!(p.debug_log.level(), Some(3));
     assert_eq!(p.exceptions.variable_update_target_by_id.for_rule(10).len(), 1);
 
     // A double quote ends the list of `SecRuleRemoveById`.

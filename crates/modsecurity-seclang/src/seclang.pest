@@ -82,16 +82,10 @@ update_target    = { ^"SecRuleUpdateTargetBy" ~ update_by ~ update_sep ~ update_
 update_by        = { ^"Id" ~ &ws | ^"Tag" ~ &ws | ^"Msg" ~ &ws }
 // SecRuleUpdateActionById 942100 "t:none,pass"
 update_action    = { ^"SecRuleUpdateActionById" ~ update_sep ~ update_value ~ gap ~ actions }
-// A space or a tab and the spaces after it. A tab after them is part of
-// the value, which is then as written, quotes included (the C++ scanner
-// keeps what follows the first space or tab, and trims only spaces).
-// (pest reports a syntax error where the furthest rule failed: the name of
-// `update_sep`, and `update_tabbed` being tried only at a tab, decide
-// where that is.)
-update_sep       = { ws ~ " "* }
-update_value     = { &"\t" ~ update_tabbed | quoted | single_quoted_word | update_word }
-update_tabbed    = ${ "\t" ~ ws* ~ (tabbed_quoted | update_word) }
-tabbed_quoted    = ${ "\"" ~ quoted_text ~ "\"" }
+// (A rule with a name: pest reports a syntax error where the furthest
+// named rule failed.)
+update_sep       = { ws+ }
+update_value     = { quoted | single_quoted_word | update_word }
 update_word      = @{ (!update_end ~ ANY)+ }
 update_end       = _{ ws | nl | "\r" | "\"" | "," | EOI }
 // A word in single quotes: the value is inside them.

@@ -9,7 +9,7 @@
 use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
 use crate::parser::build::{Builder, Failed, Res, load};
 use crate::parser::syntax;
-use crate::parser::syntax::value::{self, Class::*, Part, Part::*, Pattern, Pattern::*, Refused};
+use crate::parser::syntax::value::{self, Class::*, Pattern, Pattern::*, Quotes, Quotes::*, Refused};
 use crate::rules_set::properties::{
     BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
     parse_octal_mode,
@@ -36,7 +36,7 @@ impl Given {
 /// How the value of a directive is written.
 enum Form {
     /// In one of these forms (their order breaks ties).
-    Value(&'static [(Pattern, Part)]),
+    Value(&'static [(Pattern, Quotes)]),
     /// One of these words (case-insensitive); none for a directive without
     /// a value.
     Word(&'static [&'static str]),
@@ -59,18 +59,19 @@ struct Directive {
 }
 
 const ON_OFF: &[&str] = &["On", "Off"];
-const PATH: &[(Pattern, Part)] = &[(Sep(Path), Bare), (SepQuoted(Path), Bare)];
-const NUMBER: &[(Pattern, Part)] = &[(Sep(Number), Written)];
-const FREE_TEXT_LINE: &[(Pattern, Part)] = &[(Sep(FreeTextNewLine), Written)];
-const FREE_TEXT_LINE_BARE: &[(Pattern, Part)] = &[(Sep(FreeTextNewLine), Bare), (SepQuoted(FreeTextNewLine), Bare)];
+const PATH: &[(Pattern, Quotes)] = &[(Sep(Path), Double), (SepQuoted(Path), Double)];
+const NUMBER: &[(Pattern, Quotes)] = &[(Sep(Number), Double)];
+const FREE_TEXT_LINE: &[(Pattern, Quotes)] = &[(Sep(FreeTextNewLine), Double)];
+const FREE_TEXT_LINE_UNQUOTED: &[(Pattern, Quotes)] =
+    &[(Sep(FreeTextNewLine), DoubleAndSingle), (SepQuoted(FreeTextNewLine), DoubleAndSingle)];
 /// Text right after the keyword.
-const DIRECT: &[(Pattern, Part)] = &[(Direct(FreeTextNewLine), Written)];
-const QUOTED_TEXT: &[(Pattern, Part)] = &[(SepQuoted(FreeText), Bare)];
+const DIRECT: &[(Pattern, Quotes)] = &[(Direct(FreeTextNewLine), Double)];
+const QUOTED_TEXT: &[(Pattern, Quotes)] = &[(SepQuoted(FreeText), DoubleAndSingle)];
 /// A directive that takes no value.
 const NOTHING: Form = Form::Word(&[]);
 
 /// A directive with a value.
-fn value(forms: &'static [(Pattern, Part)], apply: Apply) -> Option<Directive> {
+fn value(forms: &'static [(Pattern, Quotes)], apply: Apply) -> Option<Directive> {
     Some(Directive { form: Form::Value(forms), effect: Effect::Apply(apply) })
 }
 
@@ -79,7 +80,7 @@ fn word(words: &'static [&'static str], apply: Apply) -> Option<Directive> {
     Some(Directive { form: Form::Word(words), effect: Effect::Apply(apply) })
 }
 
-fn ignored(forms: &'static [(Pattern, Part)]) -> Option<Directive> {
+fn ignored(forms: &'static [(Pattern, Quotes)]) -> Option<Directive> {
     Some(Directive { form: Form::Value(forms), effect: Effect::Ignored })
 }
 
@@ -110,16 +111,16 @@ fn directive(keyword: &str) -> Option<Directive> {
             });
             Ok(())
         }),
-        "secauditlog" => value(&[(Sep(Path), Written), (SepQuoted(Path), Bare)], |b, v| {
+        "secauditlog" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| {
             b.driver.properties.audit_log.set_file_path1(&v.text);
             Ok(())
         }),
-        "secauditlog2" => value(&[(Sep(Path), Written)], |b, v| {
+        "secauditlog2" => value(&[(Sep(Path), Double)], |b, v| {
             b.driver.properties.audit_log.set_file_path2(&v.text);
             Ok(())
         }),
         "secauditlogdirmode" => {
-            value(&[(Sep(Number), Bare), (SepQuoted(Number), Bare)], |b, v| match parse_octal_mode(&v.text) {
+            value(&[(Sep(Number), Double), (SepQuoted(Number), Double)], |b, v| match parse_octal_mode(&v.text) {
                 Ok(mode) => {
                     b.driver.properties.audit_log.set_storage_dir_mode(mode);
                     Ok(())
@@ -139,18 +140,20 @@ fn directive(keyword: &str) -> Option<Directive> {
             b.driver.properties.audit_log.set_format(format);
             Ok(())
         }),
-        "secauditlogparts" => value(&[(Sep(AuditParts), Bare), (SepQuoted(AuditParts), Bare)], |b, v| {
+        "secauditlogparts" => value(&[(Sep(AuditParts), Double), (SepQuoted(AuditParts), Double)], |b, v| {
             b.driver.properties.audit_log.set_parts(&v.text);
             Ok(())
         }),
-        "secauditlogprefix" => value(FREE_TEXT_LINE_BARE, |b, v| {
+        "secauditlogprefix" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
             b.driver.properties.audit_log.set_prefix(&v.text);
             Ok(())
         }),
-        "secauditlogrelevantstatus" => value(&[(Sep(FreeTextNewLine), Bare), (SepQuoted(Word), Bare)], |b, v| {
-            let set = b.driver.properties.audit_log.set_relevant_status(&v.text);
-            set.or_else(|error| b.fail(&error))
-        }),
+        "secauditlogrelevantstatus" => {
+            value(&[(Sep(FreeTextNewLine), DoubleAndSingle), (SepQuoted(Word), DoubleAndSingle)], |b, v| {
+                let set = b.driver.properties.audit_log.set_relevant_status(&v.text);
+                set.or_else(|error| b.fail(&error))
+            })
+        }
         "secauditlogstoragedir" => value(PATH, |b, v| {
             b.driver.properties.audit_log.set_storage_dir(&v.text);
             Ok(())
@@ -167,7 +170,7 @@ fn directive(keyword: &str) -> Option<Directive> {
         }),
 
         // --- Debug log ---------------------------------------------------
-        "secdebuglog" => value(&[(Sep(Path), Written), (SepQuoted(Path), Bare)], |b, v| {
+        "secdebuglog" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| {
             match b.driver.properties.debug_log.set_file(&v.text) {
                 Ok(()) => Ok(()),
                 Err(error) => b.fail(&format!("Failed to start DebugLog: {}", error)),
@@ -228,11 +231,12 @@ fn directive(keyword: &str) -> Option<Directive> {
             });
             Ok(())
         }),
-        // The third form (white space and free text up to the end of
-        // the line), which is accepted and ignored, wins when it is longer:
-        // with a space after the separator.
-        "secargumentseparator" => {
-            value(&[(SepQuoted(Word), Bare), (Sep(Word), Bare), (Sep(FreeTextNewLine), Written)], |b, v| {
+        // The third form (free text up to the end of the line), which is
+        // accepted and ignored, wins when it is longer: with more text
+        // after the separator (`& ;`).
+        "secargumentseparator" => value(
+            &[(SepQuoted(Word), DoubleAndSingle), (Sep(Word), DoubleAndSingle), (Sep(FreeTextNewLine), Double)],
+            |b, v| {
                 if v.form == 2 {
                     return Ok(());
                 }
@@ -241,21 +245,23 @@ fn directive(keyword: &str) -> Option<Directive> {
                 }
                 b.driver.properties.settings.sec_argument_separator = Some(v.text.clone());
                 Ok(())
-            })
-        }
+            },
+        ),
         "seccookieformat" => value(NUMBER, |b, v| {
             if parse_digits(&v.text) == Some(1u32) { b.fail("SecCookieFormat 1 is not yet supported.") } else { Ok(()) }
         }),
-        "secunicodemapfile" => value(&[(UnicodeMap, Written)], |b, v| b.unicode_map_file(&v.text)),
+        "secunicodemapfile" => value(&[(UnicodeMap, Double)], |b, v| b.unicode_map_file(&v.text)),
         "secgeolookupdb" => value(FREE_TEXT_LINE, |b, v| b.geo_lookup_db(&v.text)),
         "sechttpblkey" => value(FREE_TEXT_LINE, |b, v| {
             b.driver.properties.settings.httpbl_key = Some(v.text.clone());
             Ok(())
         }),
-        "secwebappid" => value(&[(SepQuoted(FreeText), Bare), (Sep(FreeTextNewLine), Bare)], |b, v| {
-            b.driver.properties.settings.sec_web_app_id = Some(v.text.clone());
-            Ok(())
-        }),
+        "secwebappid" => {
+            value(&[(SepQuoted(FreeText), DoubleAndSingle), (Sep(FreeTextNewLine), DoubleAndSingle)], |b, v| {
+                b.driver.properties.settings.sec_web_app_id = Some(v.text.clone());
+                Ok(())
+            })
+        }
         "seccomponentsignature" => value(QUOTED_TEXT, |b, v| {
             b.driver.properties.components.push(v.text.clone());
             Ok(())
@@ -346,29 +352,27 @@ fn directive(keyword: &str) -> Option<Directive> {
         }),
 
         // --- Rules -------------------------------------------------------
-        "secmarker" => value(&[(SepQuoted(Word), Unquoted), (Sep(Word), Unquoted)], |b, v| {
+        "secmarker" => value(&[(SepQuoted(Word), DoubleAndSingle), (Sep(Word), DoubleAndSingle)], |b, v| {
             let file = b.file_name();
             b.driver.add_sec_marker(&v.text, &file, b.line);
             Ok(())
         }),
-        "secruleremovebyid" => {
-            value(&[(Sep(FreeTextNewLine), Bare)], |b, v| match b.driver.properties.exceptions.load(&v.text) {
+        "secruleremovebyid" => value(&[(Sep(FreeTextNewLine), DoubleAndSingle)], |b, v| {
+            match b.driver.properties.exceptions.load(&v.text) {
                 Ok(()) => Ok(()),
                 Err(error) => b.fail(&format!("SecRuleRemoveById: failed to load:{}. {}", v.text, error)),
-            })
-        }
-        "secruleremovebymsg" => value(FREE_TEXT_LINE_BARE, |b, v| {
+            }
+        }),
+        "secruleremovebymsg" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
             b.driver.properties.exceptions.load_remove_rule_by_msg(&v.text);
             Ok(())
         }),
-        "secruleremovebytag" => value(FREE_TEXT_LINE_BARE, |b, v| {
+        "secruleremovebytag" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
             b.driver.properties.exceptions.load_remove_rule_by_tag(&v.text);
             Ok(())
         }),
-        "include" => {
-            value(&[(Sep(Path), AfterWhiteSpace), (SepQuoted(Path), AfterWhiteSpace)], |b, v| b.include(&v.text))
-        }
-        "secremoterules" => value(&[(Remote, Written)], |b, v| b.remote_rules(&v.text)),
+        "include" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| b.include(&v.text)),
+        "secremoterules" => value(&[(Remote, Double)], |b, v| b.remote_rules(&v.text)),
         "secremoterulesfailaction" => word(&["Abort", "Warn"], |b, v| {
             b.driver.properties.remote_rules_action_on_failed =
                 Some(if v.is("abort") { OnFailedRemoteRulesAction::Abort } else { OnFailedRemoteRulesAction::Warn });
@@ -398,7 +402,7 @@ fn directive(keyword: &str) -> Option<Directive> {
         "secconnreadstatelimit" => unsupported(Form::Value(DIRECT), "SecConnReadStateLimit is not yet supported."),
         "secconnwritestatelimit" => unsupported(Form::Value(DIRECT), "SecConnWriteStateLimit is not yet supported."),
         "seccookiev0separator" => unsupported(
-            Form::Value(&[(SepQuoted(Word), Bare), (Sep(Word), Bare)]),
+            Form::Value(&[(SepQuoted(Word), DoubleAndSingle), (Sep(Word), DoubleAndSingle)]),
             "SecCookieV0Separator is not yet supported.",
         ),
         "secgsblookupdb" => unsupported(Form::Value(PATH), "SecGsbLookupDb is not supported."),

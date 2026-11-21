@@ -3,8 +3,9 @@
 //!
 //! The grammar gives a setting as its keyword and the rest of its line.
 //! How that rest is read depends on the directive: each has one or more
-//! forms, a [`Pattern`] (how the value is written) and the [`Part`] of
-//! what the pattern matches that is the value. The longest match is read
+//! forms, a [`Pattern`] (how the value is written, which says where the
+//! value is in it) and the [`Quotes`] around the value that are not part
+//! of it. The longest match is read
 //! (the first form among those of the same length). A caller that knows
 //! the directives names the forms of each, and [`read`] or [`word`] gives
 //! the value, a piece of the line, or says what is wrong with the text.
@@ -57,11 +58,14 @@ impl Class {
 }
 
 /// How the value of a directive is written after its keyword.
+///
+/// The white space before a value separates it from the keyword, and the
+/// white space after it is not part of it either.
 #[derive(Debug, Clone, Copy)]
 pub enum Pattern {
     /// `[ \t]+CLASS`
     Sep(Class),
-    /// `[ \t]+"CLASS"`
+    /// `[ \t]+"CLASS"`: the value is between the quotes.
     SepQuoted(Class),
     /// `CLASS`, right after the keyword.
     Direct(Class),
@@ -72,80 +76,19 @@ pub enum Pattern {
     Remote,
 }
 
-/// Which part of what a pattern matched is the value.
-///
-/// The value follows a separator, the first space or tab. What else
-/// around it is part of the value depends on the directive: the C++
-/// scanner cut each value out at a fixed place, and what that left (white
-/// space) is part of the language.
+/// Which quotes around a value are not part of it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Part {
-    /// What follows the first space or tab, as written: the white space
-    /// after it, quotes, and the spaces at the end are part of the value
-    /// (`SecAuditLog  /a.log` is ` /a.log`).
-    Written,
-    /// What follows the first space or tab, without the quotes around it
-    /// as for [`Part::Bare`] (`SecMarker "END"`).
-    Unquoted,
-    /// What follows the white space, without the quotes around it
-    /// (`Include`).
-    AfterWhiteSpace,
-    /// The value alone: what follows the first space or tab and the
-    /// spaces after it, up to the spaces at the end, without the quotes
-    /// around it (double quotes, then single quotes inside them). A tab
-    /// after the spaces is part of the value, and so are its quotes then;
-    /// a value of spaces only is one space.
-    Bare,
-}
-
-impl Part {
-    /// The value in `matched`, the text a pattern matched after the
-    /// keyword.
-    fn of(self, matched: &[u8]) -> &[u8] {
-        let blank = |c: &u8| *c == b' ' || *c == b'\t';
-        // The text `skip` bytes after the byte at `at` (nothing without
-        // one).
-        let after = |at: Option<usize>, skip: usize| match at {
-            Some(p) => &matched[(p + skip).min(matched.len())..],
-            None => &matched[matched.len()..],
-        };
-        let after_separator = || after(matched.iter().position(blank), 1);
-        match self {
-            Part::Written => after_separator(),
-            Part::Unquoted => unquoted(after_separator()),
-            Part::AfterWhiteSpace => unquoted(&matched[matched.iter().take_while(|c| blank(c)).count()..]),
-            Part::Bare => bare(after_separator()),
-        }
-    }
-}
-
-/// The value in `text`, the text after a separator: without the spaces
-/// before it and at the end, and without its quotes. The spaces of a
-/// value of spaces only are one space.
-fn bare(text: &[u8]) -> &[u8] {
-    let space = |c: &&u8| **c == b' ';
-    let lead = text.iter().take_while(space).count().min(text.len().saturating_sub(1));
-    let text = &text[lead..];
-    let trail = text.iter().rev().take_while(space).count().min(text.len().saturating_sub(1));
-    unquoted(&text[..text.len() - trail])
-}
-
-/// `text` without the double quotes around it, then without the single
-/// quotes around what is inside them.
-fn unquoted(text: &[u8]) -> &[u8] {
-    fn inside(text: &[u8], quote: u8) -> &[u8] {
-        match text {
-            [open, inner @ .., close] if *open == quote && *close == quote => inner,
-            _ => text,
-        }
-    }
-    inside(inside(text, b'"'), b'\'')
+pub enum Quotes {
+    /// Double quotes ([`Pattern::SepQuoted`]): `'a b'` is `'a b'`.
+    Double,
+    /// Double quotes, and single quotes around the value or just inside
+    /// its double quotes: `'a b'` and `"'a b'"` are `a b`.
+    DoubleAndSingle,
 }
 
 /// A value read from the rest of a directive's line.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Value<'a> {
-    /// The value: the [`Part`] of the text the pattern matched.
     pub text: &'a [u8],
     /// Which of the forms matched.
     pub form: usize,
@@ -164,14 +107,19 @@ pub enum Refused<'a> {
 
 /// Reads the value of a directive from the `rest` of its line, written in
 /// one of `forms`.
-pub fn read<'a>(rest: &'a [u8], forms: &[(Pattern, Part)]) -> Result<Value<'a>, Refused<'a>> {
-    let Some((end, part, form)) = longest(rest, forms) else {
+pub fn read<'a>(rest: &'a [u8], forms: &[(Pattern, Quotes)]) -> Result<Value<'a>, Refused<'a>> {
+    let Some((m, quotes, form)) = longest(rest, forms) else {
         return Err(Refused::NotAValue(rest.trim_ascii_start()));
     };
-    if !ignorable(&rest[end..]) {
-        return Err(Refused::Trailing(&rest[end..]));
+    if !ignorable(&rest[m.end..]) {
+        return Err(Refused::Trailing(&rest[m.end..]));
     }
-    Ok(Value { text: part.of(&rest[..end]), form })
+    let text = &rest[m.value];
+    let text = match (quotes, text) {
+        (Quotes::DoubleAndSingle, [b'\'', inner @ .., b'\'']) => inner,
+        _ => text,
+    };
+    Ok(Value { text, form })
 }
 
 /// Reads one of `words` (in any case) from the `rest` of a directive's
@@ -191,85 +139,88 @@ pub fn word<'a>(rest: &'a [u8], words: &[&'static str]) -> Result<&'static str, 
     }
 }
 
+/// What a pattern matched: up to where, and where the value is in it.
+#[derive(Debug, Clone)]
+struct Match {
+    end: usize,
+    value: std::ops::Range<usize>,
+}
+
 /// The longest match of `forms` at the start of `rest` (the first form
-/// among those of the same length): its length, the part of it that is
-/// the value and which form it is.
-fn longest(rest: &[u8], forms: &[(Pattern, Part)]) -> Option<(usize, Part, usize)> {
-    let mut best: Option<(usize, Part, usize)> = None;
-    for (i, &(p, e)) in forms.iter().enumerate() {
-        if let Some(n) = match_pattern(rest, p)
-            && best.is_none_or(|(b, _, _)| n > b)
+/// among those of the same length), its quotes and which form it is.
+fn longest(rest: &[u8], forms: &[(Pattern, Quotes)]) -> Option<(Match, Quotes, usize)> {
+    let mut best: Option<(Match, Quotes, usize)> = None;
+    for (i, &(p, q)) in forms.iter().enumerate() {
+        if let Some(m) = match_pattern(rest, p)
+            && best.as_ref().is_none_or(|(b, _, _)| m.end > b.end)
         {
-            best = Some((n, e, i));
+            best = Some((m, q, i));
         }
     }
     best
 }
 
-/// The length of the longest match of `p` at the start of `rest`.
-fn match_pattern(rest: &[u8], p: Pattern) -> Option<usize> {
-    let ws = rest.iter().take_while(|&&c| c == b' ' || c == b'\t').count();
-    let mut best = None;
+fn is_blank(c: u8) -> bool {
+    c == b' ' || c == b'\t'
+}
+
+/// The length of `text` without the white space at its end.
+fn without_blanks_at_end(text: &[u8]) -> usize {
+    text.len() - text.iter().rev().take_while(|&&c| is_blank(c)).count()
+}
+
+/// The match of `p` at the start of `rest`.
+fn match_pattern(rest: &[u8], p: Pattern) -> Option<Match> {
+    let ws = rest.iter().take_while(|&&c| is_blank(c)).count();
+    let after = &rest[ws..];
     match p {
         Pattern::Direct(class) => {
             let n = class.run(rest);
-            return (n > 0).then_some(n);
+            let value_end = without_blanks_at_end(&rest[..n]);
+            (n > 0).then_some(Match { end: n, value: ws.min(value_end)..value_end })
         }
         Pattern::Sep(class) => {
-            for k in 1..=ws {
-                let n = class.run(&rest[k..]);
-                if n > 0 {
-                    best = best.max(Some(k + n));
-                }
-            }
+            let n = without_blanks_at_end(&after[..class.run(after)]);
+            (ws > 0 && n > 0).then_some(Match { end: ws + n, value: ws..ws + n })
         }
         Pattern::SepQuoted(class) => {
-            for k in 1..=ws {
-                if rest.get(k) != Some(&b'"') {
-                    continue;
-                }
-                let content = &rest[k + 1..];
-                if let Class::FreeText = class {
-                    // `([^"]|([^\\]\\"))+` followed by `"`: the last quote
-                    // that closes a valid text.
-                    let mut valid = vec![false; content.len() + 1];
-                    valid[0] = true;
-                    for i in 1..=content.len() {
-                        valid[i] = (valid[i - 1] && content[i - 1] != b'"')
-                            || (i >= 3
-                                && valid[i - 3]
-                                && content[i - 3] != b'\\'
-                                && content[i - 2] == b'\\'
-                                && content[i - 1] == b'"');
-                    }
-                    for i in 1..content.len() {
-                        if valid[i] && content[i] == b'"' {
-                            best = best.max(Some(k + 1 + i + 1));
-                        }
-                    }
-                } else {
-                    let n = class.run(content);
-                    if n > 0 && content.get(n) == Some(&b'"') {
-                        best = best.max(Some(k + 1 + n + 1));
-                    }
-                }
+            if ws == 0 || after.first() != Some(&b'"') {
+                return None;
             }
+            let content = &after[1..];
+            let n = if let Class::FreeText = class {
+                // `([^"]|([^\\]\\"))+` followed by `"`: the last quote
+                // that closes a valid text.
+                let mut valid = vec![false; content.len() + 1];
+                valid[0] = true;
+                for i in 1..=content.len() {
+                    valid[i] = (valid[i - 1] && content[i - 1] != b'"')
+                        || (i >= 3
+                            && valid[i - 3]
+                            && content[i - 3] != b'\\'
+                            && content[i - 2] == b'\\'
+                            && content[i - 1] == b'"');
+                }
+                (1..content.len()).rev().find(|&i| valid[i] && content[i] == b'"')?
+            } else {
+                let n = class.run(content);
+                (n > 0 && content.get(n) == Some(&b'"')).then_some(n)?
+            };
+            Some(Match { end: ws + 1 + n + 1, value: ws + 1..ws + 1 + n })
         }
         Pattern::UnicodeMap => {
-            for k in 1..=ws {
-                let s = &rest[k..];
-                let l = Class::FreeTextNewLine.run(s);
-                for e in (1..=l).rev() {
-                    if !s[e - 1].is_ascii_digit() {
-                        continue;
-                    }
-                    let digits_start = s[..e].iter().rposition(|c| !c.is_ascii_digit()).map_or(0, |i| i + 1);
-                    if digits_start >= 2 && s[digits_start - 1] == b' ' {
-                        best = best.max(Some(k + e));
-                        break;
-                    }
-                }
+            if ws == 0 {
+                return None;
             }
+            let l = Class::FreeTextNewLine.run(after);
+            (1..=l).rev().find_map(|e| {
+                if !after[e - 1].is_ascii_digit() {
+                    return None;
+                }
+                let digits_start = after[..e].iter().rposition(|c| !c.is_ascii_digit()).map_or(0, |i| i + 1);
+                (digits_start >= 2 && after[digits_start - 1] == b' ')
+                    .then_some(Match { end: ws + e, value: ws..ws + e })
+            })
         }
         Pattern::Remote => {
             if rest.first() != Some(&b' ') {
@@ -280,10 +231,10 @@ fn match_pattern(rest: &[u8], p: Pattern) -> Option<usize> {
                 return None;
             }
             let url = rest[2 + key..].iter().take_while(|&&c| !matches!(c, b'\n' | b'\r' | b' ')).count();
-            return (url > 0).then_some(2 + key + url);
+            let end = 2 + key + url;
+            (url > 0).then_some(Match { end, value: 1..end })
         }
     }
-    best
 }
 
 /// What may follow a directive on its line: spaces, carriage returns and a
@@ -296,44 +247,27 @@ fn ignorable(s: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::Class::*;
-    use super::Part::*;
     use super::Pattern::*;
+    use super::Quotes::*;
     use super::*;
 
-    #[test]
-    fn spaces_around_a_value() {
-        for (text, bare_value) in [
-            ("", ""),
-            (" ", " "),
-            ("   ", " "),
-            ("a", "a"),
-            (" a", "a"),
-            ("a  ", "a"),
-            ("  a b  ", "a b"),
-            (" \ta ", "\ta"),
-        ] {
-            assert_eq!(bare(text.as_bytes()), bare_value.as_bytes(), "{text:?}");
-        }
-    }
-
-    /// The value read from `rest` and the pattern it was written as.
-    fn value<'a>(rest: &'a str, forms: &[(Pattern, Part)]) -> Result<(String, usize), Refused<'a>> {
+    /// The value read from `rest` and the form it was written in.
+    fn value<'a>(rest: &'a str, forms: &[(Pattern, Quotes)]) -> Result<(String, usize), Refused<'a>> {
         read(rest.as_bytes(), forms).map(|v| (String::from_utf8(v.text.to_vec()).unwrap(), v.form))
     }
 
-    fn got(text: &str, pattern: usize) -> Result<(String, usize), Refused<'static>> {
-        Ok((text.to_string(), pattern))
+    fn got(text: &str, form: usize) -> Result<(String, usize), Refused<'static>> {
+        Ok((text.to_string(), form))
     }
 
     #[test]
     fn a_number() {
-        let number = &[(Sep(Number), Written)];
+        let number = &[(Sep(Number), Double)];
         assert_eq!(value(" 12", number), got("12", 0));
         assert_eq!(value("\t12", number), got("12", 0));
+        assert_eq!(value(" \t 12", number), got("12", 0));
         assert_eq!(value(" 12 # a comment", number), got("12", 0));
         assert_eq!(value(" 12 \r", number), got("12", 0));
-        // Only the first space or tab is the separator: the others stay.
-        assert_eq!(value("  12", number), got(" 12", 0));
         assert_eq!(value(" 12 x", number), Err(Refused::Trailing(b" x")));
         assert_eq!(value(" 12x", number), Err(Refused::Trailing(b"x")));
         assert_eq!(value("  x", number), Err(Refused::NotAValue(b"x")));
@@ -343,21 +277,23 @@ mod tests {
 
     #[test]
     fn a_path_plain_or_quoted() {
-        let path = &[(Sep(Path), Bare), (SepQuoted(Path), Bare)];
+        let path = &[(Sep(Path), DoubleAndSingle), (SepQuoted(Path), DoubleAndSingle)];
         assert_eq!(value(" /var/log/a.log", path), got("/var/log/a.log", 0));
         assert_eq!(value(" \"/var/log/a.log\"", path), got("/var/log/a.log", 1));
-        // A path may have spaces: the ones around it are trimmed.
-        assert_eq!(value("   /a b/c  ", path), got("/a b/c", 0));
+        // A path may have spaces; the white space around it is not part of
+        // it.
+        assert_eq!(value(" \t /a b/c  ", path), got("/a b/c", 0));
+        assert_eq!(value("\t\"/a b \" ", path), got("/a b ", 1));
         assert_eq!(value(" /a,b", path), Err(Refused::Trailing(b",b")));
         assert_eq!(value(" \"/a", path), Err(Refused::NotAValue(b"\"/a")));
-        // As written: the spaces after the first stay.
-        assert_eq!(value("  /a", &[(Sep(Path), Written)]), got(" /a", 0));
+        // White space only is not a value.
+        assert_eq!(value("   ", path), Err(Refused::NotAValue(b"")));
     }
 
     #[test]
     fn quoted_text() {
         // The value is between the quotes.
-        let text = &[(SepQuoted(FreeText), Bare)];
+        let text = &[(SepQuoted(FreeText), DoubleAndSingle)];
         assert_eq!(value(" \"OWASP_CRS/4.0\"", text), got("OWASP_CRS/4.0", 0));
         assert_eq!(value(" \" a b \"", text), got(" a b ", 0));
         // An escaped quote stays in the text; a plain one ends it.
@@ -369,33 +305,42 @@ mod tests {
     }
 
     #[test]
+    fn single_quotes() {
+        let text = &[(Sep(FreeTextNewLine), DoubleAndSingle), (SepQuoted(FreeTextNewLine), DoubleAndSingle)];
+        assert_eq!(value(" 'a b' ", text), got("a b", 0));
+        assert_eq!(value(" \"'a b'\"", text), got("a b", 1));
+        assert_eq!(value(" \"' a '\"", text), got(" a ", 1));
+        assert_eq!(value(" 'a", text), got("'a", 0));
+        assert_eq!(value(" '", text), got("'", 0));
+        assert_eq!(value(" ''", text), got("", 0));
+        // Single quotes are part of a value whose form says so.
+        assert_eq!(value(" 'a b' ", &[(Sep(FreeTextNewLine), Double)]), got("'a b'", 0));
+    }
+
+    #[test]
     fn the_longest_pattern_wins_and_the_first_breaks_ties() {
         // SecArgumentSeparator.
-        let separator = &[(SepQuoted(Word), Bare), (Sep(Word), Bare), (Sep(FreeTextNewLine), Written)];
+        let separator =
+            &[(SepQuoted(Word), DoubleAndSingle), (Sep(Word), DoubleAndSingle), (Sep(FreeTextNewLine), Double)];
         assert_eq!(value(" \"&\"", separator), got("&", 0));
         assert_eq!(value(" &", separator), got("&", 1));
+        // White space after the value does not make a form longer.
+        assert_eq!(value(" &  ", separator), got("&", 1));
         assert_eq!(value(" & ;", separator), got("& ;", 2));
-        // SecMarker.
-        let marker = &[(SepQuoted(Word), Unquoted), (Sep(Word), Unquoted)];
-        assert_eq!(value(" \"END\"", marker), got("END", 0));
-        assert_eq!(value(" END", marker), got("END", 1));
-        assert_eq!(value("  \"END\"", marker), got(" \"END\"", 0));
-        // As written, a quoted word keeps its quotes.
-        assert_eq!(value(" \"END\"", &[(SepQuoted(Word), Written)]), got("\"END\"", 0));
     }
 
     #[test]
     fn a_file_and_a_code_page() {
-        let map = &[(UnicodeMap, Written)];
+        let map = &[(UnicodeMap, Double)];
         assert_eq!(value(" unicode.mapping 20127", map), got("unicode.mapping 20127", 0));
-        assert_eq!(value(" a file.map  20127", map), got("a file.map  20127", 0));
+        assert_eq!(value("  a file.map  20127 ", map), got("a file.map  20127", 0));
         assert_eq!(value(" unicode.mapping", map), Err(Refused::NotAValue(b"unicode.mapping")));
         assert_eq!(value(" unicode.mapping 20127x", map), Err(Refused::Trailing(b"x")));
     }
 
     #[test]
     fn a_key_and_a_url() {
-        let remote = &[(Remote, Written)];
+        let remote = &[(Remote, Double)];
         assert_eq!(value(" key https://example.com/rules", remote), got("key https://example.com/rules", 0));
         assert_eq!(value(" key https://example.com/rules extra", remote), Err(Refused::Trailing(b" extra")));
         assert_eq!(value("  key url", remote), Err(Refused::NotAValue(b"key url")));
@@ -404,10 +349,10 @@ mod tests {
 
     #[test]
     fn text_right_after_the_keyword() {
-        let direct = &[(Direct(FreeTextNewLine), Written)];
-        assert_eq!(value(" 10", direct), got("10", 0));
-        assert_eq!(value("x 10", direct), got("10", 0));
-        assert_eq!(value("x", direct), got("", 0));
+        let direct = &[(Direct(FreeTextNewLine), Double)];
+        assert_eq!(value(" 10 ", direct), got("10", 0));
+        assert_eq!(value("x 10", direct), got("x 10", 0));
+        assert_eq!(value("  ", direct), got("", 0));
         assert_eq!(value("", direct), Err(Refused::NotAValue(b"")));
     }
 
@@ -425,28 +370,5 @@ mod tests {
         assert_eq!(word(b"", &[]), Ok(""));
         assert_eq!(word(b"  # a comment", &[]), Ok(""));
         assert_eq!(word(b" x", &[]), Err(Refused::Trailing(b" x")));
-    }
-
-    #[test]
-    fn quotes_around_a_value() {
-        for (text, bare_value) in [
-            ("  \"a b\" ", "a b"),
-            ("'a'", "a"),
-            ("\"'a'\"", "a"),
-            ("'\"a\"'", "\"a\""),
-            ("\"\"", ""),
-            ("\"", "\""),
-            ("\"a", "\"a"),
-            ("\t\"a\"", "\t\"a\""),
-        ] {
-            assert_eq!(bare(text.as_bytes()), bare_value.as_bytes(), "{text:?}");
-        }
-    }
-
-    #[test]
-    fn after_the_white_space() {
-        let include = &[(Sep(Path), AfterWhiteSpace), (SepQuoted(Path), AfterWhiteSpace)];
-        assert_eq!(value(" \t /a b ", include), got("/a b ", 0));
-        assert_eq!(value("  \"/a b\"", include), got("/a b", 1));
     }
 }

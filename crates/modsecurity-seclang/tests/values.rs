@@ -4,7 +4,7 @@
 //! directives with a grammar of their own (`SecRuleUpdate...`,
 //! `SecRuleScript`).
 
-use modsecurity_seclang::value::{self, Class, Part, Pattern, Refused};
+use modsecurity_seclang::value::{self, Class, Pattern, Quotes, Refused};
 use modsecurity_seclang::{Directive, Source, parse_statement};
 
 /// How the value of a setting is written, as the engine declares it for
@@ -13,15 +13,15 @@ use modsecurity_seclang::{Directive, Source, parse_statement};
 enum Form {
     /// A path, plain or quoted (`SecUploadDir`, `SecAuditLogStorageDir`).
     Path,
-    /// `SecAuditLog`, `SecDebugLog`: a plain path as written, a quoted one
-    /// without its quotes.
+    /// `SecAuditLog`, `SecDebugLog`.
     LogPath,
     /// A number (`SecRequestBodyLimit`).
     Number,
-    /// Text up to the end of the line, as written (`SecHttpBlKey`).
+    /// Text up to the end of the line, single quotes included
+    /// (`SecHttpBlKey`).
     Text,
-    /// Text up to the end of the line, plain or quoted
-    /// (`SecRuleRemoveByTag`).
+    /// Text up to the end of the line, plain or quoted, in double or
+    /// single quotes (`SecRuleRemoveByTag`).
     CleanText,
     /// `SecRuleRemoveById`.
     IdList,
@@ -39,19 +39,17 @@ enum Form {
 /// keyword), or why it is refused.
 fn setting(form: Form, rest: &str) -> Result<String, String> {
     use Class::*;
-    use Part::*;
     use Pattern::*;
-    let forms: &[(Pattern, Part)] = match form {
-        Form::Path => &[(Sep(Path), Bare), (SepQuoted(Path), Bare)],
-        Form::LogPath => &[(Sep(Path), Written), (SepQuoted(Path), Bare)],
-        Form::Number => &[(Sep(Number), Written)],
-        Form::Text => &[(Sep(FreeTextNewLine), Written)],
-        Form::CleanText => &[(Sep(FreeTextNewLine), Bare), (SepQuoted(FreeTextNewLine), Bare)],
-        Form::IdList => &[(Sep(FreeTextNewLine), Bare)],
-        Form::Marker => &[(SepQuoted(Word), Unquoted), (Sep(Word), Unquoted)],
-        Form::Include => &[(Sep(Path), AfterWhiteSpace), (SepQuoted(Path), AfterWhiteSpace)],
-        Form::QuotedText => &[(SepQuoted(FreeText), Bare)],
-        Form::WebAppId => &[(SepQuoted(FreeText), Bare), (Sep(FreeTextNewLine), Bare)],
+    use Quotes::*;
+    let forms: &[(Pattern, Quotes)] = match form {
+        Form::Path | Form::LogPath | Form::Include => &[(Sep(Path), Double), (SepQuoted(Path), Double)],
+        Form::Number => &[(Sep(Number), Double)],
+        Form::Text => &[(Sep(FreeTextNewLine), Double)],
+        Form::CleanText => &[(Sep(FreeTextNewLine), DoubleAndSingle), (SepQuoted(FreeTextNewLine), DoubleAndSingle)],
+        Form::IdList => &[(Sep(FreeTextNewLine), DoubleAndSingle)],
+        Form::Marker => &[(SepQuoted(Word), DoubleAndSingle), (Sep(Word), DoubleAndSingle)],
+        Form::QuotedText => &[(SepQuoted(FreeText), DoubleAndSingle)],
+        Form::WebAppId => &[(SepQuoted(FreeText), DoubleAndSingle), (Sep(FreeTextNewLine), DoubleAndSingle)],
     };
     match value::read(rest.as_bytes(), forms) {
         Ok(v) => Ok(String::from_utf8(v.text.to_vec()).unwrap()),
@@ -80,43 +78,54 @@ fn ok(s: &str) -> Result<String, String> {
 
 #[test]
 fn white_space_around_a_value() {
+    // The white space before a value separates it from the keyword, and
+    // the white space after it is not part of it either.
     for (rest, value) in [
         (" /a", "/a"),
         ("  /a", "/a"),
         ("\t/a", "/a"),
-        ("\t\t/a", "\t/a"),
+        ("\t\t/a", "/a"),
+        (" \t/a", "/a"),
+        ("  \t /a", "/a"),
         (" /a  ", "/a"),
+        (" /a \t", "/a"),
         (" /a \r", "/a"),
         ("   /a b  ", "/a b"),
         (" /a b # c", "/a b"),
-        // After the first space or tab, only spaces are white space before
-        // the value: a tab after them is part of it.
-        (" \t/a", "\t/a"),
-        ("  \t /a", "\t /a"),
     ] {
         assert_eq!(setting(Form::Path, rest), ok(value), "{rest:?}");
+        assert_eq!(setting(Form::LogPath, rest), ok(value), "{rest:?}");
     }
-    for (rest, value) in
-        [(" 'a b'", "a b"), (" a b  ", "a b"), ("\ta\tb\t", "a\tb\t"), (" ' a ' ", " a "), (" a \r", "a \r")]
-    {
+    for (rest, value) in [
+        (" 'a b'", "a b"),
+        (" a b  ", "a b"),
+        ("\ta\tb\t", "a\tb"),
+        (" \t a ", "a"),
+        (" ' a ' ", " a "),
+        (" \t'a'", "a"),
+    ] {
         assert_eq!(setting(Form::CleanText, rest), ok(value), "{rest:?}");
+    }
+    for (rest, value) in [(" 12", "12"), ("\t12", "12"), ("  12", "12"), (" \t12 ", "12")] {
+        assert_eq!(setting(Form::Number, rest), ok(value), "{rest:?}");
+    }
+    for (rest, value) in [(" 'a b' ", "'a b'"), ("\t a\tb", "a\tb")] {
+        assert_eq!(setting(Form::Text, rest), ok(value), "{rest:?}");
     }
 }
 
 #[test]
-fn values_as_written() {
-    // Only the first space or tab separates the value: the white space
-    // after it is part of the value, and so are its quotes and the spaces
-    // at its end.
-    assert_eq!(setting(Form::Number, " 12"), ok("12"));
-    assert_eq!(setting(Form::Number, "\t12"), ok("12"));
-    assert_eq!(setting(Form::Number, "  12"), ok(" 12"));
-    assert_eq!(setting(Form::Number, " \t12 "), ok("\t12"));
-    assert_eq!(setting(Form::LogPath, " /a.log"), ok("/a.log"));
-    assert_eq!(setting(Form::LogPath, "  /a.log "), ok(" /a.log "));
-    assert_eq!(setting(Form::Text, " 'a b' "), ok("'a b' "));
-    assert_eq!(setting(Form::Text, "\t a\tb"), ok(" a\tb"));
+fn trailing_comments() {
+    // A `#` after a free text value is part of it (the configuration has
+    // comment lines, not comments at the end of a line); after a value
+    // that cannot have one, it starts a comment.
     assert_eq!(setting(Form::Text, " a # c"), ok("a # c"));
+    assert_eq!(setting(Form::CleanText, " a # c"), ok("a # c"));
+    assert_eq!(setting(Form::IdList, " 1 2 # c"), ok("1 2 # c"));
+    assert_eq!(setting(Form::Number, " 12 # c"), ok("12"));
+    assert_eq!(setting(Form::Path, " /a # c"), ok("/a"));
+    assert_eq!(setting(Form::Marker, " END # c"), ok("END"));
+    assert_eq!(setting(Form::CleanText, " \"a\" # c"), ok("a"));
 }
 
 #[test]
@@ -125,10 +134,11 @@ fn quoted_values() {
         (Form::Path, " \"/a b\"", "/a b"),
         (Form::Path, "  \"/a b\" ", "/a b"),
         (Form::Path, "\t\"/a\"", "/a"),
-        // A tab before the quote: the quotes are part of the value.
-        (Form::Path, " \t\"/a\"", "\t\"/a\""),
+        (Form::Path, " \t\"/a\"", "/a"),
         (Form::LogPath, " \"/a b\"", "/a b"),
-        // The spaces inside the quotes are part of the value.
+        // The white space inside the quotes is part of the value.
+        (Form::Path, " \" /a b \"", " /a b "),
+        (Form::CleanText, " \"\ta\tb\t\"", "\ta\tb\t"),
         (Form::CleanText, " \" a b \"", " a b "),
         (Form::CleanText, " \"'a'\"", "a"),
         (Form::CleanText, " \"' a '\"", " a "),
@@ -143,15 +153,12 @@ fn quoted_values() {
 
 #[test]
 fn values_of_white_space_only() {
-    // What is left of a value of spaces is one space.
-    assert_eq!(setting(Form::Path, "  "), ok(" "));
-    assert_eq!(setting(Form::Path, "    "), ok(" "));
-    assert_eq!(setting(Form::CleanText, "\t  "), ok(" "));
-    assert_eq!(setting(Form::CleanText, " \t"), ok("\t"));
-    assert_eq!(setting(Form::IdList, "   "), ok(" "));
-    assert_eq!(setting(Form::Text, "   "), ok("  "));
-    assert_eq!(setting(Form::Path, " "), Err("not a value: ".to_string()));
-    assert_eq!(setting(Form::Path, ""), Err("not a value: ".to_string()));
+    // White space only is no value.
+    for form in [Form::Path, Form::CleanText, Form::IdList, Form::Text, Form::Number, Form::Marker] {
+        for rest in ["", " ", "  ", " \t ", "\t"] {
+            assert_eq!(setting(form, rest), Err("not a value: ".to_string()), "{form:?} {rest:?}");
+        }
+    }
 }
 
 #[test]
@@ -159,17 +166,16 @@ fn markers() {
     for (rest, marker) in [
         (" END", "END"),
         ("\tEND", "END"),
+        ("  END", "END"),
+        (" \t'END' ", "END"),
         (" \"END\"", "END"),
+        ("  \"END\"", "END"),
         (" 'END'", "END"),
         (" \"'END'\"", "END"),
         (" \"END\"  # comment", "END"),
         (" 'END", "'END"),
         (" '", "'"),
         (" ''", ""),
-        // Only the first space or tab separates the marker.
-        ("  END", " END"),
-        ("  \"END\"", " \"END\""),
-        (" \t'END'", "\t'END'"),
     ] {
         assert_eq!(setting(Form::Marker, rest), ok(marker), "{rest:?}");
     }
@@ -185,8 +191,7 @@ fn included_files() {
         (" \t /a.conf", "/a.conf"),
         (" \"/a b.conf\"", "/a b.conf"),
         ("\t\"/a.conf\"  # comment", "/a.conf"),
-        // The spaces at the end of a plain path are part of it.
-        (" /a.conf  ", "/a.conf  "),
+        (" /a.conf  ", "/a.conf"),
         (" /a b.conf", "/a b.conf"),
     ] {
         assert_eq!(setting(Form::Include, rest), ok(file), "{rest:?}");
@@ -198,6 +203,7 @@ fn id_lists() {
     for (rest, list) in [
         (" 1 2  3-5", "1 2  3-5"),
         ("  1 2  3-5  ", "1 2  3-5"),
+        (" \t1 2\t", "1 2"),
         (" '1 2  3-5'", "1 2  3-5"),
         (" '1' '2'", "1' '2"),
         (" 1\t2", "1\t2"),
@@ -206,7 +212,7 @@ fn id_lists() {
     }
     // A double quote ends the text: a quoted list is not a value.
     assert_eq!(setting(Form::IdList, " \"1 2  3-5\""), Err("not a value: \"1 2  3-5\"".to_string()));
-    assert_eq!(setting(Form::IdList, " 1 \"2\""), Err("trailing: \"2\"".to_string()));
+    assert_eq!(setting(Form::IdList, " 1 \"2\""), Err("trailing:  \"2\"".to_string()));
 }
 
 #[test]
@@ -243,7 +249,7 @@ fn update_selectors() {
         ("SecRuleUpdateTargetById 1 ARGS", "1"),
         ("SecRuleUpdateTargetById  1 ARGS", "1"),
         ("SecRuleUpdateTargetById\t1 ARGS", "1"),
-        ("SecRuleUpdateTargetById \t 1 ARGS", "\t 1"),
+        ("SecRuleUpdateTargetById \t 1 ARGS", "1"),
         ("SecRuleUpdateTargetById \"1\" ARGS", "1"),
         ("SecRuleUpdateTargetById  \"1\"\tARGS", "1"),
         ("SecRuleUpdateTargetById '1' ARGS", "1"),
@@ -259,14 +265,13 @@ fn update_selectors() {
         ("SecRuleUpdateTargetByTag \"\" ARGS", ""),
         ("SecRuleUpdateTargetByTag \"'\" ARGS", "'"),
         ("SecRuleUpdateTargetByTag \"''\" ARGS", ""),
-        // A tab after the spaces is part of the value, quotes included.
-        ("SecRuleUpdateTargetByMsg  \t\"a b\" ARGS", "\t\"a b\""),
-        ("SecRuleUpdateTargetByMsg \t'a' ARGS", "\t'a'"),
-        ("SecRuleUpdateTargetByMsg\t\t'a' ARGS", "\t'a'"),
+        ("SecRuleUpdateTargetByMsg  \t\"a b\" ARGS", "a b"),
+        ("SecRuleUpdateTargetByMsg \t'a' ARGS", "a"),
+        ("SecRuleUpdateTargetByMsg\t\t'a' ARGS", "a"),
         ("SecRuleUpdateActionById 1 \"pass\"", "1"),
         ("SecRuleUpdateActionById   \"1\" \"pass\"", "1"),
         ("SecRuleUpdateActionById '1' pass", "1"),
-        ("SecRuleUpdateActionById\t \t1 pass", "\t1"),
+        ("SecRuleUpdateActionById\t \t1 pass", "1"),
     ] {
         assert_eq!(directive_value(line), value, "{line:?}");
     }
