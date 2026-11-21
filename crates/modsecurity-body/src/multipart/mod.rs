@@ -298,16 +298,18 @@ impl Multipart {
         }
     }
 
-    /// Parses the body. Assumes that all data is in `data` (we are not
-    /// processing chunks); `offset` is where the body starts.
+    /// Parses `data`, the body or the next piece of it; `offset` is where
+    /// `data` starts in the body.
     pub fn process(&mut self, cx: &mut dyn Context, data: &[u8], offset: usize) -> bool {
         if data.is_empty() {
             return true;
         }
         self.seen_data = true;
 
+        // A piece of the body after the one that ended with the final
+        // boundary.
         if self.is_complete {
-            self.flags.data_before = true;
+            self.flags.data_after = true;
             ms_dbg!(cx, 4, "Multipart: Ignoring data after last boundary (received {} bytes)", data.len());
             return true;
         }

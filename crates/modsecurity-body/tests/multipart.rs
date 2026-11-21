@@ -44,3 +44,22 @@ fn offsets_after_a_held_back_carriage_return() {
     let line = format!("add FilesSizes f = {size} @{}+{size}", 2000 + start);
     assert!(trace.lines().any(|l| l == line), "{line}");
 }
+
+/// A body given one byte at a time gives the same variables, results and
+/// files as given whole (the debug log differs: it shows the pieces of
+/// data as they are added). Data after the final boundary in a later piece
+/// is data after it, as in the same piece.
+#[test]
+fn one_byte_at_a_time() {
+    let without_debug_log =
+        |trace: &str| trace.lines().filter(|line| !line.starts_with("debug[")).map(String::from).collect::<Vec<_>>();
+    for (name, header, body, uploads) in cases() {
+        let broken = name == "broken upload directory";
+        let whole = without_debug_log(&trace(&header, &body, usize::MAX, uploads, broken));
+        let bytes = without_debug_log(&trace(&header, &body, 1, uploads, broken));
+        for (got, want) in bytes.iter().zip(&whole) {
+            assert_eq!(got, want, "{name}");
+        }
+        assert_eq!(bytes.len(), whole.len(), "{name}");
+    }
+}
