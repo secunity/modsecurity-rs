@@ -677,6 +677,120 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   test `misc-escaped-quote-after-macro-expansion.json` pins the backslash
   there).
 
+- **SecDefaultAction of merged configurations.** *C++:* merging appends
+  the parent's default actions to the child's for each phase, so a child
+  with `phase:2,deny` merged with a parent `phase:2,pass` runs both, and
+  `block` uses the parent's `pass`; two loads into one rule set stack the
+  same way. *Here:* a phase's default actions come from one configuration:
+  the one merged into if it has some, the other otherwise. A second
+  `SecDefaultAction` for a phase in a later load into the same rule set
+  gets the error a second one gets within one load. *Why:* every other
+  setting keeps the value already set; stacked lists make `block` do the
+  opposite of what the location says. Regression tests:
+  `rules_set::tests::merged_default_actions_come_from_one_configuration`,
+  `rules_set::tests::default_actions_once_per_phase_across_loads`.
+- **Invalid regular expressions in selectors.** *C++:* a
+  `COLLECTION:/regex/` selector, a `!COLLECTION:/regex/` exclusion or
+  `SecAuditLogRelevantStatus` that PCRE2 rejects loads as a regex that
+  never matches (`SecRule ARGS:/(/` inspects nothing). *Here:* the
+  configuration is refused with "Invalid regular expression: <pattern>",
+  as for `@rx`. *Why:* a rule that silently inspects nothing is a hidden
+  detection gap. Regression test:
+  `variables::tests::invalid_selector_regexes_refuse_the_configuration`.
+- **@inspectFile with a .lua file that does not load.** *C++/before:* a
+  `.lua` file that did not compile, or any `.lua` file in a build without
+  Lua, was run as an external program. *Here:* the rule is refused with
+  the load error ("Problems load script: ..." or "Lua support was not
+  enabled."). *Why:* running a script file as a program is never what the
+  rule means. Regression test:
+  `operators::inspect_file::tests::a_lua_script_that_does_not_load_is_an_error`.
+- **Collection names in initcol and expirevar.** *C++:* `initcol` and
+  `expirevar` accept only lowercase collection names (`expirevar:IP.x=60`
+  does nothing, `initcol:IP=...` is refused), while targets, `setvar` and
+  Lua accept any case. *Here:* every place reads the name ignoring case.
+  *Why:* one name, one meaning. Regression tests:
+  `variables::persistent::tests::collection_names_ignore_case`,
+  `actions::expire_var::tests::collection_names_ignore_case`,
+  `actions::init_col::tests::collection_names_ignore_case`.
+- **Target removal by name ignores case.** *C++:* `SecRule
+  ARGS|!ARGS:password` ignores case, but `SecRuleUpdateTargetBy*
+  "!ARGS:password"` and `ctl:ruleRemoveTargetById/ByTag=...;ARGS:password`
+  compare exactly, so `?Password=x` escapes the exclusion. *Here:* all of
+  them compare the collection and the key ignoring case. *Why:* approved
+  by the owner; CRS exclusions gave false positives. Regression test:
+  `rules_set::plan::tests::target_removals_ignore_case`.
+- **Rule id 0 and no severity.** *C++:* id 0 means "no id": `id:0` is
+  refused, chained rules and id-less SecActions have id 0, so
+  `ctl:ruleRemoveById=0` (or a range from 0) makes chained rules count as
+  matched, and a message without a severity reports 0 (EMERGENCY). *Here:*
+  the id and the severity are optional; `id:0` is a valid id, removals and
+  updates by id only hit rules with that id, and
+  `RuleMessage::rule_id()`/`severity()` return `Option`. The logs and
+  `msc_get_rules_messages_rule_ids` still write 0 for none. *Why:* 0 is a
+  value, not an absence. Regression test:
+  `rule::message::tests::no_id_and_no_severity_are_not_zero`.
+- **A panic does not take the process down.** *C++:* an exception escaping
+  the C API is undefined; in the Rust port a panic unwinding out of an
+  `extern "C"` function aborted the nginx worker or the C caller's
+  process. *Here:* the nginx connector answers the request with 500
+  (configuration callbacks fail) and logs "ModSecurity: internal error in
+  <handler>: <message>"; every `msc_*` function returns its error value
+  (NULL, -1 with an error string, or 0; `msc_intervention`: not
+  disruptive). *Why:* one bad request must not kill a worker and every
+  request it serves. Regression test: `modsecurity-capi`
+  `tests::a_panic_gives_the_error_value`.
+- **nginx: subrequests are not the client's request.** *C++:* the header
+  and body filters of a subrequest (`auth_request`, SSI) find the main
+  request's transaction, so an `auth_request` answering 204 runs phase 3
+  of the client's request with status 204. *Here:* a subrequest has no
+  context and its response passes untouched; SSI and `add_*_body` content
+  still reaches phase 4 through the postpone filter. *Why:* the
+  transaction describes the client's request and response. Regression
+  test: `test/nginx/smoke.sh` "a 204 auth_request subrequest is not the
+  response's status".
+- **nginx: the default Server header has no NUL byte.** *C++:* the
+  connector passes `sizeof("nginx")` bytes, so RESPONSE_HEADERS:Server is
+  "nginx\0" (or "nginx/1.x.y\0"). *Here:* "nginx", the value the client
+  receives. *Why:* `@streq nginx` must match what is sent. Regression
+  test: `test/nginx/smoke.sh` "phase 3 sees the Server header without a
+  NUL byte".
+- **Invalid `@verifySSN`/`@verifyCPF`/`@verifySVNR` patterns, messages of
+  `@verifyCC` and `@ipMatch`.** *C++:* the first three accept a regular
+  expression that does not compile (it never matches); `@verifyCC` and
+  `@ipMatch`/`@ipMatchFromFile` refuse a bad pattern or entry with an
+  empty error message. *Here:* all three refuse the rule with "Invalid
+  regular expression: <pattern>" (as `@rx`), `@verifyCC` gives the same
+  message, and an invalid `@ipMatch` list fails with "Invalid IP address
+  or network: <first invalid entry>". *Why:* a rule that can never match
+  is a configuration mistake, and an empty message does not say what is
+  wrong. Regression tests: `invalid_pattern` in verify_ssn, verify_cpf and
+  verify_svnr; `verify_cc::tests::verify_cc`, `ip_match::tests::ip_match`.
+- **`@verifySVNR` known bad numbers, NUL bytes in
+  `@verifyCPF`/`@verifySVNR` candidates.** *C++:* `@verifySVNR` compares a
+  candidate with only the first 10 of its 12 known bad numbers, so
+  8888888888 and 9999999999 (valid check digit) match; both operators stop
+  reading a candidate at its first NUL byte. *Here:* the whole table is
+  checked, and a NUL byte is a byte like any other. *Why:* the table lists
+  those numbers as invalid (the loop bound was the number length by
+  mistake), and NUL does not end a value anywhere else in the engine.
+  Regression tests: `verify_svnr::tests::known_bad_numbers`,
+  `verify_svnr::tests::nul_byte_in_a_candidate`,
+  `verify_cpf::tests::nul_byte_in_a_candidate`.
+- **`URLENCODED_ERROR` and argument names.** *C++:* the form decoder's
+  invalid-escape counter is reset when the value is decoded after the
+  name, so a bad escape only in the name (`a%zz=b`) does not set
+  `URLENCODED_ERROR`. *Here:* the counts of the name and the value are
+  added. *Why:* the name is part of the arguments, and the reset was an
+  accident of the out parameter. Regression test:
+  `transaction::arguments::tests::invalid_escape_in_an_argument_name`.
+- **`@validateSchema`/`@validateDTD` read their file once.** *C++:* the
+  schema or DTD file is read and parsed at every evaluation. *Here:* it is
+  parsed by the first evaluation that can load it and kept (with
+  SecXMLExternalEntity Off the load still fails at every evaluation, as
+  before), so a file edited or removed later is not read again until the
+  rules are reloaded. *Why:* parsing a schema per request is costly. Test:
+  `transaction::body::tests::xml::tests::dtd_and_schema_are_parsed_once`.
+
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
 semantics).

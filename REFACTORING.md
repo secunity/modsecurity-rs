@@ -1367,3 +1367,117 @@ the messages `init` had, and take the configuration file name and the
 `Option<Result<_, String>>` (`None`: no such operator), in the operators
 crate and in the engine, and `@inspectFile` is built the same way. `@rx` and
 `@rxGlobal` are one type, `Rx`, with two constructors.
+
+
+## Fallible variable construction
+
+`new_variable` returns `Result<Variable, VariableError>` (`Unknown`,
+`InvalidRegex`); selector regexes are compiled by
+`variables::selector_regex` with `Regex::compile`; `KeyExclusion::regex`
+and `AuditLog::set_relevant_status` return errors the parser reports as
+configuration errors. A merged audit log shares the compiled
+relevant-status regex through an `Arc`.
+
+
+## One parser and one comparison for names
+
+`Persistent::parse` (case-insensitive) replaces `Persistent::from_name`
+and is the only way collection names are read; `key_exclusions::same_name`
+is the one comparison for removing a target by name. `ExpireVar` keeps its
+expression parsed (`Expiry`) when it has no macro.
+
+
+## Optional rule id and severity
+
+`Rule::rule_id: Option<Id>`, `Rule::severity() -> Option<u8>`,
+`RuleMessage::{rule_id, severity}` return `Option`; `Rule::logged_id()`
+gives what logs print (0 for none). `IdMultimap::for_rule` and
+`RulesExceptions::contains` take `impl Into<Option<Id>>`.
+
+
+## SecDefaultAction across loads
+
+`RulesSet::driver()` seeds each load's `Driver` with the phases that
+already have a `SecDefaultAction`, so a second one for a phase is refused
+across loads as within one.
+
+
+## The nginx module exports its own module tables
+
+`connectors/nginx/src/lib.rs` exports `ngx_modules`, `ngx_module_names`
+and `ngx_module_order` (as `auto/module` generates them for the C module)
+instead of `ngx::ngx_modules!`, whose order list is empty. The order is
+that of the C module's `config`: the filters run after copy, headers and
+postpone, and before gzip. The `ngx` crate is no longer a dependency;
+configurations are moved into the nginx pool by `module::pool_move`, which
+checks both allocations before writing. `test/nginx/smoke.sh` checks the
+order in a running nginx.
+
+
+## Panics stop at the C boundary
+
+Every function nginx calls in the connector runs under
+`nginx::catch_panic` (log, then a 500 or a configuration error), and every
+`msc_*` function under `capi::catch_panic` (its error value). The C API
+crate denies `clippy::undocumented_unsafe_blocks`. `msc_new_transaction*`
+check for NULL, and `msc_rules_merge(x, x)` is a no-op returning 0.
+
+
+## Rules are loaded as bytes
+
+`RulesSet::load_bytes(&[u8], reference)` is the loading entry point
+(`load`/`load_with_ref` are str wrappers), `RulesSet::load_file(&Path)`
+takes file names that are not UTF-8, and `load_remote` loads the
+downloaded bytes. The C API and the nginx directives use them.
+`Driver::parse(&str)` is test-only.
+
+
+## Hex digits are `Option`s; decoders without C sentinels
+
+`modsecurity_compat::chars::{hex_digit, hex_pair}` replace `hex2dec` (-1),
+`xsingle2c` and `x2c`. Every decoder that checks its digits uses them;
+only t:hexDecode keeps its unchecked arithmetic, in hex_decode.rs, because
+the unit suite expects it. `Base64::decode_forgiven` is one pass and
+returns `Vec<u8>`. t:escapeSeqDecode decodes to `Option<(byte, len)>`.
+`urldecode_nonstrict_inplace(_ext)` returns the invalid-escape count.
+Outputs were compared with the old code on 1.57M generated inputs per
+decoder before the old code was removed.
+
+
+## Substring search is memchr's
+
+`chars::find`/`find_from` use `memchr::memmem`. @contains, @containsWord
+and @strmatch keep a `memmem::Finder` built in the constructor when their
+parameter has no macro (`needle.rs`). The multipart parser uses
+`chars::find`.
+
+
+## libxml2 schemas and DTDs are parsed once
+
+`libxml2::Schema` (Send) joins `Dtd` (now Send).
+`Document::validate_schema` takes a parsed schema.
+`libxml2::external_entities_allowed()` mirrors the thread's loader
+setting. @validateSchema and @validateDTD keep the first file they load
+with external entities allowed, behind a Mutex: libxml2 promises no
+concurrent use, and DTD validation writes content models into the DTD.
+With external entities off they load, and fail, per evaluation as before.
+
+
+## libinjection results are a `Detection` enum
+
+`libinjection_adapter::{detect_sqli, detect_xss}` return `Detection<F>
+{Clean, Attack(F), ParserError}`. The per-thread overrides that force
+parser errors in the unit suite are in the `#[doc(hidden)]
+libinjection_adapter::testing` module, re-exported through
+`modsecurity::internal::libinjection_testing`. libinjection_utils is
+merged into the adapter.
+
+
+## Benchmarks compare named builds
+
+`test/benchmark/build_variant.sh NAME [REV]` builds the C API library of a
+commit (in its own worktree) or of the working tree into
+`target/benchmark/variants/NAME`; `run_library.sh` runs the `VARIANTS` it
+is given, interleaved over `REPS` rounds, and `summarize.py` prints best
+and median per scenario against the first variant. `run_nginx.sh` checks
+the status of every response and fails on an unexpected one.
