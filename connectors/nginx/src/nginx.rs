@@ -547,13 +547,7 @@ impl<'r> Request<'r> {
             if !(*r).headers_out.server.is_null() {
                 return (*(*r).headers_out.server).value.as_bytes().to_vec();
             }
-            // The C code uses sizeof() of the string literals, so the value
-            // includes the terminating NUL byte.
-            if (*self.core_loc_conf()).server_tokens != 0 {
-                NGINX_VER.to_bytes_with_nul().to_vec()
-            } else {
-                b"nginx\0".to_vec()
-            }
+            if (*self.core_loc_conf()).server_tokens != 0 { NGINX_VER.to_bytes().to_vec() } else { b"nginx".to_vec() }
         }
     }
 
