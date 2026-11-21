@@ -790,6 +790,18 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   before), so a file edited or removed later is not read again until the
   rules are reloaded. *Why:* parsing a schema per request is costly. Test:
   `transaction::body::tests::xml::tests::dtd_and_schema_are_parsed_once`.
+- **A `skipAfter` without its `SecMarker` ends with its phase.** *C++:*
+  `skipAfter:NAME` with no `SecMarker NAME` anywhere in the rule set skips
+  every later rule of every phase: one mistyped marker turns off the rest
+  of the rule set without a message. *Here:* the skip ends at the end of
+  the phase it started in (the debug log says so at level 9); a marker
+  that exists keeps its meaning, also when it is reached only in a later
+  phase. The configuration still loads, because nginx loads a location's
+  rules before merging those of the server, where the marker may be.
+  *Why:* a missing marker is a mistake, and the smaller skip keeps the
+  other phases inspected. Regression tests:
+  `rules_set::tests::a_skip_after_without_its_marker_ends_with_the_phase`,
+  `rules_set::tests::a_skip_after_goes_on_to_its_marker_in_a_later_phase`.
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`

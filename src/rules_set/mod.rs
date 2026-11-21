@@ -258,6 +258,23 @@ impl RulesSet {
                 }
             }
         }
+
+        // A `skipAfter` whose marker is in no phase list (every marker is in
+        // all of them) ends with its phase instead of skipping every later
+        // rule. Such a rule set still loads: nginx loads the rules of a
+        // location before merging those of the server, where the marker
+        // may be.
+        if let Some(name) = t.current_marker().map(str::to_owned) {
+            let known = self
+                .plan()
+                .for_phase(phase)
+                .iter()
+                .any(|step| matches!(step, Step::Marker(m) if m.as_marker().is_some_and(|m| m.name == *name)));
+            if !known {
+                crate::ms_dbg!(t, 9, "No SecMarker named '{}': the skip ends with this phase.", name);
+                t.remove_marker();
+            }
+        }
     }
 
     /// The plan of the rule set, compiled the first time it is needed
@@ -387,8 +404,38 @@ mod tests {
 
     /// A merged rule set keeps the `SecDefaultAction` of the configuration
     /// it is merged into for a phase that has one, and takes the other's
-    /// for the other phases. (The lists used to be put one after the other:
-    /// both ran, and `block` did what the parent's disruptive action said.)
+    /// for the other phases.
+    #[test]
+    fn a_skip_after_without_its_marker_ends_with_the_phase() {
+        let mut rules = RulesSet::new();
+        rules
+            .load(
+                "SecRuleEngine On\n\
+                 SecAction \"id:1,phase:1,pass,nolog,skipAfter:NOWHERE\"\n\
+                 SecRule ARGS \"@rx x\" \"id:2,phase:1,deny,status:401\"\n\
+                 SecRule ARGS \"@rx x\" \"id:3,phase:2,deny,status:403\"\n",
+            )
+            .unwrap();
+        // Rule 2 is skipped; rule 3, in the next phase, is not.
+        assert_eq!(status_of(&rules), Some(403));
+    }
+
+    #[test]
+    fn a_skip_after_goes_on_to_its_marker_in_a_later_phase() {
+        // The marker is before the skipping rule: in phase 2 it comes after
+        // rule 3, which is skipped.
+        let mut rules = RulesSet::new();
+        rules
+            .load(
+                "SecRuleEngine On\n\
+                 SecRule ARGS \"@rx x\" \"id:3,phase:2,deny,status:403\"\n\
+                 SecMarker END\n\
+                 SecAction \"id:1,phase:1,pass,nolog,skipAfter:END\"\n",
+            )
+            .unwrap();
+        assert_eq!(status_of(&rules), None);
+    }
+
     #[test]
     fn merged_default_actions_come_from_one_configuration() {
         let rule = "SecRuleEngine On\nSecRule ARGS \"@rx x\" \"id:1,phase:2,block\"\n";
