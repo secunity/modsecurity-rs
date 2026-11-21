@@ -1,9 +1,6 @@
 //! The `@detectSQLi` operator: detects SQL injection with libinjection.
 
-use crate::libinjection_adapter::run_libinjection_sqli;
-use crate::libinjection_utils::{
-    InjectionResult, is_malicious_libinjection_result, libinjection_result_to_string, loggable_input,
-};
+use crate::libinjection_adapter::{Detection, detect_sqli, loggable_input};
 use crate::{Context, Operator};
 
 #[derive(Debug)]
@@ -30,13 +27,11 @@ impl Operator for DetectSQLi {
         b"detected SQLi using libinjection.".to_vec()
     }
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
-        let mut fingerprint = Vec::new();
-        let sqli_result = run_libinjection_sqli(input, &mut fingerprint);
+        let detection = detect_sqli(input);
+        let (malicious, result) = (detection.is_malicious(), detection.as_str());
 
-        match sqli_result {
-            InjectionResult::True => {
-                cx.matched(fingerprint.clone());
-
+        match detection {
+            Detection::Attack(fingerprint) => {
                 crate::ms_dbg!(
                     cx,
                     4,
@@ -49,13 +44,14 @@ impl Operator for DetectSQLi {
                     cx.set_capture(b"0", fingerprint.clone());
                     crate::ms_dbg!(cx, 7, "Added DetectSQLi match TX.0: {}", String::from_utf8_lossy(&fingerprint));
                 }
+                cx.matched(fingerprint);
             }
-            InjectionResult::Error => {
+            Detection::ParserError => {
                 crate::ms_dbg!(
                     cx,
                     4,
                     "libinjection parser error during SQLi analysis ({}); treating as match (fail-safe). Input: '{}'",
-                    libinjection_result_to_string(sqli_result),
+                    result,
                     loggable_input(input)
                 );
 
@@ -67,11 +63,11 @@ impl Operator for DetectSQLi {
                 // Keep `matched` untouched for parser-error paths to avoid
                 // introducing synthetic fingerprints for non-TRUE results.
             }
-            InjectionResult::False => {
+            Detection::Clean => {
                 crate::ms_dbg!(cx, 9, "libinjection was not able to find any SQLi in: {}", loggable_input(input));
             }
         }
 
-        is_malicious_libinjection_result(sqli_result)
+        malicious
     }
 }

@@ -83,10 +83,7 @@ pub mod internal {
     pub use crate::utils::string::to_hex_if_needed;
     pub use modsecurity_compat::json::{JsonValue, parse_tree};
     pub use modsecurity_native::regex::Regex;
-    pub use modsecurity_operators::libinjection_adapter::{
-        InjectionResult, clear_libinjection_overrides_for_testing, set_libinjection_sqli_override_for_testing,
-        set_libinjection_xss_override_for_testing,
-    };
+    pub use modsecurity_operators::libinjection_adapter::{Detection, testing as libinjection_testing};
 
     use crate::{DebugLog, RuleMessage, RulesSet, Transaction};
 

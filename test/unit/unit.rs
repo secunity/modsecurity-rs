@@ -11,9 +11,8 @@ mod common;
 
 use common::*;
 use modsecurity::internal::{
-    Capture, InjectionResult, JsonValue, Rule, RuleAction, RuleKind, Transformation,
-    clear_libinjection_overrides_for_testing, evaluate_operator, instantiate_operator, new_rule_message,
-    set_libinjection_sqli_override_for_testing, set_libinjection_xss_override_for_testing, to_hex_if_needed, tx_value,
+    Capture, Detection, JsonValue, Rule, RuleAction, RuleKind, Transformation, evaluate_operator, instantiate_operator,
+    libinjection_testing, new_rule_message, to_hex_if_needed, tx_value,
 };
 use modsecurity::{ModSecurity, RulesSet, Transaction};
 
@@ -53,22 +52,14 @@ impl UnitTest {
     }
 }
 
-fn sqli_force_error(_: &[u8], _: &mut Vec<u8>) -> InjectionResult {
-    InjectionResult::Error
-}
-
-fn xss_force_error(_: &[u8]) -> InjectionResult {
-    InjectionResult::Error
-}
-
 fn configure_libinjection_override(t: &UnitTest) {
-    clear_libinjection_overrides_for_testing();
+    libinjection_testing::clear_overrides();
     if t.libinjection_override != "error" {
         return;
     }
     match t.name.to_ascii_lowercase().as_str() {
-        "detectsqli" => set_libinjection_sqli_override_for_testing(sqli_force_error),
-        "detectxss" => set_libinjection_xss_override_for_testing(xss_force_error),
+        "detectsqli" => libinjection_testing::override_sqli(|_| Detection::ParserError),
+        "detectxss" => libinjection_testing::override_xss(|_| Detection::ParserError),
         _ => {}
     }
 }
@@ -98,7 +89,7 @@ fn eval_operator(t: &UnitTest, transaction: &mut Transaction<'_>) -> (i64, Vec<u
     {
         output = tx0.to_vec();
     }
-    clear_libinjection_overrides_for_testing();
+    libinjection_testing::clear_overrides();
     (matched as i64, output)
 }
 

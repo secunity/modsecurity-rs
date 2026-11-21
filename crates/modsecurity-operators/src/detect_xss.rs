@@ -1,10 +1,7 @@
 //! The `@detectXSS` operator: detects cross-site scripting with
 //! libinjection.
 
-use crate::libinjection_adapter::run_libinjection_xss;
-use crate::libinjection_utils::{
-    InjectionResult, is_malicious_libinjection_result, libinjection_result_to_string, loggable_input,
-};
+use crate::libinjection_adapter::{Detection, detect_xss, loggable_input};
 use crate::{Context, Operator};
 
 #[derive(Debug)]
@@ -31,22 +28,22 @@ impl Operator for DetectXSS {
         b"detected XSS using libinjection.".to_vec()
     }
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
-        let xss_result = run_libinjection_xss(input);
+        let detection = detect_xss(input);
 
-        match xss_result {
-            InjectionResult::True => {
+        match detection {
+            Detection::Attack(()) => {
                 crate::ms_dbg!(cx, 5, "detected XSS using libinjection.");
                 if cx.captures() {
                     cx.set_capture(b"0", input.to_vec());
                     crate::ms_dbg!(cx, 7, "Added DetectXSS match TX.0: {}", String::from_utf8_lossy(input));
                 }
             }
-            InjectionResult::Error => {
+            Detection::ParserError => {
                 crate::ms_dbg!(
                     cx,
                     4,
                     "libinjection parser error during XSS analysis ({}); treating as match (fail-safe). Input: {}",
-                    libinjection_result_to_string(xss_result),
+                    detection.as_str(),
                     loggable_input(input)
                 );
                 if cx.captures() {
@@ -54,11 +51,11 @@ impl Operator for DetectXSS {
                     crate::ms_dbg!(cx, 7, "Added DetectXSS error input TX.0: {}", String::from_utf8_lossy(input));
                 }
             }
-            InjectionResult::False => {
+            Detection::Clean => {
                 crate::ms_dbg!(cx, 9, "libinjection was not able to find any XSS in: {}", loggable_input(input));
             }
         }
 
-        is_malicious_libinjection_result(xss_result)
+        detection.is_malicious()
     }
 }

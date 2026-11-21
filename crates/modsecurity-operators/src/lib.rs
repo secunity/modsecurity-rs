@@ -37,7 +37,6 @@ pub mod ip_match_from_file;
 pub mod ip_set;
 pub mod le;
 pub mod libinjection_adapter;
-pub mod libinjection_utils;
 pub mod lt;
 mod needle;
 pub mod no_match;
