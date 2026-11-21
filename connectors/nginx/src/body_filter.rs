@@ -57,12 +57,8 @@ fn headers_not_inspected(request: &Request<'_>, ctx: &Ctx) -> usize {
 /// response body phase after the last one.
 fn inspect_body(request: &Request<'_>, ctx: &mut Ctx, buffers: Buffers<'_>) -> Outcome {
     #[cfg(feature = "sanity-checks")]
-    {
-        let enabled = crate::context::loc_conf(request)
-            .is_some_and(|conf| conf.sanity_checks_enabled != nginx_sys::NGX_CONF_UNSET as nginx_sys::ngx_flag_t);
-        if enabled && headers_not_inspected(request, ctx) > 0 {
-            return Outcome::Finalize(NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t);
-        }
+    if headers_not_inspected(request, ctx) > 0 {
+        return Outcome::Finalize(NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t);
     }
 
     for buffer in buffers {

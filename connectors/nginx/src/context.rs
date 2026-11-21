@@ -78,8 +78,6 @@ pub struct LocConf {
     pub rules_set: RulesSet,
     pub enable: ngx_flag_t,
     pub use_error_log: ngx_flag_t,
-    #[cfg(feature = "sanity-checks")]
-    pub sanity_checks_enabled: ngx_flag_t,
     pub transaction_id: *mut ngx_http_complex_value_t,
 }
 

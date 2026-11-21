@@ -42,7 +42,7 @@ pub fn process_intervention(ctx: &mut Ctx, request: &Request<'_>, early_log: boo
             return NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t;
         };
         #[cfg(feature = "sanity-checks")]
-        crate::header_filter::store_header(ctx, request, _location.0, _location.1);
+        crate::header_filter::store_header(ctx, _location.0, _location.1);
         return status as ngx_int_t;
     }
 

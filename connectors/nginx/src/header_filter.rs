@@ -16,10 +16,10 @@ use crate::nginx::{Request, catch_panic};
 static mut NGX_HTTP_NEXT_HEADER_FILTER: ngx_http_output_header_filter_pt = None;
 
 /// Sends one response header to ModSecurity (recording it for the sanity
-/// checks when enabled).
+/// checks when they are compiled in).
 fn add_header(request: &Request<'_>, ctx: &mut Ctx, name: &[u8], value: &[u8]) {
     #[cfg(feature = "sanity-checks")]
-    store_header(ctx, request, name, value);
+    store_header(ctx, name, value);
     let _ = request;
     ctx.modsec_transaction.add_response_header(name, value);
 }
@@ -27,12 +27,8 @@ fn add_header(request: &Request<'_>, ctx: &mut Ctx, name: &[u8], value: &[u8]) {
 /// Records a header sent to ModSecurity, for the sanity checks
 /// (`ngx_http_modsecurity_store_ctx_header`).
 #[cfg(feature = "sanity-checks")]
-pub fn store_header(ctx: &mut Ctx, request: &Request<'_>, name: &[u8], value: &[u8]) {
-    let enabled = crate::context::loc_conf(request)
-        .is_some_and(|conf| conf.sanity_checks_enabled != nginx_sys::NGX_CONF_UNSET as nginx_sys::ngx_flag_t);
-    if enabled {
-        ctx.sanity_headers_out.push(crate::context::Header { name: name.to_vec(), value: value.to_vec() });
-    }
+pub fn store_header(ctx: &mut Ctx, name: &[u8], value: &[u8]) {
+    ctx.sanity_headers_out.push(crate::context::Header { name: name.to_vec(), value: value.to_vec() });
 }
 
 /// Sends the headers nginx keeps outside of the list of response headers

@@ -461,8 +461,6 @@ unsafe fn create_conf(cf: *mut ngx_conf_t) -> *mut c_void {
         rules_set: RulesSet::new(),
         enable: NGX_CONF_UNSET as ngx_flag_t,
         use_error_log: NGX_CONF_UNSET as ngx_flag_t,
-        #[cfg(feature = "sanity-checks")]
-        sanity_checks_enabled: NGX_CONF_UNSET as ngx_flag_t,
         transaction_id: NGX_CONF_UNSET_PTR,
     };
     // SAFETY: the configuration's pool. Null on failure, as nginx expects.
@@ -504,8 +502,6 @@ unsafe fn merge_conf(cf: *mut ngx_conf_t, parent: *mut c_void, child: *mut c_voi
             c.transaction_id = if p.transaction_id == NGX_CONF_UNSET_PTR { ptr::null_mut() } else { p.transaction_id };
         }
         merge_value(&mut c.use_error_log, p.use_error_log, 1);
-        #[cfg(feature = "sanity-checks")]
-        merge_value(&mut c.sanity_checks_enabled, p.sanity_checks_enabled, 0);
 
         #[cfg(feature = "ddebug")]
         {
