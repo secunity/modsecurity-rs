@@ -744,17 +744,25 @@ impl<'a> Transaction<'a> {
     }
 
     /// [`Self::append_request_body`] with the content of a file.
+    ///
+    /// With a `SecRequestBodyLimit`, at most one byte more than the limit is
+    /// read: that byte tells [`Self::append_request_body`] that the body is
+    /// over the limit, and the rest is cut off or rejected anyway.
     pub fn request_body_from_file(&mut self, path: &str) -> std::io::Result<bool> {
-        let s = std::fs::read(path).inspect_err(|_| {
+        use std::io::Read;
+        let limit = self.rules.properties.settings.request_body_limit.unwrap_or(0);
+        let read = || -> std::io::Result<(u64, Vec<u8>)> {
+            let file = std::fs::File::open(path)?;
+            let size = file.metadata()?.len();
+            let max = if limit > 0 { limit.saturating_add(1) } else { u64::MAX };
+            let mut s = Vec::with_capacity(usize::try_from(size.min(max)).unwrap_or(0));
+            file.take(max).read_to_end(&mut s)?;
+            Ok((size, s))
+        };
+        let (size, s) = read().inspect_err(|_| {
             crate::ms_dbg!(self, 3, "Failed to open request body at: {}", path);
         })?;
-        crate::ms_dbg!(
-            self,
-            9,
-            "Adding request body: {} bytes. Limit set to: {}",
-            s.len(),
-            self.rules.properties.settings.request_body_limit.unwrap_or(0)
-        );
+        crate::ms_dbg!(self, 9, "Adding request body: {} bytes. Limit set to: {}", size, limit);
         Ok(self.append_request_body(&s))
     }
 
@@ -1072,5 +1080,60 @@ impl crate::DebugSink for Transaction<'_> {
 
     fn debug(&self, level: u8, message: &str) {
         self.rules.debug(level, &self.id, &String::from_utf8_lossy(&self.http.uri), message);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{ModSecurity, RulesSet, Transaction};
+
+    /// What a transaction made of a request body: the result of adding it
+    /// (`added`), the length kept, and the status of the intervention.
+    fn outcome(t: &mut Transaction<'_>, added: bool) -> (bool, usize, Option<u16>) {
+        (added, t.request_body_length(), t.intervention().map(|it| it.status))
+    }
+
+    #[test]
+    fn a_body_from_a_file_is_a_body_appended_whole() {
+        let dir = std::env::temp_dir().join(format!("modsec-body-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ms = ModSecurity::new();
+        for config in [
+            "",
+            "SecRequestBodyLimit 1000\nSecRequestBodyLimitAction ProcessPartial",
+            "SecRequestBodyLimit 1000\nSecRequestBodyLimitAction Reject",
+        ] {
+            let mut rules = RulesSet::new();
+            rules.load(&format!("SecRuleEngine On\nSecRequestBodyAccess On\n{config}\n")).unwrap();
+            for size in [0, 999, 1000, 1001, 5000] {
+                let body: Vec<u8> = (0..size).map(|i| b'a' + (i % 26) as u8).collect();
+                let path = dir.join(format!("body-{size}"));
+                std::fs::write(&path, &body).unwrap();
+
+                let mut from_file = Transaction::new(&ms, &rules, None);
+                let added = from_file.request_body_from_file(path.to_str().unwrap()).unwrap();
+                let from_file = outcome(&mut from_file, added);
+                let mut appended = Transaction::new(&ms, &rules, None);
+                let added = appended.append_request_body(&body);
+                assert_eq!(from_file, outcome(&mut appended, added), "{config:?}, {size} bytes");
+            }
+        }
+        let rules = RulesSet::new();
+        let mut t = Transaction::new(&ms, &rules, None);
+        assert!(t.request_body_from_file(dir.join("absent").to_str().unwrap()).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Past the limit the file is not read: an endless one is read up to
+    /// one byte more than the limit.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_body_from_a_file_is_read_up_to_the_limit() {
+        let ms = ModSecurity::new();
+        let mut rules = RulesSet::new();
+        rules.load("SecRequestBodyLimit 1000\nSecRequestBodyLimitAction ProcessPartial\n").unwrap();
+        let mut t = Transaction::new(&ms, &rules, None);
+        let added = t.request_body_from_file("/dev/zero").unwrap();
+        assert_eq!(outcome(&mut t, added), (false, 1000, None));
     }
 }
