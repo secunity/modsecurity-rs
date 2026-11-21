@@ -9,5 +9,4 @@ publish = false
 [dev-dependencies]
 # inet_pton, which the address parsers are compared with.
 modsecurity-native = { path = "../modsecurity-native", features = ["testing"] }
-libc = "0.2"
 rand = "0.9"

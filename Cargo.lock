@@ -736,7 +736,6 @@ dependencies = [
  "http-body",
  "http-body-util",
  "jiff",
- "libc",
  "md-5",
  "mlua",
  "modsecurity-body",
@@ -786,7 +785,6 @@ dependencies = [
 name = "modsecurity-collections"
 version = "3.0.17"
 dependencies = [
- "libc",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-types",
@@ -796,7 +794,6 @@ dependencies = [
 name = "modsecurity-compat"
 version = "3.0.17"
 dependencies = [
- "libc",
  "modsecurity-native",
  "rand 0.9.5",
 ]

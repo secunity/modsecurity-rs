@@ -8,7 +8,7 @@ publish = false
 
 [features]
 # The LMDB backend (the engine's feature of the same name).
-lmdb = ["modsecurity-native/lmdb", "dep:libc"]
+lmdb = ["modsecurity-native/lmdb"]
 
 [dependencies]
 # VariableValue and the key exclusions the collections resolve with.
@@ -17,5 +17,3 @@ modsecurity-types = { path = "../modsecurity-types" }
 modsecurity-native = { path = "../modsecurity-native" }
 # The libstdc++-ordered multimap of the in-memory and TX collections.
 modsecurity-compat = { path = "../modsecurity-compat" }
-# The errno values LMDB reports, for its error messages.
-libc = { version = "0.2", optional = true }

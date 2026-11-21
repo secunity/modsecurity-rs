@@ -69,7 +69,7 @@ pub fn create_dir(dir: &str, mode: u32) -> Result<(), Option<String>> {
     }
     match std::fs::DirBuilder::new().mode(mode).create(dir) {
         Ok(()) => Ok(()),
-        Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(e) => {
             Err(Some(format!("Not able to create directory: {}: {}.", dir, strerror(e.raw_os_error().unwrap_or(0)))))
         }

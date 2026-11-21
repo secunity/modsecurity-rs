@@ -471,7 +471,6 @@ dependencies = [
  "bitflags",
  "curl",
  "jiff",
- "libc",
  "md-5",
  "mlua",
  "modsecurity-body",
@@ -502,7 +501,6 @@ dependencies = [
 name = "modsecurity-collections"
 version = "3.0.17"
 dependencies = [
- "libc",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-types",
