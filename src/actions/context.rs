@@ -72,7 +72,7 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
 
     /// `severity` of the rule message.
     pub fn set_severity(&mut self, severity: u8) {
-        self.rm.severity = severity;
+        self.rm.severity = Some(severity);
     }
 
     // --- intervention --------------------------------------------------

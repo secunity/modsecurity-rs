@@ -2,7 +2,8 @@
 
 use std::ops::RangeInclusive;
 
-/// The id of a rule; 0 for a rule without one.
+/// The id of a rule (`id:N`). A rule without one (a `SecAction` may have
+/// none, a chained rule has none) holds `None` in its `Option<Id>`.
 pub type Id = u64;
 
 /// The id written as `text`: decimal digits only.

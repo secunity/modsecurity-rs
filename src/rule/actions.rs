@@ -258,7 +258,7 @@ mod tests {
         let rule = entry.as_rule().unwrap();
         let actions = rule.actions();
         assert_eq!(actions.after_tags().len(), 3);
-        assert_eq!(rule.severity(), 5);
+        assert_eq!(rule.severity(), Some(5));
         assert_eq!(actions.msg().unwrap().string.evaluate_static(), b"second");
         assert_eq!(actions.disruptive().unwrap().name(), "pass");
     }

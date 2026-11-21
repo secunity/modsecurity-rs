@@ -30,7 +30,7 @@ impl Action for RuleId {
     }
 
     fn configure(&self, rule: &mut Rule) {
-        rule.rule_id = self.rule_id;
+        rule.rule_id = Some(self.rule_id);
     }
 }
 
@@ -39,7 +39,7 @@ mod tests {
     use super::*;
     use crate::actions::block::test_support::{RuleAction, rule};
 
-    fn id(p: &str) -> Result<u64, String> {
+    fn id(p: &str) -> Result<Option<u64>, String> {
         let a = {
             let text = format!("id:{}", p);
             let (name, payload) = crate::actions::action::name_and_payload(&text);
@@ -50,14 +50,14 @@ mod tests {
 
     #[test]
     fn init_and_configure() {
-        assert_eq!(id("1234"), Ok(1234));
-        assert_eq!(id("'900018'"), Ok(900018));
-        assert_eq!(id("0"), Ok(0));
-        assert_eq!(id("007"), Ok(7));
+        assert_eq!(id("1234"), Ok(Some(1234)));
+        assert_eq!(id("'900018'"), Ok(Some(900018)));
+        assert_eq!(id("0"), Ok(Some(0)));
+        assert_eq!(id("007"), Ok(Some(7)));
         // Every 64 bit integer is itself (C++ reads the id as a floating
         // point number: this one is refused there, 9007199254740992 is not).
-        assert_eq!(id("9007199254740993"), Ok(9007199254740993));
-        assert_eq!(id("18446744073709551615"), Ok(u64::MAX));
+        assert_eq!(id("9007199254740993"), Ok(Some(9007199254740993)));
+        assert_eq!(id("18446744073709551615"), Ok(Some(u64::MAX)));
         let err = |s: &str| Err(format!("The input \"{}\" does not seems to be a valid rule id.", s));
         assert_eq!(id("18446744073709551616"), err("18446744073709551616"));
         assert_eq!(id("abc"), err("abc"));

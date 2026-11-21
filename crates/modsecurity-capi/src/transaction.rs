@@ -433,8 +433,10 @@ pub unsafe extern "C" fn msc_get_rules_messages_rule_ids(
             if written >= ids_len {
                 break;
             }
+            // 0 for a rule without an id.
+            let id = m.rule_id().unwrap_or(0);
             // SAFETY: written < ids_len, within the caller's buffer.
-            unsafe { *ids.add(written) = i64::try_from(m.rule_id()).unwrap_or(i64::MAX) };
+            unsafe { *ids.add(written) = i64::try_from(id).unwrap_or(i64::MAX) };
             written += 1;
         }
         written

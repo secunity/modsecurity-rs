@@ -69,7 +69,7 @@ impl SecRule {
         let ctl = &t.ctl;
         for variable in link.targets.iter().map(|&i| &self.variables[i]) {
             let name = variable.full_name().as_bytes();
-            let by_id = |(id, target): &(Id, String)| rule.rule_id == *id && same_name(target.as_bytes(), name);
+            let by_id = |(id, target): &(Id, String)| rule.rule_id == Some(*id) && same_name(target.as_bytes(), name);
             let by_tag =
                 |(tag, target): &(String, String)| same_name(target.as_bytes(), name) && rule.contains_tag(tag, t);
             if !ctl.rule_remove_target_by_id.iter().any(by_id) && !ctl.rule_remove_target_by_tag.iter().any(by_tag) {
@@ -87,7 +87,7 @@ impl SecRule {
         let ctl = &t.ctl;
         ctl.rule_remove_target_by_id
             .iter()
-            .any(|(id, target)| rule.rule_id == *id && same_name(target.as_bytes(), name))
+            .any(|(id, target)| rule.rule_id == Some(*id) && same_name(target.as_bytes(), name))
             || ctl
                 .rule_remove_target_by_tag
                 .iter()
@@ -110,8 +110,10 @@ impl SecRule {
 
         rule.evaluate_base(t);
 
-        if t.ctl.rule_remove_by_id.iter().any(|ids| ids.contains(&rule.rule_id)) {
-            crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.rule_id);
+        if let Some(id) = rule.rule_id
+            && t.ctl.rule_remove_by_id.iter().any(|ids| ids.contains(&id))
+        {
+            crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", id);
             return true;
         }
 
@@ -137,7 +139,7 @@ impl SecRule {
                     t,
                     4,
                     "(Rule: {}) Executing operator \"{}\" with param {} against {}.",
-                    rule.rule_id,
+                    rule.logged_id(),
                     self.operator_name(),
                     String::from_utf8_lossy(&eparam),
                     vars_str()
@@ -148,7 +150,7 @@ impl SecRule {
                 t,
                 4,
                 "(Rule: {}) Executing operator \"{} against {}.",
-                rule.rule_id,
+                rule.logged_id(),
                 self.operator_name(),
                 vars_str()
             );

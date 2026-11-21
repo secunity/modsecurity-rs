@@ -81,7 +81,8 @@ pub struct Rule {
     pub ver: String,
     pub accuracy: u8,
     pub maturity: u8,
-    pub rule_id: Id,
+    /// `id:N`: every `SecRule` that starts a chain has one.
+    pub rule_id: Option<Id>,
     pub chained_rule_child: Option<Box<Rule>>,
     pub chained_rule_parent: bool,
 
@@ -116,7 +117,7 @@ impl Rule {
             ver: String::new(),
             accuracy: 0,
             maturity: 0,
-            rule_id: Id::default(),
+            rule_id: None,
             chained_rule_child: None,
             chained_rule_parent: false,
             actions: Actions::default(),
@@ -165,10 +166,15 @@ impl Rule {
         self.phase = phase;
     }
 
+    /// The id as the logs write it: 0 for a rule without one.
+    pub fn logged_id(&self) -> Id {
+        self.rule_id.unwrap_or(0)
+    }
+
     /// The rule id for `SecRule`s, `file:line` otherwise.
     pub fn reference(&self) -> String {
         match self.kind {
-            RuleKind::SecRule(_) => self.rule_id.to_string(),
+            RuleKind::SecRule(_) => self.logged_id().to_string(),
             _ => format!("{}:{}", self.file_name, self.line_number),
         }
     }
@@ -238,9 +244,9 @@ impl Rule {
         self.actions.msg().map(|m| m.data(t)).unwrap_or_default()
     }
 
-    /// The `severity` of the rule (0 without one).
-    pub fn severity(&self) -> u8 {
-        self.actions.severity().map(|s| s.severity).unwrap_or(0)
+    /// The `severity` of the rule.
+    pub fn severity(&self) -> Option<u8> {
+        self.actions.severity().map(|s| s.severity)
     }
 
     pub fn transformations(&self) -> &[Transformation] {

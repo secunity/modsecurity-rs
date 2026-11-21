@@ -31,9 +31,10 @@ impl<V: Clone> IdMultimap<V> {
         self.by_id.entry(id).or_default().push(value);
     }
 
-    /// The entries for the rule with id `rule_id`, in order.
-    pub fn for_rule(&self, rule_id: Id) -> &[V] {
-        self.by_id.get(&rule_id).map_or(&[], Vec::as_slice)
+    /// The entries for the rule with id `rule_id`, in order (none for a
+    /// rule without an id).
+    pub fn for_rule(&self, rule_id: impl Into<Option<Id>>) -> &[V] {
+        rule_id.into().and_then(|id| self.by_id.get(&id)).map_or(&[], Vec::as_slice)
     }
 
     /// Adds the entries of `from` (a configuration loaded later) after
@@ -126,8 +127,8 @@ impl RulesExceptions {
     }
 
     /// Whether `SecRuleRemoveById` removes the rule `id`.
-    pub fn contains(&self, id: Id) -> bool {
-        self.removed_ids.iter().any(|range| range.contains(&id))
+    pub fn contains(&self, id: impl Into<Option<Id>>) -> bool {
+        id.into().is_some_and(|id| self.removed_ids.iter().any(|range| range.contains(&id)))
     }
 
     /// Adds the exceptions of `from` (of a merged rule set) to these.

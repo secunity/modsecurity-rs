@@ -57,10 +57,10 @@ fn add_variable_origin(key: &str, value: &[u8], l: &mut Vec<VariableValue>) {
 
 /// `RULE:id`: the id of the rule or of the nearest chain parent with one.
 fn id(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
-    let Some(r) = find_in_chain(t, rule, |r| r.rule_id != 0) else {
+    let Some(id) = find_in_chain(t, rule, |r| r.rule_id.is_some()).and_then(|r| r.rule_id) else {
         return;
     };
-    add_variable_origin(RULE_ID, r.rule_id.to_string().as_bytes(), l);
+    add_variable_origin(RULE_ID, id.to_string().as_bytes(), l);
 }
 
 /// `RULE:rev`: the revision of the rule or of the nearest chain parent
@@ -75,8 +75,8 @@ fn rev(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
 /// `RULE:severity`: the severity of the rule or of the nearest chain
 /// parent with one.
 fn severity(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
-    if let Some(r) = find_in_chain(t, rule, |r| r.has_severity()) {
-        add_variable_origin(RULE_SEVERITY, r.severity().to_string().as_bytes(), l);
+    if let Some(severity) = find_in_chain(t, rule, |r| r.has_severity()).and_then(Rule::severity) {
+        add_variable_origin(RULE_SEVERITY, severity.to_string().as_bytes(), l);
     }
 }
 

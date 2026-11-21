@@ -86,12 +86,12 @@ mod tests {
         let mut rm = RuleMessage::new(&r);
         let before = t.outcome.highest_severity_action;
         s.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
-        assert_eq!(rm.severity, 2);
+        assert_eq!(rm.severity, Some(2));
         assert_eq!(t.outcome.highest_severity_action, 2.min(before));
         assert!(has_log(&t, &format!("This rule severity is: 2 current transaction is: {}", before)));
         let s5 = Severity::new("severity", "5").unwrap();
         s5.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
-        assert_eq!(rm.severity, 5);
+        assert_eq!(rm.severity, Some(5));
         assert_eq!(t.outcome.highest_severity_action, 2.min(before));
     }
 }

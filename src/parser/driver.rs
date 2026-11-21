@@ -133,20 +133,19 @@ impl Driver {
             return true;
         }
 
-        // Checking if the rule has an ID and also checking if this ID is
-        // not used by other rule
-        if r.rule_id == 0 {
+        // The rule must have an id (0 is one), used by no other rule.
+        let Some(id) = r.rule_id else {
             self.properties
                 .parser_error
                 .push_str(&format!("Rules must have an ID. File: {} at line: {}\n", r.file_name, r.line_number));
             return false;
-        }
+        };
 
         for phase in Phases::ALL {
             let rules = self.rules_set_phases.for_phase(phase);
             for lr in rules {
-                if lr.sec_rule_id() == Some(r.rule_id) {
-                    self.properties.parser_error.push_str(&format!("Rule id: {} is duplicated\n", r.rule_id));
+                if lr.sec_rule_id() == Some(id) {
+                    self.properties.parser_error.push_str(&format!("Rule id: {} is duplicated\n", id));
                     return false;
                 }
             }

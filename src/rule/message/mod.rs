@@ -61,7 +61,7 @@ pub struct RuleMessage<'r> {
     pub(crate) no_audit_log: bool,
     pub(crate) reference: Vec<u8>,
     pub(crate) save_message: bool,
-    pub(crate) severity: u8,
+    pub(crate) severity: Option<u8>,
     pub(crate) tags: Vec<Vec<u8>>,
 }
 
@@ -76,7 +76,7 @@ impl<'r> RuleMessage<'r> {
             no_audit_log: false,
             reference: Vec::new(),
             save_message: true,
-            severity: 0,
+            severity: None,
             tags: Vec::new(),
         };
         rm.reset(true);
@@ -93,7 +93,7 @@ impl<'r> RuleMessage<'r> {
         if reset_save_message {
             self.save_message = true;
         }
-        self.severity = 0;
+        self.severity = None;
         self.tags.clear();
     }
 
@@ -107,8 +107,8 @@ impl<'r> RuleMessage<'r> {
 
     // --- the rule ---
 
-    /// The `id` of the rule (0 for rules without one).
-    pub fn rule_id(&self) -> u64 {
+    /// The `id` of the rule.
+    pub fn rule_id(&self) -> Option<crate::rule::Id> {
         self.rule.rule_id
     }
 
@@ -149,8 +149,8 @@ impl<'r> RuleMessage<'r> {
         &self.data
     }
 
-    /// The `severity` of the rule (0 to 7; 0 also without one).
-    pub fn severity(&self) -> u8 {
+    /// The `severity` of the rule (0 to 7).
+    pub fn severity(&self) -> Option<u8> {
         self.severity
     }
 
@@ -219,7 +219,7 @@ mod tests {
                     ServerLogEntry::Text(text) => format!("text: {text}"),
                     ServerLogEntry::RuleMessage(rm, t) => format!(
                         "message {}: {} | {} | {}",
-                        rm.rule_id(),
+                        rm.rule_id().unwrap(),
                         rm.log(t, LogParts::empty(), None),
                         rm.log(t, LogParts::CLIENT, None),
                         rm.log(t, LogParts::CLIENT | LogParts::ERROR_LOG_TAIL, None) == rm.error_log(t),
@@ -315,12 +315,12 @@ mod tests {
         let messages = t.rule_messages();
         assert_eq!(messages.len(), 2);
         let warning = &messages[0];
-        assert_eq!((warning.rule_id(), warning.is_disruptive()), (10, false));
+        assert_eq!((warning.rule_id(), warning.is_disruptive()), (Some(10), false));
         assert_eq!(warning.rule_location().0, "events.conf");
         assert_eq!((warning.rev(), warning.ver(), warning.maturity(), warning.accuracy()), ("3", "v1", 8, 9));
         assert_eq!(warning.message(), b"SQL in ARGS:q");
         assert_eq!(warning.data(), b"select 1 union");
-        assert_eq!(warning.severity(), 2);
+        assert_eq!(warning.severity(), Some(2));
         assert_eq!(warning.tags().collect::<Vec<_>>(), [&b"attack-sqli"[..], b"app"]);
         assert_eq!(warning.operator(), Some("Contains"));
         assert_eq!(warning.operator_parameter(), Some(&b"select"[..]));
@@ -329,10 +329,64 @@ mod tests {
         assert!(warning.reference().starts_with(b"o0,6v"), "{:?}", String::from_utf8_lossy(warning.reference()));
 
         let denial = &messages[1];
-        assert_eq!((denial.rule_id(), denial.is_disruptive(), denial.message()), (11, true, &b"blocked"[..]));
+        assert_eq!((denial.rule_id(), denial.is_disruptive(), denial.message()), (Some(11), true, &b"blocked"[..]));
+        assert_eq!(denial.severity(), None);
         assert_eq!(denial.operator(), Some("Rx"));
 
         // The callback gets the messages that do not interrupt.
-        assert_eq!(*seen.lock().unwrap(), [(10, b"SQL in ARGS:q".to_vec(), 2)]);
+        assert_eq!(*seen.lock().unwrap(), [(Some(10), b"SQL in ARGS:q".to_vec(), Some(2))]);
+    }
+
+    /// A rule without an id or a severity has none (`None`), and 0 is an
+    /// id and a severity like the others; the logs write 0 for none. (0
+    /// used to mean "no id": `id:0` was refused with "Rules must have an
+    /// ID", and a severity of 0, EMERGENCY, could not be told from none.)
+    #[test]
+    fn no_id_and_no_severity_are_not_zero() {
+        let ms = ModSecurity::new();
+        let mut rules = RulesSet::new();
+        rules
+            .load(
+                "SecRuleEngine On\n\
+                 SecAction \"phase:1,pass,log,msg:'no id'\"\n\
+                 SecRule RULE:id \"@streq 0\" \"id:0,phase:1,pass,log,severity:0,msg:'zero'\"\n\
+                 SecRule ARGS \"@rx x\" \"id:2,phase:1,deny,status:403\"\n",
+            )
+            .unwrap();
+        let mut t = Transaction::new(&ms, &rules, None);
+        t.process_uri(b"/?a=x", b"GET", b"1.1");
+        t.process_request_headers();
+        assert_eq!(t.intervention().map(|it| it.status), Some(403));
+
+        let messages = t.rule_messages();
+        let summary: Vec<_> = messages.iter().map(|m| (m.rule_id(), m.severity(), m.message().to_vec())).collect();
+        assert_eq!(
+            summary,
+            [(None, None, b"no id".to_vec()), (Some(0), Some(0), b"zero".to_vec()), (Some(2), None, Vec::new())]
+        );
+        for m in &messages[..2] {
+            let line = m.log(&t, LogParts::empty(), None);
+            assert!(line.contains(" [id \"0\"] ") && line.contains(" [severity \"0\"] "), "{line}");
+        }
+
+        // A rule removed by id 0 is the rule with id 0, not the chained
+        // rules (which have no id).
+        let chain = |remove: &str| {
+            let mut rules = RulesSet::new();
+            rules
+                .load(&format!(
+                    "SecRuleEngine On\n\
+                     SecAction \"id:1,phase:1,pass,nolog,ctl:ruleRemoveById={remove}\"\n\
+                     SecRule ARGS \"@rx x\" \"id:3,phase:1,deny,status:403,chain\"\n\
+                     \x20 SecRule ARGS \"@rx never\" \"t:none\"\n"
+                ))
+                .unwrap();
+            let mut t = Transaction::new(&ms, &rules, None);
+            t.process_uri(b"/?a=x", b"GET", b"1.1");
+            t.process_request_headers();
+            t.intervention().map(|it| it.status)
+        };
+        assert_eq!(chain("0"), None);
+        assert_eq!(chain("0-2"), None);
     }
 }

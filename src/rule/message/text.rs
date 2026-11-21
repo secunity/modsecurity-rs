@@ -46,13 +46,14 @@ impl RuleMessage<'_> {
         let mut push = |s: &[u8]| msg.extend_from_slice(s);
         push(format!(" [file \"{}\"]", r.file_name).as_bytes());
         push(format!(" [line \"{}\"]", r.line_number).as_bytes());
-        push(format!(" [id \"{}\"]", r.rule_id).as_bytes());
+        push(format!(" [id \"{}\"]", r.logged_id()).as_bytes());
         push(format!(" [rev \"{}\"]", to_hex_if_needed(r.rev.as_bytes(), true)).as_bytes());
         push(b" [msg \"");
         push(&rm.message);
         push(b"\"]");
         push(format!(" [data \"{}\"]", to_hex_if_needed(&limit_to(200, &rm.data), true)).as_bytes());
-        push(format!(" [severity \"{}\"]", rm.severity).as_bytes());
+        // 0 without a severity.
+        push(format!(" [severity \"{}\"]", rm.severity.unwrap_or(0)).as_bytes());
         push(format!(" [ver \"{}\"]", to_hex_if_needed(r.ver.as_bytes(), true)).as_bytes());
         push(format!(" [maturity \"{}\"]", r.maturity).as_bytes());
         push(format!(" [accuracy \"{}\"]", r.accuracy).as_bytes());
