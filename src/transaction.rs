@@ -61,6 +61,13 @@ pub enum RequestBodyType {
     XMLRequestBody,
 }
 
+/// Which body a piece is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BodyDirection {
+    Request,
+    Response,
+}
+
 /// The request/response variables filled while the transaction is
 /// processed.
 #[derive(Debug, Clone)]
@@ -766,47 +773,81 @@ impl<'a> Transaction<'a> {
         Ok(self.append_request_body(&s))
     }
 
-    /// Adds `buf` to the request body. Returns `false` when the body limit
-    /// was hit and only a part was kept
-    /// (`SecRequestBodyLimitAction ProcessPartial`).
+    /// Adds `buf` to the request body, within `SecRequestBodyLimit`.
+    /// Returns `false` when the body limit was hit and only a part was kept
+    /// (`SecRequestBodyLimitAction ProcessPartial`); see
+    /// `append_body` for the limit actions.
     pub fn append_request_body(&mut self, buf: &[u8]) -> bool {
-        let current_size = self.http.request_body.len();
-        let props = &self.rules.properties;
         crate::ms_dbg!(
             self,
             9,
             "Appending request body: {} bytes. Limit set to: {}",
             buf.len(),
-            props.settings.request_body_limit.unwrap_or(0)
+            self.rules.properties.settings.request_body_limit.unwrap_or(0)
         );
+        self.append_body(BodyDirection::Request, buf)
+    }
 
-        if props.settings.request_body_limit.unwrap_or(0) > 0
-            && props.settings.request_body_limit.unwrap_or(0) < (buf.len() + current_size) as u64
-        {
-            let off = self.vars.offset;
-            self.vars.inbound_data_error.set(b"1", off);
-            crate::ms_dbg!(self, 5, "Request body is bigger than the maximum expected.");
-            if props.settings.request_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
-                let space_left = (props.settings.request_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
-                let n = space_left.min(buf.len());
-                self.http.request_body.extend_from_slice(&buf[..n]);
-                crate::ms_dbg!(self, 5, "Request body limit is marked to process partial");
-                return false;
-            } else {
-                if props.settings.request_body_limit_action == Some(BodyLimitAction::Reject) {
-                    crate::ms_dbg!(self, 5, "Request body limit is marked to reject the request");
-                    if self.rule_engine_state() == Some(RuleEngine::Enabled) {
-                        let log = InterventionLog::Text("Request body limit is marked to reject the request");
-                        self.outcome.intervention.disrupt(403, None, log);
-                    } else {
-                        crate::ms_dbg!(self, 5, "Not rejecting the request as the engine is not Enabled");
-                    }
-                }
-                return true;
-            }
+    /// The request body or the response body kept so far.
+    fn body_mut(&mut self, direction: BodyDirection) -> &mut Vec<u8> {
+        match direction {
+            BodyDirection::Request => &mut self.http.request_body,
+            BodyDirection::Response => &mut self.http.response_body,
         }
-        self.http.request_body.extend_from_slice(buf);
-        true
+    }
+
+    /// Adds `buf` to a body. Past the body's limit, `INBOUND_DATA_ERROR`
+    /// (`OUTBOUND_DATA_ERROR`) is 1 and the limit action decides:
+    ///
+    /// - `ProcessPartial`: the body is kept up to the limit; returns
+    ///   `false`.
+    /// - `Reject`: with the rule engine `On`, the transaction is
+    ///   interrupted with a 403. The piece is dropped.
+    /// - none: the piece is dropped.
+    fn append_body(&mut self, direction: BodyDirection, buf: &[u8]) -> bool {
+        let settings = &self.rules.properties.settings;
+        let (limit, action, kind) = match direction {
+            BodyDirection::Request => (settings.request_body_limit, settings.request_body_limit_action, "Request"),
+            BodyDirection::Response => (settings.response_body_limit, settings.response_body_limit_action, "Response"),
+        };
+        let limit = usize::try_from(limit.unwrap_or(0)).unwrap_or(usize::MAX);
+        let current_size = self.body_mut(direction).len();
+        if limit == 0 || current_size + buf.len() <= limit {
+            self.body_mut(direction).extend_from_slice(buf);
+            return true;
+        }
+
+        let off = self.vars.offset;
+        match direction {
+            BodyDirection::Request => self.vars.inbound_data_error.set(b"1", off),
+            BodyDirection::Response => self.vars.outbound_data_error.set(b"1", off),
+        }
+        crate::ms_dbg!(self, 5, "{} body is bigger than the maximum expected.", kind);
+        let keep_up_to_limit = |t: &mut Self| {
+            let n = limit.saturating_sub(current_size).min(buf.len());
+            t.body_mut(direction).extend_from_slice(&buf[..n]);
+        };
+        match action {
+            Some(BodyLimitAction::ProcessPartial) => {
+                keep_up_to_limit(self);
+                crate::ms_dbg!(self, 5, "{} body limit is marked to process partial", kind);
+                false
+            }
+            Some(BodyLimitAction::Reject) => {
+                crate::ms_dbg!(self, 5, "{} body limit is marked to reject the request", kind);
+                if self.rule_engine_state() == Some(RuleEngine::Enabled) {
+                    let log = match direction {
+                        BodyDirection::Request => "Request body limit is marked to reject the request",
+                        BodyDirection::Response => "Response body limit is marked to reject the request",
+                    };
+                    self.outcome.intervention.disrupt(403, None, InterventionLog::Text(log));
+                } else {
+                    crate::ms_dbg!(self, 5, "Not rejecting the request as the engine is not Enabled");
+                }
+                true
+            }
+            None => true,
+        }
     }
 
     /// Phase 3: records the response status and protocol and runs the
@@ -893,11 +934,12 @@ impl<'a> Transaction<'a> {
         self.evaluate_phase(Phases::ResponseBody);
     }
 
-    /// Adds `buf` to the response body. Returns `false` when the body
+    /// Adds `buf` to the response body, within `SecResponseBodyLimit`,
+    /// when its content type is inspected. Returns `false` when the body
     /// limit was hit and only a part was kept
-    /// (`SecResponseBodyLimitAction ProcessPartial`).
+    /// (`SecResponseBodyLimitAction ProcessPartial`); see
+    /// `append_body` for the limit actions.
     pub fn append_response_body(&mut self, buf: &[u8]) -> bool {
-        let current_size = self.http.response_body.len();
         let props = &self.rules.properties;
         let bi = &props.response_body_type_to_be_inspected.value;
         if !self.response_type_is_inspected() && !bi.is_empty() {
@@ -914,38 +956,10 @@ impl<'a> Transaction<'a> {
             self,
             9,
             "Appending response body: {} bytes. Limit set to: {}",
-            buf.len() + current_size,
+            buf.len() + self.http.response_body.len(),
             props.settings.response_body_limit.unwrap_or(0)
         );
-
-        if props.settings.response_body_limit.unwrap_or(0) > 0
-            && props.settings.response_body_limit.unwrap_or(0) < (buf.len() + current_size) as u64
-        {
-            let off = self.vars.offset;
-            self.vars.outbound_data_error.set(b"1", off);
-            crate::ms_dbg!(self, 5, "Response body is bigger than the maximum expected.");
-            if props.settings.response_body_limit_action == Some(BodyLimitAction::ProcessPartial) {
-                let space_left =
-                    (props.settings.response_body_limit.unwrap_or(0) as usize).saturating_sub(current_size);
-                let n = space_left.min(buf.len());
-                self.http.response_body.extend_from_slice(&buf[..n]);
-                crate::ms_dbg!(self, 5, "Response body limit is marked to process partial");
-                return false;
-            } else {
-                if props.settings.response_body_limit_action == Some(BodyLimitAction::Reject) {
-                    crate::ms_dbg!(self, 5, "Response body limit is marked to reject the request");
-                    if self.rule_engine_state() == Some(RuleEngine::Enabled) {
-                        let log = InterventionLog::Text("Response body limit is marked to reject the request");
-                        self.outcome.intervention.disrupt(403, None, log);
-                    } else {
-                        crate::ms_dbg!(self, 5, "Not rejecting the request as the engine is not Enabled");
-                    }
-                }
-                return true;
-            }
-        }
-        self.http.response_body.extend_from_slice(buf);
-        true
+        self.append_body(BodyDirection::Response, buf)
     }
 
     /// The response body kept so far.
