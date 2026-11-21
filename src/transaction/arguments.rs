@@ -9,6 +9,34 @@ use crate::utils::string::ssplit_pair;
 use crate::variables::variable_origin::VariableOrigin;
 use modsecurity_transformations::url::urldecode_nonstrict_inplace;
 
+/// Where an argument comes from. Every argument is in `ARGS`; those of
+/// the query string are also in `ARGS_GET`, those of a URL-encoded form
+/// body in `ARGS_POST`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArgumentOrigin {
+    /// The query string.
+    Get,
+    /// A URL-encoded form body.
+    Post,
+    /// A JSON body.
+    Json,
+    /// An XML body (`SecParseXmlIntoArgs`).
+    #[cfg_attr(not(feature = "libxml2"), allow(dead_code))]
+    Xml,
+}
+
+impl ArgumentOrigin {
+    /// The name the debug log gives it.
+    fn name(self) -> &'static str {
+        match self {
+            ArgumentOrigin::Get => "GET",
+            ArgumentOrigin::Post => "POST",
+            ArgumentOrigin::Json => "JSON",
+            ArgumentOrigin::Xml => "XML",
+        }
+    }
+}
+
 pub(super) struct ArgumentWriter<'a> {
     pub vars: &'a mut TransactionAnchoredVariables,
     pub combined_size: &'a mut usize,
@@ -18,7 +46,7 @@ pub(super) struct ArgumentWriter<'a> {
 }
 
 impl ArgumentWriter<'_> {
-    pub fn add(&mut self, origin: &str, key: &[u8], value: &[u8], mut offset: usize) -> bool {
+    pub fn add(&mut self, origin: ArgumentOrigin, key: &[u8], value: &[u8], mut offset: usize) -> bool {
         let log = &self.rules.properties.debug_log;
         if log.enabled(4) {
             log.write_ctx(
@@ -27,7 +55,7 @@ impl ArgumentWriter<'_> {
                 &String::from_utf8_lossy(self.uri),
                 &format!(
                     "Adding request argument ({}): name \"{}\", value \"{}\"",
-                    origin,
+                    origin.name(),
                     String::from_utf8_lossy(key),
                     String::from_utf8_lossy(value)
                 ),
@@ -49,9 +77,9 @@ impl ArgumentWriter<'_> {
         offset = offset + key.len() + 1;
         self.vars.args.set(key, value, offset);
         match origin {
-            "GET" => self.vars.args_get.set(key, value, offset),
-            "POST" => self.vars.args_post.set(key, value, offset),
-            _ => {}
+            ArgumentOrigin::Get => self.vars.args_get.set(key, value, offset),
+            ArgumentOrigin::Post => self.vars.args_post.set(key, value, offset),
+            ArgumentOrigin::Json | ArgumentOrigin::Xml => {}
         }
         *self.combined_size += key.len() + value.len();
         let size = self.combined_size.to_string();
@@ -63,7 +91,7 @@ impl ArgumentWriter<'_> {
         true
     }
 
-    pub fn extract(&mut self, origin: &str, body: &[u8], mut offset: usize) {
+    pub fn extract(&mut self, origin: ArgumentOrigin, body: &[u8], mut offset: usize) {
         let separator = self
             .rules
             .properties
@@ -93,6 +121,7 @@ impl ArgumentWriter<'_> {
 
 #[cfg(test)]
 mod tests {
+    use super::ArgumentOrigin;
     use crate::instance::ModSecurity;
     use crate::transaction::Transaction;
     use crate::transaction::body::tests::multipart::test_support::{log, new_rules};
@@ -106,7 +135,7 @@ mod tests {
         rules.properties.settings.arguments_limit = Some(2);
         let mut t = Transaction::new(&ms, &rules, None);
         t.vars.offset = 77;
-        assert!(t.extract_arguments("POST", b"a%00=%ff+;bare;bad=%Q0;", 10));
+        t.extract_arguments(ArgumentOrigin::Post, b"a%00=%ff+;bare;bad=%Q0;", 10);
         assert_eq!(t.vars.args_post.resolve_first(b"a\0").unwrap(), b"\xff ");
         assert_eq!(t.vars.args_post.resolve_first(b"bare").unwrap(), b"");
         assert_eq!(t.vars.args_post.len(), 2);
@@ -139,25 +168,26 @@ mod tests {
         for (body, error) in [(&b"a%zz=b"[..], true), (b"a=b%zz", true), (b"a%41=b%20", false), (b"a%=b", true)] {
             let rules = new_rules();
             let mut t = Transaction::new(&ms, &rules, None);
-            t.extract_arguments("GET", body, 0);
+            t.extract_arguments(ArgumentOrigin::Get, body, 0);
             assert_eq!(t.vars.url_encoded_error.value() == b"1", error, "{body:?}");
         }
     }
 
     #[test]
-    fn form_separators_preserve_empty_arguments_and_origin_case() {
+    fn form_separators_preserve_empty_arguments_and_origins() {
         let ms = ModSecurity::new();
         for (body, count) in [(&b""[..], 0), (b"&", 1), (b"&&", 2), (b"a=1&", 1), (b"&a=1&&", 3)] {
             let rules = new_rules();
             let mut t = Transaction::new(&ms, &rules, None);
-            t.extract_arguments("GET", body, 0);
+            t.extract_arguments(ArgumentOrigin::Get, body, 0);
             assert_eq!(t.vars.args.len(), count, "{body:?}");
             assert_eq!(t.vars.args_get.len(), count);
         }
+        // JSON arguments are only in ARGS.
         let rules = new_rules();
         let mut t = Transaction::new(&ms, &rules, None);
-        t.extract_arguments("get", b"a=1", 0);
+        t.argument_writer().add(ArgumentOrigin::Json, b"a", b"1", 0);
         assert_eq!(t.vars.args.resolve_first(b"a").unwrap(), b"1");
-        assert!(t.vars.args_get.is_empty());
+        assert!(t.vars.args_get.is_empty() && t.vars.args_post.is_empty());
     }
 }

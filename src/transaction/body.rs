@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::transaction::arguments::ArgumentWriter;
+use crate::transaction::arguments::{ArgumentOrigin, ArgumentWriter};
 use crate::transaction::{RequestBodyType, Transaction};
 use crate::variables::variable_value::VariableValue;
 use modsecurity_body::multipart::{self, Entries, Flag, Multipart, MultipartPartTmpFile, Uploads};
@@ -79,7 +79,7 @@ impl Transaction<'_> {
                         id: &self.id,
                         uri: &self.http.uri,
                     }
-                    .extract("POST", &self.http.request_body, off);
+                    .extract(ArgumentOrigin::Post, &self.http.request_body, off);
                 }
             }
             Processor::Missing => {
@@ -166,7 +166,7 @@ impl Transaction<'_> {
             id: &self.id,
             uri: &self.http.uri,
         };
-        self.body.json.parse(&self.http.request_body, |key, value| arguments.add("JSON", key, value, 0))
+        self.body.json.parse(&self.http.request_body, |key, value| arguments.add(ArgumentOrigin::Json, key, value, 0))
     }
 
     /// Parses a `multipart/form-data` body and reports its result: an
@@ -357,7 +357,7 @@ impl modsecurity_body::xml::Context for Transaction<'_> {
     }
 
     fn add_argument(&mut self, name: &[u8], value: &[u8]) -> bool {
-        Transaction::add_argument(self, "XML", name, value, 0)
+        Transaction::add_argument(self, ArgumentOrigin::Xml, name, value, 0)
     }
 }
 

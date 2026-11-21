@@ -23,7 +23,7 @@
 mod arguments;
 mod body;
 
-use arguments::ArgumentWriter;
+use arguments::{ArgumentOrigin, ArgumentWriter};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -551,18 +551,16 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    /// Adds the arguments of a query string or URL-encoded form body
-    /// (`origin` is `GET` or `POST`). Always returns `true`.
-    pub(crate) fn extract_arguments(&mut self, origin: &str, buf: &[u8], offset: usize) -> bool {
+    /// Adds the arguments of a query string or URL-encoded form body.
+    pub(crate) fn extract_arguments(&mut self, origin: ArgumentOrigin, buf: &[u8], offset: usize) {
         self.argument_writer().extract(origin, buf, offset);
-        true
     }
 
     #[cfg_attr(not(feature = "libxml2"), allow(dead_code))] // Used by the XML body processor.
     /// Adds one argument to `ARGS` and to `ARGS_GET` or `ARGS_POST`
     /// according to `origin`. Returns `false` when `SecArgumentsLimit` was
     /// reached.
-    pub(crate) fn add_argument(&mut self, origin: &str, key: &[u8], value: &[u8], offset: usize) -> bool {
+    pub(crate) fn add_argument(&mut self, origin: ArgumentOrigin, key: &[u8], value: &[u8], offset: usize) -> bool {
         self.argument_writer().add(origin, key, value, offset)
     }
 
@@ -642,7 +640,7 @@ impl<'a> Transaction<'a> {
         if !self.vars.query_string.value().is_empty() {
             let qs = self.vars.query_string.value().to_vec();
             let qo = self.vars.query_string.offset();
-            self.extract_arguments("GET", &qs, qo);
+            self.extract_arguments(ArgumentOrigin::Get, &qs, qo);
         }
 
         self.vars.offset += 1;
