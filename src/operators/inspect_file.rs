@@ -32,7 +32,10 @@ impl InspectFile {
             return Err(format!("Failed to open file: {}. {}", name, lookup.looked_at));
         }
 
-        let script = Lua::from_script(&file).ok();
+        // A `.lua` file is a script: one that does not load (it does not
+        // compile, or Lua support is not built in) is an error, not a
+        // program to run.
+        let script = if file.ends_with(".lua") { Some(Lua::from_script(&file)?) } else { None };
         Ok(InspectFile { param, file, script })
     }
 
@@ -148,6 +151,26 @@ mod tests {
 
         let not_exec = format!("{}/test/test-cases/data/inspectfile-not-executable.txt", env!("CARGO_MANIFEST_DIR"));
         assert!(!eval(&op(&not_exec), b"match"));
+    }
+
+    /// A `.lua` file that does not load refuses the rule. (It used to be
+    /// run as a program.)
+    #[test]
+    fn a_lua_script_that_does_not_load_is_an_error() {
+        let dir = std::env::temp_dir().join(format!("msrs-inspectfile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("broken.lua");
+        std::fs::write(&script, "function main( return 1 end\n").unwrap();
+        let e = InspectFile::new(Param::from_text(script.to_str().unwrap()), "/etc/x.conf").unwrap_err();
+        if cfg!(feature = "lua") {
+            assert!(e.starts_with("Problems load script: Failed to compile script '"), "{}", e);
+        } else {
+            assert_eq!(e, "Lua support was not enabled.");
+        }
+        let mut rules = crate::RulesSet::new();
+        let conf = format!("SecRule FILES_TMPNAMES \"@inspectFile {}\" \"id:1,phase:2,deny\"", script.display());
+        assert!(rules.load(&conf).unwrap_err().message().contains(&e));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
