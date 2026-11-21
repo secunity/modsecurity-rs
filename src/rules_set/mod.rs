@@ -252,7 +252,7 @@ impl RulesSet {
                 r.evaluate(chain, t);
                 Self::clean_matched_vars(t);
 
-                if t.outcome.intervention.disruptive {
+                if t.outcome.intervention.is_disruptive() {
                     crate::ms_dbg!(t, 8, "Skipping this phase as this request was already intercepted.");
                     break;
                 }

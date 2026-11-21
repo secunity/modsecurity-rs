@@ -796,12 +796,8 @@ impl<'a> Transaction<'a> {
                 if props.settings.request_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg!(self, 5, "Request body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
-                        self.outcome.intervention = PendingIntervention {
-                            status: 403,
-                            url: None,
-                            log: Some(InterventionLog::Text("Request body limit is marked to reject the request")),
-                            disruptive: true,
-                        };
+                        let log = InterventionLog::Text("Request body limit is marked to reject the request");
+                        self.outcome.intervention.disrupt(403, None, log);
                     } else {
                         crate::ms_dbg!(self, 5, "Not rejecting the request as the engine is not Enabled");
                     }
@@ -939,12 +935,8 @@ impl<'a> Transaction<'a> {
                 if props.settings.response_body_limit_action == Some(BodyLimitAction::Reject) {
                     crate::ms_dbg!(self, 5, "Response body limit is marked to reject the request");
                     if self.rule_engine_state() == Some(RuleEngine::Enabled) {
-                        self.outcome.intervention = PendingIntervention {
-                            status: 403,
-                            url: None,
-                            log: Some(InterventionLog::Text("Response body limit is marked to reject the request")),
-                            disruptive: true,
-                        };
+                        let log = InterventionLog::Text("Response body limit is marked to reject the request");
+                        self.outcome.intervention.disrupt(403, None, log);
                     } else {
                         crate::ms_dbg!(self, 5, "Not rejecting the request as the engine is not Enabled");
                     }
@@ -1008,15 +1000,11 @@ impl<'a> Transaction<'a> {
     }
 
     /// The pending disruptive intervention, if any, its log with the
-    /// status code. Handing it out resets the status and the disruptive
-    /// flag (the url and log stay).
+    /// status code. Handing it out clears it: a later intervention has only
+    /// what its own actions set.
     pub fn intervention(&mut self) -> Option<Intervention> {
-        if !self.outcome.intervention.disruptive {
-            return None;
-        }
+        let it = self.outcome.intervention.take()?;
         self.outcome.is_interrupted = true;
-        let it = self.outcome.intervention.to_intervention();
-        self.outcome.intervention.reset();
         Some(it)
     }
 

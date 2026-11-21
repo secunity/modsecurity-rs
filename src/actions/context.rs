@@ -77,27 +77,24 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
 
     // --- intervention --------------------------------------------------
 
-    /// The status of the pending intervention (200 when none was set).
-    pub fn intervention_status(&self) -> u16 {
-        self.t.outcome.intervention.status
+    /// The status set so far for the intervention (by `status` or a
+    /// disruptive action), if any.
+    pub fn intervention_status(&self) -> Option<u16> {
+        self.t.outcome.intervention.status()
     }
 
+    /// `status`.
     pub fn set_intervention_status(&mut self, status: u16) {
-        self.t.outcome.intervention.status = status;
+        self.t.outcome.intervention.set_status(status);
     }
 
-    /// The URL of a redirection.
-    pub fn set_intervention_url(&mut self, url: Vec<u8>) {
-        self.t.outcome.intervention.url = Some(url);
-    }
-
-    /// Makes the intervention disruptive: the rule message is marked
-    /// disruptive and its log line becomes the intervention's log.
-    pub fn disrupt(&mut self) {
-        self.t.outcome.intervention.disruptive = true;
+    /// Interrupts the transaction with `status` (and a redirection to
+    /// `url`): the rule message is marked disruptive and its log line
+    /// becomes the intervention's log.
+    pub fn disrupt(&mut self, status: u16, url: Option<Vec<u8>>) {
         self.rm.is_disruptive = true;
         let (before_code, after_code) = self.rm.log_around_code(self.t, LogParts::CLIENT);
-        self.t.outcome.intervention.log = Some(InterventionLog::RuleMessage { before_code, after_code });
+        self.t.outcome.intervention.disrupt(status, url, InterventionLog::RuleMessage { before_code, after_code });
     }
 
     /// Drops the pending intervention (`pass`): status, URL and log.

@@ -26,10 +26,10 @@ impl Action for Deny {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         crate::ms_dbg!(cx, 8, "Running action deny");
-        if cx.intervention_status() == 200 {
-            cx.set_intervention_status(403);
-        }
-        cx.disrupt();
+        // 403 unless a `status` action set another status. A `status:200`
+        // would let the request through: it answers 403 too.
+        let status = cx.intervention_status().filter(|&status| status != 200).unwrap_or(403);
+        cx.disrupt(status, None);
     }
 }
 
@@ -56,10 +56,11 @@ mod tests {
 
         Deny::new("deny").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Running action deny"));
-        assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (403, true));
-        assert!(rm.is_disruptive);
-        let log = t.outcome.intervention.log.clone().unwrap();
-        assert!(log.render(403).contains("ModSecurity: Access denied with code 403 (phase 1)."), "{log:?}");
+        assert!(t.outcome.intervention.is_disruptive() && rm.is_disruptive);
+        let it = t.outcome.intervention.clone().take().unwrap();
+        assert_eq!(it.status, 403);
+        let log = it.log.unwrap();
+        assert!(log.contains("ModSecurity: Access denied with code 403 (phase 1)."), "{log}");
 
         Pass::new("pass").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Running action pass"));
@@ -70,8 +71,14 @@ mod tests {
         s.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         Drop::new("drop").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(has_log(&t, "Running action drop [executing deny instead of drop.]"));
-        assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (404, true));
-        assert!(t.outcome.intervention.log.is_some());
+        assert!(t.outcome.intervention.is_disruptive());
+        assert_eq!(t.outcome.intervention.status(), Some(404));
+
+        // `status:200` would let the request through: deny answers 403.
+        Pass::new("pass").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
+        Status::new("status", "200").unwrap().evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
+        Deny::new("deny").evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
+        assert_eq!(t.outcome.intervention.status(), Some(403));
 
         assert_eq!(Status::new("status", "abc").unwrap_err(), "Not a valid number: abc");
     }

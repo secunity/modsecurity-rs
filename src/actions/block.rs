@@ -81,18 +81,18 @@ mod tests {
             let mut t = Transaction::new(&ms, &rules, None);
             t.process_uri(b"/", b"GET", b"1.1");
             t.process_request_headers();
-            (t.outcome.intervention.status, has_log(&t, "Marking request as disruptive."), logs(&t))
+            (t.outcome.intervention.status(), has_log(&t, "Marking request as disruptive."), logs(&t))
         };
 
         let (status, marked, logs) =
             run("SecDefaultAction \"phase:1,log,deny,status:403\"\nSecAction \"id:1,phase:1,block\"");
         assert!(marked, "{logs:?}");
-        assert_eq!(status, 403);
+        assert_eq!(status, Some(403));
 
         // Nothing happens in a phase without default actions.
         let (status, marked, _) = run("SecAction \"id:1,phase:1,block\"");
         assert!(marked);
-        assert_eq!(status, 200);
+        assert_eq!(status, None);
     }
 
     /// `block` is a disruptive action however it is written: it does not

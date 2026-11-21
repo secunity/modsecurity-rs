@@ -27,14 +27,14 @@ impl Default for ModSecurityIntervention {
 }
 
 impl ModSecurityIntervention {
-    /// Fills the caller's struct for `msc_intervention`: `url` and `log`
-    /// are only written when there is one to copy,
-    /// and the caller's `disruptive` field is what the C API returns.
+    /// Fills the caller's struct for `msc_intervention` with a disruptive
+    /// intervention: `url` and `log` are only written when there is one to
+    /// copy, and the caller's `disruptive` field is what the C API returns.
     pub(crate) fn fill_from(&mut self, it: &Intervention) {
         if let Some(url) = &it.url {
             self.url = strdup(url);
         }
-        self.disruptive = c_int::from(it.disruptive);
+        self.disruptive = 1;
         self.status = it.status.into();
         if let Some(log) = &it.log {
             self.log = strdup(log.as_bytes());
@@ -91,16 +91,10 @@ mod tests {
     #[test]
     fn fill_and_free_c_struct() {
         let mut c = ModSecurityIntervention::default();
-        c.fill_from(&Intervention::default());
         assert!(c.url.is_null() && c.log.is_null());
         assert_eq!((c.status, c.disruptive), (200, 0));
 
-        let it = Intervention {
-            status: 302,
-            url: Some(b"/\xff\x00tail".to_vec()),
-            log: Some("denied".into()),
-            disruptive: true,
-        };
+        let it = Intervention { status: 302, url: Some(b"/\xff\x00tail".to_vec()), log: Some("denied".into()) };
         c.fill_from(&it);
         assert_eq!((c.status, c.disruptive), (302, 1));
         // Raw bytes are kept, up to the first NUL byte.
@@ -117,7 +111,7 @@ mod tests {
     fn fill_keeps_caller_strings_when_absent() {
         // url/log are only overwritten when the intervention has one.
         let mut c = ModSecurityIntervention { url: strdup(b"caller"), ..Default::default() };
-        c.fill_from(&Intervention { status: 403, disruptive: true, ..Default::default() });
+        c.fill_from(&Intervention { status: 403, url: None, log: None });
         // SAFETY: allocated above.
         assert_eq!(unsafe { CStr::from_ptr(c.url) }.to_bytes(), b"caller");
         c.free_and_clean();

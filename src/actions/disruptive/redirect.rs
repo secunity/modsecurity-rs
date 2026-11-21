@@ -33,13 +33,12 @@ impl Action for Redirect {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         let url_expanded = cx.expand(&self.string);
-        // if it was changed before, lets keep it.
-        let status = cx.intervention_status();
-        if status == 200 || !(301..=307).contains(&status) {
-            cx.set_intervention_status(Self::STATUS);
-        }
-        cx.set_intervention_url(url_expanded);
-        cx.disrupt();
+        // A redirection status set before (by `status`) is kept.
+        let status = match cx.intervention_status() {
+            Some(status @ 301..=307) => status,
+            _ => Self::STATUS,
+        };
+        cx.disrupt(status, Some(url_expanded));
     }
 }
 
@@ -62,20 +61,22 @@ mod tests {
         assert!(a.is_disruptive());
 
         a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
-        assert_eq!((t.outcome.intervention.status, t.outcome.intervention.disruptive), (302, true));
-        assert_eq!(t.outcome.intervention.url.as_deref(), Some(&b"https://www.example.com/"[..]));
-        assert!(rm.is_disruptive && t.outcome.intervention.log.is_some());
+        assert!(rm.is_disruptive);
+        let it = t.intervention().unwrap();
+        assert_eq!((it.status, it.url.as_deref()), (302, Some(&b"https://www.example.com/"[..])));
+        assert!(it.log.is_some());
 
         // A 301..307 status set before is kept, others are replaced.
-        t.outcome.intervention.status = 301;
+        t.outcome.intervention.set_status(301);
         a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
-        assert_eq!(t.outcome.intervention.status, 301);
-        t.outcome.intervention.status = 404;
+        assert_eq!(t.outcome.intervention.status(), Some(301));
+        t.outcome.intervention.set_status(404);
         a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
-        assert_eq!(t.outcome.intervention.status, 302);
+        assert_eq!(t.outcome.intervention.status(), Some(302));
 
         // The URL is handed out as raw bytes, unchanged.
-        t.outcome.intervention.url = Some(b"/a\xffb".to_vec());
+        let log = crate::intervention::InterventionLog::Text("redirect");
+        t.outcome.intervention.disrupt(302, Some(b"/a\xffb".to_vec()), log);
         assert_eq!(t.intervention().unwrap().url.as_deref(), Some(&b"/a\xffb"[..]));
     }
 }

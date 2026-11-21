@@ -25,9 +25,9 @@ impl Action for Drop {
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
         crate::ms_dbg!(cx, 8, "Running action drop [executing deny instead of drop.]");
-        if cx.intervention_status() == 200 {
-            cx.set_intervention_status(403);
-        }
-        cx.disrupt();
+        // 403 unless a `status` action set another status. A `status:200`
+        // would let the request through: it answers 403 too.
+        let status = cx.intervention_status().filter(|&status| status != 200).unwrap_or(403);
+        cx.disrupt(status, None);
     }
 }
