@@ -116,6 +116,24 @@ mod tests {
         assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document for ARGS.");
     }
 
+    /// Long element names repeated in the name of every leaf below them:
+    /// the names stop at their allowance (64 times the body, and 1 MiB)
+    /// with a request body processor error.
+    #[test]
+    fn argument_names_too_long() {
+        let (a, b) = ("a".repeat(40_000), "b".repeat(40_000));
+        let body = format!("<{a}><{b}>{}</{b}></{a}>", "<v/>".repeat(10_000));
+        let ms = ModSecurity::new();
+        let mut rules = new_rules();
+        rules.properties.settings.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::OnlyArgs);
+        let t = xml(&ms, &rules, body.as_bytes());
+        assert_eq!(t.vars.reqbody_error.value, b"1");
+        assert_eq!(t.vars.reqbody_processor_error.value, b"1");
+        assert_eq!(t.vars.reqbody_processor_error_msg.value, b"XML parsing error: XML: Argument names too long.");
+        assert!(t.vars.args.len() < 10_000);
+        assert!(log(&rules).iter().any(|m| m == "XML: Argument names too long."));
+    }
+
     /// The documents libxml2 builds and leaves in a parser context are
     /// freed: the one holding a DTD's entities while parsing into ARGS (C++
     /// leaked it), and the one of a parse abandoned before the end of the

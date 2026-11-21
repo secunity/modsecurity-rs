@@ -6,11 +6,17 @@
 //! callback. It does not own request bytes or borrow a transaction. Returning
 //! false from the callback stops parsing at the argument limit, preserving
 //! partial results and yajl-compatible errors.
+//!
+//! The names of the arguments of one body have a limit on their total size
+//! (`crate::names`); past it, parsing stops with an error.
 
 use modsecurity_compat::json::{JsonHandler, parse};
 
+use crate::names::NameBudget;
+
 const JSON_DEPTH_LIMIT_DEFAULT: u32 = 10000;
 const JSON_DEPTH_LIMIT_EXCEEDED_MSG: &str = ". Parsing depth limit exceeded";
+const JSON_NAMES_LIMIT_EXCEEDED_MSG: &str = ". Argument names too long";
 
 /// An open array or object, named after the key it was found under.
 #[derive(Debug)]
@@ -63,11 +69,19 @@ impl Json {
     /// Parse a borrowed body, retaining path/error state across calls as the
     /// transaction's previous processor did. The sink sees arguments in
     /// document order and can cancel parsing without buffering later values.
+    /// Parsing stops with an error when the names of the arguments of
+    /// `body` exceed their allowance.
     pub fn parse(&mut self, body: &[u8], on_argument: impl FnMut(&[u8], &[u8]) -> bool) -> Result<(), String> {
-        let mut parser = JsonParser { json: self, on_argument };
-        parse(body, &mut parser).map_err(|mut error| {
+        let mut parser =
+            JsonParser { json: self, on_argument, names: NameBudget::for_body(body.len()), names_too_long: false };
+        let result = parse(body, &mut parser);
+        let names_too_long = parser.names_too_long;
+        result.map_err(|mut error| {
             if self.depth_limit_exceeded {
                 error.push_str(JSON_DEPTH_LIMIT_EXCEEDED_MSG);
+            }
+            if names_too_long {
+                error.push_str(JSON_NAMES_LIMIT_EXCEEDED_MSG);
             }
             error
         })
@@ -132,11 +146,16 @@ impl Json {
 struct JsonParser<'j, F> {
     json: &'j mut Json,
     on_argument: F,
+    /// What is left of the allowance of argument names of the body.
+    names: NameBudget,
+    /// Parsing stopped because the names exceeded their allowance.
+    names_too_long: bool,
 }
 
 impl<F: FnMut(&[u8], &[u8]) -> bool> JsonParser<'_, F> {
     /// Passes a scalar to the sink, named after its path; `false` cancels
-    /// the parse.
+    /// the parse (the sink refused it, or the name does not fit in what is
+    /// left of the allowance of names).
     fn add_argument(&mut self, value: &[u8]) -> bool {
         let json = &mut *self.json;
         let mut path: Vec<u8> = Vec::new();
@@ -156,6 +175,11 @@ impl<F: FnMut(&[u8], &[u8]) -> bool> JsonParser<'_, F> {
         } else {
             let data = json.current_key();
             path.extend_from_slice(&data);
+        }
+
+        if !self.names.take(path.len()) {
+            self.names_too_long = true;
+            return false;
         }
 
         // cancel parsing by returning false
@@ -213,5 +237,53 @@ impl<F: FnMut(&[u8], &[u8]) -> bool> JsonHandler for JsonParser<'_, F> {
 
     fn end_array(&mut self) -> bool {
         self.json.end_container()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::names::{NAMES_BASE, NAMES_PER_BODY_BYTE};
+
+    /// Parses `body`: the number of arguments, the total size of their
+    /// names, and the result.
+    fn names(body: &[u8]) -> (usize, usize, Result<(), String>) {
+        let (mut count, mut total) = (0, 0);
+        let result = Json::new().parse(body, |name, _| {
+            count += 1;
+            total += name.len();
+            true
+        });
+        (count, total, result)
+    }
+
+    /// `{"<prefix><key>":[<values>]}`, with `[`, `]` around the values
+    /// `depth` times.
+    fn document(key: &str, depth: usize, values: usize) -> Vec<u8> {
+        let values = vec!["1"; values].join(",");
+        format!("{{\"{key}\":{}{values}{}}}", "[".repeat(depth), "]".repeat(depth)).into_bytes()
+    }
+
+    /// A long key over many values is repeated in the name of each: the
+    /// names stop at their allowance, with an error. A body that only
+    /// gives some of its arguments always reports an error.
+    #[test]
+    fn total_size_of_names_is_bounded() {
+        let body = document(&"k".repeat(64 << 10), 1, 10_000);
+        let (count, total, result) = names(&body);
+        assert_eq!(
+            result.unwrap_err(),
+            "parse error: client cancelled parse via callback return value\n. Argument names too long"
+        );
+        assert!(total <= NAMES_BASE + NAMES_PER_BODY_BYTE * body.len(), "{total}");
+        assert!(count < 10_000, "{count}");
+
+        // Names 25 times the size of the body (four arrays deep under a
+        // key, a one-digit number each) are all given.
+        let body = document("instances", 4, 100_000);
+        let (count, total, result) = names(&body);
+        assert_eq!(result, Ok(()));
+        assert_eq!(count, 100_000);
+        assert!(total > NAMES_BASE && total > 20 * body.len(), "{total}");
     }
 }

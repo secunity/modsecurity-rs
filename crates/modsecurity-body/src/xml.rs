@@ -55,6 +55,12 @@ mod with_libxml2 {
     use modsecurity_native::libxml2::{self, Document, PushParser, SaxHandler, SaxParser};
     use modsecurity_types::{DebugSink, ms_dbg};
 
+    use crate::names::NameBudget;
+
+    /// The error of a body whose argument names exceed their allowance
+    /// (`crate::names`).
+    const NAMES_TOO_LONG: &str = "XML: Argument names too long.";
+
     /// An open element while parsing XML into args.
     #[derive(Debug, Default)]
     struct NodeData {
@@ -70,6 +76,11 @@ mod with_libxml2 {
         currpath: Vec<u8>,
         currval: Vec<u8>,
         currval_is_set: bool,
+        /// What is left of the allowance of argument names (it grows with
+        /// every chunk of the body).
+        names: NameBudget,
+        /// Parsing stopped because the names exceeded their allowance.
+        names_too_long: bool,
     }
 
     impl XmlNodes {
@@ -82,6 +93,8 @@ mod with_libxml2 {
                 currpath: b"xml.".to_vec(),
                 currval: Vec::new(),
                 currval_is_set: false,
+                names: NameBudget::new(),
+                names_too_long: false,
             }
         }
 
@@ -109,11 +122,16 @@ mod with_libxml2 {
 
         /// Closes the element `name`; a leaf element becomes an argument.
         /// Returns `false` when parsing has to stop because the number of
-        /// arguments reached the limit.
+        /// arguments reached the limit, or their names their allowance.
         fn on_end_element(&mut self, cx: &mut dyn Context, name: &[u8]) -> bool {
             let mut keep_parsing = true;
             if self.nodes.last().is_some_and(|nd| !nd.has_child) {
-                keep_parsing = cx.add_argument(&self.currpath, &self.currval);
+                if self.names.take(self.currpath.len()) {
+                    keep_parsing = cx.add_argument(&self.currpath, &self.currval);
+                } else {
+                    self.names_too_long = true;
+                    keep_parsing = false;
+                }
             }
             if !self.currpath.is_empty() {
                 // set an offset to store whether this is the first item, in
@@ -210,6 +228,16 @@ mod with_libxml2 {
             cx.args_mode() == IntoArgs::OnlyArgs
         }
 
+        /// The error of the parser into ARGS when the argument names
+        /// exceeded their allowance and stopped it.
+        fn names_error(&self, cx: &dyn Context) -> Option<String> {
+            if !self.xml_parser_state.as_ref().is_some_and(|s| s.names_too_long) {
+                return None;
+            }
+            ms_dbg!(cx, 4, "{}", NAMES_TOO_LONG);
+            Some(NAMES_TOO_LONG.to_string())
+        }
+
         /// Prepares the processor for a body: sets the external entity
         /// policy and, when parsing into `ARGS`, the SAX parser state.
         pub fn init(&mut self, cx: &mut dyn Context) -> bool {
@@ -249,6 +277,10 @@ mod with_libxml2 {
         /// Feeds a chunk of the body to the parsers (the first chunk creates
         /// them).
         pub fn process_chunk(&mut self, cx: &mut dyn Context, buf: &[u8]) -> Result<(), String> {
+            if let Some(state) = &mut self.xml_parser_state {
+                state.names.add_body(buf.len());
+            }
+
             // We want to initialise our parsing context here, to enable us
             // to pass it the first chunk of data so that it can attempt to
             // auto-detect the encoding.
@@ -293,6 +325,9 @@ mod with_libxml2 {
                 && Self::parse_into_args(cx)
             {
                 Self::with_handler(&mut self.xml_parser_state, cx, |h| parser.parse_chunk(buf, h));
+                if let Some(error) = self.names_error(cx) {
+                    return Err(error);
+                }
                 if !parser.well_formed() {
                     ms_dbg!(cx, 4, "XML: Failed to parse document for ARGS.");
                     return Err("XML: Failed to parse document for ARGS.".to_string());
@@ -330,12 +365,88 @@ mod with_libxml2 {
             {
                 // This is how we signal the end of parsing to libxml.
                 let rc = Self::with_handler(&mut self.xml_parser_state, cx, |h| parser.finish(h));
+                if let Some(error) = self.names_error(cx) {
+                    return Err(error);
+                }
                 if rc != 0 {
                     return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
             }
 
             Ok(())
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::names::{NAMES_BASE, NAMES_PER_BODY_BYTE};
+
+        /// Counts the arguments and the size of their names.
+        struct Count {
+            mode: IntoArgs,
+            count: usize,
+            total: usize,
+        }
+
+        impl DebugSink for Count {
+            fn debug_enabled(&self, _level: u8) -> bool {
+                false
+            }
+            fn debug(&self, _level: u8, _message: &str) {}
+        }
+
+        impl Context for Count {
+            fn external_entities(&self) -> bool {
+                false
+            }
+            fn args_mode(&self) -> IntoArgs {
+                self.mode
+            }
+            fn add_argument(&mut self, name: &[u8], _value: &[u8]) -> bool {
+                self.count += 1;
+                self.total += name.len();
+                true
+            }
+        }
+
+        /// Parses `body` (given whole) into ARGS: the number of arguments,
+        /// the total size of their names, and the result.
+        fn names(mode: IntoArgs, body: &[u8]) -> (usize, usize, Result<(), String>) {
+            super::super::init_parser();
+            let mut cx = Count { mode, count: 0, total: 0 };
+            let mut xml = Xml::new();
+            assert!(xml.init(&mut cx));
+            let result = xml.process_chunk(&mut cx, body).and(xml.complete(&mut cx));
+            (cx.count, cx.total, result)
+        }
+
+        /// `values` empty elements `<v/>` inside the elements `path`.
+        fn document(path: &[String], values: usize) -> Vec<u8> {
+            let open: String = path.iter().map(|name| format!("<{name}>")).collect();
+            let close: String = path.iter().rev().map(|name| format!("</{name}>")).collect();
+            format!("{open}{}{close}", "<v/>".repeat(values)).into_bytes()
+        }
+
+        /// Long element names over many values are repeated in the name of
+        /// each: the names stop at their allowance, with an error. A body
+        /// that only gives some of its arguments always reports an error.
+        #[test]
+        fn total_size_of_names_is_bounded() {
+            for mode in [IntoArgs::On, IntoArgs::OnlyArgs] {
+                let body = document(&["a".repeat(40_000), "b".repeat(40_000)], 10_000);
+                let (count, total, result) = names(mode, &body);
+                assert_eq!(result.unwrap_err(), NAMES_TOO_LONG);
+                assert!(total <= NAMES_BASE + NAMES_PER_BODY_BYTE * body.len(), "{total}");
+                assert!(count < 10_000, "{count}");
+
+                let path: Vec<String> = ["root", "level", "items", "item"].map(String::from).to_vec();
+                let body = document(&path, 100_000);
+                let (count, total, result) = names(mode, &body);
+                assert_eq!(result, Ok(()));
+                assert_eq!(count, 100_000);
+                assert!(total > NAMES_BASE, "{total}");
+            }
         }
     }
 }

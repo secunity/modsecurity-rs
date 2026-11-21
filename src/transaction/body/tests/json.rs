@@ -83,6 +83,31 @@ mod tests {
         assert_eq!(a, pairs(&[("json.a", "1"), ("json.b", "2")]));
     }
 
+    /// A long key repeated in the name of every value below it: the names
+    /// stop at their allowance (64 times the body, and 1 MiB) with a
+    /// request body processor error.
+    #[test]
+    fn argument_names_too_long() {
+        let values = vec!["1"; 10_000].join(",");
+        let body = format!("{{\"{}\":[{values}]}}", "k".repeat(64 << 10));
+        let ms = ModSecurity::new();
+        let rules = new_rules();
+        let t = run(
+            &ms,
+            &rules,
+            &[(b"Content-Type", b"application/json")],
+            body.as_bytes(),
+            Some(RequestBodyType::JSONRequestBody),
+        );
+        assert_eq!(t.vars.reqbody_error.value, b"1");
+        assert_eq!(t.vars.reqbody_processor_error.value, b"1");
+        assert_eq!(
+            t.vars.reqbody_processor_error_msg.value,
+            b"JSON parsing error: parse error: client cancelled parse via callback return value\n. Argument names too long"
+        );
+        assert!(t.vars.args.len() < 10_000);
+    }
+
     #[test]
     fn repeated_processing_retains_partial_paths_and_error_messages() {
         let ms = ModSecurity::new();
