@@ -6,6 +6,8 @@
 //! into references here, and the engine (the `modsecurity` crate) is used
 //! through its Rust API.
 
+#![deny(clippy::undocumented_unsafe_blocks)]
+
 pub mod intervention;
 pub mod modsecurity;
 pub mod rules_set;

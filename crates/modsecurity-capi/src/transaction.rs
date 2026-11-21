@@ -13,6 +13,10 @@ use std::ptr;
 /// guarantees the `ModSecurity` and `RulesSet` outlive them.
 pub type CTransaction = Transaction<'static>;
 
+/// The bytes of a C string (none for NULL).
+///
+/// # Safety
+/// `p` must be null or a NUL terminated string that outlives `'a`.
 unsafe fn bytes<'a>(p: *const c_char) -> &'a [u8] {
     if p.is_null() {
         return b"";
@@ -21,6 +25,10 @@ unsafe fn bytes<'a>(p: *const c_char) -> &'a [u8] {
     unsafe { CStr::from_ptr(p) }.to_bytes()
 }
 
+/// The `len` bytes at `p` (none for NULL).
+///
+/// # Safety
+/// `p` must be null or point to `len` readable bytes that outlive `'a`.
 unsafe fn slice<'a>(p: *const c_uchar, len: usize) -> &'a [u8] {
     if p.is_null() || len == 0 {
         return b"";
@@ -29,8 +37,20 @@ unsafe fn slice<'a>(p: *const c_uchar, len: usize) -> &'a [u8] {
     unsafe { std::slice::from_raw_parts(p, len) }
 }
 
+/// The engine and the rules of a new transaction; `None` when one of them
+/// is NULL.
+///
 /// # Safety
-/// `ms` and `rules` must be valid and outlive the transaction.
+/// `ms` and `rules` must be null or valid, and outlive the transaction.
+unsafe fn instance(ms: *mut ModSecurity, rules: *mut RulesSet) -> Option<(&'static ModSecurity, &'static RulesSet)> {
+    // SAFETY: per the contract; the C API caller keeps both alive for as
+    // long as the transaction (see `CTransaction`).
+    unsafe { Some((ms.as_ref()?, rules.as_ref()?)) }
+}
+
+/// # Safety
+/// `ms` and `rules` must be valid and outlive the transaction. NULL when
+/// one of them is NULL.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_new_transaction(
     ms: *mut ModSecurity,
@@ -39,7 +59,9 @@ pub unsafe extern "C" fn msc_new_transaction(
 ) -> *mut CTransaction {
     catch_panic(ptr::null_mut(), || {
         // SAFETY: see the function contract.
-        let (ms, rules): (&'static ModSecurity, &'static RulesSet) = unsafe { (&*ms, &*rules) };
+        let Some((ms, rules)) = (unsafe { instance(ms, rules) }) else {
+            return ptr::null_mut();
+        };
         Box::into_raw(Box::new(Transaction::new(ms, rules, Some(Box::new(CLogData(log_cb_data))))))
     })
 }
@@ -55,15 +77,17 @@ pub unsafe extern "C" fn msc_new_transaction_with_id(
 ) -> *mut CTransaction {
     catch_panic(ptr::null_mut(), || {
         // SAFETY: see the function contract.
-        let (ms, rules): (&'static ModSecurity, &'static RulesSet) = unsafe { (&*ms, &*rules) };
-        let id = String::from_utf8_lossy(unsafe { bytes(id) }).into_owned();
+        let (Some((ms, rules)), id) = (unsafe { (instance(ms, rules), bytes(id)) }) else {
+            return ptr::null_mut();
+        };
+        let id = String::from_utf8_lossy(id);
         Box::into_raw(Box::new(Transaction::with_id(ms, rules, &id, Some(Box::new(CLogData(log_cb_data))))))
     })
 }
 
 macro_rules! tx {
     ($t:expr) => {
-        // SAFETY: the C API contract: a live transaction pointer.
+        // SAFETY: the C API contract: null or a live transaction pointer.
         match unsafe { $t.as_mut() } {
             Some(t) => t,
             None => return 0,
@@ -83,11 +107,16 @@ pub unsafe extern "C" fn msc_process_connection(
 ) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        let c = String::from_utf8_lossy(unsafe { bytes(client) }).into_owned();
-        let s = String::from_utf8_lossy(unsafe { bytes(server) }).into_owned();
+        // SAFETY: C strings or null (caller contract).
+        let (client, server) = unsafe { (bytes(client), bytes(server)) };
         // A number that is not a port is reported as port 0.
         let port = |p: c_int| u16::try_from(p).unwrap_or(0);
-        t.process_connection(&c, port(c_port), &s, port(s_port));
+        t.process_connection(
+            &String::from_utf8_lossy(client),
+            port(c_port),
+            &String::from_utf8_lossy(server),
+            port(s_port),
+        );
         1
     })
 }
@@ -103,7 +132,9 @@ pub unsafe extern "C" fn msc_process_uri(
 ) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        t.process_uri(unsafe { bytes(uri) }, unsafe { bytes(protocol) }, unsafe { bytes(http_version) });
+        // SAFETY: C strings or null (caller contract).
+        let (uri, protocol, http_version) = unsafe { (bytes(uri), bytes(protocol), bytes(http_version)) };
+        t.process_uri(uri, protocol, http_version);
         1
     })
 }
@@ -132,7 +163,12 @@ pub unsafe extern "C" fn msc_process_request_body(t: *mut CTransaction) -> c_int
 /// As above; `buf` points to `len` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_append_request_body(t: *mut CTransaction, buf: *const c_uchar, len: usize) -> c_int {
-    catch_panic(0, || c_int::from(tx!(t).append_request_body(unsafe { slice(buf, len) })))
+    catch_panic(0, || {
+        let t = tx!(t);
+        // SAFETY: `buf` points to `len` bytes, or is null (caller contract).
+        let buf = unsafe { slice(buf, len) };
+        c_int::from(t.append_request_body(buf))
+    })
 }
 
 /// # Safety
@@ -141,7 +177,8 @@ pub unsafe extern "C" fn msc_append_request_body(t: *mut CTransaction, buf: *con
 pub unsafe extern "C" fn msc_request_body_from_file(t: *mut CTransaction, path: *const c_char) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        let p = String::from_utf8_lossy(unsafe { bytes(path) }).into_owned();
+        // SAFETY: a C string or null (caller contract).
+        let p = String::from_utf8_lossy(unsafe { bytes(path) });
         // 0 when the file cannot be read.
         t.request_body_from_file(&p).map_or(0, c_int::from)
     })
@@ -157,7 +194,8 @@ pub unsafe extern "C" fn msc_process_response_headers(
 ) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        let p = String::from_utf8_lossy(unsafe { bytes(protocol) }).into_owned();
+        // SAFETY: a C string or null (caller contract).
+        let p = String::from_utf8_lossy(unsafe { bytes(protocol) });
         t.process_response_headers(u16::try_from(code).unwrap_or(0), &p);
         1
     })
@@ -177,7 +215,12 @@ pub unsafe extern "C" fn msc_process_response_body(t: *mut CTransaction) -> c_in
 /// As above; `buf` points to `len` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_append_response_body(t: *mut CTransaction, buf: *const c_uchar, len: usize) -> c_int {
-    catch_panic(0, || c_int::from(tx!(t).append_response_body(unsafe { slice(buf, len) })))
+    catch_panic(0, || {
+        let t = tx!(t);
+        // SAFETY: `buf` points to `len` bytes, or is null (caller contract).
+        let buf = unsafe { slice(buf, len) };
+        c_int::from(t.append_response_body(buf))
+    })
 }
 
 /// # Safety
@@ -190,7 +233,9 @@ pub unsafe extern "C" fn msc_add_request_header(
 ) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        t.add_request_header(unsafe { bytes(key as *const c_char) }, unsafe { bytes(value as *const c_char) });
+        // SAFETY: C strings or null (caller contract).
+        let (key, value) = unsafe { (bytes(key as *const c_char), bytes(value as *const c_char)) };
+        t.add_request_header(key, value);
         1
     })
 }
@@ -207,7 +252,10 @@ pub unsafe extern "C" fn msc_add_n_request_header(
 ) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        t.add_request_header(unsafe { slice(key, len_key) }, unsafe { slice(value, len_value) });
+        // SAFETY: `key` and `value` point to `len_key` and `len_value`
+        // bytes, or are null (caller contract).
+        let (key, value) = unsafe { (slice(key, len_key), slice(value, len_value)) };
+        t.add_request_header(key, value);
         1
     })
 }
@@ -222,7 +270,9 @@ pub unsafe extern "C" fn msc_add_response_header(
 ) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        t.add_response_header(unsafe { bytes(key as *const c_char) }, unsafe { bytes(value as *const c_char) });
+        // SAFETY: C strings or null (caller contract).
+        let (key, value) = unsafe { (bytes(key as *const c_char), bytes(value as *const c_char)) };
+        t.add_response_header(key, value);
         1
     })
 }
@@ -239,7 +289,10 @@ pub unsafe extern "C" fn msc_add_n_response_header(
 ) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        t.add_response_header(unsafe { slice(key, len_key) }, unsafe { slice(value, len_value) });
+        // SAFETY: `key` and `value` point to `len_key` and `len_value`
+        // bytes, or are null (caller contract).
+        let (key, value) = unsafe { (slice(key, len_key), slice(value, len_value)) };
+        t.add_response_header(key, value);
         1
     })
 }
@@ -250,6 +303,8 @@ pub unsafe extern "C" fn msc_add_n_response_header(
 pub unsafe extern "C" fn msc_transaction_cleanup(t: *mut CTransaction) {
     catch_panic((), || {
         if !t.is_null() {
+            // SAFETY: `t` is the box `msc_new_transaction*` leaked, released
+            // once (caller contract).
             drop(unsafe { Box::from_raw(t) });
         }
     })
@@ -278,6 +333,7 @@ pub unsafe extern "C" fn msc_intervention(t: *mut CTransaction, it: *mut ModSecu
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_intervention_cleanup(it: *mut ModSecurityIntervention) {
     catch_panic((), || {
+        // SAFETY: null or a valid intervention struct (caller contract).
         if let Some(it) = unsafe { it.as_mut() } {
             it.free_and_clean();
         }
@@ -339,7 +395,8 @@ pub unsafe extern "C" fn msc_update_status_code(t: *mut CTransaction, status: c_
 pub unsafe extern "C" fn msc_set_request_hostname(t: *mut CTransaction, hostname: *const c_uchar) -> c_int {
     catch_panic(0, || {
         let t = tx!(t);
-        let h = String::from_utf8_lossy(unsafe { bytes(hostname as *const c_char) }).into_owned();
+        // SAFETY: a C string or null (caller contract).
+        let h = String::from_utf8_lossy(unsafe { bytes(hostname as *const c_char) });
         t.set_request_host_name(&h);
         1
     })
@@ -382,4 +439,27 @@ pub unsafe extern "C" fn msc_get_rules_messages_rule_ids(
         }
         written
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_transaction_needs_an_engine_and_rules() {
+        let ms = crate::modsecurity::msc_init();
+        let rules = crate::rules_set::msc_create_rules_set();
+        // SAFETY: valid or null pointers; what is created is released.
+        unsafe {
+            assert!(msc_new_transaction(ptr::null_mut(), rules, ptr::null_mut()).is_null());
+            assert!(msc_new_transaction(ms, ptr::null_mut(), ptr::null_mut()).is_null());
+            assert!(msc_new_transaction_with_id(ptr::null_mut(), rules, c"id".as_ptr(), ptr::null_mut()).is_null());
+            assert!(msc_new_transaction_with_id(ms, ptr::null_mut(), c"id".as_ptr(), ptr::null_mut()).is_null());
+            let t = msc_new_transaction_with_id(ms, rules, c"id".as_ptr(), ptr::null_mut());
+            assert!(!t.is_null());
+            msc_transaction_cleanup(t);
+            crate::rules_set::msc_rules_cleanup(rules);
+            crate::modsecurity::msc_cleanup(ms);
+        }
+    }
 }

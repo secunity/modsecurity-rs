@@ -37,9 +37,14 @@ pub unsafe extern "C" fn msc_who_am_i(msc: *mut ModSecurity) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_set_connector_info(msc: *mut ModSecurity, connector: *const c_char) {
     catch_panic((), || {
-        if let (Some(m), false) = (unsafe { msc.as_mut() }, connector.is_null()) {
-            let s = unsafe { CStr::from_ptr(connector) }.to_string_lossy().into_owned();
-            m.set_connector_information(&s);
+        if connector.is_null() {
+            return;
+        }
+        // SAFETY: `msc` is null or comes from `msc_init`, and `connector` is
+        // a C string (caller contract).
+        let (m, connector) = unsafe { (msc.as_mut(), CStr::from_ptr(connector)) };
+        if let Some(m) = m {
+            m.set_connector_information(&connector.to_string_lossy());
         }
     })
 }
@@ -49,6 +54,7 @@ pub unsafe extern "C" fn msc_set_connector_info(msc: *mut ModSecurity, connector
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_set_log_cb(msc: *mut ModSecurity, cb: CModSecLogCb) {
     catch_panic((), || {
+        // SAFETY: `msc` is null or comes from `msc_init` (caller contract).
         let Some(m) = (unsafe { msc.as_mut() }) else {
             return;
         };
@@ -73,6 +79,8 @@ pub unsafe extern "C" fn msc_set_log_cb(msc: *mut ModSecurity, cb: CModSecLogCb)
 pub unsafe extern "C" fn msc_cleanup(msc: *mut ModSecurity) {
     catch_panic((), || {
         if !msc.is_null() {
+            // SAFETY: `msc` is the box `msc_init` leaked, released once
+            // (caller contract).
             drop(unsafe { Box::from_raw(msc) });
         }
     })

@@ -67,6 +67,8 @@ pub extern "C" fn msc_create_rules_set() -> *mut RulesSet {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_rules_dump(rules: *const RulesSet) {
     catch_panic((), || {
+        // SAFETY: `rules` is null or comes from `msc_create_rules_set`
+        // (caller contract).
         if let Some(r) = unsafe { rules.as_ref() } {
             r.dump();
         }
@@ -75,6 +77,8 @@ pub unsafe extern "C" fn msc_rules_dump(rules: *const RulesSet) {
 
 /// # Safety
 /// Both pointers must come from `msc_create_rules_set`.
+///
+/// Merging a rule set into itself merges nothing and returns 0.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_rules_merge(
     rules_dst: *mut RulesSet,
@@ -82,7 +86,13 @@ pub unsafe extern "C" fn msc_rules_merge(
     error: *mut *const c_char,
 ) -> c_int {
     catch_load_panic(error, || {
-        let (Some(dst), Some(from)) = (unsafe { rules_dst.as_mut() }, unsafe { rules_from.as_mut() }) else {
+        if rules_dst == rules_from && !rules_dst.is_null() {
+            return 0;
+        }
+        // SAFETY: both are null or come from `msc_create_rules_set`
+        // (caller contract), and they are not the same rule set, so the two
+        // mutable references do not alias.
+        let (Some(dst), Some(from)) = (unsafe { (rules_dst.as_mut(), rules_from.as_mut()) }) else {
             return -1;
         };
         c_result(dst.merge(from), error)
@@ -99,13 +109,14 @@ pub unsafe extern "C" fn msc_rules_add_remote(
     error: *mut *const c_char,
 ) -> c_int {
     catch_load_panic(error, || {
-        let Some(r) = (unsafe { rules.as_mut() }) else {
+        // SAFETY: `rules` is null or comes from `msc_create_rules_set`, the
+        // strings are C strings or null (caller contract).
+        let (rules, key, uri) = unsafe { (rules.as_mut(), cbytes(key), cbytes(uri)) };
+        let Some(r) = rules else {
             return -1;
         };
         // The key and the URL are text; the rules downloaded are bytes.
-        let key = String::from_utf8_lossy(unsafe { cbytes(key) });
-        let uri = String::from_utf8_lossy(unsafe { cbytes(uri) });
-        c_result(r.load_remote(&key, &uri), error)
+        c_result(r.load_remote(&String::from_utf8_lossy(key), &String::from_utf8_lossy(uri)), error)
     })
 }
 
@@ -118,10 +129,13 @@ pub unsafe extern "C" fn msc_rules_add_file(
     error: *mut *const c_char,
 ) -> c_int {
     catch_load_panic(error, || {
-        let Some(r) = (unsafe { rules.as_mut() }) else {
+        // SAFETY: `rules` is null or comes from `msc_create_rules_set`,
+        // `file` is a C string or null (caller contract).
+        let (rules, file) = unsafe { (rules.as_mut(), cbytes(file)) };
+        let Some(r) = rules else {
             return -1;
         };
-        c_result(r.load_file(&path(unsafe { cbytes(file) })), error)
+        c_result(r.load_file(&path(file)), error)
     })
 }
 
@@ -135,10 +149,13 @@ pub unsafe extern "C" fn msc_rules_add(
     error: *mut *const c_char,
 ) -> c_int {
     catch_load_panic(error, || {
-        let Some(r) = (unsafe { rules.as_mut() }) else {
+        // SAFETY: `rules` is null or comes from `msc_create_rules_set`,
+        // `plain_rules` is a C string or null (caller contract).
+        let (rules, plain_rules) = unsafe { (rules.as_mut(), cbytes(plain_rules)) };
+        let Some(r) = rules else {
             return -1;
         };
-        c_result(r.load_bytes(unsafe { cbytes(plain_rules) }, ""), error)
+        c_result(r.load_bytes(plain_rules, ""), error)
     })
 }
 
@@ -148,6 +165,8 @@ pub unsafe extern "C" fn msc_rules_add(
 pub unsafe extern "C" fn msc_rules_error_cleanup(error: *const c_char) {
     catch_panic((), || {
         if !error.is_null() {
+            // SAFETY: `error` is a string `set_error` made with
+            // CString::into_raw, released once (caller contract).
             drop(unsafe { CString::from_raw(error as *mut c_char) });
         }
     })
@@ -160,6 +179,8 @@ pub unsafe extern "C" fn msc_rules_error_cleanup(error: *const c_char) {
 pub unsafe extern "C" fn msc_rules_cleanup(rules: *mut RulesSet) -> c_int {
     catch_panic(0, || {
         if !rules.is_null() {
+            // SAFETY: `rules` is the box `msc_create_rules_set` leaked,
+            // released once (caller contract).
             drop(unsafe { Box::from_raw(rules) });
         }
         1
@@ -181,6 +202,7 @@ mod tests {
         let error = (!error.is_null()).then(|| {
             // SAFETY: set by msc_rules_add, released right after.
             let e = unsafe { CStr::from_ptr(error) }.to_string_lossy().into_owned();
+            // SAFETY: as above.
             unsafe { msc_rules_error_cleanup(error) };
             e
         });
@@ -258,8 +280,15 @@ mod tests {
         assert_eq!(unsafe { msc_rules_merge(a, b, &mut error) }, -1);
         // SAFETY: set by msc_rules_merge.
         let e = unsafe { CStr::from_ptr(error) }.to_string_lossy().into_owned();
+        // SAFETY: as above, released once.
         unsafe { msc_rules_error_cleanup(error) };
         assert!(e.ends_with("Rule id: 1 is duplicated\n"), "{e}");
+
+        // Merging a rule set into itself merges nothing.
+        let mut error: *const c_char = std::ptr::null();
+        // SAFETY: a valid rule set and out-pointer.
+        assert_eq!(unsafe { msc_rules_merge(b, b, &mut error) }, 0);
+        assert!(error.is_null());
         // `b`'s SecRuleEngine On reached `a`: its rules intervene (with the
         // engine unset they would only detect).
         assert_eq!(add(a, "SecAction \"id:3,phase:1,deny,status:403\""), (1, None));

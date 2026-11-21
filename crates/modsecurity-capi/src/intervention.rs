@@ -97,6 +97,7 @@ mod tests {
         // Raw bytes are kept, up to the first NUL byte.
         // SAFETY: filled by `fill_from` above.
         assert_eq!(unsafe { CStr::from_ptr(c.url) }.to_bytes(), b"/\xff");
+        // SAFETY: as above.
         assert_eq!(unsafe { CStr::from_ptr(c.log) }.to_bytes(), b"denied");
         c.free_and_clean();
         assert!(c.url.is_null() && c.log.is_null());

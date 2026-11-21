@@ -203,6 +203,8 @@ pub struct Regex {
 // compilation and PCRE2 documents it as safe to share between threads; all
 // per-match state (match data, contexts) is per call or per thread.
 unsafe impl Send for Regex {}
+// SAFETY: as for Send: matching only reads the compiled pattern, and each
+// match gets its own match data.
 unsafe impl Sync for Regex {}
 
 impl std::fmt::Debug for Regex {
