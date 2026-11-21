@@ -150,11 +150,11 @@ pub trait Context: DebugSink {
     /// `SecHttpBlKey` (empty when not set), for `@rbl`.
     fn httpbl_key(&self) -> &[u8];
 
-    /// The document the XML request body processor parsed and its
-    /// well-formedness flag (1 when well formed), for `@validateDTD` and
+    /// The document the XML request body processor parsed and whether it
+    /// is well formed, for `@validateDTD` and
     /// `@validateSchema`; `None` without a document.
     #[cfg(feature = "libxml2")]
-    fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, u32)>;
+    fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, bool)>;
 }
 
 /// Where a resource named in a configuration was found.
@@ -338,7 +338,7 @@ pub(crate) mod test_support {
             &self.httpbl_key
         }
         #[cfg(feature = "libxml2")]
-        fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, u32)> {
+        fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, bool)> {
             None
         }
     }

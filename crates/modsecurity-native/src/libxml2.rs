@@ -420,15 +420,16 @@ impl PushParser {
         self.0.parse_chunk(buf, false);
     }
 
-    /// libxml2's `wellFormed` (1 when the document is well formed so far).
-    pub fn well_formed(&self) -> i32 {
-        self.0.well_formed()
+    /// Whether the document is well formed so far (libxml2's `wellFormed`).
+    pub fn well_formed(&self) -> bool {
+        self.0.well_formed() == 1
     }
 
-    /// Ends the input: the final `wellFormed` and the document.
-    pub fn finish(self) -> (i32, Option<Document>) {
+    /// Ends the input: whether the document is well formed, and the
+    /// document.
+    pub fn finish(self) -> (bool, Option<Document>) {
         self.0.parse_chunk(&[], true);
-        (self.0.well_formed(), self.0.take_doc())
+        (self.0.well_formed() == 1, self.0.take_doc())
     }
 }
 
@@ -540,9 +541,9 @@ impl SaxParser {
         self.run(handler, |c| c.parse_chunk(buf, false));
     }
 
-    /// libxml2's `wellFormed` (1 when the input is well formed so far).
-    pub fn well_formed(&self) -> i32 {
-        self.ctxt.well_formed()
+    /// Whether the input is well formed so far (libxml2's `wellFormed`).
+    pub fn well_formed(&self) -> bool {
+        self.ctxt.well_formed() == 1
     }
 
     /// Ends the input; returns the result of the final `xmlParseChunk` (0

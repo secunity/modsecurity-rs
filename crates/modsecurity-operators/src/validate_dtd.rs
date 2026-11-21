@@ -66,7 +66,7 @@ impl Operator for ValidateDTD {
             return true;
         };
 
-        if well_formed != 1 {
+        if !well_formed {
             crate::ms_dbg!(cx, 4, "XML: DTD validation failed because content is not well formed.");
             return true;
         }

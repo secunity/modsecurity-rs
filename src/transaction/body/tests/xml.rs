@@ -72,7 +72,7 @@ mod tests {
         assert_eq!(t.vars.reqbody_processor_error.value, b"1");
         // the (partial) document is kept
         assert!(t.body.xml.as_ref().unwrap().has_doc());
-        assert_eq!(t.body.xml.as_ref().unwrap().well_formed(), 0);
+        assert!(!t.body.xml.as_ref().unwrap().well_formed());
     }
 
     #[test]

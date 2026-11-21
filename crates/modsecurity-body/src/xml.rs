@@ -178,7 +178,7 @@ mod with_libxml2 {
         /// parser state for SAX parser
         xml_parser_state: Option<XmlNodes>,
 
-        well_formed: u32,
+        well_formed: bool,
     }
 
     impl Xml {
@@ -196,9 +196,9 @@ mod with_libxml2 {
             self.doc.as_ref()
         }
 
-        /// Whether the document is well formed: 1 if it is, 0 otherwise (or
-        /// before parsing completed).
-        pub fn well_formed(&self) -> u32 {
+        /// Whether the document is well formed (`false` before parsing
+        /// completed).
+        pub fn well_formed(&self) -> bool {
             self.well_formed
         }
 
@@ -283,7 +283,7 @@ mod with_libxml2 {
                 && !Self::only_args(cx)
             {
                 parser.parse_chunk(buf);
-                if parser.well_formed() != 1 {
+                if !parser.well_formed() {
                     ms_dbg!(cx, 4, "XML: Failed to parse document.");
                     return Err("XML: Failed to parse document.".to_string());
                 }
@@ -293,7 +293,7 @@ mod with_libxml2 {
                 && Self::parse_into_args(cx)
             {
                 Self::with_handler(&mut self.xml_parser_state, cx, |h| parser.parse_chunk(buf, h));
-                if parser.well_formed() != 1 {
+                if !parser.well_formed() {
                     ms_dbg!(cx, 4, "XML: Failed to parse document for ARGS.");
                     return Err("XML: Failed to parse document for ARGS.".to_string());
                 }
@@ -315,11 +315,11 @@ mod with_libxml2 {
                 // This is how we signal the end of parsing to libxml; the
                 // document is owned by `self` from now on.
                 let (well_formed, doc) = parser.finish();
-                self.well_formed = well_formed as u32;
+                self.well_formed = well_formed;
                 self.doc = doc;
-                ms_dbg!(cx, 4, "XML: Parsing complete (well_formed {}).", self.well_formed);
+                ms_dbg!(cx, 4, "XML: Parsing complete (well_formed {}).", u8::from(self.well_formed));
 
-                if self.well_formed != 1 {
+                if !self.well_formed {
                     ms_dbg!(cx, 4, "XML: Failed to parse document.");
                     return Err("XML: Failed to parse document.".to_string());
                 }

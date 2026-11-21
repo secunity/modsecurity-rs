@@ -116,7 +116,7 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
     /// well-formedness flag (1 when well formed), for `@validateDTD` and
     /// `@validateSchema`; `None` without a document.
     #[cfg(feature = "libxml2")]
-    pub fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, u32)> {
+    pub fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, bool)> {
         self.t.body.xml.as_ref().and_then(|x| Some((x.document()?, x.well_formed())))
     }
 }
@@ -288,7 +288,7 @@ impl Context for MatchContext<'_, '_, '_> {
         MatchContext::httpbl_key(self)
     }
     #[cfg(feature = "libxml2")]
-    fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, u32)> {
+    fn xml_document(&self) -> Option<(&modsecurity_native::libxml2::Document, bool)> {
         MatchContext::xml_document(self)
     }
 }
