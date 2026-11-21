@@ -24,7 +24,7 @@ use crate::body_filter::ngx_http_modsecurity_body_filter_init;
 use crate::context::{LocConf, MODSECURITY_NGINX_WHOAMI, MainConf};
 use crate::header_filter::ngx_http_modsecurity_header_filter_init;
 use crate::log::ngx_http_modsecurity_log_handler;
-use crate::nginx::Log;
+use crate::nginx::{Log, catch_panic};
 
 /// `NGX_CONF_UNSET_PTR`
 const NGX_CONF_UNSET_PTR: *mut ngx_http_complex_value_t = usize::MAX as *mut ngx_http_complex_value_t;
@@ -78,6 +78,17 @@ unsafe fn pool_cstr(pool: *mut nginx_sys::ngx_pool_t, s: &str) -> *mut c_char {
     }
 }
 
+/// [`catch_panic`] for a configuration callback: a panic is logged on the
+/// configuration's log and gives `on_panic`.
+///
+/// # Safety
+/// `cf` must be the configuration nginx called the callback with.
+unsafe fn conf_catch_panic<T>(cf: *mut ngx_conf_t, handler: &str, on_panic: T, f: impl FnOnce() -> T) -> T {
+    // SAFETY: a configuration has a log, valid while nginx configures.
+    let log = unsafe { Log::new((*cf).log) };
+    catch_panic(log, handler, || on_panic, f)
+}
+
 // ---------------------------------------------------------------------------
 // Directives
 // ---------------------------------------------------------------------------
@@ -122,9 +133,11 @@ unsafe extern "C" fn ngx_conf_set_rules(
     let mcf = conf as *mut LocConf;
     // SAFETY: nginx calls setters with a valid configuration and our conf.
     unsafe {
-        let rules = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
-        let res = (*mcf).rules_set.load(&String::from_utf8_lossy(&rules));
-        rules_result(cf, res, |m| &mut m.rules_inline)
+        conf_catch_panic(cf, "modsecurity_rules", NGX_CONF_ERROR, || {
+            let rules = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
+            let res = (*mcf).rules_set.load(&String::from_utf8_lossy(&rules));
+            rules_result(cf, res, |m| &mut m.rules_inline)
+        })
     }
 }
 
@@ -137,9 +150,11 @@ unsafe extern "C" fn ngx_conf_set_rules_file(
     let mcf = conf as *mut LocConf;
     // SAFETY: as above.
     unsafe {
-        let file = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
-        let res = (*mcf).rules_set.load_from_uri(&String::from_utf8_lossy(&file));
-        rules_result(cf, res, |m| &mut m.rules_file)
+        conf_catch_panic(cf, "modsecurity_rules_file", NGX_CONF_ERROR, || {
+            let file = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
+            let res = (*mcf).rules_set.load_from_uri(&String::from_utf8_lossy(&file));
+            rules_result(cf, res, |m| &mut m.rules_file)
+        })
     }
 }
 
@@ -152,10 +167,12 @@ unsafe extern "C" fn ngx_conf_set_rules_remote(
     let mcf = conf as *mut LocConf;
     // SAFETY: as above.
     unsafe {
-        let key = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
-        let server = ngx_str_to_bytes(&arg(cf, 2)).unwrap_or_default();
-        let res = (*mcf).rules_set.load_remote(&String::from_utf8_lossy(&key), &String::from_utf8_lossy(&server));
-        rules_result(cf, res, |m| &mut m.rules_remote)
+        conf_catch_panic(cf, "modsecurity_rules_remote", NGX_CONF_ERROR, || {
+            let key = ngx_str_to_bytes(&arg(cf, 1)).unwrap_or_default();
+            let server = ngx_str_to_bytes(&arg(cf, 2)).unwrap_or_default();
+            let res = (*mcf).rules_set.load_remote(&String::from_utf8_lossy(&key), &String::from_utf8_lossy(&server));
+            rules_result(cf, res, |m| &mut m.rules_remote)
+        })
     }
 }
 
@@ -168,25 +185,27 @@ unsafe extern "C" fn ngx_conf_set_transaction_id(
     let mcf = conf as *mut LocConf;
     // SAFETY: as above; the compiled value is copied into the conf pool.
     unsafe {
-        let mut value = arg(cf, 1);
-        let mut cv: ngx_http_complex_value_t = core::mem::zeroed();
-        let mut ccv: ngx_http_compile_complex_value_t = core::mem::zeroed();
-        ccv.cf = cf;
-        ccv.value = &mut value;
-        ccv.complex_value = &mut cv;
-        ccv.set_zero(1);
-        if ngx_http_compile_complex_value(&mut ccv) != NGX_OK as ngx_int_t {
-            return NGX_CONF_ERROR;
-        }
-        let p =
-            ngx_palloc((*cf).pool, core::mem::size_of::<ngx_http_complex_value_t>()) as *mut ngx_http_complex_value_t;
-        if p.is_null() {
-            return NGX_CONF_ERROR;
-        }
-        *p = cv;
-        (*mcf).transaction_id = p;
+        conf_catch_panic(cf, "modsecurity_transaction_id", NGX_CONF_ERROR, || {
+            let mut value = arg(cf, 1);
+            let mut cv: ngx_http_complex_value_t = core::mem::zeroed();
+            let mut ccv: ngx_http_compile_complex_value_t = core::mem::zeroed();
+            ccv.cf = cf;
+            ccv.value = &mut value;
+            ccv.complex_value = &mut cv;
+            ccv.set_zero(1);
+            if ngx_http_compile_complex_value(&mut ccv) != NGX_OK as ngx_int_t {
+                return NGX_CONF_ERROR;
+            }
+            let p = ngx_palloc((*cf).pool, core::mem::size_of::<ngx_http_complex_value_t>())
+                as *mut ngx_http_complex_value_t;
+            if p.is_null() {
+                return NGX_CONF_ERROR;
+            }
+            *p = cv;
+            (*mcf).transaction_id = p;
+            NGX_CONF_OK
+        })
     }
-    NGX_CONF_OK
 }
 
 const fn ngx_string(s: &'static core::ffi::CStr) -> ngx_str_t {
@@ -277,6 +296,15 @@ pub static mut ngx_http_modsecurity_module: ngx_module_t = ngx_module_t {
 /// log phase handlers and the header/body filters.
 unsafe extern "C" fn ngx_http_modsecurity_init(cf: *mut ngx_conf_t) -> ngx_int_t {
     // SAFETY: called by nginx with the http configuration.
+    unsafe { conf_catch_panic(cf, "postconfiguration", nginx_sys::NGX_ERROR as ngx_int_t, || init(cf)) }
+}
+
+/// The body of [`ngx_http_modsecurity_init`].
+///
+/// # Safety
+/// `cf` must be the http configuration.
+unsafe fn init(cf: *mut ngx_conf_t) -> ngx_int_t {
+    // SAFETY: called by nginx with the http configuration.
     unsafe {
         let cmcf = conf_main_conf(cf, ptr::addr_of!(ngx_http_core_module)) as *mut ngx_http_core_main_conf_t;
         if cmcf.is_null() {
@@ -316,6 +344,15 @@ unsafe extern "C" fn ngx_http_modsecurity_init(cf: *mut ngx_conf_t) -> ngx_int_t
 /// `ngx_http_modsecurity_cleanup_instance`).
 unsafe extern "C" fn ngx_http_modsecurity_create_main_conf(cf: *mut ngx_conf_t) -> *mut c_void {
     // SAFETY: called by nginx with a valid configuration.
+    unsafe { conf_catch_panic(cf, "create_main_conf", ptr::null_mut(), || create_main_conf(cf)) }
+}
+
+/// The body of [`ngx_http_modsecurity_create_main_conf`].
+///
+/// # Safety
+/// `cf` must be a valid configuration.
+unsafe fn create_main_conf(cf: *mut ngx_conf_t) -> *mut c_void {
+    // SAFETY: called by nginx with a valid configuration.
     let pool = unsafe { Pool::from_ngx_pool((*cf).pool) };
     let mut modsec = ModSecurity::new();
     // Provide our connector information to LibModSecurity
@@ -337,6 +374,15 @@ unsafe extern "C" fn ngx_http_modsecurity_create_main_conf(cf: *mut ngx_conf_t) 
 unsafe extern "C" fn ngx_http_modsecurity_init_main_conf(cf: *mut ngx_conf_t, conf: *mut c_void) -> *mut c_char {
     let mmcf = conf as *mut MainConf;
     // SAFETY: called by nginx with our main conf.
+    unsafe { conf_catch_panic(cf, "init_main_conf", NGX_CONF_ERROR, || init_main_conf(cf, mmcf)) }
+}
+
+/// The body of [`ngx_http_modsecurity_init_main_conf`].
+///
+/// # Safety
+/// `cf` must be a valid configuration and `mmcf` the module's main conf.
+unsafe fn init_main_conf(cf: *mut ngx_conf_t, mmcf: *mut MainConf) -> *mut c_char {
+    // SAFETY: per the contract.
     unsafe {
         Log::new((*cf).log).error(
             NGX_LOG_NOTICE as ngx_uint_t,
@@ -362,6 +408,15 @@ unsafe extern "C" fn ngx_http_modsecurity_init_main_conf(cf: *mut ngx_conf_t, co
 /// own rule set (released with the pool; C:
 /// `ngx_http_modsecurity_cleanup_rules`).
 unsafe extern "C" fn ngx_http_modsecurity_create_conf(cf: *mut ngx_conf_t) -> *mut c_void {
+    // SAFETY: called by nginx with a valid configuration.
+    unsafe { conf_catch_panic(cf, "create_loc_conf", ptr::null_mut(), || create_conf(cf)) }
+}
+
+/// The body of [`ngx_http_modsecurity_create_conf`].
+///
+/// # Safety
+/// `cf` must be a valid configuration.
+unsafe fn create_conf(cf: *mut ngx_conf_t) -> *mut c_void {
     // SAFETY: called by nginx with a valid configuration.
     let pool = unsafe { Pool::from_ngx_pool((*cf).pool) };
     let conf = LocConf {
@@ -391,6 +446,16 @@ unsafe extern "C" fn ngx_http_modsecurity_merge_conf(
     parent: *mut c_void,
     child: *mut c_void,
 ) -> *mut c_char {
+    // SAFETY: called by nginx with a valid configuration.
+    unsafe { conf_catch_panic(cf, "merge_loc_conf", NGX_CONF_ERROR, || merge_conf(cf, parent, child)) }
+}
+
+/// The body of [`ngx_http_modsecurity_merge_conf`].
+///
+/// # Safety
+/// `cf` must be a valid configuration, `parent` and `child` two distinct
+/// location configurations of this module.
+unsafe fn merge_conf(cf: *mut ngx_conf_t, parent: *mut c_void, child: *mut c_void) -> *mut c_char {
     let p = parent as *mut LocConf;
     let c = child as *mut LocConf;
     // SAFETY: nginx passes two distinct location configurations of ours.

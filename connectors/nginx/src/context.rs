@@ -105,7 +105,8 @@ fn main_conf<'r>(request: &Request<'r>) -> Option<&'r MainConf> {
 pub unsafe extern "C" fn ngx_http_modsecurity_cleanup(data: *mut c_void) {
     if !data.is_null() {
         // SAFETY: data is the Box<Ctx> leaked by `create`, released once.
-        drop(unsafe { Box::from_raw(data as *mut Ctx) });
+        let ctx = unsafe { Box::from_raw(data as *mut Ctx) };
+        crate::nginx::catch_panic(crate::nginx::cycle_log(), "the request cleanup", || (), || drop(ctx));
     }
 }
 

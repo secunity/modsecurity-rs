@@ -10,7 +10,7 @@ use nginx_sys::{
 use crate::context::Ctx;
 use crate::intervention::process_intervention;
 use crate::module::ngx_http_modsecurity_module;
-use crate::nginx::{Buffers, Request};
+use crate::nginx::{Buffers, Request, catch_panic};
 
 static mut NGX_HTTP_NEXT_BODY_FILTER: ngx_http_output_body_filter_pt = None;
 
@@ -99,33 +99,51 @@ pub unsafe extern "C" fn ngx_http_modsecurity_body_filter(
     r: *mut ngx_http_request_t,
     input: *mut ngx_chain_t,
 ) -> ngx_int_t {
+    // SAFETY: nginx calls the filter with a valid request.
+    let Some(request) = (unsafe { Request::new(r) }) else {
+        return nginx_sys::NGX_ERROR as ngx_int_t;
+    };
+    catch_panic(
+        request.log(),
+        "the body filter",
+        // SAFETY: this filter belongs to this module.
+        || unsafe {
+            request.finalize_from_filter(
+                ptr::addr_of_mut!(ngx_http_modsecurity_module),
+                NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t,
+            )
+        },
+        // SAFETY: the chain nginx called the filter with.
+        || unsafe { body_filter(&request, input) },
+    )
+}
+
+/// # Safety
+/// `input` must be null or the chain the filter was called with.
+unsafe fn body_filter(request: &Request<'_>, input: *mut ngx_chain_t) -> ngx_int_t {
     let next = || {
         // SAFETY: the next filter was saved at init, and is given what
         // this filter was called with.
         unsafe {
             match NGX_HTTP_NEXT_BODY_FILTER {
-                Some(f) => f(r, input),
+                Some(f) => f(request.as_ptr(), input),
                 None => nginx_sys::NGX_OK as ngx_int_t,
             }
         }
-    };
-    // SAFETY: nginx calls the filter with a valid request.
-    let Some(request) = (unsafe { Request::new(r) }) else {
-        return nginx_sys::NGX_ERROR as ngx_int_t;
     };
     if input.is_null() {
         return next();
     }
     // SAFETY: the context lives until the request pool is destroyed, and
     // nothing else uses it while this filter inspects the body.
-    let ctx = match unsafe { Ctx::find(&request).as_mut() } {
+    let ctx = match unsafe { Ctx::find(request).as_mut() } {
         Some(ctx) if !ctx.intervention_triggered => ctx,
         _ => return next(),
     };
 
     // SAFETY: nginx's chain, unchanged until it is passed on below.
     let buffers = unsafe { Buffers::new(input) };
-    match inspect_body(&request, ctx, buffers) {
+    match inspect_body(request, ctx, buffers) {
         // XXX (C): xflt_filter() -- return NGX_OK here
         Outcome::Pass => next(),
         Outcome::Return(rc) => rc,

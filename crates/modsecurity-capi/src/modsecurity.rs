@@ -1,5 +1,6 @@
 //! The libmodsecurity C API for the engine instance.
 
+use crate::catch_panic;
 use engine::{ModSecurity, ServerLogEntry};
 use std::ffi::{CStr, CString, c_char, c_void};
 
@@ -14,7 +15,7 @@ unsafe impl Send for CLogData {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn msc_init() -> *mut ModSecurity {
-    Box::into_raw(Box::new(ModSecurity::new()))
+    catch_panic(std::ptr::null_mut(), || Box::into_raw(Box::new(ModSecurity::new())))
 }
 
 /// # Safety
@@ -22,51 +23,59 @@ pub extern "C" fn msc_init() -> *mut ModSecurity {
 /// `msc`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_who_am_i(msc: *mut ModSecurity) -> *const c_char {
-    // SAFETY: `msc` is null or comes from `msc_init` (caller contract).
-    match unsafe { msc.as_ref() } {
-        Some(m) => m.who_am_i_c().as_ptr(),
-        None => std::ptr::null(),
-    }
+    catch_panic(std::ptr::null(), || {
+        // SAFETY: `msc` is null or comes from `msc_init` (caller contract).
+        match unsafe { msc.as_ref() } {
+            Some(m) => m.who_am_i_c().as_ptr(),
+            None => std::ptr::null(),
+        }
+    })
 }
 
 /// # Safety
 /// `msc` must come from `msc_init`; `connector` is a C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_set_connector_info(msc: *mut ModSecurity, connector: *const c_char) {
-    if let (Some(m), false) = (unsafe { msc.as_mut() }, connector.is_null()) {
-        let s = unsafe { CStr::from_ptr(connector) }.to_string_lossy().into_owned();
-        m.set_connector_information(&s);
-    }
+    catch_panic((), || {
+        if let (Some(m), false) = (unsafe { msc.as_mut() }, connector.is_null()) {
+            let s = unsafe { CStr::from_ptr(connector) }.to_string_lossy().into_owned();
+            m.set_connector_information(&s);
+        }
+    })
 }
 
 /// # Safety
 /// `msc` must come from `msc_init`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_set_log_cb(msc: *mut ModSecurity, cb: CModSecLogCb) {
-    let Some(m) = (unsafe { msc.as_mut() }) else {
-        return;
-    };
-    let Some(cb) = cb else {
-        return;
-    };
-    m.set_server_log_cb(Box::new(move |data, entry| {
-        let d = data.and_then(|d| d.downcast_ref::<CLogData>()).map(|d| d.0).unwrap_or(std::ptr::null_mut());
-        if let ServerLogEntry::Text(s) = entry {
-            let c = CString::new(s.replace('\0', "")).unwrap_or_default();
-            // SAFETY: calling the connector's callback with its own data
-            // pointer and a NUL terminated string, as libmodsecurity does.
-            unsafe { cb(d, c.as_ptr() as *const c_void) };
-        }
-    }));
+    catch_panic((), || {
+        let Some(m) = (unsafe { msc.as_mut() }) else {
+            return;
+        };
+        let Some(cb) = cb else {
+            return;
+        };
+        m.set_server_log_cb(Box::new(move |data, entry| {
+            let d = data.and_then(|d| d.downcast_ref::<CLogData>()).map(|d| d.0).unwrap_or(std::ptr::null_mut());
+            if let ServerLogEntry::Text(s) = entry {
+                let c = CString::new(s.replace('\0', "")).unwrap_or_default();
+                // SAFETY: calling the connector's callback with its own data
+                // pointer and a NUL terminated string, as libmodsecurity does.
+                unsafe { cb(d, c.as_ptr() as *const c_void) };
+            }
+        }));
+    })
 }
 
 /// # Safety
 /// `msc` must come from `msc_init` and not be used afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_cleanup(msc: *mut ModSecurity) {
-    if !msc.is_null() {
-        drop(unsafe { Box::from_raw(msc) });
-    }
+    catch_panic((), || {
+        if !msc.is_null() {
+            drop(unsafe { Box::from_raw(msc) });
+        }
+    })
 }
 
 #[cfg(test)]

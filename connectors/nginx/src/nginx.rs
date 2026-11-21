@@ -78,6 +78,38 @@ impl Log {
     }
 }
 
+/// Runs `f`, the body of a function nginx calls. A panic in `f` does not
+/// unwind into nginx (which aborts the worker process): it is logged on
+/// `log`, naming `handler`, and `on_panic` gives the result instead.
+pub fn catch_panic<T>(log: Log, handler: &str, on_panic: impl FnOnce() -> T, f: impl FnOnce() -> T) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(v) => v,
+        Err(payload) => {
+            let message = payload
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                .unwrap_or("no message");
+            log.error(
+                nginx_sys::NGX_LOG_ERR as ngx_uint_t,
+                format!("ModSecurity: internal error in {handler}: {message}").as_bytes(),
+            );
+            on_panic()
+        }
+    }
+}
+
+/// The log of the running cycle (`ngx_cycle->log`), for code that has no
+/// request or configuration at hand.
+pub fn cycle_log() -> Log {
+    // SAFETY: nginx sets ngx_cycle before it loads modules, and the log of a
+    // cycle lives as long as the cycle.
+    unsafe {
+        let cycle = ptr::read_volatile(ptr::addr_of!(nginx_sys::ngx_cycle));
+        Log::new(if cycle.is_null() { ptr::null_mut() } else { (*cycle).log })
+    }
+}
+
 /// A buffer of a chain: its data, and whether it is the last of the body.
 pub struct Buffer<'c> {
     pub data: &'c [u8],
@@ -603,6 +635,13 @@ impl<'r> Request<'r> {
         {
             false
         }
+    }
+
+    /// `ngx_http_finalize_request(r, rc)`: ends the request (outside of
+    /// the phase handlers, which return `rc` instead).
+    pub fn finalize(&self, rc: ngx_int_t) {
+        // SAFETY: a valid request.
+        unsafe { nginx_sys::ngx_http_finalize_request(self.as_ptr(), rc) }
     }
 
     /// `ngx_http_filter_finalize_request(r, module, rc)`: ends the request

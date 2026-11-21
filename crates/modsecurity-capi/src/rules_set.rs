@@ -1,5 +1,6 @@
 //! The libmodsecurity C API for rule sets (`msc_create_rules_set`, ...).
 
+use crate::catch_panic;
 use engine::{LoadError, RulesSet};
 use std::ffi::{CStr, CString, c_char, c_int};
 
@@ -32,18 +33,29 @@ unsafe fn cstr<'a>(p: *const c_char) -> &'a str {
     unsafe { CStr::from_ptr(p) }.to_str().unwrap_or("")
 }
 
+/// [`catch_panic`] for the functions that load or merge rules: a panic
+/// gives -1, with an error message for the caller (who may print it).
+fn catch_load_panic(error: *mut *const c_char, f: impl FnOnce() -> c_int) -> c_int {
+    catch_panic(None, || Some(f())).unwrap_or_else(|| {
+        set_error(error, "ModSecurity: internal error while loading the rules\n".to_string());
+        -1
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn msc_create_rules_set() -> *mut RulesSet {
-    Box::into_raw(Box::new(RulesSet::new()))
+    catch_panic(std::ptr::null_mut(), || Box::into_raw(Box::new(RulesSet::new())))
 }
 
 /// # Safety
 /// `rules` must come from `msc_create_rules_set`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_rules_dump(rules: *const RulesSet) {
-    if let Some(r) = unsafe { rules.as_ref() } {
-        r.dump();
-    }
+    catch_panic((), || {
+        if let Some(r) = unsafe { rules.as_ref() } {
+            r.dump();
+        }
+    })
 }
 
 /// # Safety
@@ -54,10 +66,12 @@ pub unsafe extern "C" fn msc_rules_merge(
     rules_from: *mut RulesSet,
     error: *mut *const c_char,
 ) -> c_int {
-    let (Some(dst), Some(from)) = (unsafe { rules_dst.as_mut() }, unsafe { rules_from.as_mut() }) else {
-        return -1;
-    };
-    c_result(dst.merge(from), error)
+    catch_load_panic(error, || {
+        let (Some(dst), Some(from)) = (unsafe { rules_dst.as_mut() }, unsafe { rules_from.as_mut() }) else {
+            return -1;
+        };
+        c_result(dst.merge(from), error)
+    })
 }
 
 /// # Safety
@@ -69,10 +83,12 @@ pub unsafe extern "C" fn msc_rules_add_remote(
     uri: *const c_char,
     error: *mut *const c_char,
 ) -> c_int {
-    let Some(r) = (unsafe { rules.as_mut() }) else {
-        return -1;
-    };
-    c_result(r.load_remote(unsafe { cstr(key) }, unsafe { cstr(uri) }), error)
+    catch_load_panic(error, || {
+        let Some(r) = (unsafe { rules.as_mut() }) else {
+            return -1;
+        };
+        c_result(r.load_remote(unsafe { cstr(key) }, unsafe { cstr(uri) }), error)
+    })
 }
 
 /// # Safety
@@ -83,10 +99,12 @@ pub unsafe extern "C" fn msc_rules_add_file(
     file: *const c_char,
     error: *mut *const c_char,
 ) -> c_int {
-    let Some(r) = (unsafe { rules.as_mut() }) else {
-        return -1;
-    };
-    c_result(r.load_from_uri(unsafe { cstr(file) }), error)
+    catch_load_panic(error, || {
+        let Some(r) = (unsafe { rules.as_mut() }) else {
+            return -1;
+        };
+        c_result(r.load_from_uri(unsafe { cstr(file) }), error)
+    })
 }
 
 /// # Safety
@@ -98,29 +116,36 @@ pub unsafe extern "C" fn msc_rules_add(
     plain_rules: *const c_char,
     error: *mut *const c_char,
 ) -> c_int {
-    let Some(r) = (unsafe { rules.as_mut() }) else {
-        return -1;
-    };
-    c_result(r.load(unsafe { cstr(plain_rules) }), error)
+    catch_load_panic(error, || {
+        let Some(r) = (unsafe { rules.as_mut() }) else {
+            return -1;
+        };
+        c_result(r.load(unsafe { cstr(plain_rules) }), error)
+    })
 }
 
 /// # Safety
 /// `error` must come from one of the `msc_rules_*` functions.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_rules_error_cleanup(error: *const c_char) {
-    if !error.is_null() {
-        drop(unsafe { CString::from_raw(error as *mut c_char) });
-    }
+    catch_panic((), || {
+        if !error.is_null() {
+            drop(unsafe { CString::from_raw(error as *mut c_char) });
+        }
+    })
 }
 
 /// # Safety
 /// `rules` must come from `msc_create_rules_set` and not be used after.
+/// Returns 1, or 0 when releasing the rules failed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_rules_cleanup(rules: *mut RulesSet) -> c_int {
-    if !rules.is_null() {
-        drop(unsafe { Box::from_raw(rules) });
-    }
-    1
+    catch_panic(0, || {
+        if !rules.is_null() {
+            drop(unsafe { Box::from_raw(rules) });
+        }
+        1
+    })
 }
 
 #[cfg(test)]

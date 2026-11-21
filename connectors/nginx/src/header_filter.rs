@@ -3,12 +3,15 @@
 
 use core::ptr;
 
-use nginx_sys::{ngx_http_output_header_filter_pt, ngx_http_request_t, ngx_http_top_header_filter, ngx_int_t};
+use nginx_sys::{
+    NGX_HTTP_INTERNAL_SERVER_ERROR, ngx_http_output_header_filter_pt, ngx_http_request_t, ngx_http_top_header_filter,
+    ngx_int_t,
+};
 
 use crate::context::Ctx;
 use crate::intervention::process_intervention;
 use crate::module::ngx_http_modsecurity_module;
-use crate::nginx::Request;
+use crate::nginx::{Request, catch_panic};
 
 static mut NGX_HTTP_NEXT_HEADER_FILTER: ngx_http_output_header_filter_pt = None;
 
@@ -133,21 +136,36 @@ pub unsafe extern "C" fn ngx_http_modsecurity_header_filter(r: *mut ngx_http_req
     let Some(request) = (unsafe { Request::new(r) }) else {
         return nginx_sys::NGX_ERROR as ngx_int_t;
     };
+    catch_panic(
+        request.log(),
+        "the header filter",
+        // SAFETY: this filter belongs to this module.
+        || unsafe {
+            request.finalize_from_filter(
+                ptr::addr_of_mut!(ngx_http_modsecurity_module),
+                NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t,
+            )
+        },
+        || header_filter(&request),
+    )
+}
+
+fn header_filter(request: &Request<'_>) -> ngx_int_t {
     // XXX (C): if NOT_MODIFIED, do we need to process it at all? see
     // xslt_header_filter()
     //
     // SAFETY: the context lives until the request pool is destroyed, and
     // nothing else uses it while this filter inspects the headers.
-    let ctx = unsafe { Ctx::find(&request).as_mut() };
+    let ctx = unsafe { Ctx::find(request).as_mut() };
     // XXX (C): can it happen ? already processed i mean
     //
     // FIXME (C): verify if this request is already processed.
     let ctx = match ctx {
         Some(ctx) if !ctx.intervention_triggered && !ctx.processed => ctx,
-        _ => return next_header_filter(&request),
+        _ => return next_header_filter(request),
     };
 
-    if let Some(status) = inspect_headers(&request, ctx) {
+    if let Some(status) = inspect_headers(request, ctx) {
         // SAFETY: this filter belongs to this module.
         return unsafe { request.finalize_from_filter(ptr::addr_of_mut!(ngx_http_modsecurity_module), status) };
     }
@@ -156,5 +174,5 @@ pub unsafe extern "C" fn ngx_http_modsecurity_header_filter(r: *mut ngx_http_req
     // content length in order to manipulate the content of response body
     // in ModSecurity. (The C code keeps this commented out to make the
     // spdy test work: `r->headers_out.content_length_n = -1;`)
-    next_header_filter(&request)
+    next_header_filter(request)
 }

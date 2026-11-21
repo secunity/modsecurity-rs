@@ -1,9 +1,9 @@
 //! The log phase handler.
 
-use nginx_sys::{NGX_OK, ngx_http_request_t, ngx_int_t};
+use nginx_sys::{NGX_ERROR, NGX_OK, ngx_http_request_t, ngx_int_t};
 
 use crate::context::Ctx;
-use crate::nginx::Request;
+use crate::nginx::{Request, catch_panic};
 
 /// The logging step shared by the log phase handler and early logging on
 /// interventions (`msc_process_logging`).
@@ -16,14 +16,23 @@ pub fn process_logging(ctx: &mut Ctx) {
 /// # Safety
 /// Called by nginx (log phase) with a valid request.
 pub unsafe extern "C" fn ngx_http_modsecurity_log_handler(r: *mut ngx_http_request_t) -> ngx_int_t {
-    // SAFETY: nginx calls the handler with a valid request; its context
-    // lives until the request pool is destroyed, and nothing else uses it
-    // while this handler runs.
-    let ctx = unsafe { Request::new(r).and_then(|request| Ctx::find(&request).as_mut()) };
-    if let Some(ctx) = ctx
-        && !ctx.logged
-    {
-        process_logging(ctx);
-    }
-    NGX_OK as ngx_int_t
+    // SAFETY: nginx calls the handler with a valid request.
+    let Some(request) = (unsafe { Request::new(r) }) else {
+        return NGX_OK as ngx_int_t;
+    };
+    catch_panic(
+        request.log(),
+        "the log handler",
+        || NGX_ERROR as ngx_int_t,
+        || {
+            // SAFETY: the context lives until the request pool is destroyed,
+            // and nothing else uses it while this handler runs.
+            if let Some(ctx) = unsafe { Ctx::find(&request).as_mut() }
+                && !ctx.logged
+            {
+                process_logging(ctx);
+            }
+            NGX_OK as ngx_int_t
+        },
+    )
 }

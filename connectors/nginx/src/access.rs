@@ -8,7 +8,7 @@ use nginx_sys::{
 
 use crate::context::{Ctx, loc_conf};
 use crate::intervention::process_intervention;
-use crate::nginx::Request;
+use crate::nginx::{Request, catch_panic};
 
 /// Post handler of `ngx_http_read_client_request_body`; resumes the phases
 /// once the body is read (`ngx_http_modsecurity_request_read`).
@@ -20,7 +20,16 @@ pub unsafe extern "C" fn ngx_http_modsecurity_request_read(r: *mut ngx_http_requ
     let Some(request) = (unsafe { Request::new(r) }) else {
         return;
     };
-    let ctx = Ctx::find(&request);
+    catch_panic(
+        request.log(),
+        "the request body handler",
+        || request.finalize(NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t),
+        || request_read(&request),
+    );
+}
+
+fn request_read(request: &Request<'_>) {
+    let ctx = Ctx::find(request);
 
     request.release_body_reference();
 
@@ -190,18 +199,27 @@ pub unsafe extern "C" fn ngx_http_modsecurity_access_handler(r: *mut ngx_http_re
     let Some(request) = (unsafe { Request::new(r) }) else {
         return NGX_DECLINED as ngx_int_t;
     };
-    if loc_conf(&request).is_none_or(|conf| conf.enable != 1) {
+    catch_panic(
+        request.log(),
+        "the access handler",
+        || NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t,
+        || access_handler(&request),
+    )
+}
+
+fn access_handler(request: &Request<'_>) -> ngx_int_t {
+    if loc_conf(request).is_none_or(|conf| conf.enable != 1) {
         return NGX_DECLINED as ngx_int_t;
     }
 
-    let mut ctx = Ctx::find(&request);
+    let mut ctx = Ctx::find(request);
     if ctx.is_null() {
-        ctx = Ctx::create(&request);
+        ctx = Ctx::create(request);
         // SAFETY: the context just made, which only this handler has.
         let Some(new) = (unsafe { ctx.as_mut() }) else {
             return NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t;
         };
-        if let Some(rc) = process_request_line_and_headers(&request, new) {
+        if let Some(rc) = process_request_line_and_headers(request, new) {
             return rc;
         }
     }
@@ -226,5 +244,5 @@ pub unsafe extern "C" fn ngx_http_modsecurity_access_handler(r: *mut ngx_http_re
     }
 
     // SAFETY: as above.
-    inspect_body(&request, unsafe { &mut *ctx })
+    inspect_body(request, unsafe { &mut *ctx })
 }
