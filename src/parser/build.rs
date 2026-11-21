@@ -28,7 +28,7 @@ use crate::rule::{Rule, RuleKind};
 use crate::run_time_string::RunTimeString;
 use crate::utils::string::parser_sanitizer;
 use crate::variables::variable::Variable;
-use crate::variables::{VariableSelector, new_variable};
+use crate::variables::{VariableError, VariableSelector, new_variable};
 use modsecurity_operators::seclang_operator;
 
 /// The load stopped: the error is in `driver.properties.parser_error`.
@@ -148,7 +148,10 @@ impl Builder<'_, '_> {
         match directive {
             Directive::Rule { variables, operator, actions } => {
                 let vars = self.targets(&variables)?;
-                let vars = exclusions(vars);
+                let vars = match exclusions(vars) {
+                    Ok(vars) => vars,
+                    Err(e) => return self.fail(&e.to_string()),
+                };
                 let op = self.operator(&operator)?;
                 let (a, t) = match actions {
                     Some(list) => {
@@ -267,8 +270,9 @@ impl Builder<'_, '_> {
             return self.fail("Variable VARIABLE_WEBSERVER_ERROR_LOG is not supported by libModSecurity");
         }
         match new_variable(name, selector) {
-            Some(v) => Ok(v),
-            None => self.fail(&format!("Expecting a variable, got: {}", name)),
+            Ok(v) => Ok(v),
+            Err(VariableError::Unknown) => self.fail(&format!("Expecting a variable, got: {}", name)),
+            Err(e @ VariableError::InvalidRegex(_)) => self.fail(&e.to_string()),
         }
     }
 
@@ -510,7 +514,7 @@ fn is_collection(name: &str) -> bool {
 
 /// Removes the excluded variables (`!ARGS:foo`) from the list, recording their
 /// keys as exclusions of the variables of the same collection.
-fn exclusions(mut original_list: Vec<Variable>) -> Vec<Variable> {
+fn exclusions(mut original_list: Vec<Variable>) -> Result<Vec<Variable>, VariableError> {
     let mut new_list: Vec<Variable> = Vec::new();
     let mut new_new_list: Vec<Variable> = Vec::new();
     let mut exclusion_vars: Vec<Variable> = Vec::new();
@@ -528,14 +532,14 @@ fn exclusions(mut original_list: Vec<Variable>) -> Vec<Variable> {
                 do_not_add = true;
             }
             if i.belongs_to_collection(&var) {
-                var.adds_key_exclusion(i);
+                var.adds_key_exclusion(i)?;
             }
         }
         if !do_not_add {
             new_new_list.push(var);
         }
     }
-    new_new_list
+    Ok(new_new_list)
 }
 
 /// The value of `SecRuleUpdate...By...`, as the scanner reads it.

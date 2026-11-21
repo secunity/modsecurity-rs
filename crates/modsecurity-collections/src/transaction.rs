@@ -116,7 +116,7 @@ mod tests {
             previous.store_or_update_first(&uppercase, b"updated").unwrap();
             assert_eq!(tx.get(key), previous.resolve_first(key).unwrap().as_deref());
         }
-        let exclusions = KeyExclusions(vec![KeyExclusion::string("KEY-1"), KeyExclusion::regex("^key-2")]);
+        let exclusions = KeyExclusions(vec![KeyExclusion::string("KEY-1"), KeyExclusion::regex("^key-2").unwrap()]);
         for exclusions in [&KeyExclusions::default(), &exclusions] {
             for key in [&b""[..], b"key-1", b"KEY-3", b"absent", b"\xff\0x"] {
                 let mut actual = vec![VariableValue::new(b"existing", b"tail")];

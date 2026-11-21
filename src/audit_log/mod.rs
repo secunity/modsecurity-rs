@@ -7,6 +7,7 @@ pub mod writer;
 use crate::audit_log::writer::Writer;
 use crate::transaction::Transaction;
 use modsecurity_native::regex::Regex;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditLogType {
@@ -37,16 +38,22 @@ pub enum PartsChange {
 }
 
 /// `SecAuditLogRelevantStatus`: the pattern and its regex, compiled once.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RelevantStatus {
     pattern: String,
-    re: Regex,
+    re: Arc<Regex>,
 }
 
 impl RelevantStatus {
-    /// `None` for an empty pattern, which matches no status.
-    fn new(pattern: &str) -> Option<Self> {
-        (!pattern.is_empty()).then(|| RelevantStatus { pattern: pattern.to_string(), re: Regex::new(pattern) })
+    /// `None` for an empty pattern, which matches no status; an error
+    /// for a pattern that does not compile.
+    fn new(pattern: &str) -> Result<Option<Self>, String> {
+        if pattern.is_empty() {
+            return Ok(None);
+        }
+        let re = Regex::compile(pattern.as_bytes(), false, true)
+            .map_err(|_| format!("Invalid regular expression: {pattern}"))?;
+        Ok(Some(RelevantStatus { pattern: pattern.to_string(), re: Arc::new(re) }))
     }
 }
 
@@ -226,8 +233,11 @@ impl AuditLog {
         self.status = Some(status);
     }
 
-    pub fn set_relevant_status(&mut self, relevant_status: &str) {
-        self.relevant = RelevantStatus::new(relevant_status);
+    /// `SecAuditLogRelevantStatus`: fails when the pattern does not
+    /// compile.
+    pub fn set_relevant_status(&mut self, relevant_status: &str) -> Result<(), String> {
+        self.relevant = RelevantStatus::new(relevant_status)?;
+        Ok(())
     }
 
     pub fn set_file_path1(&mut self, path: &str) {
@@ -355,7 +365,7 @@ impl AuditLog {
         merge_string(&from.path2, &mut self.path2);
         merge_string(&from.storage_dir, &mut self.storage_dir);
         if let Some(r) = &from.relevant {
-            self.relevant = RelevantStatus::new(&r.pattern);
+            self.relevant = Some(r.clone());
         }
         merge_string(&from.prefix, &mut self.prefix);
 
@@ -484,7 +494,7 @@ mod tests {
         from.set_file_path1("p1");
         from.set_prefix("pre");
         from.set_file_mode(0o600);
-        from.set_relevant_status("^5");
+        from.set_relevant_status("^5").unwrap();
         from.set_format(AuditLogFormat::Json);
         // Status not set: the merge succeeds without creating a writer.
         a.set_file_path2("keep");
@@ -530,7 +540,7 @@ mod tests {
     fn relevance() {
         let mut a = AuditLog::new();
         assert!(!a.is_relevant(500), "no SecAuditLogRelevantStatus");
-        a.set_relevant_status("^(?:5|4(?!04))");
+        a.set_relevant_status("^(?:5|4(?!04))").unwrap();
         assert!(a.is_relevant(500));
         assert!(a.is_relevant(403));
         assert!(!a.is_relevant(404));
@@ -540,7 +550,7 @@ mod tests {
         let log = p(&d, "serial.log");
         let rules = rules_with(|a| {
             a.set_status(AuditLogStatus::RelevantOnly);
-            a.set_relevant_status("^5");
+            a.set_relevant_status("^5").unwrap();
             a.set_file_path1(&log);
         });
         // 200: not relevant, nothing written.

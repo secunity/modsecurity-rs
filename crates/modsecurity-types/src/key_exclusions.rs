@@ -1,6 +1,6 @@
 //! The keys excluded from a variable (`!ARGS:foo`, `!ARGS:/regex/`).
 
-use modsecurity_native::regex::Regex;
+use modsecurity_native::regex::{CompileError, Regex};
 
 /// A key excluded from a variable (`!ARGS:foo` or `!ARGS:/regex/`).
 #[derive(Debug)]
@@ -12,8 +12,10 @@ pub enum KeyExclusion {
 }
 
 impl KeyExclusion {
-    pub fn regex(re: &str) -> Self {
-        KeyExclusion::Regex(Regex::new_case(re, true))
+    /// The keys `re` matches, ignoring case; fails when `re` does not
+    /// compile.
+    pub fn regex(re: &str) -> Result<Self, CompileError> {
+        Ok(KeyExclusion::Regex(Regex::compile(re.as_bytes(), true, true)?))
     }
 
     pub fn string(a: &str) -> Self {
@@ -61,11 +63,12 @@ mod tests {
         assert!(ke.is_empty());
         assert!(!ke.to_omit(b"id"));
         ke.push(KeyExclusion::string("Id"));
-        ke.push(KeyExclusion::regex("^pass"));
+        ke.push(KeyExclusion::regex("^pass").unwrap());
         assert!(ke.to_omit(b"id"));
         assert!(ke.to_omit(b"ID"));
         assert!(!ke.to_omit(b"idx"));
         assert!(ke.to_omit(b"PASSWORD"));
         assert!(!ke.to_omit(b"xpass"));
+        assert_eq!(KeyExclusion::regex("(").unwrap_err().pattern, "(");
     }
 }

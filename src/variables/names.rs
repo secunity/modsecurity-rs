@@ -213,7 +213,7 @@ mod tests {
         t.vars.args.set(b"k", b"v", 0);
         t.vars.request_headers_names.set(b"k", b"Host", 0);
 
-        let seclang = |n: &str| new_variable(n, VariableSelector::None).map(|v| v.full_name().to_string());
+        let seclang = |n: &str| new_variable(n, VariableSelector::None).ok().map(|v| v.full_name().to_string());
         // RESOURCE: the persistent collection in SecLang, `setrsc`'s value
         // in Lua.
         assert_eq!(seclang("RESOURCE").as_deref(), Some("RESOURCE"));

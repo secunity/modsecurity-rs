@@ -157,8 +157,8 @@ fn directive(keyword: &str) -> Option<Directive> {
         }),
         "secauditlogrelevantstatus" => {
             value(&[(Sep(FreeTextNewLine), SanFindSep), (SepQuoted(Word), SanFindSep)], |b, v| {
-                b.driver.properties.audit_log.set_relevant_status(&v.text);
-                Ok(())
+                let set = b.driver.properties.audit_log.set_relevant_status(&v.text);
+                set.or_else(|error| b.fail(&error))
             })
         }
         "secauditlogstoragedir" => value(PATH, |b, v| {

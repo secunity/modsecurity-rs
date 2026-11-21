@@ -9,9 +9,8 @@
 //! The RESOURCE regex naming quirk is retained; the SESSION deletion quirk
 //! is handled by the writable target in `variable.rs`.
 
-use crate::variables::VariableSelector;
 use crate::variables::variable::{CollectionKey, Source, Variable};
-use modsecurity_native::regex::Regex;
+use crate::variables::{VariableError, VariableSelector, selector_regex};
 
 pub use crate::collection::Persistent;
 
@@ -26,18 +25,18 @@ fn regex_name(collection: Persistent) -> &'static str {
 
 /// The variable of `collection` with `selector`: `COL`, `COL:key`,
 /// `COL:/regex/` or `COL:%{macro}`.
-pub fn variable(collection: Persistent, selector: VariableSelector) -> Variable {
+pub fn variable(collection: Persistent, selector: VariableSelector) -> Result<Variable, VariableError> {
     let name = collection.name();
     let (name, key) = match selector {
         VariableSelector::None => (name.to_string(), CollectionKey::All),
         VariableSelector::DictElement(e) => (format!("{}:{}", name, e), CollectionKey::Key),
         VariableSelector::Regexp(r) => (
             crate::variables::variable::regex_name(regex_name(collection), &r),
-            CollectionKey::Regex(Regex::new_case(&r, true)),
+            CollectionKey::Regex(selector_regex(&r)?),
         ),
         VariableSelector::Dynamic(m) => (format!("{}:dynamic", name), CollectionKey::Dynamic(m)),
     };
-    Variable::new(&name, Source::Persistent(collection, key))
+    Ok(Variable::new(&name, Source::Persistent(collection, key)))
 }
 
 #[cfg(test)]

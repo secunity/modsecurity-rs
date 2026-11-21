@@ -14,7 +14,7 @@ use crate::variables::anchored_variable::AnchoredVariable;
 use crate::variables::computed::Computed;
 use crate::variables::persistent::Persistent;
 use crate::variables::variable_value::VariableValue;
-use crate::variables::{VariableSelector, env, rule, xml};
+use crate::variables::{VariableError, VariableSelector, env, rule, selector_regex, xml};
 use modsecurity_native::regex::Regex;
 
 pub use modsecurity_types::key_exclusions::{KeyExclusion, KeyExclusions};
@@ -141,12 +141,12 @@ impl Variable {
 
     /// The multi valued variable `name` (`ARGS`), narrowed by `selector`.
     /// Returns the name the variable gets and the selector.
-    pub(crate) fn selected(name: &str, selector: VariableSelector) -> Option<(String, Selector)> {
+    pub(crate) fn selected(name: &str, selector: VariableSelector) -> Result<(String, Selector), VariableError> {
         match selector {
-            VariableSelector::None => Some((name.to_string(), Selector::All)),
-            VariableSelector::DictElement(e) => Some((format!("{}:{}", name, e), Selector::Key(e))),
-            VariableSelector::Regexp(r) => Some((regex_name(name, &r), Selector::Regex(Regex::new_case(&r, true)))),
-            VariableSelector::Dynamic(_) => None,
+            VariableSelector::None => Ok((name.to_string(), Selector::All)),
+            VariableSelector::DictElement(e) => Ok((format!("{}:{}", name, e), Selector::Key(e))),
+            VariableSelector::Regexp(r) => Ok((regex_name(name, &r), Selector::Regex(selector_regex(&r)?))),
+            VariableSelector::Dynamic(_) => Err(VariableError::Unknown),
         }
     }
 
@@ -285,15 +285,16 @@ impl Variable {
 
     /// If `v` is an exclusion (`!ARGS:foo`), records its
     /// key (or regex) as excluded from this variable.
-    pub fn adds_key_exclusion(&mut self, v: &Variable) {
+    pub fn adds_key_exclusion(&mut self, v: &Variable) -> Result<(), VariableError> {
         let Some(base) = v.exclusion_base() else {
-            return;
+            return Ok(());
         };
         let r = match base.regex() {
             None => KeyExclusion::string(v.name()),
-            Some(re) => KeyExclusion::regex(&re.pattern),
+            Some(re) => KeyExclusion::regex(&re.pattern).map_err(|e| VariableError::InvalidRegex(e.pattern))?,
         };
         self.key_exclusion.push(r);
+        Ok(())
     }
 
     /// Whether `b` is the same target: same collection, name and full

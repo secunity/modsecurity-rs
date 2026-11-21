@@ -36,11 +36,39 @@ pub enum VariableSelector {
     Dynamic(crate::run_time_string::RunTimeString),
 }
 
+/// Why [`new_variable`] gives no variable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VariableError {
+    /// No variable has the name, or it does not accept the selector.
+    Unknown,
+    /// The regular expression of a `COLLECTION:/regex/` selector does not
+    /// compile: the pattern.
+    InvalidRegex(String),
+}
+
+impl std::fmt::Display for VariableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VariableError::Unknown => f.write_str("Unknown variable"),
+            VariableError::InvalidRegex(pattern) => write!(f, "Invalid regular expression: {pattern}"),
+        }
+    }
+}
+
+impl std::error::Error for VariableError {}
+
+/// Compiles the regex of a `COLLECTION:/regex/` selector: case
+/// insensitive, multi-line.
+pub(crate) fn selector_regex(pattern: &str) -> Result<Regex, VariableError> {
+    Regex::compile(pattern.as_bytes(), true, true).map_err(|_| VariableError::InvalidRegex(pattern.to_string()))
+}
+
 /// Creates the variable named `name` with the given
-/// selector. Returns `None` for unknown names and for
-/// selectors a variable does not accept (e.g.
-/// `REQUEST_METHOD:foo`, `ARGS:%{...}`) and for `WEBSERVER_ERROR_LOG`;
-/// the parser reports these as
+/// selector. Fails with [`VariableError::Unknown`] for unknown names and
+/// for selectors a variable does not accept (e.g.
+/// `REQUEST_METHOD:foo`, `ARGS:%{...}`) and for `WEBSERVER_ERROR_LOG`,
+/// and with [`VariableError::InvalidRegex`] for a regex selector that does
+/// not compile; the parser reports these as
 /// errors. The `!` / `&` modifiers are applied by the caller.
 ///
 /// `name` is matched case insensitively.
@@ -59,7 +87,7 @@ pub enum VariableSelector {
 ///
 /// (The `ENV:/regex/` and `XML:/regex/` forms are not regular
 /// expressions: the text between the slashes is used as the key.)
-pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> {
+pub fn new_variable(name: &str, selector: VariableSelector) -> Result<Variable, VariableError> {
     use VariableSelector as S;
     use computed::Computed as C;
     use persistent::Persistent;
@@ -67,63 +95,63 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
     // A computed variable, named after the text as written in the
     // rule.
     let computed = |selector: VariableSelector, c: C| match selector {
-        S::None => Some(Variable::new(name, Source::Computed(c))),
-        _ => None,
+        S::None => Ok(Variable::new(name, Source::Computed(c))),
+        _ => Err(VariableError::Unknown),
     };
 
     let token = name.to_ascii_uppercase();
     // The variables of the transaction (the shared table).
     if let Some(v) = names::SETS.iter().find(|v| v.token == token) {
         let (name, selector) = Variable::selected(v.token, selector)?;
-        return Some(Variable::new(&name, Source::Set(v.get, selector)));
+        return Ok(Variable::new(&name, Source::Set(v.get, selector)));
     }
     if let Some(v) = names::NAMES.iter().find(|v| v.token == token) {
         let (name, selector) = Variable::selected(v.token, selector)?;
-        return Some(Variable::new(&name, Source::Names(v.get, selector)));
+        return Ok(Variable::new(&name, Source::Names(v.get, selector)));
     }
     if let Some(v) = names::SINGLE.iter().find(|v| v.seclang && v.token == token) {
         return match selector {
-            S::None => Some(Variable::new(v.name, Source::Single(v.get))),
-            _ => None,
+            S::None => Ok(Variable::new(v.name, Source::Single(v.get))),
+            _ => Err(VariableError::Unknown),
         };
     }
     match token.as_str() {
         "RULE" => {
             let (name, selector) = Variable::selected(rule::RULE, selector)?;
-            Some(Variable::new(&name, Source::Rule(selector)))
+            Ok(Variable::new(&name, Source::Rule(selector)))
         }
 
         // Collections
-        "RESOURCE" => Some(persistent::variable(Persistent::Resource, selector)),
-        "IP" => Some(persistent::variable(Persistent::Ip, selector)),
-        "GLOBAL" => Some(persistent::variable(Persistent::Global, selector)),
-        "USER" => Some(persistent::variable(Persistent::User, selector)),
-        "SESSION" => Some(persistent::variable(Persistent::Session, selector)),
+        "RESOURCE" => persistent::variable(Persistent::Resource, selector),
+        "IP" => persistent::variable(Persistent::Ip, selector),
+        "GLOBAL" => persistent::variable(Persistent::Global, selector),
+        "USER" => persistent::variable(Persistent::User, selector),
+        "SESSION" => persistent::variable(Persistent::Session, selector),
         "TX" => {
             let (name, key) = match selector {
                 S::None => ("TX".to_string(), CollectionKey::All),
                 S::DictElement(e) => (format!("TX:{}", e), CollectionKey::Key),
-                S::Regexp(r) => (regex_name("TX", &r), CollectionKey::Regex(Regex::new_case(&r, true))),
+                S::Regexp(r) => (regex_name("TX", &r), CollectionKey::Regex(selector_regex(&r)?)),
                 S::Dynamic(m) => ("TX:dynamic".to_string(), CollectionKey::Dynamic(m)),
             };
-            Some(Variable::new(&name, Source::Tx(key)))
+            Ok(Variable::new(&name, Source::Tx(key)))
         }
 
         // `ENV` and `XML`: a regex selector is taken as a key.
         "ENV" => match selector {
-            S::None => Some(Variable::new("ENV", Source::Env)),
-            S::DictElement(e) | S::Regexp(e) => Some(Variable::new(&format!("ENV:{}", e), Source::Env)),
-            S::Dynamic(_) => None,
+            S::None => Ok(Variable::new("ENV", Source::Env)),
+            S::DictElement(e) | S::Regexp(e) => Ok(Variable::new(&format!("ENV:{}", e), Source::Env)),
+            S::Dynamic(_) => Err(VariableError::Unknown),
         },
         "XML" => match selector {
-            S::None => Some(Variable::new("XML", Source::XmlDocument)),
-            S::DictElement(e) | S::Regexp(e) => Some(Variable::new(&format!("XML:{}", e), Source::XmlPath)),
-            S::Dynamic(_) => None,
+            S::None => Ok(Variable::new("XML", Source::XmlDocument)),
+            S::DictElement(e) | S::Regexp(e) => Ok(Variable::new(&format!("XML:{}", e), Source::XmlPath)),
+            S::Dynamic(_) => Err(VariableError::Unknown),
         },
 
         "WEBAPPID" => match selector {
-            S::None => Some(Variable::new("WEBAPPID", Source::Computed(C::WebAppId))),
-            _ => None,
+            S::None => Ok(Variable::new("WEBAPPID", Source::Computed(C::WebAppId))),
+            _ => Err(VariableError::Unknown),
         },
 
         "DURATION" => computed(selector, C::Duration),
@@ -142,7 +170,7 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Option<Variable> 
 
         // `WEBSERVER_ERROR_LOG` is rejected by the parser ("not
         // supported by libModSecurity"); anything else is unknown.
-        _ => None,
+        _ => Err(VariableError::Unknown),
     }
 }
 
@@ -213,7 +241,7 @@ mod tests {
     }
 
     fn var(token: &str, sel: VariableSelector) -> Variable {
-        new_variable(token, sel).unwrap_or_else(|| panic!("no variable for {}", token))
+        new_variable(token, sel).unwrap_or_else(|e| panic!("no variable for {}: {e}", token))
     }
 
     fn sel_none() -> VariableSelector {
@@ -352,9 +380,9 @@ mod tests {
             let v = var(n, sel_re("^f"));
             assert_eq!(v.full_name(), format!("{}:regex(^f)", n));
             assert_eq!(v.regex().map(|r| r.pattern.as_str()), Some("^f"));
-            assert!(new_variable(n, sel_dyn("x")).is_none(), "{}", n);
+            assert!(new_variable(n, sel_dyn("x")).is_err(), "{}", n);
             // Case insensitive token.
-            assert!(new_variable(&n.to_lowercase(), sel_none()).is_some());
+            assert!(new_variable(&n.to_lowercase(), sel_none()).is_ok());
         }
     }
 
@@ -381,9 +409,9 @@ mod tests {
         for &(token, name) in SINGLES {
             let v = var(token, sel_none());
             assert_eq!(v.full_name(), name, "{}", token);
-            assert!(new_variable(token, sel_key("x")).is_none(), "{}", token);
-            assert!(new_variable(token, sel_re("x")).is_none(), "{}", token);
-            assert!(new_variable(token, sel_dyn("x")).is_none(), "{}", token);
+            assert!(new_variable(token, sel_key("x")).is_err(), "{}", token);
+            assert!(new_variable(token, sel_re("x")).is_err(), "{}", token);
+            assert!(new_variable(token, sel_dyn("x")).is_err(), "{}", token);
         }
         // The computed variables: named after the text as written.
         assert_eq!(var("time_hour", sel_none()).full_name(), "time_hour");
@@ -391,13 +419,13 @@ mod tests {
         assert_eq!(var("ENV", sel_none()).full_name(), "ENV");
         assert_eq!(var("ENV", sel_key("PATH")).full_name(), "ENV:PATH");
         assert_eq!(var("ENV", sel_re("PA")).full_name(), "ENV:PA");
-        assert!(new_variable("ENV", sel_dyn("x")).is_none());
+        assert!(new_variable("ENV", sel_dyn("x")).is_err());
         assert_eq!(var("XML", sel_none()).full_name(), "XML");
         assert_eq!(var("XML", sel_key("/a/b")).full_name(), "XML:/a/b");
-        assert!(new_variable("XML", sel_dyn("x")).is_none());
+        assert!(new_variable("XML", sel_dyn("x")).is_err());
         // Unknown / unsupported.
-        assert!(new_variable("WEBSERVER_ERROR_LOG", sel_none()).is_none());
-        assert!(new_variable("NOT_A_VARIABLE", sel_none()).is_none());
+        assert!(new_variable("WEBSERVER_ERROR_LOG", sel_none()).is_err());
+        assert!(new_variable("NOT_A_VARIABLE", sel_none()).is_err());
     }
 
     #[test]
@@ -644,5 +672,30 @@ mod tests {
         assert_eq!(time.0, "TIME");
         assert_eq!(time.1.len(), 8);
         assert_eq!(&time.1[2..3], ":");
+    }
+
+    /// A regex selector that does not compile refuses the configuration,
+    /// in every place a selector is written. (Such a regex used to match
+    /// nothing: `SecRule ARGS:/(/ ...` loaded and inspected no value.)
+    #[test]
+    fn invalid_selector_regexes_refuse_the_configuration() {
+        let refused = |conf: &str| {
+            let mut rules = RulesSet::new();
+            let error = rules.load(conf).expect_err(conf);
+            assert!(error.message().contains("Invalid regular expression: ("), "{conf}: {error}");
+        };
+        for target in
+            ["ARGS:/(/", "ARGS_NAMES:/(/", "REQUEST_HEADERS:/(/", "RULE:/(/", "TX:/(/", "IP:/(/", "ARGS|!ARGS:/(/"]
+        {
+            refused(&format!("SecRule {target} \"@rx x\" \"id:1,phase:1,pass\""));
+        }
+        refused("SecRule ARGS \"@rx x\" \"id:1,phase:1,pass,msg:'%{ARGS:/(/}'\"");
+        refused("SecRule ARGS \"@rx x\" \"id:1,phase:1,pass\"\nSecRuleUpdateTargetById 1 \"!ARGS:/(/\"");
+        refused("SecAuditLogRelevantStatus \"(\"");
+
+        // Valid ones load; ENV and XML take the text between the slashes as a key.
+        let mut rules = RulesSet::new();
+        rules.load("SecRule ARGS:/^a(b)?$/|!ARGS:/c+/|ENV:/(/|XML:/(/ \"@rx x\" \"id:1,phase:1,pass\"").unwrap();
+        assert_eq!(new_variable("ARGS", sel_re("(")).unwrap_err(), VariableError::InvalidRegex("(".into()));
     }
 }
