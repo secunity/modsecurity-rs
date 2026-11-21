@@ -94,11 +94,11 @@ mod tests {
 
         run(&RequestBodyProcessorJSON::new("ctl"), &mut t);
         assert_eq!(t.body.request_body_processor, RequestBodyType::JSONRequestBody);
-        assert_eq!(t.vars.reqbody_processor.evaluate(), b"JSON");
+        assert_eq!(t.vars.reqbody_processor.value(), b"JSON");
         run(&RequestBodyProcessorXML::new("ctl"), &mut t);
         assert_eq!(t.body.request_body_processor, RequestBodyType::XMLRequestBody);
         run(&RequestBodyProcessorURLENCODED::new("ctl"), &mut t);
         assert_eq!(t.body.request_body_type, RequestBodyType::WWWFormUrlEncoded);
-        assert_eq!(t.vars.reqbody_processor.evaluate(), b"URLENCODED");
+        assert_eq!(t.vars.reqbody_processor.value(), b"URLENCODED");
     }
 }

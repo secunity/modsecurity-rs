@@ -6,6 +6,7 @@
 use super::TransactionAnchoredVariables;
 use crate::rules_set::RulesSet;
 use crate::utils::string::ssplit_pair;
+use crate::variables::variable_origin::VariableOrigin;
 use modsecurity_transformations::url::urldecode_nonstrict_inplace;
 
 pub(super) struct ArgumentWriter<'a> {
@@ -54,8 +55,11 @@ impl ArgumentWriter<'_> {
         }
         *self.combined_size += key.len() + value.len();
         let size = self.combined_size.to_string();
-        self.vars.args_combined_size.set_with_len(size.as_bytes(), offset - key.len() - 1, key.len());
-        self.vars.args_combined_size.set_with_len(size.as_bytes(), offset, value.len());
+        // The size comes from every argument: each adds its name and value
+        // to the origins.
+        let origins =
+            [VariableOrigin::new(key.len(), offset - key.len() - 1), VariableOrigin::new(value.len(), offset)];
+        self.vars.args_combined_size.set_adding_origins(size.as_bytes(), origins);
         true
     }
 
@@ -107,9 +111,9 @@ mod tests {
         assert_eq!(t.vars.args_post.resolve_first(b"bare").unwrap(), b"");
         assert_eq!(t.vars.args_post.len(), 2);
         assert!(t.vars.args_get.is_empty());
-        assert_eq!(t.vars.url_encoded_error.value, b"1");
-        assert_eq!(t.vars.url_encoded_error.offset, 77);
-        assert_eq!(t.vars.args_combined_size.value, b"8");
+        assert_eq!(t.vars.url_encoded_error.value(), b"1");
+        assert_eq!(t.vars.url_encoded_error.offset(), 77);
+        assert_eq!(t.vars.args_combined_size.value(), b"8");
         let mut values = Vec::new();
         t.vars.args_combined_size.evaluate_into(&mut values);
         assert_eq!(
@@ -136,7 +140,7 @@ mod tests {
             let rules = new_rules();
             let mut t = Transaction::new(&ms, &rules, None);
             t.extract_arguments("GET", body, 0);
-            assert_eq!(t.vars.url_encoded_error.value == b"1", error, "{body:?}");
+            assert_eq!(t.vars.url_encoded_error.value() == b"1", error, "{body:?}");
         }
     }
 

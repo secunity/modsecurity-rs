@@ -78,10 +78,10 @@ BINARYDATA\r\n\
         assert_eq!(t.vars.files.resolve_first(b"image").unwrap(), b"image.jpg");
         assert_eq!(t.vars.files_sizes.resolve_first(b"image").unwrap(), b"10");
         assert_eq!(t.vars.files_names.resolve_first(b"image").unwrap(), b"image");
-        assert_eq!(t.vars.multipart_strict_error.value, b"0");
+        assert_eq!(t.vars.multipart_strict_error.value(), b"0");
         // 2: boundaries were seen and the final one matched
-        assert_eq!(t.vars.multipart_unmatched_boundary.value, b"2");
-        assert_eq!(t.vars.reqbody_error.value, b"0");
+        assert_eq!(t.vars.multipart_unmatched_boundary.value(), b"2");
+        assert_eq!(t.vars.reqbody_error.value(), b"0");
         let l = log(&rules);
         assert!(l.iter().any(|m| m
             == "Multipart: Added file part to the list: name \"image\" file name \"image.jpg\" (offset 258, length 10)"));
@@ -95,8 +95,8 @@ BINARYDATA\r\n\
         let ct = ct("0000");
         let body = b"--0000\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nb\r\n";
         let t = run(&ms, &rules, &[(b"Content-Type", &ct)], body, None);
-        assert_eq!(t.vars.reqbody_error.value, b"1");
-        assert_eq!(t.vars.reqbody_error_msg.value, b"Multipart parsing error: Multipart: Final boundary missing.");
+        assert_eq!(t.vars.reqbody_error.value(), b"1");
+        assert_eq!(t.vars.reqbody_error_msg.value(), b"Multipart parsing error: Multipart: Final boundary missing.");
     }
 
     #[test]
@@ -116,7 +116,7 @@ BINARYDATA\r\n\
             let rules = new_rules();
             let t = run(&ms, &rules, &[(b"Content-Type", header)], b"--a\r\n", None);
             assert_eq!(
-                String::from_utf8_lossy(&t.vars.reqbody_error_msg.value),
+                String::from_utf8_lossy(t.vars.reqbody_error_msg.value()),
                 format!("Multipart parsing error: {}", err),
                 "{}",
                 String::from_utf8_lossy(header)
@@ -133,7 +133,7 @@ BINARYDATA\r\n\
         // still has invalid characters
         let t = run(&ms, &rules, &[(b"Content-Type", header)], NORMAL, None);
         assert_eq!(
-            t.vars.reqbody_error_msg.value,
+            t.vars.reqbody_error_msg.value(),
             b"Multipart parsing error: Multipart: Invalid boundary in C-T (characters)."
         );
 
@@ -141,10 +141,10 @@ BINARYDATA\r\n\
         let rules = new_rules();
         let header = b"multipart/form-data boundary =0000;charset=utf-8";
         let t = run(&ms, &rules, &[(b"Content-Type", header)], NORMAL, None);
-        assert_eq!(t.vars.reqbody_error.value, b"0");
-        assert_eq!(t.vars.multipart_missing_semicolon.value, b"1");
-        assert_eq!(t.vars.multipart_boundary_white_space.value, b"1");
-        assert_eq!(t.vars.multipart_strict_error.value, b"1");
+        assert_eq!(t.vars.reqbody_error.value(), b"0");
+        assert_eq!(t.vars.multipart_missing_semicolon.value(), b"1");
+        assert_eq!(t.vars.multipart_boundary_white_space.value(), b"1");
+        assert_eq!(t.vars.multipart_strict_error.value(), b"1");
         assert!(log(&rules).iter().any(|m| m == "Multipart: Invalid parameter after boundary in C-T (tolerated)."));
     }
 
@@ -164,12 +164,12 @@ Content-Disposition: form-data;\r\n\
 y\r\n\
 --0000--\r\n";
         let t = run(&ms, &rules, &[(b"Content-Type", &ct)], body, None);
-        assert_eq!(t.vars.reqbody_error.value, b"0", "{:?}", log(&rules));
+        assert_eq!(t.vars.reqbody_error.value(), b"0", "{:?}", log(&rules));
         assert_eq!(t.vars.files.resolve_first(b"a").unwrap(), b"na me.txt");
         assert_eq!(t.vars.multipart_file_name_charset.resolve_first(b"a").unwrap(), b"utf-8");
         assert_eq!(t.vars.multipart_file_name_language.resolve_first(b"a").unwrap(), b"en");
-        assert_eq!(t.vars.multipart_invalid_quoting.value, b"1");
-        assert_eq!(t.vars.multipart_header_folding.value, b"1");
+        assert_eq!(t.vars.multipart_invalid_quoting.value(), b"1");
+        assert_eq!(t.vars.multipart_header_folding.value(), b"1");
         assert_eq!(t.vars.args.resolve_first(b"b\"c").unwrap(), b"y");
         // the part headers, recorded per part name
         let mut l = Vec::new();
@@ -193,8 +193,8 @@ y\r\n\
         // colon, and the final boundary, where data should begin, too
         assert!(l.iter().any(|m| m == "Multipart: Invalid part header (colon missing): x\r\n"));
         assert!(l.iter().any(|m| m == "Multipart: Invalid part (data contains boundary)"));
-        assert_eq!(t.vars.reqbody_error_msg.value, b"Multipart parsing error: Multipart: Final boundary missing.");
-        assert_eq!(t.vars.multipart_invalid_part.value, b"1");
+        assert_eq!(t.vars.reqbody_error_msg.value(), b"Multipart parsing error: Multipart: Final boundary missing.");
+        assert_eq!(t.vars.multipart_invalid_part.value(), b"1");
     }
 
     #[test]
@@ -204,8 +204,8 @@ y\r\n\
         let ct = ct("0000");
         let body = b"junk\r\n--0000\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nb\r\n--0000--\r\nafter";
         let t = run(&ms, &rules, &[(b"Content-Type", &ct)], body, None);
-        assert_eq!(t.vars.multipart_data_before.value, b"1");
-        assert_eq!(t.vars.multipart_data_after.value, b"1");
+        assert_eq!(t.vars.multipart_data_before.value(), b"1");
+        assert_eq!(t.vars.multipart_data_after.value(), b"1");
         assert_eq!(t.vars.args.resolve_first(b"a").unwrap(), b"b");
         let l = log(&rules);
         assert!(l.iter().any(|m| m == "Multipart: Ignoring data after last boundary (5bytes left)"));
@@ -218,9 +218,9 @@ y\r\n\
         let ct = ct("0000");
         let body = b"--0000\nContent-Disposition: form-data; name=\"a\"\n\nb --0000x\n--0000--\n";
         let t = run(&ms, &rules, &[(b"Content-Type", &ct)], body, None);
-        assert_eq!(t.vars.multipart_lf_line.value, b"1");
-        assert_eq!(t.vars.multipart_crlf_lf_lines.value, b"0");
-        assert_eq!(t.vars.multipart_unmatched_boundary.value, b"2");
+        assert_eq!(t.vars.multipart_lf_line.value(), b"1");
+        assert_eq!(t.vars.multipart_crlf_lf_lines.value(), b"0");
+        assert_eq!(t.vars.multipart_unmatched_boundary.value(), b"2");
         assert_eq!(t.vars.args.resolve_first(b"a").unwrap(), b"b --0000x");
     }
 
@@ -242,7 +242,7 @@ y\r\n\
             assert!(name.contains("-file-"));
             assert_eq!(std::fs::read(&name).unwrap(), b"BINARYDATA");
             assert_eq!(t.vars.files_tmp_content.resolve_first(b"image").unwrap(), b"BINARYDATA");
-            assert_eq!(t.vars.files_combined_size.value, b"10");
+            assert_eq!(t.vars.files_combined_size.value(), b"10");
             use std::os::unix::fs::PermissionsExt;
             assert_eq!(std::fs::metadata(&name).unwrap().permissions().mode() & 0o777, 0o600);
             let l = log(&rules);
@@ -280,12 +280,12 @@ Content-Disposition: form-data; name=\"f2\"; filename=\"2.txt\"\r\n\r\ntwo!\r\n\
 --0000--\r\n";
         let t = run(&ms, &rules, &[(b"Content-Type", &ct)], body, None);
         assert_eq!(
-            t.vars.reqbody_error_msg.value,
+            t.vars.reqbody_error_msg.value(),
             b"Multipart parsing error: Multipart: Upload file limit exceeded 1. Use SecUploadFileLimit to change the limit."
         );
         assert_eq!(t.vars.files_sizes.resolve_first(b"f2").unwrap(), b"4");
         assert_eq!(t.vars.files_tmp_names.len(), 1);
-        assert_eq!(t.vars.multipart_strict_error.value, b"1");
+        assert_eq!(t.vars.multipart_strict_error.value(), b"1");
         drop(t);
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -487,7 +487,7 @@ mod regression_dump {
                     for v in vars.iter().rev() {
                         println!("ARG {}={}", String::from_utf8_lossy(v.key()), String::from_utf8_lossy(v.value()));
                     }
-                    println!("REQBODY_ERROR_MSG {}", String::from_utf8_lossy(&t.vars.reqbody_error_msg.value));
+                    println!("REQBODY_ERROR_MSG {}", String::from_utf8_lossy(t.vars.reqbody_error_msg.value()));
                 }
                 for m in log(&rules) {
                     if PREFIXES.iter().any(|p| m.starts_with(p)) {

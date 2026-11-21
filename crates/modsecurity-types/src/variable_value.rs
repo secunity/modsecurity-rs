@@ -100,6 +100,13 @@ impl VariableValue {
         Arc::make_mut(&mut self.0).origin.push(origin);
     }
 
+    /// Removes the origins (for a value that is replaced).
+    pub fn clear_origins(&mut self) {
+        if !self.0.origin.is_empty() {
+            Arc::make_mut(&mut self.0).origin.clear();
+        }
+    }
+
     pub fn origin(&self) -> &Origins {
         &self.0.origin
     }

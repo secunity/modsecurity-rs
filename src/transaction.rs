@@ -613,7 +613,7 @@ impl<'a> Transaction<'a> {
             let basename = path_info[o + 1..].to_vec();
             self.vars.request_basename.set(&basename, off + method.len() + 1 + o + 1);
         }
-        self.vars.offset = self.vars.request_line.value.len();
+        self.vars.offset = self.vars.request_line.value().len();
 
         let mut parsed_uri = self.http.uri_decoded.clone();
         // The more popular case is without domain
@@ -632,9 +632,9 @@ impl<'a> Transaction<'a> {
         self.vars.request_uri.set_with_len(&parsed_uri, method.len() + 1, uri_s.len());
         self.vars.request_uri_raw.set(uri, method.len() + 1);
 
-        if !self.vars.query_string.value.is_empty() {
-            let qs = self.vars.query_string.value.clone();
-            let qo = self.vars.query_string.offset;
+        if !self.vars.query_string.value().is_empty() {
+            let qs = self.vars.query_string.value().to_vec();
+            let qo = self.vars.query_string.offset();
             self.extract_arguments("GET", &qs, qo);
         }
 
@@ -729,7 +729,7 @@ impl<'a> Transaction<'a> {
             return;
         }
 
-        if self.vars.inbound_data_error.value.is_empty() {
+        if self.vars.inbound_data_error.value().is_empty() {
             self.vars.inbound_data_error.set(b"0", 0);
         }
 
@@ -846,7 +846,7 @@ impl<'a> Transaction<'a> {
 
     fn response_type_is_inspected(&self) -> bool {
         let bi = &self.rules.properties.response_body_type_to_be_inspected.value;
-        let ct = String::from_utf8_lossy(&self.vars.response_content_type.value.to_ascii_lowercase()).into_owned();
+        let ct = String::from_utf8_lossy(&self.vars.response_content_type.value().to_ascii_lowercase()).into_owned();
         bi.contains(&ct)
     }
 
@@ -876,7 +876,7 @@ impl<'a> Transaction<'a> {
                 self,
                 5,
                 "Response Content-Type is {}. It is not marked to be inspected.",
-                String::from_utf8_lossy(&self.vars.response_content_type.value)
+                String::from_utf8_lossy(self.vars.response_content_type.value())
             );
             let mut valid = String::new();
             for i in props.response_body_type_to_be_inspected.value.iter() {
@@ -886,7 +886,7 @@ impl<'a> Transaction<'a> {
             crate::ms_dbg!(self, 8, "Content-Type(s) marked to be inspected: {}", valid);
             return;
         }
-        if self.vars.outbound_data_error.value.is_empty() {
+        if self.vars.outbound_data_error.value().is_empty() {
             let off = self.vars.offset;
             self.vars.outbound_data_error.set(b"0", off);
         }
@@ -909,7 +909,7 @@ impl<'a> Transaction<'a> {
                 self,
                 4,
                 "Not appending response body. Response Content-Type is {}. It is not marked to be inspected.",
-                String::from_utf8_lossy(&self.vars.response_content_type.value)
+                String::from_utf8_lossy(self.vars.response_content_type.value())
             );
             return true;
         }

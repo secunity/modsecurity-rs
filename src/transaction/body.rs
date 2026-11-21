@@ -257,7 +257,15 @@ impl multipart::Context for Transaction<'_> {
     }
 
     fn set_with_len(&mut self, flag: Flag, value: &[u8], offset: usize, len: usize) {
-        self.flag(flag).set_with_len(value, offset, len);
+        match flag {
+            // The combined size comes from every file: each adds its
+            // origin.
+            Flag::FilesCombinedSize => {
+                let origin = crate::variables::variable_origin::VariableOrigin::new(len, offset);
+                self.vars.files_combined_size.set_adding_origins(value, [origin]);
+            }
+            _ => self.flag(flag).set_with_len(value, offset, len),
+        }
     }
 
     fn add(&mut self, entries: Entries, key: &[u8], value: &[u8], offset: usize) {

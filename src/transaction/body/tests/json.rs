@@ -23,7 +23,7 @@ mod tests {
             .collect();
         v.sort();
         let _ = log(&rules);
-        (v, String::from_utf8_lossy(&t.vars.reqbody_error_msg.value).into_owned())
+        (v, String::from_utf8_lossy(t.vars.reqbody_error_msg.value()).into_owned())
     }
 
     fn pairs(p: &[(&str, &str)]) -> Vec<(String, String)> {
@@ -99,10 +99,10 @@ mod tests {
             body.as_bytes(),
             Some(RequestBodyType::JSONRequestBody),
         );
-        assert_eq!(t.vars.reqbody_error.value, b"1");
-        assert_eq!(t.vars.reqbody_processor_error.value, b"1");
+        assert_eq!(t.vars.reqbody_error.value(), b"1");
+        assert_eq!(t.vars.reqbody_processor_error.value(), b"1");
         assert_eq!(
-            t.vars.reqbody_processor_error_msg.value,
+            t.vars.reqbody_processor_error_msg.value(),
             b"JSON parsing error: parse error: client cancelled parse via callback return value\n. Argument names too long"
         );
         assert!(t.vars.args.len() < 10_000);
@@ -113,16 +113,16 @@ mod tests {
         let ms = ModSecurity::new();
         let rules = new_rules();
         let mut t = run(&ms, &rules, &[], br#"{"a":[1,2"#, Some(RequestBodyType::JSONRequestBody));
-        let error = t.vars.reqbody_error_msg.value.clone();
+        let error = t.vars.reqbody_error_msg.value().to_vec();
         assert_eq!(error, b"JSON parsing error: parse error: premature EOF\n");
         t.http.request_body = b"[3]".to_vec();
         t.process_request_body();
         assert_eq!(t.vars.args.resolve_first(b"json.a.array_2.array_0").unwrap(), b"3");
-        assert_eq!(t.vars.reqbody_error.value, b"0");
+        assert_eq!(t.vars.reqbody_error.value(), b"0");
         // Successful processing clears the flags, but retains earlier text.
-        assert_eq!(t.vars.reqbody_error_msg.value, error);
+        assert_eq!(t.vars.reqbody_error_msg.value(), error);
         assert_eq!(t.http.request_body, b"[3]");
-        assert_eq!(t.vars.request_body.value, b"[3]");
+        assert_eq!(t.vars.request_body.value(), b"[3]");
     }
 
     #[test]
@@ -131,14 +131,14 @@ mod tests {
         let mut rules = new_rules();
         rules.properties.settings.request_body_json_depth_limit = Some(0);
         let mut t = run(&ms, &rules, &[], b"[]", Some(RequestBodyType::JSONRequestBody));
-        assert_eq!(t.vars.reqbody_error.value, b"1");
+        assert_eq!(t.vars.reqbody_error.value(), b"1");
         t.http.request_body = b"x".to_vec();
         t.process_request_body();
         let error = b"JSON parsing error: lexical error: invalid char in json text.\n. Parsing depth limit exceeded";
-        assert_eq!(t.vars.reqbody_error_msg.value, error);
+        assert_eq!(t.vars.reqbody_error_msg.value(), error);
         t.http.request_body.clear();
         t.process_request_body();
-        assert_eq!(t.vars.reqbody_error.value, b"0");
-        assert_eq!(t.vars.reqbody_error_msg.value, error);
+        assert_eq!(t.vars.reqbody_error.value(), b"0");
+        assert_eq!(t.vars.reqbody_error_msg.value(), error);
     }
 }

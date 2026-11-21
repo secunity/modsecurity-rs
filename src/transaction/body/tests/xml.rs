@@ -45,7 +45,7 @@ mod tests {
         let ms = ModSecurity::new();
         let rules = new_rules();
         let t = xml(&ms, &rules, br#"<a xmlns:p="http://x/ns"><p:b>1</p:b><p:b>2</p:b><c>3</c></a>"#);
-        assert_eq!(t.vars.reqbody_error.value, b"0");
+        assert_eq!(t.vars.reqbody_error.value(), b"0");
         assert_eq!(xpath(&t, "/a/p:b", Some(("p", "http://x/ns"))), ["1", "2"]);
         assert_eq!(xpath(&t, "/a/c", None), ["3"]);
         assert!(xpath(&t, "count(/a/c)", None).is_empty());
@@ -68,8 +68,8 @@ mod tests {
         let ms = ModSecurity::new();
         let rules = new_rules();
         let t = xml(&ms, &rules, b"<a><b></a>");
-        assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document.");
-        assert_eq!(t.vars.reqbody_processor_error.value, b"1");
+        assert_eq!(t.vars.reqbody_error_msg.value(), b"XML parsing error: XML: Failed to parse document.");
+        assert_eq!(t.vars.reqbody_processor_error.value(), b"1");
         // the (partial) document is kept
         assert!(t.body.xml.as_ref().unwrap().document().is_some());
         assert!(!t.body.xml.as_ref().unwrap().well_formed());
@@ -101,7 +101,7 @@ mod tests {
                     ("xml.a.e".to_string(), "".to_string()),
                 ]
             );
-            assert_eq!(t.vars.reqbody_error.value, b"0");
+            assert_eq!(t.vars.reqbody_error.value(), b"0");
             // OnlyArgs: no document
             assert_eq!(t.body.xml.as_ref().unwrap().document().is_some(), mode == Some(ParseXmlIntoArgs::On));
         }
@@ -113,7 +113,7 @@ mod tests {
         rules.properties.settings.arguments_limit = Some(2);
         let t = xml(&ms, &rules, b"<a><b>1</b><b>2</b><b>3</b><b>4</b></a>");
         assert_eq!(t.vars.args.len(), 2);
-        assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document for ARGS.");
+        assert_eq!(t.vars.reqbody_error_msg.value(), b"XML parsing error: XML: Failed to parse document for ARGS.");
     }
 
     /// Long element names repeated in the name of every leaf below them:
@@ -127,9 +127,9 @@ mod tests {
         let mut rules = new_rules();
         rules.properties.settings.sec_xml_parse_xml_into_args = Some(ParseXmlIntoArgs::OnlyArgs);
         let t = xml(&ms, &rules, body.as_bytes());
-        assert_eq!(t.vars.reqbody_error.value, b"1");
-        assert_eq!(t.vars.reqbody_processor_error.value, b"1");
-        assert_eq!(t.vars.reqbody_processor_error_msg.value, b"XML parsing error: XML: Argument names too long.");
+        assert_eq!(t.vars.reqbody_error.value(), b"1");
+        assert_eq!(t.vars.reqbody_processor_error.value(), b"1");
+        assert_eq!(t.vars.reqbody_processor_error_msg.value(), b"XML parsing error: XML: Argument names too long.");
         assert!(t.vars.args.len() < 10_000);
         assert!(log(&rules).iter().any(|m| m == "XML: Argument names too long."));
     }
@@ -149,7 +149,7 @@ mod tests {
             // (The SAX handler that parses into ARGS has no entity
             // callbacks, so the document fails there.)
             let t = xml(&ms, &rules, body);
-            assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document for ARGS.");
+            assert_eq!(t.vars.reqbody_error_msg.value(), b"XML parsing error: XML: Failed to parse document for ARGS.");
         }
         // Abandoned: the transaction ends before the body is complete.
         let ms = ModSecurity::new();

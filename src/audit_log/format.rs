@@ -27,7 +27,7 @@ pub(crate) fn native_index_line(t: &Transaction<'_>, filename: &str, size: usize
     ss.extend_from_slice(tstr.as_bytes());
     ss.push(b' ');
     ss.push(b'"');
-    ss.extend_from_slice(&dash_if_empty(Some(t.vars.request_method.evaluate())));
+    ss.extend_from_slice(&dash_if_empty(Some(t.vars.request_method.value())));
     ss.push(b' ');
     ss.extend_from_slice(&t.http.uri);
     ss.push(b' ');
@@ -82,7 +82,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
     if parts.contains(Parts::B) {
         section(&mut a, "B");
         a.extend_from_slice(p);
-        a.extend_from_slice(&dash_if_empty(Some(t.vars.request_method.evaluate())));
+        a.extend_from_slice(&dash_if_empty(Some(t.vars.request_method.value())));
         a.push(b' ');
         a.extend_from_slice(&t.http.uri);
         a.extend_from_slice(b" HTTP/");
@@ -187,7 +187,7 @@ pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
     // request
     g.string(b"request");
     g.map_open();
-    g.add("method", &dash_if_empty(Some(t.vars.request_method.evaluate())));
+    g.add("method", &dash_if_empty(Some(t.vars.request_method.value())));
     g.add("http_version", t.http.http_version.as_bytes());
     g.add("hostname", t.http.request_host_name.as_bytes());
     g.add("uri", &t.http.uri);
