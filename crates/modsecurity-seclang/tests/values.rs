@@ -4,7 +4,7 @@
 //! directives with a grammar of their own (`SecRuleUpdate...`,
 //! `SecRuleScript`).
 
-use modsecurity_seclang::value::{self, Class, Extract, Pattern, Refused};
+use modsecurity_seclang::value::{self, Class, Part, Pattern, Refused};
 use modsecurity_seclang::{Directive, Source, parse_statement};
 
 /// How the value of a setting is written, as the engine declares it for
@@ -39,33 +39,22 @@ enum Form {
 /// keyword), or why it is refused.
 fn setting(form: Form, rest: &str) -> Result<String, String> {
     use Class::*;
-    use Extract::*;
+    use Part::*;
     use Pattern::*;
-    let patterns: &[(Pattern, Extract)] = match form {
-        Form::Path => &[(Sep(Path), SanFindSep), (SepQuoted(Path), SanFindSep)],
-        Form::LogPath => &[(Sep(Path), FindSep), (SepQuoted(Path), SanFindSep)],
-        Form::Number => &[(Sep(Number), FindSep)],
-        Form::Text => &[(Sep(FreeTextNewLine), FindSep)],
-        Form::CleanText => &[(Sep(FreeTextNewLine), SanFindSep), (SepQuoted(FreeTextNewLine), SanFindSep)],
-        Form::IdList => &[(Sep(FreeTextNewLine), SanFindSep)],
-        Form::Marker => &[(SepQuoted(Word), FindSep), (Sep(Word), FindSep)],
-        Form::Include => &[(Sep(Path), FindSep), (SepQuoted(Path), FindSep)],
-        Form::QuotedText => &[(SepQuoted(FreeText), Strchr2)],
-        Form::WebAppId => &[(SepQuoted(FreeText), SanStrchr2), (Sep(FreeTextNewLine), SanFindSep)],
+    let forms: &[(Pattern, Part)] = match form {
+        Form::Path => &[(Sep(Path), Bare), (SepQuoted(Path), Bare)],
+        Form::LogPath => &[(Sep(Path), Written), (SepQuoted(Path), Bare)],
+        Form::Number => &[(Sep(Number), Written)],
+        Form::Text => &[(Sep(FreeTextNewLine), Written)],
+        Form::CleanText => &[(Sep(FreeTextNewLine), Bare), (SepQuoted(FreeTextNewLine), Bare)],
+        Form::IdList => &[(Sep(FreeTextNewLine), Bare)],
+        Form::Marker => &[(SepQuoted(Word), Unquoted), (Sep(Word), Unquoted)],
+        Form::Include => &[(Sep(Path), AfterWhiteSpace), (SepQuoted(Path), AfterWhiteSpace)],
+        Form::QuotedText => &[(SepQuoted(FreeText), AfterQuote)],
+        Form::WebAppId => &[(SepQuoted(FreeText), BareAfterQuote), (Sep(FreeTextNewLine), Bare)],
     };
-    match value::read("SecDirective", rest.as_bytes(), patterns) {
-        Ok(v) => {
-            let text = String::from_utf8(v.bytes).unwrap();
-            Ok(match form {
-                Form::Marker => value::remove_brackets_if_needed(text),
-                Form::Include => {
-                    let token = std::str::from_utf8(v.token).unwrap();
-                    let t = token.trim_start_matches([' ', '\t']);
-                    if t.starts_with('"') { t[1..t.len() - 1].to_string() } else { t.to_string() }
-                }
-                _ => text,
-            })
-        }
+    match value::read(rest.as_bytes(), forms) {
+        Ok(v) => Ok(String::from_utf8(v.text.to_vec()).unwrap()),
         Err(Refused::NotAValue(t)) => Err(format!("not a value: {}", String::from_utf8_lossy(t))),
         Err(Refused::Trailing(t)) => Err(format!("trailing: {}", String::from_utf8_lossy(t))),
     }
@@ -79,14 +68,10 @@ fn directive_value(line: &str) -> String {
     let v = match statement.unwrap().directive {
         Directive::UpdateTarget { selector, .. } => selector,
         Directive::UpdateAction { id, .. } => id,
-        // The engine takes an unquoted path as written (and refuses it
-        // unless it is made of the characters of a path).
-        Directive::Script { path, .. } if !path.quoted => return path.text.to_string(),
-        Directive::Script { path, .. } => return value::sanitize(format!("\"{}\"", path.text)),
+        Directive::Script { path, .. } => path,
         d => panic!("not a directive with a value: {d:?}"),
     };
-    let text = if v.quoted { format!("{}\"{}\"", v.lead, v.text) } else { format!("{}{}", v.lead, v.text) };
-    value::sanitize(text)
+    v.text.to_string()
 }
 
 fn ok(s: &str) -> Result<String, String> {

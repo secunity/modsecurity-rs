@@ -3,15 +3,13 @@
 //! rules/*.conf`).
 //!
 //! [`directive`] has one entry per directive: how its value is written
-//! (the patterns of the `modsecurity-seclang` crate's `value` module, or a
+//! (the forms of the `modsecurity-seclang` crate's `value` module, or a
 //! choice of words) and what it does.
 
 use crate::audit_log::{AuditLogFormat, AuditLogStatus, AuditLogType};
 use crate::parser::build::{Builder, Failed, Res, load};
 use crate::parser::syntax;
-use crate::parser::syntax::value::{
-    self, Class::*, Extract, Extract::*, Pattern, Pattern::*, Refused, remove_brackets_if_needed,
-};
+use crate::parser::syntax::value::{self, Class::*, Part, Part::*, Pattern, Pattern::*, Refused};
 use crate::rules_set::properties::{
     BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
     parse_octal_mode,
@@ -21,19 +19,14 @@ use crate::utils::string::{parse_digits, ssplit};
 use crate::utils::system::{expand_env, find_resource};
 
 /// The value of a setting directive, as its effect gets it.
-struct Given<'a> {
-    /// The value taken from `token`; for a choice of words, the word
-    /// chosen.
-    bytes: Vec<u8>,
-    /// `bytes` as text.
+struct Given {
+    /// The value; for a choice of words, the word chosen.
     text: String,
-    /// The text after the keyword that the value was read from.
-    token: &'a [u8],
-    /// Which of the directive's patterns the value was written as.
-    pattern: usize,
+    /// Which of the directive's forms the value was written in.
+    form: usize,
 }
 
-impl Given<'_> {
+impl Given {
     /// Whether the word chosen is `word`.
     fn is(&self, word: &str) -> bool {
         self.text.eq_ignore_ascii_case(word)
@@ -42,14 +35,14 @@ impl Given<'_> {
 
 /// How the value of a directive is written.
 enum Form {
-    /// In one of these ways (their order breaks ties).
-    Value(&'static [(Pattern, Extract)]),
+    /// In one of these forms (their order breaks ties).
+    Value(&'static [(Pattern, Part)]),
     /// One of these words (case-insensitive); none for a directive without
     /// a value.
     Word(&'static [&'static str]),
 }
 
-type Apply = fn(&mut Builder<'_, '_>, &Given<'_>) -> Res<()>;
+type Apply = fn(&mut Builder<'_, '_>, &Given) -> Res<()>;
 
 /// What a directive does with its value.
 enum Effect {
@@ -66,20 +59,19 @@ struct Directive {
 }
 
 const ON_OFF: &[&str] = &["On", "Off"];
-const PATH: &[(Pattern, Extract)] = &[(Sep(Path), SanFindSep), (SepQuoted(Path), SanFindSep)];
-const NUMBER: &[(Pattern, Extract)] = &[(Sep(Number), FindSep)];
-const FREE_TEXT_LINE: &[(Pattern, Extract)] = &[(Sep(FreeTextNewLine), FindSep)];
-const FREE_TEXT_LINE_SAN: &[(Pattern, Extract)] =
-    &[(Sep(FreeTextNewLine), SanFindSep), (SepQuoted(FreeTextNewLine), SanFindSep)];
+const PATH: &[(Pattern, Part)] = &[(Sep(Path), Bare), (SepQuoted(Path), Bare)];
+const NUMBER: &[(Pattern, Part)] = &[(Sep(Number), Written)];
+const FREE_TEXT_LINE: &[(Pattern, Part)] = &[(Sep(FreeTextNewLine), Written)];
+const FREE_TEXT_LINE_BARE: &[(Pattern, Part)] = &[(Sep(FreeTextNewLine), Bare), (SepQuoted(FreeTextNewLine), Bare)];
 /// Text right after the keyword.
-const DIRECT: &[(Pattern, Extract)] = &[(Direct(FreeTextNewLine), FindSep)];
-const QUOTED_TEXT: &[(Pattern, Extract)] = &[(SepQuoted(FreeText), Strchr2)];
+const DIRECT: &[(Pattern, Part)] = &[(Direct(FreeTextNewLine), Written)];
+const QUOTED_TEXT: &[(Pattern, Part)] = &[(SepQuoted(FreeText), AfterQuote)];
 /// A directive that takes no value.
 const NOTHING: Form = Form::Word(&[]);
 
 /// A directive with a value.
-fn value(patterns: &'static [(Pattern, Extract)], apply: Apply) -> Option<Directive> {
-    Some(Directive { form: Form::Value(patterns), effect: Effect::Apply(apply) })
+fn value(forms: &'static [(Pattern, Part)], apply: Apply) -> Option<Directive> {
+    Some(Directive { form: Form::Value(forms), effect: Effect::Apply(apply) })
 }
 
 /// A directive with a choice of words.
@@ -87,8 +79,8 @@ fn word(words: &'static [&'static str], apply: Apply) -> Option<Directive> {
     Some(Directive { form: Form::Word(words), effect: Effect::Apply(apply) })
 }
 
-fn ignored(patterns: &'static [(Pattern, Extract)]) -> Option<Directive> {
-    Some(Directive { form: Form::Value(patterns), effect: Effect::Ignored })
+fn ignored(forms: &'static [(Pattern, Part)]) -> Option<Directive> {
+    Some(Directive { form: Form::Value(forms), effect: Effect::Ignored })
 }
 
 fn unsupported(form: Form, message: &'static str) -> Option<Directive> {
@@ -96,11 +88,11 @@ fn unsupported(form: Form, message: &'static str) -> Option<Directive> {
 }
 
 /// A switch that can only be off: `On` is rejected with `message`.
-fn only_off(b: &mut Builder<'_, '_>, v: &Given<'_>, message: &str) -> Res<()> {
+fn only_off(b: &mut Builder<'_, '_>, v: &Given, message: &str) -> Res<()> {
     if v.is("on") { b.fail(message) } else { Ok(()) }
 }
 
-fn body_limit_action(v: &Given<'_>) -> BodyLimitAction {
+fn body_limit_action(v: &Given) -> BodyLimitAction {
     if v.is("processpartial") { BodyLimitAction::ProcessPartial } else { BodyLimitAction::Reject }
 }
 
@@ -118,23 +110,23 @@ fn directive(keyword: &str) -> Option<Directive> {
             });
             Ok(())
         }),
-        "secauditlog" => value(&[(Sep(Path), FindSep), (SepQuoted(Path), SanFindSep)], |b, v| {
+        "secauditlog" => value(&[(Sep(Path), Written), (SepQuoted(Path), Bare)], |b, v| {
             b.driver.properties.audit_log.set_file_path1(&v.text);
             Ok(())
         }),
-        "secauditlog2" => value(&[(Sep(Path), FindSep)], |b, v| {
+        "secauditlog2" => value(&[(Sep(Path), Written)], |b, v| {
             b.driver.properties.audit_log.set_file_path2(&v.text);
             Ok(())
         }),
-        "secauditlogdirmode" => value(&[(Sep(Number), SanFindSep), (SepQuoted(Number), SanFindSep)], |b, v| {
-            match parse_octal_mode(&v.text) {
+        "secauditlogdirmode" => {
+            value(&[(Sep(Number), Bare), (SepQuoted(Number), Bare)], |b, v| match parse_octal_mode(&v.text) {
                 Ok(mode) => {
                     b.driver.properties.audit_log.set_storage_dir_mode(mode);
                     Ok(())
                 }
                 Err(e) => b.fail(&format!("Failed to parse SecAuditLogDirMode: {}", e)),
-            }
-        }),
+            })
+        }
         "secauditlogfilemode" => value(NUMBER, |b, v| match parse_octal_mode(&v.text) {
             Ok(mode) => {
                 b.driver.properties.audit_log.set_file_mode(mode);
@@ -147,20 +139,18 @@ fn directive(keyword: &str) -> Option<Directive> {
             b.driver.properties.audit_log.set_format(format);
             Ok(())
         }),
-        "secauditlogparts" => value(&[(Sep(AuditParts), SanFindSep), (SepQuoted(AuditParts), SanFindSep)], |b, v| {
+        "secauditlogparts" => value(&[(Sep(AuditParts), Bare), (SepQuoted(AuditParts), Bare)], |b, v| {
             b.driver.properties.audit_log.set_parts(&v.text);
             Ok(())
         }),
-        "secauditlogprefix" => value(FREE_TEXT_LINE_SAN, |b, v| {
+        "secauditlogprefix" => value(FREE_TEXT_LINE_BARE, |b, v| {
             b.driver.properties.audit_log.set_prefix(&v.text);
             Ok(())
         }),
-        "secauditlogrelevantstatus" => {
-            value(&[(Sep(FreeTextNewLine), SanFindSep), (SepQuoted(Word), SanFindSep)], |b, v| {
-                let set = b.driver.properties.audit_log.set_relevant_status(&v.text);
-                set.or_else(|error| b.fail(&error))
-            })
-        }
+        "secauditlogrelevantstatus" => value(&[(Sep(FreeTextNewLine), Bare), (SepQuoted(Word), Bare)], |b, v| {
+            let set = b.driver.properties.audit_log.set_relevant_status(&v.text);
+            set.or_else(|error| b.fail(&error))
+        }),
         "secauditlogstoragedir" => value(PATH, |b, v| {
             b.driver.properties.audit_log.set_storage_dir(&v.text);
             Ok(())
@@ -177,7 +167,7 @@ fn directive(keyword: &str) -> Option<Directive> {
         }),
 
         // --- Debug log ---------------------------------------------------
-        "secdebuglog" => value(&[(Sep(Path), FindSep), (SepQuoted(Path), SanFindSep)], |b, v| {
+        "secdebuglog" => value(&[(Sep(Path), Written), (SepQuoted(Path), Bare)], |b, v| {
             match b.driver.properties.debug_log.set_file(&v.text) {
                 Ok(()) => Ok(()),
                 Err(error) => b.fail(&format!("Failed to start DebugLog: {}", error)),
@@ -238,15 +228,15 @@ fn directive(keyword: &str) -> Option<Directive> {
             });
             Ok(())
         }),
-        // The third pattern (white space and free text up to the end of
+        // The third form (white space and free text up to the end of
         // the line), which is accepted and ignored, wins when it is longer:
         // with a space after the separator.
         "secargumentseparator" => {
-            value(&[(SepQuoted(Word), SanFindSep), (Sep(Word), SanFindSep), (Sep(FreeTextNewLine), FindSep)], |b, v| {
-                if v.pattern == 2 {
+            value(&[(SepQuoted(Word), Bare), (Sep(Word), Bare), (Sep(FreeTextNewLine), Written)], |b, v| {
+                if v.form == 2 {
                     return Ok(());
                 }
-                if v.bytes.len() != 1 {
+                if v.text.len() != 1 {
                     return b.fail("Argument separator should be set to a single character.");
                 }
                 b.driver.properties.settings.sec_argument_separator = Some(v.text.clone());
@@ -256,13 +246,13 @@ fn directive(keyword: &str) -> Option<Directive> {
         "seccookieformat" => value(NUMBER, |b, v| {
             if parse_digits(&v.text) == Some(1u32) { b.fail("SecCookieFormat 1 is not yet supported.") } else { Ok(()) }
         }),
-        "secunicodemapfile" => value(&[(UnicodeMap, FindSep)], |b, v| b.unicode_map_file(&v.text)),
+        "secunicodemapfile" => value(&[(UnicodeMap, Written)], |b, v| b.unicode_map_file(&v.text)),
         "secgeolookupdb" => value(FREE_TEXT_LINE, |b, v| b.geo_lookup_db(&v.text)),
         "sechttpblkey" => value(FREE_TEXT_LINE, |b, v| {
             b.driver.properties.settings.httpbl_key = Some(v.text.clone());
             Ok(())
         }),
-        "secwebappid" => value(&[(SepQuoted(FreeText), SanStrchr2), (Sep(FreeTextNewLine), SanFindSep)], |b, v| {
+        "secwebappid" => value(&[(SepQuoted(FreeText), BareAfterQuote), (Sep(FreeTextNewLine), Bare)], |b, v| {
             b.driver.properties.settings.sec_web_app_id = Some(v.text.clone());
             Ok(())
         }),
@@ -356,28 +346,29 @@ fn directive(keyword: &str) -> Option<Directive> {
         }),
 
         // --- Rules -------------------------------------------------------
-        "secmarker" => value(&[(SepQuoted(Word), FindSep), (Sep(Word), FindSep)], |b, v| {
-            let marker = remove_brackets_if_needed(v.text.clone());
+        "secmarker" => value(&[(SepQuoted(Word), Unquoted), (Sep(Word), Unquoted)], |b, v| {
             let file = b.file_name();
-            b.driver.add_sec_marker(&marker, &file, b.line);
+            b.driver.add_sec_marker(&v.text, &file, b.line);
             Ok(())
         }),
         "secruleremovebyid" => {
-            value(&[(Sep(FreeTextNewLine), SanFindSep)], |b, v| match b.driver.properties.exceptions.load(&v.text) {
+            value(&[(Sep(FreeTextNewLine), Bare)], |b, v| match b.driver.properties.exceptions.load(&v.text) {
                 Ok(()) => Ok(()),
                 Err(error) => b.fail(&format!("SecRuleRemoveById: failed to load:{}. {}", v.text, error)),
             })
         }
-        "secruleremovebymsg" => value(FREE_TEXT_LINE_SAN, |b, v| {
+        "secruleremovebymsg" => value(FREE_TEXT_LINE_BARE, |b, v| {
             b.driver.properties.exceptions.load_remove_rule_by_msg(&v.text);
             Ok(())
         }),
-        "secruleremovebytag" => value(FREE_TEXT_LINE_SAN, |b, v| {
+        "secruleremovebytag" => value(FREE_TEXT_LINE_BARE, |b, v| {
             b.driver.properties.exceptions.load_remove_rule_by_tag(&v.text);
             Ok(())
         }),
-        "include" => value(&[(Sep(Path), FindSep), (SepQuoted(Path), FindSep)], |b, v| b.include(v.token)),
-        "secremoterules" => value(&[(Remote, FindSep)], |b, v| b.remote_rules(&v.text)),
+        "include" => {
+            value(&[(Sep(Path), AfterWhiteSpace), (SepQuoted(Path), AfterWhiteSpace)], |b, v| b.include(&v.text))
+        }
+        "secremoterules" => value(&[(Remote, Written)], |b, v| b.remote_rules(&v.text)),
         "secremoterulesfailaction" => word(&["Abort", "Warn"], |b, v| {
             b.driver.properties.remote_rules_action_on_failed =
                 Some(if v.is("abort") { OnFailedRemoteRulesAction::Abort } else { OnFailedRemoteRulesAction::Warn });
@@ -407,7 +398,7 @@ fn directive(keyword: &str) -> Option<Directive> {
         "secconnreadstatelimit" => unsupported(Form::Value(DIRECT), "SecConnReadStateLimit is not yet supported."),
         "secconnwritestatelimit" => unsupported(Form::Value(DIRECT), "SecConnWriteStateLimit is not yet supported."),
         "seccookiev0separator" => unsupported(
-            Form::Value(&[(SepQuoted(Word), SanFindSep), (Sep(Word), SanFindSep)]),
+            Form::Value(&[(SepQuoted(Word), Bare), (Sep(Word), Bare)]),
             "SecCookieV0Separator is not yet supported.",
         ),
         "secgsblookupdb" => unsupported(Form::Value(PATH), "SecGsbLookupDb is not supported."),
@@ -439,18 +430,10 @@ impl Builder<'_, '_> {
             return self.fail(&format!("Invalid input: {}{}", keyword, lossy(&rest)));
         };
         let given = match d.form {
-            Form::Value(patterns) => value::read(keyword, &rest, patterns).map(|v| Given {
-                text: lossy(&v.bytes).into_owned(),
-                bytes: v.bytes,
-                token: v.token,
-                pattern: v.pattern,
-            }),
-            Form::Word(words) => value::word(&rest, words).map(|w| Given {
-                text: w.to_string(),
-                bytes: w.as_bytes().to_vec(),
-                token: &rest,
-                pattern: 0,
-            }),
+            Form::Value(forms) => {
+                value::read(&rest, forms).map(|v| Given { text: lossy(v.text).into_owned(), form: v.form })
+            }
+            Form::Word(words) => value::word(&rest, words).map(|w| Given { text: w.to_string(), form: 0 }),
         };
         let given = match given {
             Ok(given) => given,
@@ -508,15 +491,7 @@ impl Builder<'_, '_> {
     }
 
     /// `Include <path>`: loads each file the (glob) path names, in place.
-    fn include(&mut self, token: &[u8]) -> Res<()> {
-        let token = String::from_utf8_lossy(token);
-        let after_whitespace = token.trim_start_matches([' ', '\t']);
-        let quoted = after_whitespace.starts_with('"');
-        let file = if quoted {
-            after_whitespace.get(1..after_whitespace.len().saturating_sub(1)).unwrap_or("")
-        } else {
-            after_whitespace
-        };
+    fn include(&mut self, file: &str) -> Res<()> {
         let current = self.file_name();
         let lookup = find_resource(file, &current);
         let Some(fi) = lookup.path else {

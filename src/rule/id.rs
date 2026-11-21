@@ -16,11 +16,10 @@ pub fn parse(text: &str) -> Option<Id> {
 /// quotes. A single id is a range of one.
 pub fn parse_list(list: &str) -> Result<Vec<RangeInclusive<Id>>, String> {
     let mut ranges = Vec::new();
-    let items = list.split(' ').map(|item| crate::utils::string::parser_sanitizer(item.to_string()));
-    for item in items.filter(|item| !item.is_empty()) {
+    for item in list.split(' ').map(unquoted).filter(|item| !item.is_empty()) {
         let bound = |text: &str| parse(text).ok_or_else(|| format!("Not a number: {text}"));
         let range = match item.split_once('-') {
-            None => parse(&item).map(|id| id..=id).ok_or_else(|| format!("Not a number or range: {item}"))?,
+            None => parse(item).map(|id| id..=id).ok_or_else(|| format!("Not a number or range: {item}"))?,
             Some((first, last)) => bound(first)?..=bound(last)?,
         };
         if range.is_empty() {
@@ -32,6 +31,15 @@ pub fn parse_list(list: &str) -> Result<Vec<RangeInclusive<Id>>, String> {
         return Err(format!("Not a number or range: {list}"));
     }
     Ok(ranges)
+}
+
+/// An item of a list without the quotes it is written in: double quotes,
+/// then single quotes inside them (`"'7'"` is `7`).
+fn unquoted(item: &str) -> &str {
+    fn inside(item: &str, quote: char) -> &str {
+        item.strip_prefix(quote).and_then(|inner| inner.strip_suffix(quote)).unwrap_or(item)
+    }
+    inside(inside(item, '"'), '\'')
 }
 
 #[cfg(test)]
@@ -51,6 +59,9 @@ mod tests {
     #[test]
     fn lists() {
         assert_eq!(parse_list("1  '2' 10-20 \"3\""), Ok(vec![1..=1, 2..=2, 10..=20, 3..=3]));
+        assert_eq!(parse_list("\"'4'\" \"\" '' 6"), Ok(vec![4..=4, 6..=6]));
+        assert_eq!(parse_list("1 \"").unwrap_err(), "Not a number or range: \"");
+        assert_eq!(parse_list("'1\"").unwrap_err(), "Not a number or range: '1\"");
         for (list, error) in [
             ("10-5", "Invalid range: 10-5"),
             ("x", "Not a number or range: x"),

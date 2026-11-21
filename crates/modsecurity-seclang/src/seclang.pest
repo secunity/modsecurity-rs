@@ -82,10 +82,21 @@ update_target    = { ^"SecRuleUpdateTargetBy" ~ update_by ~ update_sep ~ update_
 update_by        = { ^"Id" ~ &ws | ^"Tag" ~ &ws | ^"Msg" ~ &ws }
 // SecRuleUpdateActionById 942100 "t:none,pass"
 update_action    = { ^"SecRuleUpdateActionById" ~ update_sep ~ update_value ~ gap ~ actions }
-// The C++ scanner keeps what follows the first space or tab in the value.
-update_sep       = { ws+ }
-update_value     = { quoted | update_word }
-update_word      = @{ (!(ws | nl | "\r" | "\"" | ",") ~ ANY)+ }
+// A space or a tab and the spaces after it. A tab after them is part of
+// the value, which is then as written, quotes included (the C++ scanner
+// keeps what follows the first space or tab, and trims only spaces).
+// (pest reports a syntax error where the furthest rule failed: the name of
+// `update_sep`, and `update_tabbed` being tried only at a tab, decide
+// where that is.)
+update_sep       = { ws ~ " "* }
+update_value     = { &"\t" ~ update_tabbed | quoted | single_quoted_word | update_word }
+update_tabbed    = ${ "\t" ~ ws* ~ (tabbed_quoted | update_word) }
+tabbed_quoted    = ${ "\"" ~ quoted_text ~ "\"" }
+update_word      = @{ (!update_end ~ ANY)+ }
+update_end       = _{ ws | nl | "\r" | "\"" | "," | EOI }
+// A word in single quotes: the value is inside them.
+single_quoted_word = ${ "'" ~ single_quoted_word_text ~ "'" ~ &update_end }
+single_quoted_word_text = @{ (!("'" ~ update_end) ~ !update_end ~ ANY)* }
 
 // ---------------------------------------------------------------------------
 // Other directives: a keyword and the rest of its line, e.g. `SecRuleEngine
@@ -105,8 +116,11 @@ setting_rest = @{ (!"\n" ~ ANY)* }
 
 // A directive value: quoted, or a word.
 value       = { quoted | word }
-quoted      = ${ "\"" ~ quoted_text ~ "\"" }
+// The value is inside the quotes, and inside single quotes just inside
+// them (`"'a b'"` is `a b`).
+quoted      = ${ "\"" ~ ("'" ~ single_quoted_text ~ "'" ~ &"\"" | quoted_text) ~ "\"" }
 quoted_text = @{ (!("\"" | nl) ~ ANY)* }
+single_quoted_text = @{ (!"'\"" ~ !("\"" | nl) ~ ANY)* }
 word        = @{ (!(ws | nl | "\"") ~ ANY)+ }
 
 // ---------------------------------------------------------------------------

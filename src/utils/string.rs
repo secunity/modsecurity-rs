@@ -28,9 +28,6 @@ pub fn parse_digits<T: std::str::FromStr>(text: &str) -> Option<T> {
     text.parse().ok().filter(|_| digits)
 }
 
-// The helpers that clean a configuration value are part of the syntax.
-pub use modsecurity_seclang::value::sanitize as parser_sanitizer;
-
 #[cfg(test)]
 mod tests {
     use super::*;

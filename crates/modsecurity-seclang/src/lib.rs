@@ -95,13 +95,12 @@ pub enum UpdateBy {
     Msg,
 }
 
-/// A directive value, as written (without its quotes when quoted).
+/// A directive value, without the white space and the quotes around it.
 #[derive(Debug, Clone, Copy)]
 pub struct Value<'a> {
     pub text: &'a str,
+    /// Whether it is written in double quotes.
     pub quoted: bool,
-    /// The spaces and tabs before it, after the first one.
-    pub lead: &'a str,
 }
 
 /// A rule target: a variable, possibly excluded (`!`) or counted (`&`).
@@ -271,14 +270,14 @@ fn directive(pair: Pair<'_, Rule>, from: usize) -> Directive<'_> {
                 "tag" => UpdateBy::Tag,
                 _ => UpdateBy::Msg,
             };
-            let lead = &inner.next().expect("separator").as_str()[1..];
-            let selector = Value { lead, ..value(inner.next().expect("selector")) };
+            inner.next().expect("separator");
+            let selector = value(inner.next().expect("selector"));
             let variables = targets(inner.next().expect("variables"));
             Directive::UpdateTarget { by, selector, variables }
         }
         Rule::update_action => {
-            let lead = &inner.next().expect("separator").as_str()[1..];
-            let id = Value { lead, ..value(inner.next().expect("id")) };
+            inner.next().expect("separator");
+            let id = value(inner.next().expect("id"));
             let actions = actions(inner.next().expect("actions"), from);
             Directive::UpdateAction { id, actions }
         }
@@ -291,14 +290,15 @@ fn directive(pair: Pair<'_, Rule>, from: usize) -> Directive<'_> {
     }
 }
 
-/// The value of a `value` or `update_value` pair: the text, without
-/// quotes.
+/// The value of a `value` or `update_value` pair.
 fn value(pair: Pair<'_, Rule>) -> Value<'_> {
     let inner = pair.into_inner().next().expect("a value");
-    match inner.as_rule() {
-        Rule::quoted => Value { text: inner.into_inner().next().map_or("", |t| t.as_str()), quoted: true, lead: "" },
-        _ => Value { text: inner.as_str(), quoted: false, lead: "" },
-    }
+    let quoted = inner.as_rule() == Rule::quoted;
+    let text = match inner.as_rule() {
+        Rule::quoted | Rule::single_quoted_word => inner.into_inner().next().map_or("", |t| t.as_str()),
+        _ => inner.as_str(),
+    };
+    Value { text, quoted }
 }
 
 fn targets(pair: Pair<'_, Rule>) -> Vec<Target<'_>> {

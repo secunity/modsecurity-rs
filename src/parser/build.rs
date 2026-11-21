@@ -26,7 +26,6 @@ use crate::rule::sec_rule::SecRule;
 use crate::rule::sec_rule_script::Script;
 use crate::rule::{Rule, RuleKind};
 use crate::run_time_string::RunTimeString;
-use crate::utils::string::parser_sanitizer;
 use crate::variables::variable::Variable;
 use crate::variables::{VariableError, VariableSelector, new_variable};
 use modsecurity_operators::seclang_operator;
@@ -180,11 +179,7 @@ impl Builder<'_, '_> {
                 let Some(list) = actions else {
                     return self.fail("SecRuleScript needs actions.");
                 };
-                let script = parser_sanitizer(if path.quoted {
-                    format!("\"{}\"", string(path.text))
-                } else {
-                    string(path.text)
-                });
+                let script = string(path.text);
                 let (a, t) = split_actions(self.actions(&list)?);
                 let file = self.file_name();
                 let kind = RuleKind::SecRuleScript(Script::new(&script));
@@ -203,7 +198,7 @@ impl Builder<'_, '_> {
                 self.sec_default_action(list)?;
             }
             Directive::UpdateTarget { by, selector, variables } => {
-                let v = update_value(selector);
+                let v = string(selector.text);
                 let vars = self.targets(&variables)?;
                 let ex = &mut self.driver.properties.exceptions;
                 match by {
@@ -221,7 +216,7 @@ impl Builder<'_, '_> {
                 }
             }
             Directive::UpdateAction { id, actions } => {
-                let v = update_value(id);
+                let v = string(id.text);
                 let Some(rule_id) = crate::rule::id::parse(&v) else {
                     return self.fail(&format!(
                         "SecRuleUpdateActionById: failed to load:The input \"{}\" does not seems to be a valid rule id.. ",
@@ -541,11 +536,4 @@ fn exclusions(mut original_list: Vec<Variable>) -> Result<Vec<Variable>, Variabl
         }
     }
     Ok(new_new_list)
-}
-
-/// The value of `SecRuleUpdate...By...`, as the scanner reads it.
-fn update_value(v: syntax::Value<'_>) -> String {
-    let s = string(v.text);
-    let lead = string(v.lead);
-    parser_sanitizer(if v.quoted { format!("{}\"{}\"", lead, s) } else { lead + &s })
 }
