@@ -802,7 +802,8 @@ impl<'a> Transaction<'a> {
     /// - `ProcessPartial`: the body is kept up to the limit; returns
     ///   `false`.
     /// - `Reject`: with the rule engine `On`, the transaction is
-    ///   interrupted with a 403. The piece is dropped.
+    ///   interrupted with a 403. Otherwise the body is kept up to the limit,
+    ///   so that rules that only detect see what `On` would reject.
     /// - none: the piece is dropped.
     fn append_body(&mut self, direction: BodyDirection, buf: &[u8]) -> bool {
         let settings = &self.rules.properties.settings;
@@ -843,6 +844,7 @@ impl<'a> Transaction<'a> {
                     self.outcome.intervention.disrupt(403, None, InterventionLog::Text(log));
                 } else {
                     crate::ms_dbg!(self, 5, "Not rejecting the request as the engine is not Enabled");
+                    keep_up_to_limit(self);
                 }
                 true
             }
@@ -1134,5 +1136,44 @@ mod tests {
         let mut t = Transaction::new(&ms, &rules, None);
         let added = t.request_body_from_file("/dev/zero").unwrap();
         assert_eq!(outcome(&mut t, added), (false, 1000, None));
+    }
+
+    /// Runs an exchange through rules with body limits of 5 bytes that
+    /// reject; the ids of the rules that matched, and whether the
+    /// transaction was interrupted.
+    fn run_body_limits(engine: &str, request_body: &[u8], response_body: &[u8]) -> (Vec<crate::rule::Id>, bool) {
+        let ms = ModSecurity::new();
+        let mut rules = RulesSet::new();
+        rules
+            .load(&format!(
+                "SecRuleEngine {engine}\nSecRequestBodyAccess On\nSecResponseBodyAccess On\n\
+                 SecRequestBodyLimit 5\nSecRequestBodyLimitAction Reject\n\
+                 SecResponseBodyLimit 5\nSecResponseBodyLimitAction Reject\n\
+                 SecRule REQUEST_BODY \"@streq abcde\" \"id:1,phase:2,pass,log\"\n\
+                 SecRule INBOUND_DATA_ERROR \"@eq 1\" \"id:2,phase:2,pass,log\"\n\
+                 SecRule RESPONSE_BODY \"@streq vwxyz\" \"id:3,phase:4,pass,log\"\n\
+                 SecRule OUTBOUND_DATA_ERROR \"@eq 1\" \"id:4,phase:4,pass,log\"\n"
+            ))
+            .unwrap();
+        let mut t = Transaction::new(&ms, &rules, None);
+        t.process_uri(b"/", b"POST", b"1.1");
+        t.process_request_headers();
+        assert!(t.append_request_body(request_body));
+        let mut interrupted = t.intervention().is_some();
+        t.process_request_body();
+        t.process_response_headers(200, "HTTP 1.1");
+        assert!(t.append_response_body(response_body));
+        interrupted |= t.intervention().is_some();
+        t.process_response_body();
+        (t.rule_messages().iter().filter_map(|m| m.rule_id()).collect(), interrupted)
+    }
+
+    /// With `Reject` and an engine that only detects, the rules see the
+    /// body up to the limit: what `On` would have rejected.
+    #[test]
+    fn detection_only_sees_the_body_up_to_the_limit() {
+        assert_eq!(run_body_limits("DetectionOnly", b"abcdefghij", b"vwxyz0123"), (vec![1, 2, 3, 4], false));
+        assert_eq!(run_body_limits("On", b"abcdefghij", b"vwxyz0123"), (vec![2, 4], true));
+        assert_eq!(run_body_limits("DetectionOnly", b"abcde", b"vwxyz"), (vec![1, 3], false));
     }
 }
