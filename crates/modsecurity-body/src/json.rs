@@ -132,9 +132,6 @@ impl Json {
 
     /// The `yajl_end_map` / `yajl_end_array` callbacks.
     fn end_container(&mut self) -> bool {
-        if self.containers.is_empty() {
-            return true;
-        }
         self.containers.pop();
         self.count_array_element();
         true

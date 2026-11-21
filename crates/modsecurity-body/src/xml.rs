@@ -71,11 +71,12 @@ mod with_libxml2 {
     /// `ARGS`.
     #[derive(Debug)]
     struct XmlNodes {
+        /// The open elements (libxml2 limits how deep they go).
         nodes: Vec<NodeData>,
-        node_depth: u64,
+        /// `xml.` and the names of the open elements, joined by dots.
         currpath: Vec<u8>,
+        /// The text of the current element.
         currval: Vec<u8>,
-        currval_is_set: bool,
         /// What is left of the allowance of argument names (it grows with
         /// every chunk of the body).
         names: NameBudget,
@@ -87,12 +88,9 @@ mod with_libxml2 {
         fn new() -> Self {
             XmlNodes {
                 nodes: Vec::new(),
-                node_depth: 0,
-                // the XML will contain at least one node, which is the pseudo
-                // root node 'xml'
+                // The names start with the pseudo root 'xml'.
                 currpath: b"xml.".to_vec(),
                 currval: Vec::new(),
-                currval_is_set: false,
                 names: NameBudget::new(),
                 names_too_long: false,
             }
@@ -102,11 +100,8 @@ mod with_libxml2 {
         /// clears the current value.
         fn on_start_element(&mut self, name: &[u8]) {
             self.nodes.push(NodeData::default());
-            self.node_depth += 1;
-            // Known limitation: the depth is counted but not limited.
-            // if it's not the first (root) item, then append a '.'
-            // note, the condition should always be true because there is
-            // always a pseudo root element: 'xml'
+            // The root element follows the dot of `xml.`; any other one
+            // needs a dot of its own.
             let n = self.nodes.len();
             if n > 1 {
                 self.currpath.push(b'.');
@@ -117,7 +112,6 @@ mod with_libxml2 {
             // this is necessary because if there is any text between the
             // tags (new line, etc) it will be added to the current value
             self.currval.clear();
-            self.currval_is_set = false;
         }
 
         /// Closes the element `name`; a leaf element becomes an argument.
@@ -133,17 +127,12 @@ mod with_libxml2 {
                     keep_parsing = false;
                 }
             }
-            if !self.currpath.is_empty() {
-                // set an offset to store whether this is the first item, in
-                // order to know whether to remove the '.'
-                let offset = if self.nodes.len() > 1 { 1 } else { 0 };
-                let new_len = self.currpath.len().saturating_sub(name.len() + offset);
-                self.currpath.truncate(new_len);
-            }
+            // The name goes, with its dot unless it is the root element.
+            let dot = usize::from(self.nodes.len() > 1);
+            let new_len = self.currpath.len().saturating_sub(name.len() + dot);
+            self.currpath.truncate(new_len);
             self.nodes.pop();
-            self.node_depth = self.node_depth.wrapping_sub(1);
             self.currval.clear();
-            self.currval_is_set = false;
             keep_parsing
         }
 
@@ -152,12 +141,7 @@ mod with_libxml2 {
             // libxml2 SAX parser will call this function multiple times
             // during the parsing of a single node, if the value has
             // multibyte characters, so we need to concatenate the values
-            if !self.currval_is_set {
-                self.currval = content.to_vec();
-                self.currval_is_set = true;
-            } else {
-                self.currval.extend_from_slice(content);
-            }
+            self.currval.extend_from_slice(content);
         }
     }
 
@@ -252,26 +236,15 @@ mod with_libxml2 {
             true
         }
 
-        /// Runs `f` with the SAX handler for the parser state and `t`.
+        /// Runs `f` with the SAX handler for the parser state and `cx`. (The
+        /// state exists: `init` makes it before the parser into ARGS is
+        /// made, and nothing removes it.)
         fn with_handler<R>(
             nodes: &mut Option<XmlNodes>,
             cx: &mut dyn Context,
             f: impl FnOnce(&mut dyn SaxHandler) -> R,
         ) -> R {
-            /// The handler without a parser state (not reached: the parser
-            /// into ARGS only exists with one).
-            struct Ignore;
-            impl SaxHandler for Ignore {
-                fn start_element(&mut self, _: &[u8]) {}
-                fn end_element(&mut self, _: &[u8]) -> bool {
-                    true
-                }
-                fn characters(&mut self, _: &[u8]) {}
-            }
-            match nodes {
-                Some(nodes) => f(&mut ArgsHandler { nodes, cx }),
-                None => f(&mut Ignore),
-            }
+            f(&mut ArgsHandler { nodes: nodes.get_or_insert_with(XmlNodes::new), cx })
         }
 
         /// Feeds a chunk of the body to the parsers (the first chunk creates
@@ -339,12 +312,8 @@ mod with_libxml2 {
 
         /// Ends the body: finishes the parsers and keeps the document.
         pub fn complete(&mut self, cx: &mut dyn Context) -> Result<(), String> {
-            // Only if we have a context, meaning we've done some work.
-            if self.parsing_ctx.is_none() && self.parsing_ctx_arg.is_none() {
-                return Ok(());
-            }
-            if self.parsing_ctx.is_some()
-                && !Self::only_args(cx)
+            // Only the parsers that were made, meaning some work was done.
+            if !Self::only_args(cx)
                 && let Some(parser) = self.parsing_ctx.take()
             {
                 // This is how we signal the end of parsing to libxml; the
@@ -359,8 +328,7 @@ mod with_libxml2 {
                     return Err("XML: Failed to parse document.".to_string());
                 }
             }
-            if self.parsing_ctx_arg.is_some()
-                && Self::parse_into_args(cx)
+            if Self::parse_into_args(cx)
                 && let Some(parser) = self.parsing_ctx_arg.take()
             {
                 // This is how we signal the end of parsing to libxml.

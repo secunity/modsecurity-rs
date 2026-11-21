@@ -72,12 +72,6 @@ impl MultipartPartTmpFile {
         self.keep.store(true, Ordering::Relaxed);
     }
 
-    /// Whether the file was created (successfully or not: in the latter
-    /// case writing reports the failure).
-    pub fn is_valid(&self) -> bool {
-        !self.tmp_file_name.is_empty()
-    }
-
     pub(super) fn is_open(&self) -> bool {
         self.file.lock().map(|f| f.is_some()).unwrap_or(false)
     }
@@ -88,7 +82,7 @@ impl MultipartPartTmpFile {
             return false;
         };
         match guard.as_ref() {
-            Some(mut f) => matches!(f.write(data), Ok(n) if n == data.len()),
+            Some(mut f) => f.write_all(data).is_ok(),
             None => false,
         }
     }

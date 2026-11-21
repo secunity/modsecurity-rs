@@ -428,7 +428,7 @@ impl Multipart {
 
         // first create a temporary file if we don't have it already
         let PartKind::File(file) = &mut mpp.kind else { unreachable!("file data of a form field") };
-        if !file.tmp_file.as_ref().is_some_and(|f| f.is_valid()) {
+        if file.tmp_file.is_none() {
             let tmp = Arc::new(MultipartPartTmpFile::open(cx));
             cx.keep_tmp_file(Arc::clone(&tmp));
             file.tmp_file = Some(Arc::clone(&tmp));

@@ -534,7 +534,6 @@ impl Multipart {
 
             if let PartKind::File(file) = &mpp.kind
                 && let Some(f) = &file.tmp_file
-                && f.is_valid()
             {
                 // close the temp file
                 f.close();
