@@ -22,9 +22,7 @@ impl Redirect {
 
 impl Action for Redirect {
     fn name(&self) -> &str {
-        // "redirert" (sic): the name this action has always reported, kept
-        // so that the debug output does not change.
-        "redirert"
+        "redirect"
     }
 
     fn is_disruptive(&self) -> bool {
@@ -59,6 +57,7 @@ mod tests {
         let mut rm = RuleMessage::new(&r);
         let a = Redirect::with_rts(rts("https://www.example.com/"));
         assert!(a.is_disruptive());
+        assert_eq!(a.name(), "redirect");
 
         a.evaluate(&mut ActionContext::new(&mut t, &r, &mut rm));
         assert!(rm.is_disruptive);
