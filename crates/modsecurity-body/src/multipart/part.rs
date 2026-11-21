@@ -14,7 +14,7 @@ pub(super) enum PartKind {
     /// A form field: the pieces of its value, with the offset of the
     /// buffer each came from (joined into the value when the part ends).
     Field {
-        pieces: Vec<(Vec<u8>, u32)>,
+        pieces: Vec<(Vec<u8>, usize)>,
     },
     File(FilePart),
 }
@@ -77,9 +77,9 @@ pub(super) struct MultipartPart {
     pub(super) header_lines: Vec<(usize, Vec<u8>)>,
 
     /// Where the data starts and how long it is, as the debug log shows
-    /// them: 32 bits wide, with wrapping arithmetic on larger bodies.
-    pub(super) offset: u32,
-    pub(super) length: u32,
+    /// them.
+    pub(super) offset: usize,
+    pub(super) length: usize,
 }
 
 impl MultipartPart {
@@ -140,7 +140,7 @@ impl MultipartPart {
                 file.offset = offset.wrapping_sub(file.size);
             }
         }
-        self.length = self.length.wrapping_add(n as u32);
+        self.length = self.length.wrapping_add(n);
     }
 }
 
@@ -368,7 +368,7 @@ impl Multipart {
                 self.reqbody_no_files_length += buf.len() + self.reserve.len();
 
                 let d = [self.reserve, buf].concat();
-                mpp.length = mpp.length.wrapping_add(d.len() as u32);
+                mpp.length = mpp.length.wrapping_add(d.len());
 
                 ms_dbg!(cx, 9, "Multipart: Added data to variable: {}", String::from_utf8_lossy(&d));
                 pieces.push((d, self.buf_offset));
@@ -378,9 +378,9 @@ impl Multipart {
         // Keep the line break for the next data; the one kept before is
         // part of the data now.
         if line_break.is_empty() {
-            self.buf_offset = self.buf_offset.wrapping_sub(self.reserve.len() as u32);
+            self.buf_offset = self.buf_offset.wrapping_sub(self.reserve.len());
         } else {
-            self.buf_offset = self.buf_offset.wrapping_add(line_break.len() as u32);
+            self.buf_offset = self.buf_offset.wrapping_add(line_break.len());
         }
         self.reserve = line_break;
 

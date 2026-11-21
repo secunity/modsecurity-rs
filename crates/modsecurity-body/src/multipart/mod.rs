@@ -213,9 +213,8 @@ pub struct Multipart {
     buf: Vec<u8>,
     /// Whether `buf` starts where a line starts.
     buf_contains_line: bool,
-    /// Where `buf` starts in the body: 32 bits wide, with wrapping
-    /// arithmetic on larger bodies.
-    buf_offset: u32,
+    /// Where `buf` starts in the body.
+    buf_offset: usize,
 
     line_end: LineEnd,
     /// `line_end` where the previous buffer ended.
@@ -356,7 +355,7 @@ impl Multipart {
 
                 // Where the data we are about to read starts: this is how
                 // the offsets of the files and variables are known.
-                self.buf_offset = self.buf_offset.wrapping_add(self.buf.len() as u32);
+                self.buf_offset = self.buf_offset.wrapping_add(self.buf.len());
 
                 self.buf.clear();
                 self.buf_contains_line = c == b'\n';
@@ -554,7 +553,7 @@ impl Multipart {
                     // now construct a single string out of the pieces
                     for (d, off) in pieces {
                         if mpp.value_offset == 0 {
-                            mpp.value_offset = *off as usize;
+                            mpp.value_offset = *off;
                         }
                         mpp.value.extend_from_slice(d);
                     }
