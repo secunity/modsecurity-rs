@@ -2,7 +2,7 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::transaction::RequestBodyType;
+use crate::transaction::RequestBodyProcessor;
 
 #[derive(Debug)]
 pub struct RequestBodyProcessorJSON {
@@ -21,6 +21,6 @@ impl Action for RequestBodyProcessorJSON {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        cx.set_request_body_processor(RequestBodyType::JSONRequestBody, b"JSON");
+        cx.set_request_body_processor(RequestBodyProcessor::Json, b"JSON");
     }
 }

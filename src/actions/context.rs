@@ -8,7 +8,7 @@ use crate::rule::Rule;
 use crate::rule::message::{LogParts, RuleMessage};
 use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
 use crate::run_time_string::RunTimeString;
-use crate::transaction::{RequestBodyType, Transaction};
+use crate::transaction::{RequestBodyProcessor, RequestBodyType, Transaction};
 
 /// What an action may do while it runs: write to the debug log, expand
 /// its text, fill in the rule message, decide the intervention, steer
@@ -168,15 +168,15 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
 
     /// `ctl:requestBodyProcessor=JSON|XML`: the processor, and
     /// `REQBODY_PROCESSOR` set to `name`.
-    pub fn set_request_body_processor(&mut self, processor: RequestBodyType, name: &[u8]) {
-        self.t.body.request_body_processor = processor;
+    pub fn set_request_body_processor(&mut self, processor: RequestBodyProcessor, name: &[u8]) {
+        self.t.body.request_body_processor = Some(processor);
         self.set_reqbody_processor_variable(name);
     }
 
     /// `ctl:requestBodyProcessor=URLENCODED`: sets the body *type* (not the
     /// processor), and `REQBODY_PROCESSOR` to `name`.
     pub fn set_request_body_type(&mut self, body_type: RequestBodyType, name: &[u8]) {
-        self.t.body.request_body_type = body_type;
+        self.t.body.request_body_type = Some(body_type);
         self.set_reqbody_processor_variable(name);
     }
 

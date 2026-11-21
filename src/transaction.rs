@@ -50,15 +50,22 @@ use modsecurity_body::multipart::MultipartPartTmpFile;
 use modsecurity_body::xml::Xml;
 use modsecurity_transformations::url::uri_decode;
 
-/// Types of request body that ModSecurity may give a special treatment for
-/// the data.
+/// The kind of request body the `Content-Type` header announces (or
+/// `ctl:requestBodyProcessor=URLENCODED` sets).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestBodyType {
-    UnknownFormat,
-    MultiPartRequestBody,
-    WWWFormUrlEncoded,
-    JSONRequestBody,
-    XMLRequestBody,
+    /// `multipart/form-data`.
+    Multipart,
+    /// `application/x-www-form-urlencoded`.
+    UrlEncoded,
+}
+
+/// The request body processor a rule chose with
+/// `ctl:requestBodyProcessor`. It takes precedence over the body type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestBodyProcessor {
+    Json,
+    Xml,
 }
 
 /// Which body a piece is for.
@@ -296,8 +303,10 @@ pub(crate) struct HttpData {
 /// Request body processing: the body's type, the processor chosen for it
 /// and the processors' state.
 pub(crate) struct BodyProcessing {
-    pub(crate) request_body_type: RequestBodyType,
-    pub(crate) request_body_processor: RequestBodyType,
+    /// From the `Content-Type` (`None`: no type with a processor).
+    pub(crate) request_body_type: Option<RequestBodyType>,
+    /// From `ctl:requestBodyProcessor` (`None`: none was chosen).
+    pub(crate) request_body_processor: Option<RequestBodyProcessor>,
     #[cfg(feature = "libxml2")]
     pub(crate) xml: Option<Box<Xml>>,
     pub(crate) json: Json,
@@ -441,8 +450,8 @@ impl<'a> Transaction<'a> {
             ),
             variable_envs: BTreeMap::new(),
             body: BodyProcessing {
-                request_body_type: RequestBodyType::UnknownFormat,
-                request_body_processor: RequestBodyType::UnknownFormat,
+                request_body_type: None,
+                request_body_processor: None,
                 #[cfg(feature = "libxml2")]
                 xml: Some(Box::new(Xml::new())),
                 json: Json::new(),
@@ -708,11 +717,11 @@ impl<'a> Transaction<'a> {
         if keyl == b"content-type" {
             let l = value.to_ascii_lowercase();
             if l.starts_with(b"multipart/form-data") {
-                self.body.request_body_type = RequestBodyType::MultiPartRequestBody;
+                self.body.request_body_type = Some(RequestBodyType::Multipart);
                 self.vars.reqbody_processor.set(b"MULTIPART", off);
             }
             if l.starts_with(b"application/x-www-form-urlencoded") {
-                self.body.request_body_type = RequestBodyType::WWWFormUrlEncoded;
+                self.body.request_body_type = Some(RequestBodyType::UrlEncoded);
                 self.vars.reqbody_processor.set(b"URLENCODED", off);
             }
         }

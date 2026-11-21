@@ -2,7 +2,7 @@
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
-use crate::transaction::RequestBodyType;
+use crate::transaction::RequestBodyProcessor;
 
 #[derive(Debug)]
 pub struct RequestBodyProcessorXML {
@@ -21,6 +21,6 @@ impl Action for RequestBodyProcessorXML {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        cx.set_request_body_processor(RequestBodyType::XMLRequestBody, b"XML");
+        cx.set_request_body_processor(RequestBodyProcessor::Xml, b"XML");
     }
 }

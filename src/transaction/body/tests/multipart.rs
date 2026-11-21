@@ -5,7 +5,7 @@ pub(crate) mod test_support {
     use crate::instance::ModSecurity;
     use crate::rules_set::RulesSet;
     use crate::rules_set::properties::RulesSetProperties;
-    use crate::transaction::{RequestBodyType, Transaction};
+    use crate::transaction::{RequestBodyProcessor, Transaction};
 
     /// A rule set with an in-memory debug log at level 9.
     pub fn new_rules() -> RulesSet {
@@ -26,7 +26,7 @@ pub(crate) mod test_support {
         rules: &'a RulesSet,
         headers: &[(&[u8], &[u8])],
         body: &[u8],
-        processor: Option<RequestBodyType>,
+        processor: Option<RequestBodyProcessor>,
     ) -> Transaction<'a> {
         let mut t = Transaction::new(ms, rules, None);
         t.process_connection("200.249.12.31", 123, "200.249.12.31", 80);
@@ -36,7 +36,7 @@ pub(crate) mod test_support {
         }
         t.process_request_headers();
         if let Some(p) = processor {
-            t.body.request_body_processor = p;
+            t.body.request_body_processor = Some(p);
         }
         t.append_request_body(body);
         t.process_request_body();
@@ -300,7 +300,7 @@ mod regression_dump {
     use crate::instance::ModSecurity;
     use crate::rules_set::RulesSet;
     use crate::rules_set::properties::{ParseXmlIntoArgs, RulesSetProperties, parse_config_number, parse_octal_mode};
-    use crate::transaction::{RequestBodyType, Transaction};
+    use crate::transaction::{RequestBodyProcessor, Transaction};
     use modsecurity_compat::json::{JsonValue, parse_tree};
 
     const PREFIXES: &[&str] = &[
@@ -322,7 +322,7 @@ mod regression_dump {
         }
     }
 
-    fn configure(rules: &mut RulesSet, lines: &[String]) -> (Option<RequestBodyType>, Option<ParseXmlIntoArgs>) {
+    fn configure(rules: &mut RulesSet, lines: &[String]) -> (Option<RequestBodyProcessor>, Option<ParseXmlIntoArgs>) {
         let p = &mut rules.properties;
         let mut processor = None;
         let mut ctl_args = None;
@@ -357,9 +357,9 @@ mod regression_dump {
                 }
                 "secrule" => {
                     if l.contains("ctl:requestBodyProcessor=XML") {
-                        processor = Some(RequestBodyType::XMLRequestBody);
+                        processor = Some(RequestBodyProcessor::Xml);
                     } else if l.contains("ctl:requestBodyProcessor=JSON") {
-                        processor = Some(RequestBodyType::JSONRequestBody);
+                        processor = Some(RequestBodyProcessor::Json);
                     }
                     if l.contains("ctl:parseXmlIntoArgs=OnlyArgs") {
                         ctl_args = Some(ParseXmlIntoArgs::OnlyArgs);
@@ -467,7 +467,7 @@ mod regression_dump {
                     }
                     t.process_request_headers();
                     if let Some(p) = processor {
-                        t.body.request_body_processor = p;
+                        t.body.request_body_processor = Some(p);
                     }
                     if let Some(a) = ctl_args {
                         t.ctl.parse_xml_into_args = Some(a);

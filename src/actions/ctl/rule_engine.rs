@@ -47,8 +47,8 @@ mod tests {
     use crate::instance::ModSecurity;
     use crate::rule::message::RuleMessage;
     use crate::rules_set::properties::ParseXmlIntoArgs as ParseXmlIntoArgsState;
-    use crate::transaction::RequestBodyType;
     use crate::transaction::Transaction;
+    use crate::transaction::{RequestBodyProcessor, RequestBodyType};
 
     fn run(a: &dyn Action, t: &mut Transaction<'_>) {
         let r = rule(vec![]);
@@ -93,12 +93,12 @@ mod tests {
         );
 
         run(&RequestBodyProcessorJSON::new("ctl"), &mut t);
-        assert_eq!(t.body.request_body_processor, RequestBodyType::JSONRequestBody);
+        assert_eq!(t.body.request_body_processor, Some(RequestBodyProcessor::Json));
         assert_eq!(t.vars.reqbody_processor.value(), b"JSON");
         run(&RequestBodyProcessorXML::new("ctl"), &mut t);
-        assert_eq!(t.body.request_body_processor, RequestBodyType::XMLRequestBody);
+        assert_eq!(t.body.request_body_processor, Some(RequestBodyProcessor::Xml));
         run(&RequestBodyProcessorURLENCODED::new("ctl"), &mut t);
-        assert_eq!(t.body.request_body_type, RequestBodyType::WWWFormUrlEncoded);
+        assert_eq!(t.body.request_body_type, Some(RequestBodyType::UrlEncoded));
         assert_eq!(t.vars.reqbody_processor.value(), b"URLENCODED");
     }
 }

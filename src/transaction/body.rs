@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use crate::transaction::arguments::{ArgumentOrigin, ArgumentWriter};
-use crate::transaction::{RequestBodyType, Transaction};
+use crate::transaction::{RequestBodyProcessor, RequestBodyType, Transaction};
 use crate::variables::variable_value::VariableValue;
 use modsecurity_body::multipart::{self, Entries, Flag, Multipart, MultipartPartTmpFile, Uploads};
 
@@ -17,8 +17,6 @@ enum Processor {
     Json,
     Multipart,
     UrlEncoded,
-    /// A body type that is recognised but has no processor.
-    Missing,
     /// Nothing is known about the body: it is not parsed.
     None,
 }
@@ -27,21 +25,15 @@ impl Transaction<'_> {
     /// The processor of the request body: the one a rule chose with
     /// `ctl:requestBodyProcessor`, or the one of the Content-Type.
     fn request_body_processor(&self) -> Processor {
-        let body = &self.body;
-        #[cfg(feature = "libxml2")]
-        if body.request_body_processor == RequestBodyType::XMLRequestBody {
-            return Processor::Xml;
-        }
-        if body.request_body_processor == RequestBodyType::JSONRequestBody {
-            Processor::Json
-        } else if body.request_body_type == RequestBodyType::MultiPartRequestBody {
-            Processor::Multipart
-        } else if body.request_body_type == RequestBodyType::WWWFormUrlEncoded {
-            Processor::UrlEncoded
-        } else if body.request_body_type != RequestBodyType::UnknownFormat {
-            Processor::Missing
-        } else {
-            Processor::None
+        // Without libxml2 a body chosen as XML is parsed according to its
+        // type.
+        match (self.body.request_body_processor, self.body.request_body_type) {
+            #[cfg(feature = "libxml2")]
+            (Some(RequestBodyProcessor::Xml), _) => Processor::Xml,
+            (Some(RequestBodyProcessor::Json), _) => Processor::Json,
+            (_, Some(RequestBodyType::Multipart)) => Processor::Multipart,
+            (_, Some(RequestBodyType::UrlEncoded)) => Processor::UrlEncoded,
+            _ => Processor::None,
         }
     }
 
@@ -82,11 +74,6 @@ impl Transaction<'_> {
                     .extract(ArgumentOrigin::Post, &self.http.request_body, off);
                 }
             }
-            Processor::Missing => {
-                let content_type = self.vars.request_headers.resolve_first(b"Content-Type");
-                let content_type = content_type.map(|c| String::from_utf8_lossy(&c).into_owned()).unwrap_or_default();
-                self.set_reqbody_result("Unknown request body processor: ", Err(content_type));
-            }
             Processor::None => self.set_reqbody_result("", Ok(())),
         }
     }
@@ -95,10 +82,7 @@ impl Transaction<'_> {
     /// the bodies without files (URL-encoded, JSON, XML). Reports it.
     fn request_body_over_no_files_limit(&mut self) -> bool {
         let body = &self.body;
-        if !(body.request_body_type == RequestBodyType::WWWFormUrlEncoded
-            || body.request_body_processor == RequestBodyType::JSONRequestBody
-            || body.request_body_processor == RequestBodyType::XMLRequestBody)
-        {
+        if body.request_body_type != Some(RequestBodyType::UrlEncoded) && body.request_body_processor.is_none() {
             return false;
         }
         match self.rules.properties.settings.request_body_no_files_limit {

@@ -7,14 +7,14 @@ mod tests {
     use crate::rule::{Rule, RuleKind};
     use crate::rules_set::properties::ParseXmlIntoArgs;
     use crate::transaction::body::tests::multipart::test_support::{log, new_rules, run};
-    use crate::transaction::{RequestBodyType, Transaction};
+    use crate::transaction::{RequestBodyProcessor, Transaction};
     use crate::variables::variable_value::VariableValue;
     use crate::variables::{VariableSelector, new_variable};
 
     const DATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test/test-cases/data/");
 
     fn xml<'a>(ms: &'a ModSecurity, rules: &'a crate::rules_set::RulesSet, body: &[u8]) -> Transaction<'a> {
-        run(ms, rules, &[(b"Content-Type", b"text/xml")], body, Some(RequestBodyType::XMLRequestBody))
+        run(ms, rules, &[(b"Content-Type", b"text/xml")], body, Some(RequestBodyProcessor::Xml))
     }
 
     fn xpath(t: &Transaction<'_>, expr: &str, ns: Option<(&str, &str)>) -> Vec<String> {
@@ -160,7 +160,7 @@ mod tests {
         t.process_uri(b"/", b"POST", b"1.1");
         t.add_request_header(b"Content-Type", b"text/xml");
         t.process_request_headers();
-        t.body.request_body_type = RequestBodyType::XMLRequestBody;
+        t.body.request_body_processor = Some(RequestBodyProcessor::Xml);
         t.append_request_body(&body[..60]);
         drop(t);
     }

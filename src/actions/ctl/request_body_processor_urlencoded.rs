@@ -23,6 +23,6 @@ impl Action for RequestBodyProcessorURLENCODED {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        cx.set_request_body_type(RequestBodyType::WWWFormUrlEncoded, b"URLENCODED");
+        cx.set_request_body_type(RequestBodyType::UrlEncoded, b"URLENCODED");
     }
 }

@@ -1,7 +1,7 @@
 mod tests {
     use crate::instance::ModSecurity;
     use crate::rules_set::properties::parse_config_number;
-    use crate::transaction::RequestBodyType;
+    use crate::transaction::RequestBodyProcessor;
     use crate::transaction::body::tests::multipart::test_support::{log, new_rules, run};
 
     fn args(body: &[u8], depth: Option<&str>, limit: Option<&str>) -> (Vec<(String, String)>, String) {
@@ -13,8 +13,7 @@ mod tests {
         if let Some(l) = limit {
             rules.properties.settings.arguments_limit = Some(parse_config_number(l).unwrap());
         }
-        let t =
-            run(&ms, &rules, &[(b"Content-Type", b"application/json")], body, Some(RequestBodyType::JSONRequestBody));
+        let t = run(&ms, &rules, &[(b"Content-Type", b"application/json")], body, Some(RequestBodyProcessor::Json));
         let mut l = Vec::new();
         t.vars.args.resolve(&mut l);
         let mut v: Vec<(String, String)> = l
@@ -97,7 +96,7 @@ mod tests {
             &rules,
             &[(b"Content-Type", b"application/json")],
             body.as_bytes(),
-            Some(RequestBodyType::JSONRequestBody),
+            Some(RequestBodyProcessor::Json),
         );
         assert_eq!(t.vars.reqbody_error.value(), b"1");
         assert_eq!(t.vars.reqbody_processor_error.value(), b"1");
@@ -112,7 +111,7 @@ mod tests {
     fn repeated_processing_retains_partial_paths_and_error_messages() {
         let ms = ModSecurity::new();
         let rules = new_rules();
-        let mut t = run(&ms, &rules, &[], br#"{"a":[1,2"#, Some(RequestBodyType::JSONRequestBody));
+        let mut t = run(&ms, &rules, &[], br#"{"a":[1,2"#, Some(RequestBodyProcessor::Json));
         let error = t.vars.reqbody_error_msg.value().to_vec();
         assert_eq!(error, b"JSON parsing error: parse error: premature EOF\n");
         t.http.request_body = b"[3]".to_vec();
@@ -130,7 +129,7 @@ mod tests {
         let ms = ModSecurity::new();
         let mut rules = new_rules();
         rules.properties.settings.request_body_json_depth_limit = Some(0);
-        let mut t = run(&ms, &rules, &[], b"[]", Some(RequestBodyType::JSONRequestBody));
+        let mut t = run(&ms, &rules, &[], b"[]", Some(RequestBodyProcessor::Json));
         assert_eq!(t.vars.reqbody_error.value(), b"1");
         t.http.request_body = b"x".to_vec();
         t.process_request_body();
