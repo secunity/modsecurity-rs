@@ -10,6 +10,7 @@ use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
 use crate::variables::variable::{Variable, variables_to_string};
 use crate::variables::variable_value::VariableValue;
+use modsecurity_types::key_exclusions::same_name;
 
 /// The `SecRule` specific part of a rule: its targets and its operator.
 #[derive(Debug)]
@@ -63,12 +64,14 @@ impl SecRule {
     /// The targets to inspect: the ones of the rule's plan, minus the
     /// ones the transaction removed (`ctl:ruleRemoveTargetById` and
     /// `...ByTag`, which only remove targets the rule was written with).
+    /// Names are compared ignoring case ([`same_name`]).
     fn targets<'a>(&'a self, rule: &'a Rule, link: &'a Link, t: &Transaction<'a>, vars: &mut Vec<&'a Variable>) {
         let ctl = &t.ctl;
         for variable in link.targets.iter().map(|&i| &self.variables[i]) {
-            let name = variable.full_name();
-            let by_id = |(id, target): &(Id, String)| rule.rule_id == *id && target.eq_ignore_ascii_case(name);
-            let by_tag = |(tag, target): &(String, String)| target == name && rule.contains_tag(tag, t);
+            let name = variable.full_name().as_bytes();
+            let by_id = |(id, target): &(Id, String)| rule.rule_id == *id && same_name(target.as_bytes(), name);
+            let by_tag =
+                |(tag, target): &(String, String)| same_name(target.as_bytes(), name) && rule.contains_tag(tag, t);
             if !ctl.rule_remove_target_by_id.iter().any(by_id) && !ctl.rule_remove_target_by_tag.iter().any(by_tag) {
                 vars.push(variable);
             }
@@ -77,15 +80,18 @@ impl SecRule {
     }
 
     /// Whether the transaction removed the value `v` from the rule's
-    /// targets (`ctl:ruleRemoveTargetById=<id>;ARGS:name` and `...ByTag`).
+    /// targets (`ctl:ruleRemoveTargetById=<id>;ARGS:name` and `...ByTag`),
+    /// comparing names ignoring case ([`same_name`]).
     fn removed_value(rule: &Rule, t: &Transaction<'_>, v: &VariableValue) -> bool {
         let name = v.key_with_collection();
         let ctl = &t.ctl;
-        ctl.rule_remove_target_by_id.iter().any(|(id, target)| rule.rule_id == *id && target.as_bytes() == name)
+        ctl.rule_remove_target_by_id
+            .iter()
+            .any(|(id, target)| rule.rule_id == *id && same_name(target.as_bytes(), name))
             || ctl
                 .rule_remove_target_by_tag
                 .iter()
-                .any(|(tag, target)| target.as_bytes() == name && rule.contains_tag(tag, t))
+                .any(|(tag, target)| same_name(target.as_bytes(), name) && rule.contains_tag(tag, t))
     }
 
     /// Evaluates the rule: runs the operator on every transformed target

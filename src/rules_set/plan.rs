@@ -24,6 +24,7 @@ use crate::rules_set::RulesSet;
 use crate::rules_set::entry::Entry;
 use crate::variables::variable::Variable;
 use crate::variables::variable_value::VariableValue;
+use modsecurity_types::key_exclusions::same_name;
 
 /// The plan of a rule set: the steps of each phase, in order.
 #[derive(Debug)]
@@ -193,11 +194,11 @@ impl Link {
 
     /// Whether a `!TARGET` of a `SecRuleUpdateTarget...` directive
     /// excludes the value `v`: by regex for `COLLECTION:/regex/`, by full
-    /// name otherwise.
+    /// name otherwise (ignoring case, see [`same_name`]).
     pub(crate) fn excludes_value(&self, v: &VariableValue) -> bool {
         self.excluded_targets.iter().filter_map(|e| e.exclusion_base()).any(|e| match e.regex() {
             Some(r) => r.is_match(v.key()),
-            None => v.key_with_collection() == e.full_name().as_bytes(),
+            None => same_name(v.key_with_collection(), e.full_name().as_bytes()),
         })
     }
 }
@@ -361,6 +362,38 @@ mod tests {
         assert_eq!(status("SecRuleUpdateActionById 1 \"tag:'extra'\""), Some(403));
         assert_eq!(status("SecRuleUpdateActionById 1 \"setvar:tx.seen=1,logdata:'x'\""), Some(403));
         assert_eq!(status("SecRuleUpdateActionById 1 \"pass\""), None);
+    }
+
+    /// Every way of removing a target by its name compares names ignoring
+    /// case. (`SecRuleUpdateTargetById` and `ctl:ruleRemoveTargetBy...`
+    /// compared the value's name exactly: `?Password=x` escaped a removal
+    /// of `ARGS:password`.)
+    #[test]
+    fn target_removals_ignore_case() {
+        let status = |removal: &str, query: &str| {
+            let rule = "SecRule ARGS{} \"@rx x\" \"id:1,phase:1,deny,status:403,tag:'t'\"";
+            let conf = match removal.strip_prefix('|') {
+                Some(excluded) => format!("SecRuleEngine On\n{}", rule.replace("{}", &format!("|{excluded}"))),
+                None => format!("SecRuleEngine On\n{removal}\n{}", rule.replace("{}", "")),
+            };
+            let rules = rules(&conf);
+            let ms = crate::ModSecurity::new();
+            let mut t = crate::Transaction::new(&ms, &rules, None);
+            t.process_uri(format!("/?{query}=x").as_bytes(), b"GET", b"1.1");
+            t.process_request_headers();
+            t.intervention().map(|it| it.status)
+        };
+        for removal in [
+            "|!ARGS:password",
+            "SecRuleUpdateTargetById 1 \"!ARGS:password\"",
+            "SecRuleUpdateTargetByTag t \"!args:PASSWORD\"",
+            "SecAction \"id:2,phase:1,pass,nolog,ctl:ruleRemoveTargetById=1;ARGS:password\"",
+            "SecAction \"id:2,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=t;args:password\"",
+        ] {
+            assert_eq!(status(removal, "Password"), None, "{removal}");
+            assert_eq!(status(removal, "PASSWORD"), None, "{removal}");
+            assert_eq!(status(removal, "other"), Some(403), "{removal}");
+        }
     }
 
     #[test]

@@ -2,12 +2,21 @@
 
 use modsecurity_native::regex::{CompileError, Regex};
 
+/// Whether `a` and `b` name the same target or key: `ARGS:password`,
+/// `args:Password` and `ARGS:PASSWORD` are one (keys are looked up
+/// ignoring case). Every way of removing a target by its name compares
+/// with this: `!ARGS:name` in a rule or in `SecRuleUpdateTarget...`, and
+/// `ctl:ruleRemoveTargetBy...`.
+pub fn same_name(a: &[u8], b: &[u8]) -> bool {
+    a.eq_ignore_ascii_case(b)
+}
+
 /// A key excluded from a variable (`!ARGS:foo` or `!ARGS:/regex/`).
 #[derive(Debug)]
 pub enum KeyExclusion {
     /// The keys a regular expression matches (case insensitive).
     Regex(Regex),
-    /// One key, stored upper case and compared case insensitively.
+    /// One key, compared with [`same_name`].
     String(Vec<u8>),
 }
 
@@ -19,13 +28,13 @@ impl KeyExclusion {
     }
 
     pub fn string(a: &str) -> Self {
-        KeyExclusion::String(a.as_bytes().to_ascii_uppercase())
+        KeyExclusion::String(a.as_bytes().to_vec())
     }
 
     pub fn matches(&self, a: &[u8]) -> bool {
         match self {
             KeyExclusion::Regex(r) => r.is_match(a),
-            KeyExclusion::String(k) => a.len() == k.len() && a.iter().zip(k).all(|(x, y)| x.to_ascii_uppercase() == *y),
+            KeyExclusion::String(k) => same_name(a, k),
         }
     }
 }
