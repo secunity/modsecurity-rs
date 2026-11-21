@@ -1,6 +1,16 @@
 //! The in-memory collection backend, local to the process.
+//!
+//! An expired entry is invisible to readers. The reader that meets one
+//! deletes its key; keys nobody reads again (a client seen once, under
+//! `initcol:ip=%{REMOTE_ADDR}` with `expirevar`) are deleted by a sweep
+//! of the whole map, which a write that adds an entry runs once the map
+//! has grown to twice what the last sweep left (and at least
+//! [`FIRST_SWEEP`] entries): its cost is spread over the writes that
+//! filled the map, a constant per write.
 
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::SystemTime;
 
 use crate::backend::collection_data::CollectionData;
 use crate::{Collection, StorageError};
@@ -9,16 +19,53 @@ use modsecurity_native::regex::Regex;
 use modsecurity_types::KeyExclusions;
 use modsecurity_types::variable_value::{VariableValue, move_to_front_reversed};
 
+/// The number of entries at which the first sweep runs.
+const FIRST_SWEEP: usize = 1024;
+
 /// Process local collection: a case insensitive multimap guarded by a
 /// reader/writer lock.
 pub struct InMemoryPerProcess {
     name: String,
     map: RwLock<UnorderedMultimap<CollectionData>>,
+    /// The number of entries at which the next sweep runs (only changed
+    /// under the write lock).
+    next_sweep: AtomicUsize,
 }
 
 impl InMemoryPerProcess {
     pub fn new(name: &str) -> Self {
-        InMemoryPerProcess { name: name.to_string(), map: RwLock::new(UnorderedMultimap::with_reserve(1000)) }
+        InMemoryPerProcess {
+            name: name.to_string(),
+            map: RwLock::new(UnorderedMultimap::with_reserve(1000)),
+            next_sweep: AtomicUsize::new(FIRST_SWEEP),
+        }
+    }
+
+    /// Adds an entry, and sweeps the expired ones when it is time to.
+    fn insert(&self, m: &mut UnorderedMultimap<CollectionData>, key: &[u8], data: CollectionData) {
+        m.insert(key.to_vec(), data);
+        if m.len() >= self.next_sweep.load(Ordering::Relaxed) {
+            Self::sweep(m);
+            self.next_sweep.store(FIRST_SWEEP.max(m.len().saturating_mul(2)), Ordering::Relaxed);
+        }
+    }
+
+    /// Deletes the keys whose entries have all expired.
+    fn sweep(m: &mut UnorderedMultimap<CollectionData>) {
+        let now = SystemTime::now();
+        let expired: Vec<Vec<u8>> =
+            m.iter().filter(|(_, d)| d.is_expired_at(now)).map(|(key, _)| key.to_vec()).collect();
+        for key in expired {
+            if m.equal_range(&key).all(|(_, d)| d.is_expired_at(now)) {
+                m.erase(&key);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    /// The number of entries stored, live or expired.
+    fn len(&self) -> usize {
+        self.read().len()
     }
 
     fn write(&self) -> std::sync::RwLockWriteGuard<'_, UnorderedMultimap<CollectionData>> {
@@ -32,7 +79,7 @@ impl InMemoryPerProcess {
     #[cfg(test)]
     /// Adds a value under `key` (keeping any existing ones).
     pub fn store(&self, key: &[u8], value: &[u8]) {
-        self.write().insert(key.to_vec(), CollectionData::with_value(value));
+        self.insert(&mut self.write(), key, CollectionData::with_value(value));
     }
 
     /// Deletes the keys of `expired` that still have an expired entry (a
@@ -56,7 +103,7 @@ impl Collection for InMemoryPerProcess {
         if let Some(d) = m.find_mut(key) {
             d.set_value(value);
         } else {
-            m.insert(key.to_vec(), CollectionData::with_value(value));
+            self.insert(&mut m, key, CollectionData::with_value(value));
         }
         Ok(())
     }
@@ -75,7 +122,7 @@ impl Collection for InMemoryPerProcess {
         // An expiry may be set for a key that has no value (yet).
         let mut d = CollectionData::default();
         d.set_expiry(expiry_seconds);
-        m.insert(key.to_vec(), d);
+        self.insert(&mut m, key, d);
         Ok(())
     }
 
@@ -181,6 +228,38 @@ mod tests {
         assert_eq!(collection.resolve_first(b"key").unwrap(), Some(Vec::new()));
         collection.set_expiry(b"key", 0).unwrap();
         assert_eq!(collection.resolve_first(b"key").unwrap(), None);
+    }
+
+    /// Keys that expire and are never read again are deleted by the writes
+    /// that follow; live keys stay, and the sweeps keep the map within
+    /// twice its live entries (or the first sweep's size).
+    #[test]
+    fn expired_keys_nobody_reads_are_swept() {
+        let collection = InMemoryPerProcess::new("IP");
+        let key = |n: usize| format!("client-{n}::timeout").into_bytes();
+        for n in 0..10 * FIRST_SWEEP {
+            collection.store_or_update_first(&key(n), b"1").unwrap();
+            // Expired at once: a time that has passed when it is read.
+            collection.set_expiry(&key(n), 0).unwrap();
+            assert!(collection.len() <= FIRST_SWEEP, "{n}: {}", collection.len());
+        }
+
+        // With live keys among them: the live ones stay, the map stays
+        // within twice what is live (plus one sweep's worth of writes).
+        let live = |n: usize| format!("live-{n}").into_bytes();
+        for n in 0..3 * FIRST_SWEEP {
+            collection.store_or_update_first(&live(n), b"live").unwrap();
+            collection.set_expiry(&live(n), 1000).unwrap();
+            collection.store_or_update_first(&key(n), b"1").unwrap();
+            collection.set_expiry(&key(n), 0).unwrap();
+        }
+        assert!(collection.len() <= 2 * 3 * FIRST_SWEEP, "{}", collection.len());
+        for n in 0..3 * FIRST_SWEEP {
+            assert_eq!(collection.resolve_first(&live(n)).unwrap(), Some(b"live".to_vec()));
+            assert_eq!(collection.resolve_first(&key(n)).unwrap(), None);
+        }
+        // The reads deleted the expired keys the sweeps had not reached.
+        assert_eq!(collection.len(), 3 * FIRST_SWEEP);
     }
 
     #[test]

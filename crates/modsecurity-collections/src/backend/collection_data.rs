@@ -39,7 +39,7 @@ impl CollectionData {
         self.expiry.is_some() && self.is_expired_at(SystemTime::now())
     }
 
-    fn is_expired_at(&self, now: SystemTime) -> bool {
+    pub(crate) fn is_expired_at(&self, now: SystemTime) -> bool {
         self.expiry.is_some_and(|expiry| now >= expiry)
     }
 
