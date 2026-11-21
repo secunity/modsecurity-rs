@@ -8,7 +8,5 @@ pub fn transform(value: &mut Vec<u8>) {
     if value.is_empty() {
         return;
     }
-    if let Some(transformed) = Base64::decode_forgiven(value) {
-        *value = transformed;
-    }
+    *value = Base64::decode_forgiven(value);
 }

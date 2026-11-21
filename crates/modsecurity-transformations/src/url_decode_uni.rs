@@ -3,100 +3,48 @@
 //! one is configured.
 
 use crate::UnicodeMap;
-use crate::chars::x2c;
+use crate::chars::hex_pair;
+use crate::js_decode::low_byte_of_code_point;
 
 fn inplace(input: &mut Vec<u8>, map: Option<&UnicodeMap>) {
-    let input_len = input.len();
     let mut d = 0usize;
     let mut i = 0usize;
+    // The byte of the two hex digits at `k`.
+    let hex_at = |input: &[u8], k: usize| input.get(k..).and_then(hex_pair);
 
-    while i < input_len {
-        if input[i] == b'%' {
-            if i + 1 < input_len && (input[i + 1] == b'u' || input[i + 1] == b'U') {
-                // Character is a percent sign.
-                // IIS-specific %u encoding.
-                if i + 5 < input_len {
-                    // We have at least 4 data bytes.
-                    if input[i + 2].is_ascii_hexdigit()
-                        && input[i + 3].is_ascii_hexdigit()
-                        && input[i + 4].is_ascii_hexdigit()
-                        && input[i + 5].is_ascii_hexdigit()
-                    {
-                        // The byte the map gives for the code point, if any.
-                        let code = std::str::from_utf8(&input[i + 2..i + 6])
-                            .ok()
-                            .and_then(|h| u16::from_str_radix(h, 16).ok());
-                        let hmap = map.zip(code).and_then(|(map, code)| map.get(code));
-
-                        if let Some(byte) = hmap {
-                            input[d] = byte;
-                        } else {
-                            // We first make use of the lower byte here,
-                            // ignoring the higher byte.
-                            let mut c = x2c(&input[i + 4..i + 6]);
-
-                            // Full width ASCII (ff01 - ff5e)
-                            // needs 0x20 added
-                            if c > 0x00
-                                && c < 0x5f
-                                && (input[i + 2] == b'f' || input[i + 2] == b'F')
-                                && (input[i + 3] == b'f' || input[i + 3] == b'F')
-                            {
-                                c += 0x20;
-                            }
-                            input[d] = c;
-                        }
-                        d += 1;
-                        i += 6;
-                    } else {
-                        // Invalid data, skip %u.
-                        input[d] = input[i];
-                        input[d + 1] = input[i + 1];
-                        d += 2;
-                        i += 2;
-                    }
-                } else {
-                    // Not enough bytes (4 data bytes), skip %u.
-                    input[d] = input[i];
-                    input[d + 1] = input[i + 1];
-                    d += 2;
-                    i += 2;
-                }
+    while i < input.len() {
+        let c = input[i];
+        if c == b'%' && matches!(input.get(i + 1), Some(b'u' | b'U')) {
+            // IIS-specific %uHHHH encoding.
+            if let Some(high) = hex_at(input, i + 2)
+                && let Some(low) = hex_at(input, i + 4)
+            {
+                // The byte the map gives for the code point, or its low
+                // byte.
+                input[d] = map
+                    .and_then(|map| map.get(u16::from_be_bytes([high, low])))
+                    .unwrap_or_else(|| low_byte_of_code_point(high, low));
+                d += 1;
+                i += 6;
             } else {
-                // Standard URL encoding.
-
-                // Are there enough bytes available?
-                if i + 2 < input_len {
-                    // Yes.
-
-                    // Decode a %xx combo only if it is valid.
-                    let c1 = input[i + 1];
-                    let c2 = input[i + 2];
-
-                    if c1.is_ascii_hexdigit() && c2.is_ascii_hexdigit() {
-                        input[d] = x2c(&input[i + 1..i + 3]);
-                        d += 1;
-                        i += 3;
-                    } else {
-                        // Not a valid encoding, skip this %
-                        input[d] = input[i];
-                        d += 1;
-                        i += 1;
-                    }
-                } else {
-                    // Not enough bytes available, skip this %
-                    input[d] = input[i];
-                    d += 1;
-                    i += 1;
-                }
+                // Not four hex digits: `%u` is kept as it is.
+                input[d] = c;
+                input[d + 1] = input[i + 1];
+                d += 2;
+                i += 2;
             }
+        } else if c == b'%' {
+            // Standard URL encoding, decoded only if it is valid.
+            if let Some(byte) = hex_at(input, i + 1) {
+                input[d] = byte;
+                i += 3;
+            } else {
+                input[d] = c;
+                i += 1;
+            }
+            d += 1;
         } else {
-            // Character is not a percent sign.
-            if input[i] == b'+' {
-                input[d] = b' ';
-            } else {
-                input[d] = input[i];
-            }
+            input[d] = if c == b'+' { b' ' } else { c };
             d += 1;
             i += 1;
         }

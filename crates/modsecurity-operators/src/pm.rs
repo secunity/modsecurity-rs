@@ -2,6 +2,7 @@
 //! phrases (case insensitive).
 
 use crate::{Context, Operator, Param};
+use modsecurity_compat::chars::hex_digit;
 
 /// Strips optional surrounding quotes and decodes the `|hex|` blocks and
 /// the `\:`, `\;`, `\\` and `\"` escapes. On any invalid sequence the
@@ -24,8 +25,9 @@ pub fn parse_pm_content(op_parm: &[u8]) -> Vec<u8> {
     let source = &op_parm[offset..offset + size];
     let mut parsed: Vec<u8> = Vec::with_capacity(size);
 
-    let mut bin_offset = 0usize;
-    let mut bin_parm = [0u8; 2];
+    // The first digit of a pair in a `|hex|` block, waiting for the second
+    // (which may come after the block ends and another starts).
+    let mut high: Option<u8> = None;
     let mut bin = false;
     let mut esc = false;
 
@@ -35,18 +37,13 @@ pub fn parse_pm_content(op_parm: &[u8]) -> Vec<u8> {
         } else if !esc && s == b'\\' {
             esc = true;
         } else if bin {
-            if s.is_ascii_hexdigit() {
-                bin_parm[bin_offset] = s;
-                bin_offset += 1;
-                if bin_offset == 2 {
-                    let hex = std::str::from_utf8(&bin_parm).unwrap_or("0");
-                    let c = u8::from_str_radix(hex, 16).unwrap_or(0);
-                    bin_offset = 0;
-                    parsed.push(c);
-                }
-            } else {
+            let Some(digit) = hex_digit(s) else {
                 // Invalid hex character
                 return op_parm.to_vec();
+            };
+            match high.take() {
+                Some(high) => parsed.push(high << 4 | digit),
+                None => high = Some(digit),
             }
         } else if esc {
             if matches!(s, b':' | b';' | b'\\' | b'"') {
@@ -165,6 +162,8 @@ mod tests {
         assert_eq!(parse_pm_content(b"abc def"), b"abc def".to_vec());
         assert_eq!(parse_pm_content(b"  \"abc\""), b"abc".to_vec());
         assert_eq!(parse_pm_content(b"a|4142|c"), b"aABc".to_vec());
+        // A pair of digits may be split between two blocks.
+        assert_eq!(parse_pm_content(b"|4|x|1|"), b"xA".to_vec());
         assert_eq!(parse_pm_content(b"a\\:b\\\\"), b"a:b\\".to_vec());
         assert_eq!(parse_pm_content(b"a\\nb"), b"a\\nb".to_vec());
         assert_eq!(parse_pm_content(b"|zz|"), b"|zz|".to_vec());

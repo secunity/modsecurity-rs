@@ -11,27 +11,25 @@ pub fn isodigit(x: u8) -> bool {
 /// The non-breaking space of ISO 8859-1.
 pub const NBSP: u8 = 160;
 
-/// The value of a hex digit, or -1.
+/// The value of a hexadecimal digit (either case).
 #[inline]
-pub fn hex2dec(c: u8) -> i8 {
+pub fn hex_digit(c: u8) -> Option<u8> {
     match c {
-        b'0'..=b'9' => (c - b'0') as i8,
-        b'a'..=b'f' => (c - b'a' + 10) as i8,
-        b'A'..=b'F' => (c - b'A' + 10) as i8,
-        _ => -1,
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
     }
 }
 
-/// Converts a single hexadecimal digit into a decimal value.
+/// The byte written by the two hexadecimal digits that `s` starts with;
+/// `None` when it does not start with two.
 #[inline]
-pub fn xsingle2c(what: u8) -> u8 {
-    if what >= b'A' { ((what & 0xdf).wrapping_sub(b'A')).wrapping_add(10) } else { what.wrapping_sub(b'0') }
-}
-
-/// Converts two hexadecimal digits into a byte.
-#[inline]
-pub fn x2c(what: &[u8]) -> u8 {
-    xsingle2c(what[0]).wrapping_mul(16).wrapping_add(xsingle2c(what[1]))
+pub fn hex_pair(s: &[u8]) -> Option<u8> {
+    match s {
+        [high, low, ..] => Some(hex_digit(*high)? << 4 | hex_digit(*low)?),
+        _ => None,
+    }
 }
 
 /// Appends the two lowercase hex digits of `what`.
@@ -158,6 +156,19 @@ pub fn c_str(s: &[u8]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hex_digits() {
+        assert_eq!(hex_digit(b'7'), Some(7));
+        assert_eq!(hex_digit(b'b'), Some(11));
+        assert_eq!(hex_digit(b'F'), Some(15));
+        assert_eq!(hex_digit(b'g'), None);
+        assert_eq!(hex_pair(b"4a"), Some(0x4a));
+        assert_eq!(hex_pair(b"ffzz"), Some(0xff));
+        assert_eq!(hex_pair(b"f"), None);
+        assert_eq!(hex_pair(b"fz"), None);
+        assert_eq!(hex_pair(b""), None);
+    }
 
     /// The corner cases of `std::string::find`.
     #[test]

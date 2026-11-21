@@ -1,48 +1,40 @@
 //! The `t:jsDecode` transformation: decodes JavaScript escape sequences.
 
-use crate::chars::{isodigit, x2c};
+use crate::chars::{hex_pair, isodigit};
+
+/// The byte `\uHHHH` decodes to: the low byte of the code point, plus
+/// 0x20 for the full width forms of ASCII (U+FF01 to U+FF5E).
+pub(crate) fn low_byte_of_code_point(high: u8, low: u8) -> u8 {
+    if high == 0xff && (0x01..0x5f).contains(&low) { low + 0x20 } else { low }
+}
 
 fn inplace(input: &mut Vec<u8>) {
     let input_len = input.len();
     // A read at `input_len` (one past the last byte) sees 0.
     let at = |input: &[u8], k: usize| input.get(k).copied().unwrap_or(0);
+    // The byte of the two hex digits at `k`.
+    let hex_at = |input: &[u8], k: usize| input.get(k..).and_then(hex_pair);
     let mut d = 0usize;
     let mut i = 0usize;
 
     while i < input_len {
         if input[i] == b'\\' {
             // Character is an escape.
+            let escape = input.get(i + 1).copied();
 
-            if i + 5 < input_len
-                && input[i + 1] == b'u'
-                && input[i + 2].is_ascii_hexdigit()
-                && input[i + 3].is_ascii_hexdigit()
-                && input[i + 4].is_ascii_hexdigit()
-                && input[i + 5].is_ascii_hexdigit()
+            if escape == Some(b'u')
+                && let Some(high) = hex_at(input, i + 2)
+                && let Some(low) = hex_at(input, i + 4)
             {
                 // \uHHHH
-
-                // Use only the lower byte.
-                let mut c = x2c(&input[i + 4..i + 6]);
-
-                // Full width ASCII (ff01 - ff5e) needs 0x20 added
-                if c > 0x00
-                    && c < 0x5f
-                    && (input[i + 2] == b'f' || input[i + 2] == b'F')
-                    && (input[i + 3] == b'f' || input[i + 3] == b'F')
-                {
-                    c += 0x20;
-                }
-                input[d] = c;
+                input[d] = low_byte_of_code_point(high, low);
                 d += 1;
                 i += 6;
-            } else if i + 3 < input_len
-                && input[i + 1] == b'x'
-                && input[i + 2].is_ascii_hexdigit()
-                && input[i + 3].is_ascii_hexdigit()
+            } else if escape == Some(b'x')
+                && let Some(byte) = hex_at(input, i + 2)
             {
                 // \xHH
-                input[d] = x2c(&input[i + 2..i + 4]);
+                input[d] = byte;
                 d += 1;
                 i += 4;
             } else if i + 1 < input_len && isodigit(input[i + 1]) {

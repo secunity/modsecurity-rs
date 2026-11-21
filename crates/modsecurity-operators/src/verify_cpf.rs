@@ -32,16 +32,6 @@ impl VerifyCPF {
         Ok(VerifyCPF { param, re })
     }
 
-    /// The value of a hexadecimal digit (0 for any other byte).
-    fn convert_to_int(c: u8) -> i32 {
-        match c {
-            b'0'..=b'9' => i32::from(c - b'0'),
-            b'A'..=b'F' => i32::from(c - b'A') + 10,
-            b'a'..=b'f' => i32::from(c - b'a') + 10,
-            _ => 0,
-        }
-    }
-
     /// Whether `cpfnumber` holds a valid CPF: 11 digits, not a known bad
     /// number, and both check digits right.
     pub fn verify(&self, cpfnumber: &[u8]) -> bool {
@@ -53,7 +43,7 @@ impl VerifyCPF {
         for &c in cpfnumber {
             if i < CPF_LEN && c.is_ascii_digit() {
                 s_cpf[i] = c;
-                cpf[i] = Self::convert_to_int(c);
+                cpf[i] = i32::from(c - b'0');
                 i += 1;
             }
         }
@@ -65,8 +55,8 @@ impl VerifyCPF {
             return false;
         }
 
-        let part_1 = Self::convert_to_int(s_cpf[CPF_LEN - 2]);
-        let part_2 = Self::convert_to_int(s_cpf[CPF_LEN - 1]);
+        let part_1 = i32::from(s_cpf[CPF_LEN - 2] - b'0');
+        let part_2 = i32::from(s_cpf[CPF_LEN - 1] - b'0');
 
         let mut sum: i32 = 0;
         let mut c = CPF_LEN as i32;

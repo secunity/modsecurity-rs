@@ -1,6 +1,6 @@
 //! URL (percent) decoding.
 
-use crate::chars::{hex2dec, x2c};
+use crate::chars::hex_pair;
 
 /// Decodes `val` in place, turning `+` into a space; returns the number of
 /// invalid `%` encodings.
@@ -12,41 +12,25 @@ pub fn urldecode_nonstrict_inplace(val: &mut Vec<u8>) -> usize {
 /// `plus_to_space` is set). Invalid escapes are kept as they are; returns
 /// how many there are.
 pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool) -> usize {
-    let e = val.len();
     let mut s = 0usize;
     let mut d = 0usize;
     let mut invalid_count = 0;
-    while s != e {
-        if val[s] == b'%' {
-            if s + 2 < e {
-                let c1 = val[s + 1];
-                let c2 = val[s + 2];
-                if c1.is_ascii_hexdigit() && c2.is_ascii_hexdigit() {
-                    let uni = x2c(&[c1, c2]);
-                    val[d] = uni;
-                    d += 1;
-                    s += 3;
-                } else {
-                    val[d] = val[s];
-                    d += 1;
-                    s += 1;
-                    invalid_count += 1;
-                }
+    while s < val.len() {
+        let c = val[s];
+        if c == b'%' {
+            if let Some(byte) = hex_pair(&val[s + 1..]) {
+                val[d] = byte;
+                s += 3;
             } else {
-                val[d] = val[s];
-                d += 1;
+                val[d] = c;
                 s += 1;
                 invalid_count += 1;
             }
         } else {
-            if plus_to_space && val[s] == b'+' {
-                val[d] = b' ';
-            } else {
-                val[d] = val[s];
-            }
-            d += 1;
+            val[d] = if plus_to_space && c == b'+' { b' ' } else { c };
             s += 1;
         }
+        d += 1;
     }
     val.truncate(d);
     invalid_count
@@ -55,26 +39,18 @@ pub fn urldecode_nonstrict_inplace_ext(val: &mut Vec<u8>, plus_to_space: bool) -
 /// Decodes the `%XX` escapes of `src`; invalid escapes are copied as they
 /// are.
 pub fn uri_decode(src: &[u8]) -> Vec<u8> {
-    let len = src.len();
-    let mut out = Vec::with_capacity(len);
+    let mut out = Vec::with_capacity(src.len());
     let mut p = 0usize;
-    let last_dec = len.saturating_sub(2);
-    while len >= 2 && p < last_dec {
-        if src[p] == b'%' {
-            let d1 = hex2dec(src[p + 1]);
-            let d2 = hex2dec(src[p + 2]);
-            if d1 != -1 && d2 != -1 {
-                out.push(((d1 as u8) << 4).wrapping_add(d2 as u8));
-                p += 3;
-                continue;
-            }
+    while p < src.len() {
+        if src[p] == b'%'
+            && let Some(byte) = hex_pair(&src[p + 1..])
+        {
+            out.push(byte);
+            p += 3;
+        } else {
+            out.push(src[p]);
+            p += 1;
         }
-        out.push(src[p]);
-        p += 1;
-    }
-    while p < len {
-        out.push(src[p]);
-        p += 1;
     }
     out
 }

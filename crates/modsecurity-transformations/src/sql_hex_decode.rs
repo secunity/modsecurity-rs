@@ -1,34 +1,24 @@
 //! The `t:sqlHexDecode` transformation: decodes SQL hex literals
 //! (`0xHHHH...`).
 
-use crate::chars::x2c;
+use crate::chars::hex_pair;
 
-#[inline]
-fn mytolower(ch: u8) -> u8 {
-    if ch.is_ascii_uppercase() { b'a' + ch - b'A' } else { ch }
-}
-
-/// Decodes SQL hex literals (`0xHHHH...`) in place.
+/// Decodes SQL hex literals (`0x` or `0X` followed by pairs of hex digits)
+/// in place; an odd last digit is kept as it is.
 fn inplace(value: &mut Vec<u8>) {
-    let end = value.len();
     let mut d = 0usize;
     let mut data = 0usize;
 
-    while data < end {
-        if data + 3 < end
-            && value[data] == b'0'
-            && mytolower(value[data + 1]) == b'x'
-            && value[data + 2].is_ascii_hexdigit()
-            && value[data + 3].is_ascii_hexdigit()
+    while data < value.len() {
+        if value[data] == b'0'
+            && value.get(data + 1).is_some_and(|x| x.eq_ignore_ascii_case(&b'x'))
+            && hex_pair(&value[data + 2..]).is_some()
         {
-            data += 2; // skip '0x'
-            loop {
-                value[d] = x2c(&value[data..data + 2]);
+            data += 2;
+            while let Some(byte) = hex_pair(&value[data..]) {
+                value[d] = byte;
                 d += 1;
                 data += 2;
-                if !(data + 1 < end && value[data].is_ascii_hexdigit() && value[data + 1].is_ascii_hexdigit()) {
-                    break;
-                }
             }
         } else {
             value[d] = value[data];

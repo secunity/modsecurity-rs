@@ -7,7 +7,7 @@
 //! the original ModSecurity depend on them, so they are written out here
 //! (`mbedtls_encode` / `mbedtls_decode`, after mbedtls `base64.c`) instead
 //! of using a different base64 implementation. The forgiving decoder
-//! (`decode_forgiven_engine`) is ModSecurity's own algorithm.
+//! ([`Base64::decode_forgiven`]) is ModSecurity's own algorithm.
 
 /// Base64 encoding and decoding.
 #[derive(Debug, Clone, Copy, Default)]
@@ -16,16 +16,27 @@ pub struct Base64;
 /// Standard base64 alphabet (`mbedtls_ct_base64_enc_char`).
 const ENC_TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-/// `mbedtls_ct_base64_dec_value`: value of a base64 digit, or -1.
+/// `mbedtls_ct_base64_dec_value`: the value of a base64 digit.
 #[inline]
-fn mbedtls_dec_value(c: u8) -> i8 {
+fn mbedtls_dec_value(c: u8) -> Option<u8> {
     match c {
-        b'A'..=b'Z' => (c - b'A') as i8,
-        b'a'..=b'z' => (c - b'a' + 26) as i8,
-        b'0'..=b'9' => (c - b'0' + 52) as i8,
-        b'+' => 62,
-        b'/' => 63,
-        _ => -1,
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
+/// The value of a digit for the forgiving decoder: the standard alphabet
+/// and the URL-safe one (`-` and `_`).
+#[inline]
+fn forgiving_digit(c: u8) -> Option<u8> {
+    match c {
+        b'-' => Some(62),
+        b'_' => Some(63),
+        _ => mbedtls_dec_value(c),
     }
 }
 
@@ -117,9 +128,8 @@ fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
             if equals != 0 {
                 return None;
             }
-            if mbedtls_dec_value(src[i]) < 0 {
-                return None;
-            }
+            // Anything else must be a digit.
+            mbedtls_dec_value(src[i])?;
         }
         n += 1;
         i += 1;
@@ -142,15 +152,16 @@ fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
     let mut x: u32 = 0;
     let mut accumulated_digits = 0u32;
     for &c in &src[..i] {
-        if c == b'\r' || c == b'\n' || c == b' ' {
-            continue;
-        }
         if c == b'=' {
             // We already know from the first loop that equal signs are
             // only at the end.
             break;
         }
-        x = (x << 6) | u32::from(mbedtls_dec_value(c) as u8);
+        // The first pass let only digits and line breaks through.
+        let Some(value) = mbedtls_dec_value(c) else {
+            continue;
+        };
+        x = (x << 6) | u32::from(value);
         accumulated_digits += 1;
         if accumulated_digits == 4 {
             accumulated_digits = 0;
@@ -176,29 +187,6 @@ fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// The digit table of `decode_forgiven_engine`: -1 for skipped whitespace,
-/// -2 for invalid characters (both are ignored), otherwise the digit value.
-/// Both `+`/`-` map to 62 and both `/`/`_` map to 63 (URL-safe alphabet).
-#[rustfmt::skip]
-static B64_REVERSE_T: [i32; 256] = [
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -1, -1, -2, -2, -1, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-    -1, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, 62, -2, 62, -2, 63,
-    52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -2, -2, -2, -2, -2, -2,
-    -2, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -2, -2, -2, -2, 63,
-    -2, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -2, -2, -2, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-    -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-];
-
 impl Base64 {
     /// Standard base64 with `=` padding. Encoding cannot fail.
     pub fn encode(data: &[u8]) -> Vec<u8> {
@@ -215,111 +203,53 @@ impl Base64 {
         mbedtls_decode(modsecurity_compat::chars::c_str(data))
     }
 
-    /// Lenient decoding (`t:base64DecodeExt`).
-    /// Never fails (always `Some`): invalid input decodes to an empty value.
-    pub fn decode_forgiven(data: &[u8]) -> Option<Vec<u8>> {
-        // A sizing call, then the decoding call.
-        let out_len = Self::decode_forgiven_engine(&mut [], data);
-        let mut ret = vec![0u8; out_len];
-        if out_len > 0 {
-            let out_len = Self::decode_forgiven_engine(&mut ret, data);
-            ret.truncate(out_len);
-        }
-        Some(ret)
-    }
-
-    /// The forgiving decoder: skips whitespace and invalid characters, and
-    /// accepts the URL-safe alphabet.
+    /// Lenient decoding (`t:base64DecodeExt`): bytes that are not digits
+    /// (of the standard or the URL-safe alphabet) are skipped, and so is
+    /// padding. Invalid input decodes to an empty value: a `=` after a
+    /// lone digit of a group (unless another `=` follows it), or a value
+    /// that ends with one.
     ///
-    /// With an empty `plain_text` this is the sizing call and the return
-    /// value is the buffer size the decoding needs (0 on invalid input).
-    /// Otherwise `plain_text` must be (at least) that size; the return value
-    /// is then the number of decoded bytes.
-    pub fn decode_forgiven_engine(plain_text: &mut [u8], encoded: &[u8]) -> usize {
-        const B64_PAD: i32 = b'=' as i32;
-        let plain_text_size = plain_text.len();
-        let mut i: usize = 0;
-        let mut j: usize = 0;
-        let mut ch: i32 = 0;
-
-        let mut pos = 0;
-        while pos < encoded.len() {
-            ch = i32::from(encoded[pos]);
-            pos += 1;
-            if ch == B64_PAD {
-                // The byte after the padding; 0 (not a '=') when the padding
-                // is the last byte.
-                let next = encoded.get(pos).copied().unwrap_or(0);
-                if next != b'=' && (i % 4) == 1 {
-                    return 0;
+    /// A final `9` counts as a final `=`: the original algorithm compares
+    /// the decoded value of the last digit (61 for `9`) with the code of
+    /// `=` (61).
+    pub fn decode_forgiven(data: &[u8]) -> Vec<u8> {
+        const PAD: u8 = b'=';
+        let mut out = Vec::with_capacity(data.len() / 4 * 3 + 2);
+        let mut digits = 0usize;
+        // The high bits of the byte being decoded.
+        let mut partial = 0u8;
+        let mut ends_with_padding = false;
+        for (pos, &c) in data.iter().enumerate() {
+            if c == PAD {
+                if digits % 4 == 1 && data.get(pos + 1) != Some(&PAD) {
+                    return Vec::new();
                 }
+                ends_with_padding = true;
                 continue;
             }
-            ch = B64_REVERSE_T[ch as usize];
-            if ch < 0 {
+            let Some(value) = forgiving_digit(c) else {
+                ends_with_padding = false;
                 continue;
-            }
-            match i % 4 {
-                0 => {
-                    if plain_text_size != 0 {
-                        plain_text[j] = (ch << 2) as u8;
-                    }
-                }
+            };
+            ends_with_padding = value == PAD;
+            match digits % 4 {
+                0 => partial = value << 2,
                 1 => {
-                    if plain_text_size == 0 {
-                        j += 1;
-                    } else {
-                        plain_text[j] |= (ch >> 4) as u8;
-                        j += 1;
-                        plain_text[j] = ((ch & 0x0f) << 4) as u8;
-                    }
+                    out.push(partial | value >> 4);
+                    partial = (value & 0x0f) << 4;
                 }
                 2 => {
-                    if plain_text_size == 0 {
-                        j += 1;
-                    } else {
-                        plain_text[j] |= (ch >> 2) as u8;
-                        j += 1;
-                        plain_text[j] = ((ch & 0x03) << 6) as u8;
-                    }
+                    out.push(partial | value >> 2);
+                    partial = (value & 0x03) << 6;
                 }
-                _ => {
-                    if plain_text_size == 0 {
-                        j += 1;
-                    } else {
-                        plain_text[j] |= ch as u8;
-                        j += 1;
-                    }
-                }
+                _ => out.push(partial | value),
             }
-            i += 1;
+            digits += 1;
         }
-
-        let mut k = j;
-        // Known quirk: after a digit `ch` holds its *decoded* value,
-        // so a final '9' (value 61 == '=') is also taken as padding.
-        if ch == B64_PAD {
-            match i % 4 {
-                1 => return 0,
-                2 => {
-                    k += 1;
-                    if plain_text_size != 0 {
-                        plain_text[k] = 0;
-                    }
-                }
-                3 if plain_text_size != 0 => {
-                    plain_text[k] = 0;
-                }
-                _ => {}
-            }
+        if ends_with_padding && digits % 4 == 1 {
+            return Vec::new();
         }
-
-        if plain_text_size != 0 {
-            plain_text[j] = 0;
-            j
-        } else {
-            k + 1
-        }
+        out
     }
 }
 
@@ -359,12 +289,15 @@ mod tests {
 
     #[test]
     fn forgiven_decode() {
-        assert_eq!(Base64::decode_forgiven(b"Zm9vYmFy").unwrap(), b"foobar");
-        assert_eq!(Base64::decode_forgiven(b"Zm9vYg").unwrap(), b"foob");
-        assert_eq!(Base64::decode_forgiven(b"Zm9v.YmFy").unwrap(), b"foobar");
-        assert_eq!(Base64::decode_forgiven(b"-_8=").unwrap(), b"\xfb\xff");
+        assert_eq!(Base64::decode_forgiven(b"Zm9vYmFy"), b"foobar");
+        assert_eq!(Base64::decode_forgiven(b"Zm9vYg"), b"foob");
+        assert_eq!(Base64::decode_forgiven(b"Zm9v.YmFy"), b"foobar");
+        assert_eq!(Base64::decode_forgiven(b"-_8="), b"\xfb\xff");
         // a lone digit followed by padding is invalid -> empty
-        assert_eq!(Base64::decode_forgiven(b"Zm9vY=").unwrap(), b"");
-        assert_eq!(Base64::decode_forgiven(b"").unwrap(), b"");
+        assert_eq!(Base64::decode_forgiven(b"Zm9vY="), b"");
+        assert_eq!(Base64::decode_forgiven(b""), b"");
+        // A final 9 is taken as padding.
+        assert_eq!(Base64::decode_forgiven(b"Zm9v9"), b"");
+        assert_eq!(Base64::decode_forgiven(b"Zm9vA9"), b"foo\x03");
     }
 }

@@ -33,11 +33,6 @@ impl VerifySVNR {
         Ok(VerifySVNR { param, re })
     }
 
-    /// The value of a decimal digit (0 for any other byte).
-    fn convert_to_int(c: u8) -> i32 {
-        if c.is_ascii_digit() { i32::from(c - b'0') } else { 0 }
-    }
-
     /// Whether `svnrnumber` holds a valid SVNR: 10 digits, not a known bad
     /// number, and the check digit right.
     pub fn verify(&self, svnrnumber: &[u8]) -> bool {
@@ -49,7 +44,7 @@ impl VerifySVNR {
         for &c in svnrnumber {
             if i < SVNR_LEN && c.is_ascii_digit() {
                 s_svnr[i] = c;
-                svnr[i] = Self::convert_to_int(c);
+                svnr[i] = i32::from(c - b'0');
                 i += 1;
             }
         }

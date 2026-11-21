@@ -1,84 +1,56 @@
 //! The `t:escapeSeqDecode` transformation: decodes ANSI C escape
 //! sequences (`\n`, `\x41`, `\101`, ...).
 
-use modsecurity_compat::cnum::strtoll;
+use crate::chars::{hex_pair, isodigit};
 
-use crate::chars::{isodigit, x2c};
+/// The byte the escape sequence at the start of `seq` (just after its
+/// backslash) decodes to, and the length of the sequence; `None` when it
+/// is not one.
+fn decode_escape(seq: &[u8]) -> Option<(u8, usize)> {
+    let byte = match *seq.first()? {
+        b'a' => 0x07,
+        b'b' => 0x08,
+        b'f' => 0x0c,
+        b'n' => b'\n',
+        b'r' => b'\r',
+        b't' => b'\t',
+        b'v' => 0x0b,
+        c @ (b'\\' | b'?' | b'\'' | b'"') => c,
+        // \xHH
+        b'x' | b'X' => return hex_pair(&seq[1..]).map(|byte| (byte, 3)),
+        // \O, \OO or \OOO; a value above 0xff keeps its low byte.
+        c if isodigit(c) => {
+            let digits = seq.iter().take(3).take_while(|&&c| isodigit(c)).count();
+            let value = seq[..digits].iter().fold(0u32, |acc, &c| acc * 8 + u32::from(c - b'0'));
+            return Some((value as u8, digits));
+        }
+        _ => return None,
+    };
+    Some((byte, 1))
+}
 
 fn ansi_c_sequences_decode_inplace(input: &mut Vec<u8>) {
-    let input_len = input.len();
-    // A read at `input_len` (one past the last byte) sees 0.
-    let at = |input: &[u8], k: usize| input.get(k).copied().unwrap_or(0);
     let mut d = 0usize;
     let mut i = 0usize;
 
-    while i < input_len {
-        if input[i] == b'\\' && i + 1 < input_len {
-            let mut c: i64 = match input[i + 1] {
-                b'a' => 0x07,
-                b'b' => 0x08,
-                b'f' => 0x0c,
-                b'n' => i64::from(b'\n'),
-                b'r' => i64::from(b'\r'),
-                b't' => i64::from(b'\t'),
-                b'v' => 0x0b,
-                b'\\' => i64::from(b'\\'),
-                b'?' => i64::from(b'?'),
-                b'\'' => i64::from(b'\''),
-                b'"' => i64::from(b'"'),
-                _ => -1,
-            };
-
-            if c != -1 {
-                i += 2;
-            }
-
-            // Hexadecimal or octal?
-            if c == -1 {
-                if input[i + 1] == b'x' || input[i + 1] == b'X' {
-                    // Hexadecimal.
-                    if i + 3 < input_len && input[i + 2].is_ascii_hexdigit() && input[i + 3].is_ascii_hexdigit() {
-                        // Two digits.
-                        c = i64::from(x2c(&input[i + 2..i + 4]));
-                        i += 4;
-                    } else {
-                        // Invalid encoding, do nothing.
-                    }
-                } else if isodigit(input[i + 1]) {
-                    // Octal.
-                    let mut buf = [0u8; 3];
-                    let mut j = 0usize;
-                    while i + 1 + j < input_len && j < 3 {
-                        buf[j] = input[i + 1 + j];
-                        j += 1;
-                        if !isodigit(at(input, i + 1 + j)) {
-                            break;
-                        }
-                    }
-
-                    if j > 0 {
-                        c = strtoll(&buf[..j], 8).value;
-                        i += 1 + j;
-                    }
+    while i < input.len() {
+        if input[i] == b'\\' && i + 1 < input.len() {
+            match decode_escape(&input[i + 1..]) {
+                Some((byte, len)) => {
+                    input[d] = byte;
+                    i += 1 + len;
+                }
+                None => {
+                    // Not an escape sequence: the byte after the backslash.
+                    input[d] = input[i + 1];
+                    i += 2;
                 }
             }
-
-            if c == -1 {
-                // Didn't recognise encoding, copy raw bytes.
-                input[d] = input[i + 1];
-                d += 1;
-                i += 2;
-            } else {
-                // Converted the encoding.
-                input[d] = c as u8;
-                d += 1;
-            }
         } else {
-            // Input character not a backslash, copy it.
             input[d] = input[i];
-            d += 1;
             i += 1;
         }
+        d += 1;
     }
 
     input.truncate(d);

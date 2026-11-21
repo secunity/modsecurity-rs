@@ -17,16 +17,6 @@ impl VerifySSN {
         Ok(VerifySSN { param, re })
     }
 
-    /// The value of a hexadecimal digit (0 for any other byte).
-    fn convert_to_int(c: u8) -> i32 {
-        match c {
-            b'0'..=b'9' => i32::from(c - b'0'),
-            b'A'..=b'F' => i32::from(c - b'A') + 10,
-            b'a'..=b'f' => i32::from(c - b'a') + 10,
-            _ => 0,
-        }
-    }
-
     /// Whether `ssnumber` is a plausible SSN: nine digits, not all
     /// sequential or repeated, no zero area, group or serial, and an area
     /// below 740 other than 666.
@@ -37,7 +27,7 @@ impl VerifySSN {
         for &c in ssnumber {
             if c.is_ascii_digit() {
                 if digits < 9 {
-                    num[digits] = Self::convert_to_int(c);
+                    num[digits] = i32::from(c - b'0');
                 }
                 digits += 1;
             }

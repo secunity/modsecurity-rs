@@ -1,149 +1,74 @@
 //! The `t:utf8toUnicode` transformation: replaces each UTF-8 encoded
 //! non-ASCII character with `%uHHHH`.
 
-const UNICODE_ERROR_CHARACTERS_MISSING: i32 = -1;
-const UNICODE_ERROR_INVALID_ENCODING: i32 = -2;
-
 /// Appends `%u` followed by the code point in lowercase hex, zero padded to
 /// (at least) four digits.
 fn push_code_point(data: &mut Vec<u8>, d: u32) {
     data.extend_from_slice(format!("%u{d:04x}").as_bytes());
 }
 
-fn encode(value: &mut Vec<u8>) {
-    let input = value.as_slice();
-    let input_len = input.len();
-    // The length checks below use the whole input length, not the bytes
-    // left, so a sequence may be read past the last byte; such reads see
-    // 0, which fails every continuation-byte check.
-    let at = |k: usize| input.get(k).copied().unwrap_or(0);
-    let mut count: usize = 0;
-    let bytes_left = input_len;
+/// The code point of the `len` byte UTF-8 sequence (2 to 4 bytes, by its
+/// lead byte) at the start of `bytes`; `None` when `bytes` is shorter or a
+/// continuation byte does not start with binary 10. Overlong forms,
+/// surrogates and values above U+10FFFF are decoded too.
+fn decode_sequence(bytes: &[u8], len: usize) -> Option<u32> {
+    let sequence = bytes.get(..len)?;
+    let lead_bits = 0x7f >> len;
+    sequence[1..].iter().try_fold(u32::from(sequence[0] & lead_bits), |d, &c| {
+        (c & 0xC0 == 0x80).then_some(d << 6 | u32::from(c & 0x3F))
+    })
+}
 
-    // RFC3629 states that UTF-8 are encoded using sequences of 1 to 4 octets.
-    // Max size per character should fit in 4 bytes
-    let len = input_len * 4 + 1;
-    let mut data: Vec<u8> = Vec::with_capacity(len);
+fn encode(value: &mut Vec<u8>) {
+    let input = std::mem::take(value);
+    let mut data: Vec<u8> = Vec::with_capacity(input.len() * 4 + 1);
 
     let mut i = 0usize;
-    while i < bytes_left {
-        let mut unicode_len: i32 = 0;
-        let mut d: u32 = 0;
+    while i < input.len() {
         let c = input[i];
-
-        // If first byte begins with binary 0 it is single byte encoding
-        if (c & 0x80) == 0 {
-            // single byte unicode (7 bit ASCII equivilent) has no validation
-            count += 1;
-            if count <= len {
-                if c == 0 && input_len > i + 1 {
-                    // Known quirk: a NUL that is not the last byte is
-                    // dropped.
-                } else {
-                    data.push(c);
-                }
-            }
-        } else if (c & 0xE0) == 0xC0 {
-            // If first byte begins with binary 110 it is two byte encoding
-            // check we have at least two bytes
-            if bytes_left < 2 {
-                // check second byte starts with binary 10
-                unicode_len = UNICODE_ERROR_CHARACTERS_MISSING;
-            } else if (at(i + 1) & 0xC0) != 0x80 {
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
-            } else {
-                unicode_len = 2;
-                count += 6;
-                if count <= len {
-                    // compute character number
-                    d = ((u32::from(c) & 0x1F) << 6) | (u32::from(at(i + 1)) & 0x3F);
-                    push_code_point(&mut data, d);
-                }
-            }
-        } else if (c & 0xF0) == 0xE0 {
-            // If first byte begins with binary 1110 it is three byte encoding
-            // check we have at least three bytes
-            if bytes_left < 3 {
-                // check second byte starts with binary 10
-                unicode_len = UNICODE_ERROR_CHARACTERS_MISSING;
-            } else if (at(i + 1) & 0xC0) != 0x80 {
-                // check third byte starts with binary 10
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
-            } else if (at(i + 2) & 0xC0) != 0x80 {
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
-            } else {
-                unicode_len = 3;
-                count += 6;
-                if count <= len {
-                    // compute character number
-                    d = ((u32::from(c) & 0x0F) << 12)
-                        | ((u32::from(at(i + 1)) & 0x3F) << 6)
-                        | (u32::from(at(i + 2)) & 0x3F);
-                    push_code_point(&mut data, d);
-                }
-            }
-        } else if (c & 0xF8) == 0xF0 {
-            // If first byte begins with binary 11110 it
-            // is four byte encoding
-
-            // restrict characters to UTF-8 range (U+0000 - U+10FFFF)
-            if c >= 0xF5 {
+        // The length of the sequence by its lead byte (RFC 3629).
+        let len = match c {
+            0x00..=0x7F => 1,
+            0xC0..=0xDF => 2,
+            0xE0..=0xEF => 3,
+            0xF0..=0xF7 => 4,
+            // A continuation byte or a byte UTF-8 never uses: copied.
+            _ => 0,
+        };
+        if len <= 1 {
+            // A byte that is not the lead byte of a sequence is copied.
+            // Known quirk: a NUL that is not the last byte is dropped.
+            if !(c == 0 && i + 1 < input.len()) {
                 data.push(c);
             }
-            // check we have at least four bytes
-            if bytes_left < 4 {
-                // check second byte starts with binary 10
-                unicode_len = UNICODE_ERROR_CHARACTERS_MISSING;
-            } else if (at(i + 1) & 0xC0) != 0x80 {
-                // check third byte starts with binary 10
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
-            } else if (at(i + 2) & 0xC0) != 0x80 {
-                // check forth byte starts with binary 10
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
-            } else if (at(i + 3) & 0xC0) != 0x80 {
-                unicode_len = UNICODE_ERROR_INVALID_ENCODING;
-            } else {
-                unicode_len = 4;
-                count += 7;
-                if count <= len {
-                    // compute character number
-                    d = ((u32::from(c) & 0x07) << 18)
-                        | ((u32::from(at(i + 1)) & 0x3F) << 12)
-                        | ((u32::from(at(i + 2)) & 0x3F) << 6)
-                        | (u32::from(at(i + 3)) & 0x3F);
-                    push_code_point(&mut data, d);
-                }
-            }
-        } else {
-            // any other first byte is invalid (RFC 3629)
-            count += 1;
-            if count <= len {
-                data.push(c);
-            }
-        }
-
-        // invalid UTF-8 character number range (RFC 3629)
-        if (0xD800..=0xDFFF).contains(&d) {
-            count += 1;
-            if count <= len {
-                data.push(c);
-            }
-        }
-
-        // check for overlong
-        if (unicode_len == 4 && d < 0x010000) || (unicode_len == 3 && d < 0x0800) || (unicode_len == 2 && d < 0x80) {
-            // could be represented with less bytes
-            count += 1;
-            if count <= len {
-                data.push(c);
-            }
-        }
-
-        if unicode_len > 0 {
-            i += unicode_len as usize;
-        } else {
             i += 1;
+            continue;
         }
+        // A lead byte beyond U+10FFFF is copied (and the sequence decoded).
+        if c >= 0xF5 {
+            data.push(c);
+        }
+        let Some(d) = decode_sequence(&input[i..], len) else {
+            // Missing or invalid continuation bytes: the lead byte is
+            // dropped, and the bytes after it are read on their own.
+            i += 1;
+            continue;
+        };
+        push_code_point(&mut data, d);
+        // A surrogate (not a character), or an overlong form (fewer bytes
+        // would do): the lead byte is also copied after it.
+        if (0xD800..=0xDFFF).contains(&d) {
+            data.push(c);
+        }
+        let shortest = match len {
+            2 => 0x80,
+            3 => 0x800,
+            _ => 0x10000,
+        };
+        if d < shortest {
+            data.push(c);
+        }
+        i += len;
     }
 
     *value = data;
