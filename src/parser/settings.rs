@@ -65,7 +65,7 @@ const FREE_TEXT_LINE: &[(Pattern, Part)] = &[(Sep(FreeTextNewLine), Written)];
 const FREE_TEXT_LINE_BARE: &[(Pattern, Part)] = &[(Sep(FreeTextNewLine), Bare), (SepQuoted(FreeTextNewLine), Bare)];
 /// Text right after the keyword.
 const DIRECT: &[(Pattern, Part)] = &[(Direct(FreeTextNewLine), Written)];
-const QUOTED_TEXT: &[(Pattern, Part)] = &[(SepQuoted(FreeText), AfterQuote)];
+const QUOTED_TEXT: &[(Pattern, Part)] = &[(SepQuoted(FreeText), Bare)];
 /// A directive that takes no value.
 const NOTHING: Form = Form::Word(&[]);
 
@@ -252,7 +252,7 @@ fn directive(keyword: &str) -> Option<Directive> {
             b.driver.properties.settings.httpbl_key = Some(v.text.clone());
             Ok(())
         }),
-        "secwebappid" => value(&[(SepQuoted(FreeText), BareAfterQuote), (Sep(FreeTextNewLine), Bare)], |b, v| {
+        "secwebappid" => value(&[(SepQuoted(FreeText), Bare), (Sep(FreeTextNewLine), Bare)], |b, v| {
             b.driver.properties.settings.sec_web_app_id = Some(v.text.clone());
             Ok(())
         }),

@@ -262,8 +262,6 @@ fn values_without_what_surrounds_them() {
         "SecRuleRemoveById  '7 8'  \n",
         "SecRuleRemoveByTag  'a b' \n",
         "SecRuleRemoveByMsg \" m \"\n",
-        // The closing quote is part of the value: it starts two bytes
-        // after the first space.
         "SecWebAppId \"my app\"\n",
         "SecComponentSignature \"sig/1\"\n",
         "SecUploadDir  \"/tmp/a b\" \n",
@@ -287,8 +285,8 @@ fn values_without_what_surrounds_them() {
     assert_eq!(removed, [1, 2, 4, 5, 7, 8]);
     assert_eq!(p.exceptions.remove_rule_by_tag, ["a b"]);
     assert_eq!(p.exceptions.remove_rule_by_msg, [" m "]);
-    assert_eq!(p.settings.sec_web_app_id.as_deref(), Some("my app\""));
-    assert_eq!(p.components, ["sig/1\""]);
+    assert_eq!(p.settings.sec_web_app_id.as_deref(), Some("my app"));
+    assert_eq!(p.components, ["sig/1"]);
     assert_eq!(p.settings.upload_directory.as_deref(), Some("/tmp/a b"));
     let by_tag: Vec<&str> = p.exceptions.variable_update_target_by_tag.iter().map(|(t, _)| t.as_str()).collect();
     assert_eq!(by_tag, [" t "]);

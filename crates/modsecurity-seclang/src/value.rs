@@ -77,7 +77,7 @@ pub enum Pattern {
 /// The value follows a separator, the first space or tab. What else
 /// around it is part of the value depends on the directive: the C++
 /// scanner cut each value out at a fixed place, and what that left (white
-/// space, a closing quote) is part of the language.
+/// space) is part of the language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
     /// What follows the first space or tab, as written: the white space
@@ -96,15 +96,6 @@ pub enum Part {
     /// after the spaces is part of the value, and so are its quotes then;
     /// a value of spaces only is one space.
     Bare,
-    /// What follows the first space and the byte after it, as written: the
-    /// text after the opening quote of a value that follows one space,
-    /// with its closing quote (`strchr(text, ' ') + 2` in C++:
-    /// `SecComponentSignature "a"` is `a"`).
-    AfterQuote,
-    /// [`Part::AfterQuote`] without the spaces and the quotes around it,
-    /// as for [`Part::Bare`] (`SecWebAppId "my app"` is `my app"`, and
-    /// `SecWebAppId  "my app"` is `my app`).
-    BareAfterQuote,
 }
 
 impl Part {
@@ -119,14 +110,11 @@ impl Part {
             None => &matched[matched.len()..],
         };
         let after_separator = || after(matched.iter().position(blank), 1);
-        let after_quote = || after(matched.iter().position(|&c| c == b' '), 2);
         match self {
             Part::Written => after_separator(),
             Part::Unquoted => unquoted(after_separator()),
             Part::AfterWhiteSpace => unquoted(&matched[matched.iter().take_while(|c| blank(c)).count()..]),
             Part::Bare => bare(after_separator()),
-            Part::AfterQuote => after_quote(),
-            Part::BareAfterQuote => bare(after_quote()),
         }
     }
 }
@@ -368,21 +356,16 @@ mod tests {
 
     #[test]
     fn quoted_text() {
-        // `strchr(text, ' ') + 2`: the value starts two bytes after the
-        // first space, whatever is there, and keeps the closing quote.
-        let text = &[(SepQuoted(FreeText), AfterQuote)];
-        assert_eq!(value(" \"OWASP_CRS/4.0\"", text), got("OWASP_CRS/4.0\"", 0));
-        assert_eq!(value("  \"a\"", text), got("\"a\"", 0));
-        assert_eq!(value(" \"a b\"", text), got("a b\"", 0));
+        // The value is between the quotes.
+        let text = &[(SepQuoted(FreeText), Bare)];
+        assert_eq!(value(" \"OWASP_CRS/4.0\"", text), got("OWASP_CRS/4.0", 0));
+        assert_eq!(value(" \" a b \"", text), got(" a b ", 0));
         // An escaped quote stays in the text; a plain one ends it.
-        assert_eq!(value(" \"a\\\"b\"", text), got("a\\\"b\"", 0));
+        assert_eq!(value(" \"a\\\"b\"", text), got("a\\\"b", 0));
         assert_eq!(value(" \"a\" \"b\"", text), Err(Refused::Trailing(b" \"b\"")));
         assert_eq!(value(" a", text), Err(Refused::NotAValue(b"a")));
+        // A quote that is not closed is not a value.
         assert_eq!(value(" \"a", text), Err(Refused::NotAValue(b"\"a")));
-        // The bare value keeps the closing quote too: the opening one is
-        // already gone (`SecWebAppId "my app"` is `my app"`).
-        assert_eq!(value(" \"my app\"", &[(SepQuoted(FreeText), BareAfterQuote)]), got("my app\"", 0));
-        assert_eq!(value("  \"my app\"", &[(SepQuoted(FreeText), BareAfterQuote)]), got("my app", 0));
     }
 
     #[test]

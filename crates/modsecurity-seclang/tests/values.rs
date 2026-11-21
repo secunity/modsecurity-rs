@@ -50,8 +50,8 @@ fn setting(form: Form, rest: &str) -> Result<String, String> {
         Form::IdList => &[(Sep(FreeTextNewLine), Bare)],
         Form::Marker => &[(SepQuoted(Word), Unquoted), (Sep(Word), Unquoted)],
         Form::Include => &[(Sep(Path), AfterWhiteSpace), (SepQuoted(Path), AfterWhiteSpace)],
-        Form::QuotedText => &[(SepQuoted(FreeText), AfterQuote)],
-        Form::WebAppId => &[(SepQuoted(FreeText), BareAfterQuote), (Sep(FreeTextNewLine), Bare)],
+        Form::QuotedText => &[(SepQuoted(FreeText), Bare)],
+        Form::WebAppId => &[(SepQuoted(FreeText), Bare), (Sep(FreeTextNewLine), Bare)],
     };
     match value::read(rest.as_bytes(), forms) {
         Ok(v) => Ok(String::from_utf8(v.text.to_vec()).unwrap()),
@@ -210,32 +210,31 @@ fn id_lists() {
 }
 
 #[test]
-fn text_after_the_opening_quote() {
-    // The value starts two bytes after the first space and keeps the
-    // closing quote, as C++ reads it (`strchr(text, ' ') + 2`).
+fn quoted_text() {
+    // The value is between the quotes, both of them.
     for (rest, value) in [
-        (" \"OWASP_CRS/4.0\"", "OWASP_CRS/4.0\""),
-        (" \"a b\"", "a b\""),
-        ("  \"a\"", "\"a\""),
-        (" \"a\\\"b\"", "a\\\"b\""),
-        ("\t\"a\"", ""),
-        ("\t\"a b\"", "\""),
-        ("\t\"a bc\"", "c\""),
+        (" \"OWASP_CRS/4.0\"", "OWASP_CRS/4.0"),
+        (" \"a b\"", "a b"),
+        (" \" a b \"", " a b "),
+        (" \"a\\\"b\"", "a\\\"b"),
+        ("\t\"a b\"", "a b"),
     ] {
         assert_eq!(setting(Form::QuotedText, rest), ok(value), "{rest:?}");
     }
     for (rest, value) in [
-        (" \"my app\"", "my app\""),
-        (" \" my app\"", "my app\""),
-        ("  \"my app\"", "my app"),
-        ("  \"'my app'\"", "my app"),
-        ("   \" my app \"", " my app "),
+        (" \"my app\"", "my app"),
+        (" \" my app\"", " my app"),
+        (" \"'my app'\"", "my app"),
         (" my app ", "my app"),
         (" 'my app'", "my app"),
-        ("\t\"a \\\"b\"", "b"),
+        ("\t\"a \\\"b\"", "a \\\"b"),
     ] {
         assert_eq!(setting(Form::WebAppId, rest), ok(value), "{rest:?}");
     }
+    // A quote that is not closed is not a value.
+    assert_eq!(setting(Form::QuotedText, " \"abc"), Err("not a value: \"abc".to_string()));
+    assert_eq!(setting(Form::WebAppId, " \"abc"), Err("not a value: \"abc".to_string()));
+    assert_eq!(setting(Form::WebAppId, " abc\""), Err("trailing: \"".to_string()));
 }
 
 #[test]
