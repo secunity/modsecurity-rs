@@ -1,17 +1,18 @@
 //! The `@strmatch` operator: matches when the parameter occurs anywhere in
 //! the input.
 
+use crate::needle::Needle;
 use crate::{Context, Operator, Param};
-use modsecurity_compat::chars::find;
 
 #[derive(Debug)]
 pub struct StrMatch {
     param: Param,
+    needle: Needle,
 }
 
 impl StrMatch {
     pub fn new(param: Param) -> Self {
-        StrMatch { param: param.expanded_in_message() }
+        StrMatch { needle: Needle::new(&param), param: param.expanded_in_message() }
     }
 }
 
@@ -25,6 +26,6 @@ impl Operator for StrMatch {
     }
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
         let p = cx.param(&self.param);
-        find(input, &p).is_some()
+        self.needle.find(&p, input).is_some()
     }
 }

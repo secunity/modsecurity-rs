@@ -1,17 +1,18 @@
 //! The `@containsWord` operator: matches when the parameter occurs in the
 //! input as a whole word, not next to an ASCII letter.
 
+use crate::needle::Needle;
 use crate::{Context, Operator, Param};
-use modsecurity_compat::chars::{find, find_from};
 
 #[derive(Debug)]
 pub struct ContainsWord {
     param: Param,
+    needle: Needle,
 }
 
 impl ContainsWord {
     pub fn new(param: Param) -> Self {
-        ContainsWord { param }
+        ContainsWord { needle: Needle::new(&param), param }
     }
 
     /// Whether `a[pos]` can border a word: true when it is not an ASCII
@@ -47,7 +48,7 @@ impl Operator for ContainsWord {
             return true;
         }
 
-        let mut pos = find(input, &param_target);
+        let mut pos = self.needle.find(&param_target, input);
         while let Some(p) = pos {
             if p == 0 && Self::acceptable_char(input, param_target.len()) {
                 cx.offset(0, param_target.len());
@@ -61,7 +62,7 @@ impl Operator for ContainsWord {
                 cx.offset(p, param_target.len());
                 return true;
             }
-            pos = find_from(input, &param_target, p + 1);
+            pos = self.needle.find_from(&param_target, input, p + 1);
         }
 
         false

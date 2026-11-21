@@ -91,13 +91,7 @@ pub fn to_hex_if_needed(s: &[u8], escape_spec: bool) -> String {
 /// The position of the first `needle` in `haystack` at or after `pos`
 /// (as `std::string::find`).
 pub fn find_from(haystack: &[u8], needle: &[u8], pos: usize) -> Option<usize> {
-    if pos > haystack.len() {
-        return None;
-    }
-    if needle.is_empty() {
-        return Some(pos);
-    }
-    haystack[pos..].windows(needle.len()).position(|w| w == needle).map(|p| p + pos)
+    memchr::memmem::find(haystack.get(pos..)?, needle).map(|p| p + pos)
 }
 
 /// The position of the first `needle` in `haystack`.
@@ -158,5 +152,22 @@ pub fn c_str(s: &[u8]) -> &[u8] {
     match s.iter().position(|&c| c == 0) {
         Some(end) => &s[..end],
         None => s,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The corner cases of `std::string::find`.
+    #[test]
+    fn find_from_corner_cases() {
+        assert_eq!(find(b"abcabc", b"ca"), Some(2));
+        assert_eq!(find_from(b"abcabc", b"abc", 1), Some(3));
+        assert_eq!(find_from(b"abc", b"", 3), Some(3));
+        assert_eq!(find_from(b"abc", b"", 4), None);
+        assert_eq!(find_from(b"abc", b"c", 3), None);
+        assert_eq!(find(b"", b""), Some(0));
+        assert_eq!(find(b"ab", b"abc"), None);
     }
 }

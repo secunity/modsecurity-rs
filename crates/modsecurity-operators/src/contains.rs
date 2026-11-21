@@ -1,17 +1,18 @@
 //! The `@contains` operator: matches when the parameter occurs anywhere in
 //! the input.
 
+use crate::needle::Needle;
 use crate::{Context, Operator, Param};
-use modsecurity_compat::chars::find;
 
 #[derive(Debug)]
 pub struct Contains {
     param: Param,
+    needle: Needle,
 }
 
 impl Contains {
     pub fn new(param: Param) -> Self {
-        Contains { param }
+        Contains { needle: Needle::new(&param), param }
     }
 }
 
@@ -25,7 +26,7 @@ impl Operator for Contains {
     }
     fn evaluate(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
         let p = cx.param(&self.param);
-        let offset = find(input, &p);
+        let offset = self.needle.find(&p, input);
 
         let contains = offset.is_some();
 

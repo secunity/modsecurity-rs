@@ -788,6 +788,7 @@ dependencies = [
 name = "modsecurity-compat"
 version = "3.0.17"
 dependencies = [
+ "memchr",
  "modsecurity-native",
  "rand 0.9.5",
 ]
@@ -820,6 +821,7 @@ dependencies = [
  "libc",
  "libinjection",
  "maxminddb",
+ "memchr",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-types",

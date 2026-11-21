@@ -28,6 +28,9 @@ libinjection = { path = "../../others/libinjection" }
 # @pm, @pmFromFile and @pmf: the phrase matcher, in place of the C++ ACMP,
 # which misses matches and reports phrases that are not in the list.
 aho-corasick = "1"
+# @contains, @containsWord and @strmatch: a substring searcher built once
+# for the parameter (and `chars::find` of modsecurity-compat for @within).
+memchr = "2"
 # @rbl: the DNS lookup of the block list, with the platform getaddrinfo as
 # in C++. @geoLookup: the same function, to read an address as
 # libmaxminddb does.

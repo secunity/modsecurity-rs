@@ -6,6 +6,12 @@ description = "Data structures and parsers that reproduce the observable behavio
 license.workspace = true
 publish = false
 
+[dependencies]
+# Substring search (`chars::find`), in place of a naive byte by byte
+# comparison that is quadratic on adversarial input (@contains, @within,
+# @strmatch, the multipart parser).
+memchr = "2"
+
 [dev-dependencies]
 # inet_pton, which the address parsers are compared with.
 modsecurity-native = { path = "../modsecurity-native", features = ["testing"] }

@@ -39,6 +39,7 @@ pub mod le;
 pub mod libinjection_adapter;
 pub mod libinjection_utils;
 pub mod lt;
+mod needle;
 pub mod no_match;
 pub mod pm;
 pub mod pm_from_file;

@@ -509,6 +509,9 @@ dependencies = [
 [[package]]
 name = "modsecurity-compat"
 version = "3.0.17"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "modsecurity-fuzz"
@@ -539,6 +542,7 @@ dependencies = [
  "libc",
  "libinjection",
  "maxminddb",
+ "memchr",
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-types",

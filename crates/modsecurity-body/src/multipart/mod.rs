@@ -18,7 +18,7 @@
 
 use std::sync::Arc;
 
-use modsecurity_compat::chars::is_space;
+use modsecurity_compat::chars::{find, is_space};
 use modsecurity_types::{DebugSink, ms_dbg, ms_dbg_opt};
 
 mod content_disposition;
@@ -41,15 +41,6 @@ pub const MULTIPART_BUF_SIZE: usize = 4096;
 /// empty `needle`).
 fn has_at(s: &[u8], from: usize, needle: &[u8]) -> bool {
     s[from.min(s.len())..].starts_with(needle)
-}
-
-/// The position of the first `needle` in `haystack`, as
-/// `strstr(haystack, needle)` on a NUL free haystack.
-fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() {
-        return Some(0);
-    }
-    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 // ---------------------------------------------------------------------------
