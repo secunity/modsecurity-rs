@@ -26,9 +26,8 @@ sanity-checks = []
 ddebug = []
 
 [dependencies]
-# nginx bindings (ngx-rust); NGINX_SOURCE_DIR / NGINX_BUILD_DIR select the
-# nginx tree the module is built for.
-ngx = { version = "0.5.1", default-features = false, features = ["std"] }
+# nginx bindings (of ngx-rust); NGINX_SOURCE_DIR / NGINX_BUILD_DIR select
+# the nginx tree the module is built for.
 nginx-sys = "0.5.0"
 # The libmodsecurity Rust port, linked in directly.
 modsecurity = { path = "../.." }

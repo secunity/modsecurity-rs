@@ -18,9 +18,8 @@ use nginx_sys::{
     ngx_http_compile_complex_value, ngx_http_compile_complex_value_t, ngx_http_complex_value_t, ngx_http_conf_ctx_t,
     ngx_http_core_main_conf_t, ngx_http_core_module, ngx_http_handler_pt, ngx_http_module_t,
     ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_http_phases_NGX_HTTP_LOG_PHASE, ngx_int_t, ngx_module_t, ngx_palloc,
-    ngx_pnalloc, ngx_str_t, ngx_uint_t,
+    ngx_pnalloc, ngx_pool_cleanup_add, ngx_pool_t, ngx_str_t, ngx_uint_t,
 };
-use ngx::core::Pool;
 
 use crate::access::ngx_http_modsecurity_access_handler;
 use crate::body_filter::ngx_http_modsecurity_body_filter_init;
@@ -90,6 +89,40 @@ unsafe fn conf_catch_panic<T>(cf: *mut ngx_conf_t, handler: &str, on_panic: T, f
     // SAFETY: a configuration has a log, valid while nginx configures.
     let log = unsafe { Log::new((*cf).log) };
     catch_panic(log, handler, || on_panic, f)
+}
+
+/// Moves `value` into memory of `pool`, which drops it when the pool is
+/// destroyed. Null when nginx is out of memory (`value` is then dropped
+/// here).
+///
+/// # Safety
+/// `pool` must be a valid pool.
+unsafe fn pool_move<T>(pool: *mut ngx_pool_t, value: T) -> *mut T {
+    // ngx_palloc aligns to NGX_ALIGNMENT, the size of a word.
+    const { assert!(core::mem::align_of::<T>() <= core::mem::align_of::<usize>()) };
+    // SAFETY: the allocation and the cleanup are checked before the value
+    // is written; the cleanup drops it once, when the pool is destroyed.
+    unsafe {
+        let p = ngx_palloc(pool, core::mem::size_of::<T>()) as *mut T;
+        let cln = if p.is_null() { ptr::null_mut() } else { ngx_pool_cleanup_add(pool, 0) };
+        if cln.is_null() {
+            return ptr::null_mut();
+        }
+        ptr::write(p, value);
+        (*cln).handler = Some(pool_drop::<T>);
+        (*cln).data = p as *mut c_void;
+        p
+    }
+}
+
+/// The pool cleanup of [`pool_move`].
+///
+/// # Safety
+/// `data` must be the value [`pool_move`] wrote, not dropped yet.
+unsafe extern "C" fn pool_drop<T>(data: *mut c_void) {
+    // SAFETY: per the contract, called once by nginx.
+    let drop = || unsafe { ptr::drop_in_place(data as *mut T) };
+    catch_panic(crate::nginx::cycle_log(), "the configuration cleanup", || (), drop);
 }
 
 // ---------------------------------------------------------------------------
@@ -357,7 +390,7 @@ unsafe extern "C" fn ngx_http_modsecurity_create_main_conf(cf: *mut ngx_conf_t) 
 /// `cf` must be a valid configuration.
 unsafe fn create_main_conf(cf: *mut ngx_conf_t) -> *mut c_void {
     // SAFETY: called by nginx with a valid configuration.
-    let pool = unsafe { Pool::from_ngx_pool((*cf).pool) };
+    let pool = unsafe { (*cf).pool };
     let mut modsec = ModSecurity::new();
     // Provide our connector information to LibModSecurity
     modsec.set_connector_information(MODSECURITY_NGINX_WHOAMI);
@@ -369,9 +402,9 @@ unsafe fn create_main_conf(cf: *mut ngx_conf_t) -> *mut c_void {
             log.error(NGX_LOG_INFO as ngx_uint_t, msg.as_bytes());
         }
     }));
-    let conf = MainConf { pool: pool.as_ptr(), modsec, rules_inline: 0, rules_file: 0, rules_remote: 0 };
-    let p = pool.allocate(conf);
-    if p.is_null() { NGX_CONF_ERROR as *mut c_void } else { p as *mut c_void }
+    let conf = MainConf { pool, modsec, rules_inline: 0, rules_file: 0, rules_remote: 0 };
+    // SAFETY: the configuration's pool. Null on failure, as nginx expects.
+    unsafe { pool_move(pool, conf) as *mut c_void }
 }
 
 /// `ngx_http_modsecurity_init_main_conf`
@@ -422,9 +455,9 @@ unsafe extern "C" fn ngx_http_modsecurity_create_conf(cf: *mut ngx_conf_t) -> *m
 /// `cf` must be a valid configuration.
 unsafe fn create_conf(cf: *mut ngx_conf_t) -> *mut c_void {
     // SAFETY: called by nginx with a valid configuration.
-    let pool = unsafe { Pool::from_ngx_pool((*cf).pool) };
+    let pool = unsafe { (*cf).pool };
     let conf = LocConf {
-        pool: pool.as_ptr(),
+        pool,
         rules_set: RulesSet::new(),
         enable: NGX_CONF_UNSET as ngx_flag_t,
         use_error_log: NGX_CONF_UNSET as ngx_flag_t,
@@ -432,8 +465,8 @@ unsafe fn create_conf(cf: *mut ngx_conf_t) -> *mut c_void {
         sanity_checks_enabled: NGX_CONF_UNSET as ngx_flag_t,
         transaction_id: NGX_CONF_UNSET_PTR,
     };
-    let p = pool.allocate(conf);
-    if p.is_null() { NGX_CONF_ERROR as *mut c_void } else { p as *mut c_void }
+    // SAFETY: the configuration's pool. Null on failure, as nginx expects.
+    unsafe { pool_move(pool, conf) as *mut c_void }
 }
 
 /// `ngx_conf_merge_value(conf, prev, default)`
