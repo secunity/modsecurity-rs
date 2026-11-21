@@ -68,7 +68,7 @@ impl MultipartPartTmpFile {
     }
 
     /// Leaves the file on disk when the transaction is done.
-    pub fn keep(&self) {
+    pub(super) fn keep(&self) {
         self.keep.store(true, Ordering::Relaxed);
     }
 
@@ -88,7 +88,7 @@ impl MultipartPartTmpFile {
     }
 
     /// Closes the file.
-    pub fn close(&self) {
+    pub(super) fn close(&self) {
         if let Ok(mut f) = self.file.lock() {
             *f = None;
         }

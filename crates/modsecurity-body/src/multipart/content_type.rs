@@ -12,7 +12,7 @@ pub(super) type Refused = Option<&'static str>;
 impl Multipart {
     /// Whether `c` is an RFC 2616 token character (no control, separator or
     /// non-ASCII byte).
-    pub fn is_token_char(c: u8) -> bool {
+    pub(super) fn is_token_char(c: u8) -> bool {
         // CTLs not allowed
         if c <= 32 || c >= 127 {
             return false;
@@ -25,7 +25,7 @@ impl Multipart {
 
     /// Whether the boundary only uses the characters RFC 2046 allows (a
     /// space only before the last character).
-    pub fn boundary_characters_valid(boundary: &[u8]) -> bool {
+    fn boundary_characters_valid(boundary: &[u8]) -> bool {
         boundary.iter().enumerate().all(|(i, &c)| {
             // Check against allowed list defined in RFC2046 page 22
             c.is_ascii_alphanumeric()
@@ -37,7 +37,7 @@ impl Multipart {
 
     /// How many times the word "boundary" followed (anywhere later) by `=`
     /// appears, case insensitively.
-    pub fn count_boundary_params(str_header_value: &[u8]) -> usize {
+    fn count_boundary_params(str_header_value: &[u8]) -> usize {
         let lower = str_header_value.to_ascii_lowercase();
         let mut s = &lower[..];
         let mut count = 0;
@@ -169,5 +169,21 @@ impl Multipart {
             return Err(Some("Multipart: Invalid boundary in C-T (empty)."));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helpers() {
+        assert_eq!(Multipart::count_boundary_params(b"a; BOUNDARY=1; boundary"), 1);
+        assert_eq!(Multipart::count_boundary_params(b"boundary=1 boundary=2"), 2);
+        assert!(Multipart::boundary_characters_valid(b"a b"));
+        assert!(!Multipart::boundary_characters_valid(b"a "));
+        assert!(!Multipart::boundary_characters_valid(b"a;b"));
+        assert!(Multipart::is_token_char(b'a'));
+        assert!(!Multipart::is_token_char(b'='));
     }
 }

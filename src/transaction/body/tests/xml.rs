@@ -71,7 +71,7 @@ mod tests {
         assert_eq!(t.vars.reqbody_error_msg.value, b"XML parsing error: XML: Failed to parse document.");
         assert_eq!(t.vars.reqbody_processor_error.value, b"1");
         // the (partial) document is kept
-        assert!(t.body.xml.as_ref().unwrap().has_doc());
+        assert!(t.body.xml.as_ref().unwrap().document().is_some());
         assert!(!t.body.xml.as_ref().unwrap().well_formed());
     }
 
@@ -103,7 +103,7 @@ mod tests {
             );
             assert_eq!(t.vars.reqbody_error.value, b"0");
             // OnlyArgs: no document
-            assert_eq!(t.body.xml.as_ref().unwrap().has_doc(), mode == Some(ParseXmlIntoArgs::On));
+            assert_eq!(t.body.xml.as_ref().unwrap().document().is_some(), mode == Some(ParseXmlIntoArgs::On));
         }
 
         // SecArgumentsLimit stops the SAX parser

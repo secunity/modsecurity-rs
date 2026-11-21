@@ -188,11 +188,6 @@ mod with_libxml2 {
             Self::default()
         }
 
-        /// Whether the parsed document is available.
-        pub fn has_doc(&self) -> bool {
-            self.doc.is_some()
-        }
-
         /// The parsed document.
         pub fn document(&self) -> Option<&Document> {
             self.doc.as_ref()

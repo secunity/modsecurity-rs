@@ -47,7 +47,6 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::{log, new_rules, run};
     use crate::instance::ModSecurity;
-    use modsecurity_body::multipart::*;
 
     fn ct(boundary: &str) -> Vec<u8> {
         format!("multipart/form-data; boundary={}", boundary).into_bytes()
@@ -289,17 +288,6 @@ Content-Disposition: form-data; name=\"f2\"; filename=\"2.txt\"\r\n\r\ntwo!\r\n\
         assert_eq!(t.vars.multipart_strict_error.value, b"1");
         drop(t);
         std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn helpers() {
-        assert_eq!(Multipart::count_boundary_params(b"a; BOUNDARY=1; boundary"), 1);
-        assert_eq!(Multipart::count_boundary_params(b"boundary=1 boundary=2"), 2);
-        assert!(Multipart::boundary_characters_valid(b"a b"));
-        assert!(!Multipart::boundary_characters_valid(b"a "));
-        assert!(!Multipart::boundary_characters_valid(b"a;b"));
-        assert!(Multipart::is_token_char(b'a'));
-        assert!(!Multipart::is_token_char(b'='));
     }
 }
 

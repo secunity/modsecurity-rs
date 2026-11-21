@@ -1,6 +1,6 @@
 //! The `multipart/form-data` request body processor. The parser is a line
 //! oriented state machine working on an internal buffer of
-//! [`MULTIPART_BUF_SIZE`] bytes: the data is accumulated until a line feed
+//! `MULTIPART_BUF_SIZE` (4096) bytes: the data is accumulated until a line feed
 //! (or a full buffer) and every buffer is then examined as a possible
 //! boundary, part header or part data. A NUL byte is a byte like another
 //! in a line; in a part header it is an error.
@@ -31,7 +31,7 @@ pub use tmp_file::MultipartPartTmpFile;
 
 /// The size of the parser's buffer: the longest line it looks at as a
 /// whole.
-pub const MULTIPART_BUF_SIZE: usize = 4096;
+const MULTIPART_BUF_SIZE: usize = 4096;
 
 // ---------------------------------------------------------------------------
 // C string helpers
