@@ -31,3 +31,16 @@ fn traces() {
     }
     assert_eq!(text.lines().count(), expected.lines().count(), "length of the trace");
 }
+
+/// A carriage return that does not fit in a full buffer is looked at again
+/// with the next one, and counted once: the offsets after it are where the
+/// data is in the body.
+#[test]
+fn offsets_after_a_held_back_carriage_return() {
+    let (_, header, body, uploads) = cases().into_iter().find(|(name, ..)| *name == "long file line").unwrap();
+    let start = body.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    let size = body.len() - start - b"\r\n--XyZ--\r\n".len();
+    let trace = trace(&header, &body, usize::MAX, uploads, false);
+    let line = format!("add FilesSizes f = {size} @{}+{size}", 2000 + start);
+    assert!(trace.lines().any(|l| l == line), "{line}");
+}

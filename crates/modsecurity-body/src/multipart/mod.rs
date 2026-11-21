@@ -318,13 +318,9 @@ impl Multipart {
             return false;
         }
 
-        // The data goes through the buffer one byte at a time; `z` counts
-        // the steps.
+        // The data goes through the buffer one byte at a time.
         let mut rest = data;
-        let mut z: usize = 0;
         while let Some(&c) = rest.first() {
-            z += 1;
-
             // A carriage return is not taken as the last byte of the
             // buffer: the buffer is handled first, and the byte is looked
             // at again.
@@ -337,8 +333,11 @@ impl Multipart {
             // Until the end of the line or of the buffer.
             let full = self.buf.len() == MULTIPART_BUF_SIZE || cr_held_back;
             if c == b'\n' || full {
+                // Where the buffer ends in the body: after the bytes taken
+                // so far (a carriage return held back is not one of them).
+                let end = offset.wrapping_add(data.len() - rest.len());
                 let mut buf = std::mem::take(&mut self.buf);
-                let ok = self.process_buffer(cx, &mut buf, full, offset.wrapping_add(z));
+                let ok = self.process_buffer(cx, &mut buf, full, end);
                 self.buf = buf;
                 if !ok {
                     return false;

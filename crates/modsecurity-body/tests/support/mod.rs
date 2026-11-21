@@ -150,8 +150,10 @@ macro_rules! recorder_for {
             let ok = parser.init(&mut cx);
             cx.push(format!("init -> {ok}"));
             if ok {
-                for chunk in body.chunks(piece.max(1)) {
-                    let ok = parser.process(&mut cx, chunk, 2000);
+                // The body starts at 2000; each piece is given with its
+                // own offset.
+                for (n, chunk) in body.chunks(piece.max(1)).enumerate() {
+                    let ok = parser.process(&mut cx, chunk, 2000 + n * piece.max(1));
                     if !ok {
                         cx.push("process -> false".to_string());
                         break;
