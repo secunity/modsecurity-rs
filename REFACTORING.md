@@ -1518,3 +1518,20 @@ Only what the engine uses is public: the three processors with their
 `Context` traits, `Flag`, `Entries`, `Uploads`, `MultipartPartTmpFile`
 (`release`, `filename`) and `Multipart::reqbody_no_files_length`.
 `Xml::has_doc` is gone (use `document().is_some()`).
+
+
+## SecLang values without what surrounds them
+
+Directive values used to be matched together with the white space and
+quotes around them and then cleaned afterwards, as Strings (`sanitize`,
+`remove_brackets_if_needed`), in five places: the setting reader,
+SecMarker, `build.rs`'s SecRuleUpdate.../SecRuleScript paths (which first
+re-attached `Value::lead`), `rule::id::parse_list`, and Include. Now each
+pattern of `value::read` captures its value as a slice of the line
+(`value::Match`). The only choice left is `value::Quotes` (whether single
+quotes are quotes). The grammar gives update selectors and script paths
+unquoted. The cleaning helpers, `Extract`/`Part`, `Value::lead` and
+`parser_sanitizer` are gone. The refactor commit was checked against the
+old reader on 316.6M generated inputs and the old engine on 4.2M generated
+lines, with identical results. The quirks the old code kept were removed
+in three separate behavior-change commits (see MIGRATION.md).

@@ -837,6 +837,48 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   *Why:* an artifact of the loop that no test depended on. Regression
   test: `offsets_after_a_held_back_carriage_return`
   (crates/modsecurity-body/tests/multipart.rs).
+- **A quoted SecComponentSignature or SecWebAppId is the text between its
+  quotes.** *C++:* the value started two bytes after the first space
+  (`strchr(text, ' ') + 2`), so `SecComponentSignature "OWASP_CRS/4.8.0"`
+  was `OWASP_CRS/4.8.0"` and `SecWebAppId "my app"` was `my app"`. With
+  two spaces SecWebAppId lost both quotes; after a tab the value started
+  inside the text or was empty. *Here:* both quotes are delimiters, as for
+  every other quoted directive. An unclosed quote is refused (`Invalid
+  value for SecWebAppId: "abc`). The audit log's producer is
+  `OWASP_CRS/4.8.0`. *Why:* the kept quote was an accident of where the
+  scanner cut the token, and the web application id names the persistent
+  collections. Regression test:
+  `parser::tests::values_without_what_surrounds_them`.
+- **White space around a directive's value is not part of it.** *C++:*
+  SecMarker, the number directives, the plain paths of
+  SecAuditLog/SecAuditLog2/SecDebugLog and the free text of
+  SecHttpBlKey/SecGeoLookupDb/SecResponseBodyMimeType/SecStatusEngine kept
+  everything after the first space or tab, and kept white space at their
+  end. So `SecMarker  END` was the marker " END", which `skipAfter:END`
+  did not reach; `SecDebugLogLevel  9` was level 255; `SecRequestBodyLimit
+  12` was refused. Other values trimmed only spaces, so a tab after the
+  separator was part of the value (`SecRuleUpdateTargetByTag \tfoo` was
+  "\tfoo"). A value of spaces only was " ", and `Include /a.conf  ` looked
+  for "/a.conf  ". *Here:* the white space before a value separates it and
+  the white space after it is not part of it, for every directive, the
+  SecRuleUpdate... selectors included. White space only is no value
+  (`Invalid value for SecUploadDir: `). Trailing white space no longer
+  turns `SecArgumentSeparator & ` into the ignored free-text form. *Why:*
+  the kept white space was an accident of the scanner's token boundaries
+  and changed what a marker, tag or path names. Regression tests:
+  `parser::tests::values_without_what_surrounds_them`,
+  `crates/modsecurity-seclang/tests/values.rs`.
+- **CRLF line ends.** *C++:* a setting directive's value ran up to the
+  line feed, so in a CRLF file it ended in "\r". `SecRuleRemoveByTag a`
+  removed the rules tagged "a\r",
+  SecWebAppId/SecAuditLogPrefix/SecHttpBlKey got a trailing CR,
+  `SecRuleRemoveById 1 2` was refused and `SecArgumentSeparator ;` was
+  ignored. *Here:* carriage returns before the line feed (or the end of
+  the file) are part of the line end. A CR inside a line, or inside
+  quotes, is still text: `"@streq 22\r\n2"` keeps it, and the regression
+  test request-body-parser-multipart-crlf.json relies on that. *Why:* a
+  configuration edited on Windows must build what it builds with LF line
+  ends. Regression test: `parser::tests::crlf_line_ends`.
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
