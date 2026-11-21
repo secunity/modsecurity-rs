@@ -115,18 +115,15 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Result<Variable, 
             _ => Err(VariableError::Unknown),
         };
     }
+    if let Some(collection) = Persistent::parse(token.as_bytes()) {
+        return persistent::variable(collection, selector);
+    }
     match token.as_str() {
         "RULE" => {
             let (name, selector) = Variable::selected(rule::RULE, selector)?;
             Ok(Variable::new(&name, Source::Rule(selector)))
         }
 
-        // Collections
-        "RESOURCE" => persistent::variable(Persistent::Resource, selector),
-        "IP" => persistent::variable(Persistent::Ip, selector),
-        "GLOBAL" => persistent::variable(Persistent::Global, selector),
-        "USER" => persistent::variable(Persistent::User, selector),
-        "SESSION" => persistent::variable(Persistent::Session, selector),
         "TX" => {
             let (name, key) = match selector {
                 S::None => ("TX".to_string(), CollectionKey::All),

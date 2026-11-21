@@ -507,9 +507,10 @@ fn blank_param(o: &syntax::Operator<'_>) -> bool {
     o.param.iter().all(|p| matches!(p, Piece::Text(t) if o.quoted && t.bytes().all(|c| c == b' ')))
 }
 
-/// The collections `setvar` can write to.
+/// The collections `setvar` can write to: `TX` and the persistent ones,
+/// named in any case.
 fn is_collection(name: &str) -> bool {
-    ["TX", "IP", "SESSION", "USER", "GLOBAL", "RESOURCE"].iter().any(|c| name.eq_ignore_ascii_case(c))
+    name.eq_ignore_ascii_case("TX") || crate::collection::Persistent::parse(name.as_bytes()).is_some()
 }
 
 /// Removes the excluded variables (`!ARGS:foo`) from the list, recording their

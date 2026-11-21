@@ -553,13 +553,13 @@ end
             );
             return Ok(());
         };
-        let collection = lossy(&var_name[..pos]).to_ascii_uppercase();
+        let collection = &var_name[..pos];
         let variable_name = &var_name[pos + 1..];
 
         let mut t = t.borrow_mut();
-        if collection == "TX" {
+        if collection.eq_ignore_ascii_case(b"TX") {
             t.collections.tx.set(variable_name, var_value);
-        } else if let Some(collection) = crate::collection::Persistent::from_name(&collection) {
+        } else if let Some(collection) = crate::collection::Persistent::parse(collection) {
             let stored =
                 t.collections.persistent(collection).set(variable_name, t.rules.properties.web_app_id(), &var_value);
             t.stored(stored);

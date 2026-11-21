@@ -61,6 +61,28 @@ mod tests {
         t.intervention().is_some_and(|it| it.status == 403)
     }
 
+    /// `initcol`, `setvar`, `expirevar` and the targets name a collection
+    /// in any case. (`initcol` and `expirevar` used to know only lowercase
+    /// names: `expirevar:IP.id_a=0` did nothing.)
+    #[test]
+    fn collection_names_ignore_case() {
+        let ms = ModSecurity::new();
+        let rule = "SecRule Ip:id_a \"@eq 1\" \"id:2,phase:1,deny,status:403\"";
+        assert!(denied(&ms, "10.0.0.3", rule));
+        let mut rules = RulesSet::new();
+        rules
+            .load(&format!(
+                "SecRuleEngine On\n\
+                 SecAction \"id:1,phase:1,pass,nolog,initcol:IP=%{{REMOTE_ADDR}},setvar:Ip.id_a=1,expirevar:IP.id_a=0\"\n{rule}\n"
+            ))
+            .unwrap();
+        let mut t = Transaction::new(&ms, &rules, None);
+        t.process_connection("10.0.0.4", 1234, "127.0.0.1", 80);
+        t.process_uri(b"/", b"GET", b"1.1");
+        t.process_request_headers();
+        assert!(t.intervention().is_none(), "the variable expired");
+    }
+
     /// `IP:/regex/` is matched with the names of the keys of the
     /// transaction's own collection. (The compartment used to be part of
     /// the expression, searched in the keys of every compartment: an

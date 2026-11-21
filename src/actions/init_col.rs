@@ -22,10 +22,9 @@ impl InitCol {
         let Some((collection_key, _)) = payload.split_once('=') else {
             return Err("Something wrong with initcol format: missing equals sign".to_string());
         };
-        let collection = match collection_key {
-            "ip" => Persistent::Ip,
-            "global" => Persistent::Global,
-            "resource" => Persistent::Resource,
+        // SESSION and USER are initialised by `setsid` and `setuid`.
+        let collection = match Persistent::parse(collection_key.as_bytes()) {
+            Some(c @ (Persistent::Ip | Persistent::Global | Persistent::Resource)) => c,
             _ => {
                 return Err("Something wrong with initcol: collection must be `ip', `global' or `resource'".to_string());
             }
@@ -49,5 +48,27 @@ impl Action for InitCol {
             self.collection.name().to_ascii_lowercase(),
             String::from_utf8_lossy(cx.collection_key(self.collection))
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The collection is named in any case, as in `setvar` and the rule
+    /// targets. (`initcol` used to know only lowercase names.)
+    #[test]
+    fn collection_names_ignore_case() {
+        let z = || RunTimeString::from_text("x");
+        for (payload, collection) in [("ip=", Persistent::Ip), ("IP=", Persistent::Ip), ("Global=", Persistent::Global)]
+        {
+            assert_eq!(InitCol::with_rts("initcol", payload, z()).unwrap().collection, collection, "{payload}");
+        }
+        for payload in ["session=", "USER=", "tx="] {
+            assert!(
+                InitCol::with_rts("initcol", payload, z()).unwrap_err().contains("collection must be"),
+                "{payload}"
+            );
+        }
     }
 }

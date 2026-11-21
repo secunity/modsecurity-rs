@@ -99,16 +99,29 @@ impl Persistent {
         }
     }
 
-    /// Parses the canonical uppercase names. Callers retain their own
-    /// case rules (Lua normalizes; initcol/expirevar accept lowercase only).
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "GLOBAL" => Some(Self::Global),
-            "IP" => Some(Self::Ip),
-            "RESOURCE" => Some(Self::Resource),
-            "SESSION" => Some(Self::Session),
-            "USER" => Some(Self::User),
-            _ => None,
+    /// The collection named `name`, ignoring case (`ip`, `IP`, `Ip`, ...).
+    /// Every place that names a collection (targets, `setvar`, `initcol`,
+    /// `expirevar`, Lua's `m.setvar`) reads it with this.
+    pub fn parse(name: &[u8]) -> Option<Self> {
+        const ALL: [Persistent; 5] =
+            [Persistent::Global, Persistent::Ip, Persistent::Resource, Persistent::Session, Persistent::User];
+        ALL.into_iter().find(|c| name.eq_ignore_ascii_case(c.name().as_bytes()))
+    }
+}
+
+#[cfg(test)]
+mod persistent_tests {
+    use super::Persistent;
+
+    #[test]
+    fn names_are_read_ignoring_case() {
+        for name in ["ip", "IP", "Ip", "iP"] {
+            assert_eq!(Persistent::parse(name.as_bytes()), Some(Persistent::Ip), "{name}");
+        }
+        assert_eq!(Persistent::parse(b"resource"), Some(Persistent::Resource));
+        assert_eq!(Persistent::parse(b"Session"), Some(Persistent::Session));
+        for name in ["tx", "ips", "", "i"] {
+            assert_eq!(Persistent::parse(name.as_bytes()), None, "{name}");
         }
     }
 }
