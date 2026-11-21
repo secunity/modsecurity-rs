@@ -106,7 +106,10 @@ structured   = _{
   | ^"SecRuleUpdateActionById" | ^"SecRuleScript" | ^"SecRule" | ^"SecAction" | ^"SecDefaultAction"
 }
 keyword      = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
-setting_rest = @{ (!"\n" ~ ANY)* }
+// Up to the end of the line: the carriage returns before the line feed
+// are part of the line end.
+setting_rest = @{ (!line_end ~ ANY)* }
+line_end     = _{ "\r"* ~ ("\n" | EOI) }
 
 // A directive value: quoted, or a word.
 value       = { quoted | word }

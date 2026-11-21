@@ -295,3 +295,22 @@ fn script_paths() {
         assert_eq!(directive_value(line), path, "{line:?}");
     }
 }
+
+#[test]
+fn crlf_line_ends() {
+    // The carriage return of a CRLF line end is not part of the rest of a
+    // setting's line.
+    for text in ["SecRuleRemoveByTag a b\r\n", "SecRuleRemoveByTag a b\r", "SecRuleRemoveByTag a b\r\r\n"] {
+        let source = Source::new(text.as_bytes());
+        let (statement, _) = parse_statement(source.text(), 0).unwrap();
+        match statement.unwrap().directive {
+            Directive::Setting { keyword, rest } => assert_eq!((keyword, rest), ("SecRuleRemoveByTag", " a b")),
+            d => panic!("not a setting: {d:?}"),
+        }
+    }
+    // One inside the line is.
+    let source = Source::new(b"SecRuleRemoveByTag a\rb\r\n");
+    let (statement, _) = parse_statement(source.text(), 0).unwrap();
+    assert!(matches!(statement.unwrap().directive, Directive::Setting { rest: " a\rb", .. }));
+    assert_eq!(directive_value("SecRuleUpdateTargetByTag a ARGS\r\n"), "a");
+}

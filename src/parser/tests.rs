@@ -246,6 +246,63 @@ fn whole_file_and_statement_reads_are_identical() {
     assert!(failures.is_empty(), "{} of {} differ:\n{}", failures.len(), configs.len(), failures.join("\n\n"));
 }
 
+/// A configuration with CRLF line ends builds what it builds with LF ones:
+/// the carriage return is part of the line end.
+#[test]
+fn crlf_line_ends() {
+    let conf = concat!(
+        "# A comment\n",
+        "SecRuleEngine On\n",
+        "SecRequestBodyLimit 1000\n",
+        "SecRuleRemoveById 1 2\n",
+        "SecRuleRemoveByTag a\n",
+        "SecRuleRemoveByMsg 'b c'\n",
+        "SecResponseBodyMimeType text/plain text/html\n",
+        "SecHttpBlKey key\n",
+        "SecWebAppId app\n",
+        "SecArgumentSeparator ;\n",
+        "SecMarker END\n",
+        "SecAuditLogParts ABIJDEFHZ\n",
+        "SecDefaultAction \"phase:2,log,pass\"\n",
+        "SecAction \"id:10,phase:1,pass,msg:'x',setvar:tx.a=1\"\n",
+        "SecRule ARGS \"@rx a\" \"id:12,phase:2,deny,\\\n",
+        "    t:none,tag:t\"\n",
+        "SecRule ARGS:b \"@streq b\" \\\n",
+        "    \"id:13,phase:2,pass\"\n",
+        "SecRule ARGS @detectSQLi\n",
+        "  \"id:14,phase:2,pass\"\n",
+        "SecRule REQUEST_HEADERS:User-Agent abc \"id:15,phase:1,pass\"\n",
+        "SecRule ARGS \"@rx x\" \"id:16,chain\"\n",
+        "SecRule ARGS:y \"@eq 1\"\n",
+        "SecRuleUpdateTargetById 12 !ARGS:x\n",
+        "SecRuleUpdateTargetByTag t ARGS:z\n",
+        "SecRuleUpdateActionById 13 \"t:lowercase\"\n",
+        // A commented out rule, continued on the next line.
+        "#SecRule ARGS \"@rx a\" \"id:98,\\\n",
+        "    phase:2\"\n",
+    );
+    let lf = run(conf.as_bytes(), "t", true);
+    assert!(matches!(lf, Outcome::Accepted(_)), "{lf:?}");
+    let crlf = conf.replace('\n', "\r\n");
+    for whole in [true, false] {
+        assert_eq!(run(crlf.as_bytes(), "t", whole), lf, "whole file: {whole}");
+    }
+    // Without a line feed after the last line.
+    let last = "SecRuleRemoveByTag a\r";
+    assert_eq!(run(last.as_bytes(), "t", true), run(b"SecRuleRemoveByTag a", "t", true));
+
+    // A line break inside quotes is part of the quoted text, CR included
+    // (the regression test request-body-parser-multipart-crlf.json matches
+    // `"@streq 22\r\n2"`).
+    for quoted in ["SecRule ARGS \"@streq a\nb\" \"id:20,phase:2,pass\"\n", "SecAction \"id:20,msg:'one\ntwo'\"\n"] {
+        let lf = run(quoted.as_bytes(), "t", true);
+        let crlf = run(quoted.replace('\n', "\r\n").as_bytes(), "t", true);
+        let Outcome::Accepted(dump) = &crlf else { panic!("{crlf:?}") };
+        assert!(dump.contains("13,"), "{dump}");
+        assert_ne!(crlf, lf);
+    }
+}
+
 /// What directives get as their values: the white space and the quotes
 /// around a value are not part of it.
 #[test]
