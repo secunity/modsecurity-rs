@@ -805,6 +805,38 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   other phases inspected. Regression tests:
   `rules_set::tests::a_skip_after_without_its_marker_ends_with_the_phase`,
   `rules_set::tests::a_skip_after_goes_on_to_its_marker_in_a_later_phase`.
+- **The names of the arguments of a JSON or XML body have a total size
+  limit.** *C++:* every argument of a JSON body (or an XML body with
+  `SecParseXmlIntoArgs`) is named after its whole path, so a long key or
+  element name over many values is copied into every name, and the names
+  grow quadratically with the body: a 1 MB JSON body of one 512 KB key
+  over an array of 262 141 numbers names its arguments with 137 GB.
+  *Here:* the names of one body may total 1 MiB plus 64 times the body
+  size; the argument that does not fit is not added, parsing stops, and
+  REQBODY_ERROR / REQBODY_PROCESSOR_ERROR are set with "JSON parsing
+  error: parse error: client cancelled parse via callback return value\n.
+  Argument names too long" or "XML parsing error: XML: Argument names too
+  long." (the arguments before it stay, as with `SecArgumentsLimit`).
+  *Why:* quadratic memory and time from a body within the request body
+  limit is a denial of service; a limit per name would not bound the
+  total; ordinary documents stay far below it (an array of numbers four
+  arrays deep has names about 25 times its size). Regression tests:
+  `json::tests::total_size_of_names_is_bounded` and
+  `xml::with_libxml2::tests::total_size_of_names_is_bounded`
+  (modsecurity-body),
+  `transaction::body::tests::{json,xml}::tests::argument_names_too_long`.
+- **Multipart offsets after a carriage return at the end of a full
+  buffer.** *C++:* a carriage return that would be the last byte of the
+  4096-byte buffer is held back and looked at again, and the loop counter
+  that gives the buffer's end in the body counted it twice, so the origins
+  of FILES_SIZES, FILES_TMP_CONTENT, FILES_COMBINED_SIZE and of the
+  MULTIPART_NAME / MULTIPART_PART_HEADERS / MULTIPART_FILENAME entries of
+  later parts (the `[ref]` of a log message) were one byte too far.
+  *Here:* the end of a buffer is the number of bytes taken so far, so
+  offsets are where the data is; values and detection are unchanged.
+  *Why:* an artifact of the loop that no test depended on. Regression
+  test: `offsets_after_a_held_back_carriage_return`
+  (crates/modsecurity-body/tests/multipart.rs).
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`

@@ -1484,3 +1484,37 @@ commit (in its own worktree) or of the working tree into
 is given, interleaved over `REPS` rounds, and `summarize.py` prints best
 and median per scenario against the first variant. `run_nginx.sh` checks
 the status of every response and fails on an unexpected one.
+
+
+## Body processors: argument-name allowance
+
+`crates/modsecurity-body/src/names.rs` (`NameBudget`) bounds the total
+size of the argument names a JSON or XML body may produce: 1 MiB plus 64
+bytes per body byte. JSON takes it per `Json::parse` call; XML grows it
+with each `process_chunk`. Exceeding it is a processor error (see
+MIGRATION.md).
+
+
+## Multipart field values
+
+`PartKind::Field` holds nothing: a field's data goes straight into
+`MultipartPart::value` as it is read, instead of one allocation per line
+joined at the part's end. `Multipart::process` takes the body in pieces
+with each piece's offset and gives the same results as the whole body
+(test `one_byte_at_a_time`).
+
+
+## In-memory collection sweep
+
+`InMemoryPerProcess` deletes keys whose entries have all expired when an
+insert brings the map to twice what the last sweep left (at least 1024
+entries); readers still purge what they meet. Constant cost per write on
+average; memory stays within about twice the live entries.
+
+
+## modsecurity-body public API
+
+Only what the engine uses is public: the three processors with their
+`Context` traits, `Flag`, `Entries`, `Uploads`, `MultipartPartTmpFile`
+(`release`, `filename`) and `Multipart::reqbody_no_files_length`.
+`Xml::has_doc` is gone (use `document().is_some()`).
