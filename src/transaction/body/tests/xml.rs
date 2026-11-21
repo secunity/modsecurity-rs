@@ -237,6 +237,51 @@ mod tests {
         assert!(validate(&dtd, &mut t));
         assert!(log(&rules).iter().any(|m| m.starts_with("XML: Failed to load DTD: ")));
     }
+
+    /// A DTD or schema is parsed once, by the first evaluation that can
+    /// load it, and used by the next ones (the file is not read again);
+    /// with `SecXMLExternalEntity Off` it still cannot be loaded.
+    #[test]
+    fn dtd_and_schema_are_parsed_once() {
+        let soap = br#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><x/></soap:Body></soap:Envelope>"#;
+        let envelope = br#"<?xml version="1.0" encoding="utf-8"?>
+<Envelope><Body><getInput><id type="string">12123</id></getInput></Body></Envelope>"#;
+        let directory = std::env::temp_dir().join(format!("modsec-xml-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let xsd_path = directory.join("SoapEnvelope.xsd");
+        let dtd_path = directory.join("SoapEnvelope.dtd");
+        std::fs::copy(format!("{}SoapEnvelope.xsd", DATA), &xsd_path).unwrap();
+        std::fs::copy(format!("{}SoapEnvelope.dtd", DATA), &dtd_path).unwrap();
+        let xsd = schema_op(xsd_path.to_str().unwrap()).unwrap();
+        let dtd = dtd_op(dtd_path.to_str().unwrap()).unwrap();
+
+        let ms = ModSecurity::new();
+        let mut on = new_rules();
+        on.properties.settings.sec_xml_external_entity = Some(true);
+        let mut off = new_rules();
+        off.properties.settings.sec_xml_external_entity = Some(false);
+
+        let mut t = xml(&ms, &on, soap);
+        assert!(!validate(&xsd, &mut t), "{:?}", log(&on));
+        let mut t = xml(&ms, &on, envelope);
+        assert!(!validate(&dtd, &mut t), "{:?}", log(&on));
+
+        // Off: nothing is loaded, the kept ones are not used.
+        let mut t = xml(&ms, &off, soap);
+        assert!(validate(&xsd, &mut t));
+        assert!(log(&off).iter().any(|m| m.starts_with("XML: Failed to load Schema: ")), "{:?}", log(&off));
+        let mut t = xml(&ms, &off, envelope);
+        assert!(validate(&dtd, &mut t));
+        assert!(log(&off).iter().any(|m| m.starts_with("XML: Failed to load DTD: ")));
+
+        // On again: the kept ones, even without the files.
+        std::fs::remove_dir_all(&directory).unwrap();
+        let mut t = xml(&ms, &on, soap);
+        assert!(!validate(&xsd, &mut t), "{:?}", log(&on));
+        let mut t = xml(&ms, &on, envelope);
+        assert!(!validate(&dtd, &mut t), "{:?}", log(&on));
+    }
 }
 
 /// A transaction (and so its XML parsers and document) can move to another

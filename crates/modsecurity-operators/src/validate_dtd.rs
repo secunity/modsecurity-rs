@@ -10,6 +10,11 @@ pub struct ValidateDTD {
     param: Param,
     #[cfg(feature = "libxml2")]
     resource: String,
+    /// The DTD, parsed by the first evaluation that could load it, and
+    /// validated with under this lock (validating builds the content
+    /// models of its element declarations).
+    #[cfg(feature = "libxml2")]
+    dtd: std::sync::Mutex<Option<modsecurity_native::libxml2::Dtd>>,
 }
 
 impl ValidateDTD {
@@ -22,7 +27,7 @@ impl ValidateDTD {
         let Some(resource) = lookup.path else {
             return Err(format!("XML: File not found: {}. {}", name, lookup.looked_at));
         };
-        Ok(ValidateDTD { param, resource })
+        Ok(ValidateDTD { param, resource, dtd: Default::default() })
     }
 
     /// Without libxml2 the file is not looked for.
@@ -52,13 +57,27 @@ impl Operator for ValidateDTD {
     #[cfg(feature = "libxml2")]
     fn evaluate(&self, cx: &mut dyn Context, _input: &[u8]) -> bool {
         use crate::validate_schema::message;
-        use modsecurity_native::libxml2::Dtd;
+        use modsecurity_native::libxml2::{self, Dtd};
 
-        let dtd = Dtd::load(&self.resource);
-
-        let Some(dtd) = dtd else {
-            crate::ms_dbg!(cx, 4, "XML: Failed to load DTD: {}", self.resource);
-            return true;
+        // The DTD is read where it is used: with `SecXMLExternalEntity Off`
+        // libxml2 loads no file on this thread, and the load fails at each
+        // evaluation (`config-xml_external_entity.json`, "XXE 2").
+        // Otherwise it is parsed once and kept.
+        let mut kept = self.dtd.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let fresh;
+        let dtd = if let Some(dtd) = kept.as_ref().filter(|_| libxml2::external_entities_allowed()) {
+            dtd
+        } else {
+            let Some(dtd) = Dtd::load(&self.resource) else {
+                crate::ms_dbg!(cx, 4, "XML: Failed to load DTD: {}", self.resource);
+                return true;
+            };
+            if libxml2::external_entities_allowed() {
+                &*kept.insert(dtd)
+            } else {
+                fresh = dtd;
+                &fresh
+            }
         };
 
         let Some((doc, well_formed)) = cx.xml_document() else {
@@ -72,7 +91,7 @@ impl Operator for ValidateDTD {
         }
 
         // Validator errors/warnings go to the debug log.
-        let Some(valid) = doc.validate_dtd(&dtd, &mut |m| {
+        let Some(valid) = doc.validate_dtd(dtd, &mut |m| {
             if let Some(msg) = message(m) {
                 crate::ms_dbg!(cx, 4, "{}", msg);
             }

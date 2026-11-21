@@ -6,6 +6,7 @@
 //! [`SaxHandler`]), and what the rules do with a document (XPath, DTD and
 //! schema validation). All the `unsafe` code of the XML support is here.
 
+use std::cell::Cell;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::ptr::{self, NonNull};
 
@@ -277,9 +278,18 @@ pub fn init_parser() {
     unsafe { ffi::xmlInitParser() }
 }
 
+thread_local! {
+    /// What [`allow_external_entities`] last set on this thread (libxml2's
+    /// loader setting is per thread too).
+    static EXTERNAL_ENTITIES: Cell<bool> = const { Cell::new(true) };
+}
+
 /// Whether the parsers of this thread may load external entities (the
-/// libxml2 default loader) or load none (`SecXMLExternalEntity Off`).
+/// libxml2 default loader) or load none (`SecXMLExternalEntity Off`). The
+/// setting also applies to the files [`Dtd::load`] and [`Schema::load`]
+/// read: with external entities off, they load nothing.
 pub fn allow_external_entities(allowed: bool) {
+    EXTERNAL_ENTITIES.set(allowed);
     /// An external entity loader that loads nothing.
     unsafe extern "C" fn load_nothing(_uri: *const c_char, _enc: c_int) -> *mut ffi::xmlParserInputBuffer {
         ptr::null_mut()
@@ -666,15 +676,44 @@ impl Document {
         Some(valid != 0)
     }
 
-    /// Validates the document against the schema in `file`. The messages of
-    /// loading the schema go to `load_log`, those of the validation to
-    /// `log`.
-    pub fn validate_schema(
-        &self,
-        file: &str,
-        load_log: &mut dyn FnMut(Message<'_>),
-        log: &mut dyn FnMut(Message<'_>),
-    ) -> Result<bool, SchemaError> {
+    /// Validates the document against `schema`: `None` when no validation
+    /// context could be created, otherwise whether the document is valid.
+    /// The validator's messages go to `log`.
+    pub fn validate_schema(&self, schema: &Schema, log: &mut dyn FnMut(Message<'_>)) -> Option<bool> {
+        // SAFETY: the schema is live (owned by `schema`).
+        let valid_ctx = unsafe { ffi::xmlSchemaNewValidCtxt(schema.0.as_ptr()) };
+        if valid_ctx.is_null() {
+            return None;
+        }
+        let mut sink: Sink<'_> = log;
+        // SAFETY: the validation context is live and freed exactly once,
+        // after the validation; its error context is `sink`, alive until
+        // then; the document is live.
+        let rc = unsafe {
+            ffi::xmlSchemaSetValidStructuredErrors(valid_ctx, Some(deliver), (&mut sink as *mut Sink<'_>).cast());
+            let rc = ffi::xmlSchemaValidateDoc(valid_ctx, self.as_ptr());
+            ffi::xmlSchemaFreeValidCtxt(valid_ctx);
+            rc
+        };
+        Some(rc == 0)
+    }
+}
+
+/// Whether this thread's parsers may load external entities, as
+/// [`allow_external_entities`] last set it (they may until it is called):
+/// whether [`Dtd::load`] and [`Schema::load`] can read their file.
+pub fn external_entities_allowed() -> bool {
+    EXTERNAL_ENTITIES.get()
+}
+
+/// A parsed XML schema, freed on drop.
+#[derive(Debug)]
+pub struct Schema(NonNull<ffi::xmlSchema>);
+
+impl Schema {
+    /// Parses the schema in `file`; the messages of loading it go to
+    /// `load_log`.
+    pub fn load(file: &str, load_log: &mut dyn FnMut(Message<'_>)) -> Result<Schema, SchemaError> {
         let file = c_string(file.as_bytes());
         // SAFETY: the file name is NUL terminated.
         let parser = unsafe { ffi::xmlSchemaNewParserCtxt(file.as_ptr()) };
@@ -682,37 +721,41 @@ impl Document {
             return Err(SchemaError::Load);
         }
         let mut load_sink: Sink<'_> = load_log;
-        let mut sink: Sink<'_> = log;
-        // SAFETY: `parser` is live; the error contexts are the sinks, alive
-        // until the contexts are freed below. The schema, the validation
-        // context and the parser context are freed exactly once; the
-        // document is live.
-        unsafe {
+        // SAFETY: `parser` is live and freed exactly once, after parsing;
+        // its error context is `load_sink`, alive until then. The schema
+        // does not refer to the parser context.
+        let schema = unsafe {
             ffi::xmlSchemaSetParserStructuredErrors(parser, Some(deliver), (&mut load_sink as *mut Sink<'_>).cast());
             let schema = ffi::xmlSchemaParse(parser);
-            if schema.is_null() {
-                ffi::xmlSchemaFreeParserCtxt(parser);
-                return Err(SchemaError::Parse);
-            }
-            let valid_ctx = ffi::xmlSchemaNewValidCtxt(schema);
-            if valid_ctx.is_null() {
-                ffi::xmlSchemaFree(schema);
-                ffi::xmlSchemaFreeParserCtxt(parser);
-                return Err(SchemaError::ValidationContext);
-            }
-            ffi::xmlSchemaSetValidStructuredErrors(valid_ctx, Some(deliver), (&mut sink as *mut Sink<'_>).cast());
-            let rc = ffi::xmlSchemaValidateDoc(valid_ctx, self.as_ptr());
-            ffi::xmlSchemaFreeValidCtxt(valid_ctx);
-            ffi::xmlSchemaFree(schema);
             ffi::xmlSchemaFreeParserCtxt(parser);
-            Ok(rc == 0)
-        }
+            schema
+        };
+        NonNull::new(schema).map(Schema).ok_or(SchemaError::Parse)
     }
 }
+
+impl Drop for Schema {
+    fn drop(&mut self) {
+        // SAFETY: returned by xmlSchemaParse and freed once.
+        unsafe { ffi::xmlSchemaFree(self.0.as_ptr()) };
+    }
+}
+
+// SAFETY: a schema is owned by one `Schema` and libxml2 does not tie it to
+// the thread that parsed it (its dictionary's reference count is
+// protected by libxml2's own lock). It is not `Sync`: callers that share
+// one between threads validate with it under a lock.
+unsafe impl Send for Schema {}
 
 /// An owned DTD, freed on drop.
 #[derive(Debug)]
 pub struct Dtd(NonNull<ffi::xmlDtd>);
+
+// SAFETY: a DTD is owned by one `Dtd` and libxml2 does not tie it to the
+// thread that parsed it. It is not `Sync`: validating with it builds the
+// content models of its element declarations, so callers that share one
+// between threads validate with it under a lock.
+unsafe impl Send for Dtd {}
 
 impl Dtd {
     /// `xmlParseDTD` of the file (`None` when it cannot be loaded).
@@ -731,15 +774,13 @@ impl Drop for Dtd {
     }
 }
 
-/// Why a schema validation did not run.
+/// Why a schema could not be loaded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemaError {
     /// No schema parser could be created (the file cannot be read).
     Load,
     /// The schema could not be parsed.
     Parse,
-    /// No validation context could be created.
-    ValidationContext,
 }
 
 /// A NUL terminated copy of `s`, cut at its first NUL byte (libxml2 takes
