@@ -14,107 +14,21 @@ use crate::phases::NUMBER_OF_PHASES;
 use crate::rules_set::exceptions::RulesExceptions;
 use modsecurity_operators::geo_lookup::GeoDb;
 
-/// Numeric configuration values (`i32`, `u32` and `u64`), each with the
-/// range a directive value is checked against.
-/// A value that no directive set is `None` in [`RulesSetProperties`].
-pub trait ConfigNumber: Copy + Default {
-    const SIGNED: bool;
-    fn min_value() -> i128;
-    fn max_value() -> i128;
-    fn from_i128(v: i128) -> Self;
-}
-
-macro_rules! config_number {
-    ($t:ty, $signed:expr, $min:expr) => {
-        impl ConfigNumber for $t {
-            const SIGNED: bool = $signed;
-            fn min_value() -> i128 {
-                $min
-            }
-            fn max_value() -> i128 {
-                <$t>::MAX as i128
-            }
-            fn from_i128(v: i128) -> Self {
-                v as $t
-            }
-        }
-    };
-}
-
-// ConfigInt uses the full int32 range; the unsigned variants have a minimum
-// of 0.
-config_number!(i32, true, i32::MIN as i128);
-config_number!(u32, false, 0);
-config_number!(u64, false, 0);
-
-/// Parses a numeric directive value as C++ `std::stoll` / `std::stoull`
-/// do (see [`parse_cxx_integer`]), then checks the range of `T`.
-pub fn parse_config_number<T: ConfigNumber>(a: &str) -> Result<T, String> {
-    let val: i128 = match parse_cxx_integer(a, T::SIGNED) {
-        CxxInt::Invalid => return Err("Invalid number format (not numeric)".to_string()),
-        CxxInt::OutOfRange => return Err("Number out of range".to_string()),
-        CxxInt::Value(v) => v,
-    };
-    if val > T::max_value() {
-        return Err("Value is too big.".to_string());
+/// The number of a numeric directive (`SecRequestBodyLimit 131072`):
+/// decimal digits that fit `T`.
+pub fn parse_config_number<T: std::str::FromStr>(a: &str) -> Result<T, String> {
+    if a.is_empty() || !a.bytes().all(|c| c.is_ascii_digit()) {
+        return Err("Invalid number format (not numeric)".to_string());
     }
-    if val < T::min_value() {
-        return Err("Value is too small.".to_string());
-    }
-    Ok(T::from_i128(val))
+    a.parse().map_err(|_| "Value is too big.".to_string())
 }
 
-enum CxxInt {
-    Invalid,
-    OutOfRange,
-    Value(i128),
-}
-
-/// C++ `std::stoll` / `std::stoull` number parsing: leading white space,
-/// optional sign, decimal digits, trailing garbage ignored. An unsigned
-/// value accepts a minus sign and is negated modulo 2^64.
-fn parse_cxx_integer(a: &str, signed: bool) -> CxxInt {
-    let s = a.trim_start_matches([' ', '\t', '\n', '\r', '\x0b', '\x0c']);
-    let (neg, rest) = match s.as_bytes().first() {
-        Some(b'-') => (true, &s[1..]),
-        Some(b'+') => (false, &s[1..]),
-        _ => (false, s),
-    };
-    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-    if digits.is_empty() {
-        return CxxInt::Invalid;
-    }
-    let Ok(mag) = digits.parse::<u128>() else {
-        return CxxInt::OutOfRange;
-    };
-    if signed {
-        let v: i128 = if neg { -(mag as i128) } else { mag as i128 };
-        if v > i64::MAX as i128 || v < i64::MIN as i128 {
-            return CxxInt::OutOfRange;
-        }
-        CxxInt::Value(v)
-    } else {
-        if mag > u64::MAX as u128 {
-            return CxxInt::OutOfRange;
-        }
-        let v = if neg { (mag as u64).wrapping_neg() } else { mag as u64 };
-        CxxInt::Value(v as i128)
-    }
-}
-
-/// Parses a file mode (`SecUploadFileMode`) in octal: "0640" is 0640.
+/// A file mode (`SecUploadFileMode 0640`): octal digits that fit a `u32`.
 pub fn parse_octal_mode(a: &str) -> Result<u32, String> {
     if a.is_empty() || a.bytes().any(|c| !(b'0'..=b'7').contains(&c)) {
         return Err("Invalid octal number".to_string());
     }
-    let first = a.find(|c| c != '0').unwrap_or(a.len());
-    let start = first.min(a.len() - 1);
-    let digits = &a[start..];
-    if digits.len() > 11 {
-        return Err("Value is too big.".to_string());
-    }
-    let v = u64::from_str_radix(digits, 8).unwrap_or(0);
-    parse_config_number(&v.to_string())
+    u32::from_str_radix(a, 8).map_err(|_| "Value is too big.".to_string())
 }
 
 /// A set of strings configured by directives (`SecResponseBodyMimeType`);
@@ -444,11 +358,14 @@ mod tests {
         assert_eq!(parse_config_number::<u32>("10"), Ok(10));
         assert_eq!(parse_config_number::<u32>("99999999999").unwrap_err(), "Value is too big.");
         assert_eq!(parse_config_number::<u32>("x").unwrap_err(), "Invalid number format (not numeric)");
-        assert_eq!(parse_config_number::<u64>("99999999999999999999999").unwrap_err(), "Number out of range");
-        // A negative unsigned value is negated modulo 2^64.
-        assert_eq!(parse_config_number::<u64>(" -1"), Ok(u64::MAX));
+        assert_eq!(parse_config_number::<u64>("99999999999999999999999").unwrap_err(), "Value is too big.");
+        for not_digits in ["", " 1", "-1", "+1", "1x"] {
+            assert!(parse_config_number::<u64>(not_digits).is_err(), "{not_digits:?}");
+        }
         assert_eq!(parse_octal_mode("0640"), Ok(0o640));
+        assert_eq!(parse_octal_mode("000000000640"), Ok(0o640));
         assert_eq!(parse_octal_mode("08").unwrap_err(), "Invalid octal number");
+        assert_eq!(parse_octal_mode("777777777777").unwrap_err(), "Value is too big.");
     }
 
     /// The entries of the configured code page are read, and only

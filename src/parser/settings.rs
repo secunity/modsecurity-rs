@@ -127,14 +127,20 @@ fn directive(keyword: &str) -> Option<Directive> {
             Ok(())
         }),
         "secauditlogdirmode" => value(&[(Sep(Number), SanFindSep), (SepQuoted(Number), SanFindSep)], |b, v| {
-            let mode = b.file_mode(&v.text)?;
-            b.driver.properties.audit_log.set_storage_dir_mode(mode);
-            Ok(())
+            match parse_octal_mode(&v.text) {
+                Ok(mode) => {
+                    b.driver.properties.audit_log.set_storage_dir_mode(mode);
+                    Ok(())
+                }
+                Err(e) => b.fail(&format!("Failed to parse SecAuditLogDirMode: {}", e)),
+            }
         }),
-        "secauditlogfilemode" => value(NUMBER, |b, v| {
-            let mode = b.file_mode(&v.text)?;
-            b.driver.properties.audit_log.set_file_mode(mode);
-            Ok(())
+        "secauditlogfilemode" => value(NUMBER, |b, v| match parse_octal_mode(&v.text) {
+            Ok(mode) => {
+                b.driver.properties.audit_log.set_file_mode(mode);
+                Ok(())
+            }
+            Err(e) => b.fail(&format!("Failed to parse SecAuditLogFileMode: {}", e)),
         }),
         "secauditlogformat" => word(&["JSON", "Native"], |b, v| {
             let format = if v.is("json") { AuditLogFormat::Json } else { AuditLogFormat::Native };
@@ -266,15 +272,19 @@ fn directive(keyword: &str) -> Option<Directive> {
         }),
 
         // --- Limits ------------------------------------------------------
-        "secargumentslimit" => value(NUMBER, |b, v| {
-            // A number too large to hold is the largest limit.
-            b.driver.properties.settings.arguments_limit = Some(parse_digits(&v.text).unwrap_or(u32::MAX));
-            Ok(())
+        "secargumentslimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
+            Ok(n) => {
+                b.driver.properties.settings.arguments_limit = Some(n);
+                Ok(())
+            }
+            Err(e) => b.fail(&format!("Failed to parse SecArgumentsLimit: {}", e)),
         }),
-        "secrequestbodyjsondepthlimit" => value(NUMBER, |b, v| {
-            b.driver.properties.settings.request_body_json_depth_limit =
-                Some(parse_digits(&v.text).unwrap_or(u32::MAX));
-            Ok(())
+        "secrequestbodyjsondepthlimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
+            Ok(n) => {
+                b.driver.properties.settings.request_body_json_depth_limit = Some(n);
+                Ok(())
+            }
+            Err(e) => b.fail(&format!("Failed to parse SecRequestBodyJsonDepthLimit: {}", e)),
         }),
         "secrequestbodylimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
             Ok(n) => {
@@ -472,14 +482,6 @@ impl Builder<'_, '_> {
             Err(err) => return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err)),
         }
         Ok(())
-    }
-
-    /// The permission bits written as `text`, an octal number (`0640`).
-    fn file_mode(&mut self, text: &str) -> Res<u32> {
-        match u32::from_str_radix(text, 8) {
-            Ok(mode) => Ok(mode),
-            Err(_) => self.fail(&format!("Not an octal number: {text}")),
-        }
     }
 
     /// `SecUnicodeMapFile <file> <code page>`

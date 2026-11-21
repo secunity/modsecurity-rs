@@ -397,9 +397,16 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
     `@validateByteRange` (`std::stoi`): `10x` was 10. *Here:* decimal
     digits (white space around a value of `@validateByteRange` is still
     allowed, as in `37-102, 127-255`).
-  - `SecArgumentsLimit`, `SecRequestBodyJsonDepthLimit`,
-    `SecCookieFormat`: unchanged for a number; one too large to hold is
-    still the largest limit.
+  - The numeric directives (`SecRequestBodyLimit`,
+    `SecRequestBodyNoFilesLimit`, `SecResponseBodyLimit`,
+    `SecPcreMatchLimit`, `SecUploadFileLimit`, `SecArgumentsLimit`,
+    `SecRequestBodyJsonDepthLimit`): one rule for all, decimal digits
+    that fit the limit, and "Value is too big." otherwise. *C++* reads
+    the first five with `std::stoll`/`std::stoull` and the last two with
+    `atoi`, which turned a number too large into the largest limit (in
+    this engine until now) or into -1. The modes (`SecUploadFileMode`,
+    `SecAuditLogFileMode`, `SecAuditLogDirMode`) are read by one function
+    too: octal digits.
   Regression tests: `parser::tests::file_modes`, the tests of
   `validate_byte_range`.
 - **`@eq` compares 64 bit integers.** *C++:* `@eq` reads both sides

@@ -264,7 +264,8 @@ fn file_modes() {
     assert!(dump.contains(&format!("directory_permission: Some({})", 0o750)), "{dump}");
     let mut d = Driver::new();
     assert!(!d.parse("SecAuditLogFileMode 0789\n", "t"));
-    assert!(d.properties.parser_error.contains("Not an octal number: 0789"), "{}", d.properties.parser_error);
+    let expected = "Failed to parse SecAuditLogFileMode: Invalid octal number";
+    assert!(d.properties.parser_error.contains(expected), "{}", d.properties.parser_error);
 }
 
 #[test]
@@ -485,12 +486,20 @@ fn numbers_beyond_the_int_range() {
     let mut d = Driver::new();
     assert!(d.parse("SecRuleRemoveById 3000000000 1-3000000000\n", "t"), "{}", d.properties.parser_error);
 
-    // `atoi`: `(int) strtol`, which saturates at LONG_MAX, so -1.
-    let mut d = Driver::new();
-    let conf = format!("SecArgumentsLimit {TWO_64_PLUS_1}\nSecRequestBodyJsonDepthLimit {TWO_64_PLUS_1}\n");
-    assert!(d.parse(&conf, "t"), "{}", d.properties.parser_error);
-    assert_eq!(d.properties.settings.arguments_limit, Some(u32::MAX));
-    assert_eq!(d.properties.settings.request_body_json_depth_limit, Some(u32::MAX));
+    // A limit too large for its directive is an error, as for every
+    // numeric directive. (These two used to read it as the largest limit.)
+    for directive in [
+        "SecArgumentsLimit",
+        "SecRequestBodyJsonDepthLimit",
+        "SecUploadFileLimit",
+        "SecPcreMatchLimit",
+        "SecRequestBodyLimit",
+    ] {
+        let mut d = Driver::new();
+        assert!(!d.parse(&format!("{directive} {TWO_64_PLUS_1}\n"), "t"), "{directive}");
+        let expected = format!("Failed to parse {directive}: Value is too big.");
+        assert!(d.properties.parser_error.contains(&expected), "{}", d.properties.parser_error);
+    }
 }
 
 /// One-line configurations around every setting directive and every
