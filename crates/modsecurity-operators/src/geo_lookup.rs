@@ -93,7 +93,8 @@ fn mmdb_open_strerror(e: &maxminddb::MaxMindDbError) -> &'static str {
 }
 
 /// `MMDB_lookup_string`'s address parsing: `getaddrinfo` with
-/// `AI_NUMERICHOST`. Returns the address or the `gai_strerror` message.
+/// `AI_NUMERICHOST`. Returns the address or the `gai_strerror` message
+/// (which `dns_lookup`'s error carries, after a prefix of its own).
 #[cfg(feature = "maxmind")]
 fn parse_numeric_host(target: &[u8]) -> Result<std::net::IpAddr, String> {
     use dns_lookup::{AddrInfoHints, SockType, getaddrinfo};
@@ -106,8 +107,10 @@ fn parse_numeric_host(target: &[u8]) -> Result<std::net::IpAddr, String> {
         socktype: SockType::Stream.into(),
         protocol: 0,
     };
-    let mut entries = getaddrinfo(Some(host), None, Some(hints))
-        .map_err(|e| modsecurity_native::posix::gai_strerror(e.error_num()))?;
+    let mut entries = getaddrinfo(Some(host), None, Some(hints)).map_err(|e| {
+        let text = e.to_string();
+        text.strip_prefix("failed to lookup address information: ").map_or(text.clone(), str::to_string)
+    })?;
     match entries.next() {
         Some(Ok(info)) => Ok(info.sockaddr.ip()),
         // libmaxminddb rejects other families as an invalid lookup.
@@ -231,5 +234,16 @@ mod tests {
         assert_eq!(parse_numeric_host(b"127.0.0.1").unwrap(), "127.0.0.1".parse::<std::net::IpAddr>().unwrap());
         assert_eq!(parse_numeric_host(b"::1").unwrap(), "::1".parse::<std::net::IpAddr>().unwrap());
         assert!(parse_numeric_host(b"www.modsecurity.org").is_err());
+    }
+
+    /// The message of an address `getaddrinfo` rejects is `gai_strerror`'s,
+    /// without the prefix `dns_lookup` puts before it.
+    #[cfg(feature = "maxmind")]
+    #[test]
+    fn address_errors_are_the_gai_strerror_text() {
+        let expected = modsecurity_native::testing::gai_strerror(libc::EAI_NONAME);
+        assert_eq!(parse_numeric_host(b"www.modsecurity.org"), Err(expected.clone()));
+        assert_eq!(parse_numeric_host(b"1.2.3.4.5"), Err(expected));
+        assert_eq!(parse_numeric_host(b"::1"), Ok("::1".parse().unwrap()));
     }
 }

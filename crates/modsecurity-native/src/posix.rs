@@ -1,5 +1,4 @@
-//! libc calls with no safe equivalent in std: `mkstemp`, `wordexp` and
-//! `gai_strerror`.
+//! libc calls with no safe equivalent in std: `mkstemp` and `wordexp`.
 
 use std::ffi::{CStr, CString, c_char, c_int};
 
@@ -65,12 +64,6 @@ pub fn word_expansion(words: &str, flags: c_int) -> Vec<String> {
     out
 }
 
-/// `gai_strerror(code)`: the text of a `getaddrinfo` error code.
-pub fn gai_strerror(code: c_int) -> String {
-    // SAFETY: gai_strerror returns a static NUL terminated string.
-    unsafe { CStr::from_ptr(libc::gai_strerror(code)) }.to_string_lossy().into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,6 +82,5 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
 
         assert_eq!(mkstemp("a\0b").1.map(|_| ()), None);
-        assert!(!gai_strerror(libc::EAI_NONAME).is_empty());
     }
 }

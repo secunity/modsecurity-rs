@@ -36,6 +36,12 @@ pub fn strerror(errnum: i32) -> String {
     unsafe { CStr::from_ptr(libc::strerror(errnum)) }.to_string_lossy().into_owned()
 }
 
+/// `gai_strerror(code)`: the text of a `getaddrinfo` error code.
+pub fn gai_strerror(code: i32) -> String {
+    // SAFETY: gai_strerror returns a static NUL terminated string.
+    unsafe { CStr::from_ptr(libc::gai_strerror(code)) }.to_string_lossy().into_owned()
+}
+
 // `inet_pton` is part of the C library but not exposed by `libc`.
 unsafe extern "C" {
     fn inet_pton(af: c_int, src: *const c_char, dst: *mut c_void) -> c_int;
