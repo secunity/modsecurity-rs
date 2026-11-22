@@ -1,153 +1,75 @@
 # libmodsecurity in Rust
 
 A Rust implementation of [libmodsecurity v3](https://github.com/owasp-modsecurity/ModSecurity),
-the ModSecurity web application firewall engine: it loads SecLang rule sets
-(e.g. the OWASP Core Rule Set) and inspects HTTP transactions handed to it by
-a connector.
+the ModSecurity web application firewall engine. It loads SecLang rule sets
+(such as the OWASP Core Rule Set) and inspects the HTTP transactions a
+connector hands it.
 
-It began as a port of the C++ library v3.0.17 and is now its own engine. What
-it holds itself to is that the test suites of the original ModSecurity and
-the OWASP CRS regression suite pass, and that the C API (`msc_*` functions)
-stays, so existing C connectors can link against it. Where it behaves
-differently from the C++ library, [MIGRATION.md](MIGRATION.md) says so
-("Intentional deviations from C++").
+- It passes the test suites of the original ModSecurity and the OWASP CRS
+  regression suite.
+- It keeps the C API (`msc_*`) and the `libmodsecurity.so.3` SONAME, so
+  existing connectors can use it in place of the C++ library.
+- Where it behaves differently from C++, [MIGRATION.md](MIGRATION.md) says so.
 
-[ARCHITECTURE.md](ARCHITECTURE.md) describes how the code is organised;
-[REFACTORING.md](REFACTORING.md) is the history of how it got there.
-
-## Building
+## Build
 
 ```sh
 cargo build --release
 ```
 
-This produces `target/release/libmodsecurity.{so,a}` (the C API, built by
-the `modsecurity-capi` crate in `crates/`) and the Rust library (the
-`modsecurity` crate at the root). The shared library's SONAME is `libmodsecurity.so.3`, as for the C++
-library: install it under that name (e.g. `libmodsecurity.so.3` → the built
-file) to replace the C++ library under an existing connector. Optional components are cargo features mirroring the C++ `configure`
-options; all are on by default:
+This builds `target/release/libmodsecurity.{so,a}` (the C API) and the
+`modsecurity` Rust crate. PCRE2 is required. Optional components are cargo
+features, all on by default: `libxml2`, `lua`, `maxmind`, `lmdb`, `ssdeep`,
+`curl` (`libxml2`, `ssdeep` and `curl` need the system libraries).
+`--no-default-features` builds the core alone.
 
-| feature | C++ option | needs |
-|---|---|---|
-| `libxml2` | `WITH_LIBXML2` | system libxml2 (XML body processor, `XML:` variable, `@validateDTD`, `@validateSchema`) |
-| `lua` | `WITH_LUA` | nothing (Lua 5.4 is vendored by `mlua`) |
-| `maxmind` | `WITH_MAXMIND` | nothing (`maxminddb` crate) |
-| `lmdb` | `WITH_LMDB` | nothing (vendored) — persistent collections in `./modsec-shared-collections` |
-| `ssdeep` | `WITH_SSDEEP` | system libfuzzy (`@fuzzyHash`) |
-| `curl` | `WITH_CURL` | system libcurl (`SecRemoteRules`, HTTPS audit log, remote `@pmFromFile`/`@ipMatchFromFile`) |
-| `regex-dollar-endonly` | `MODSEC_REGEX_DOLLAR_ENDONLY` | — (off by default) |
-
-`@pm`, `@pmFromFile` and `@pmf` differ from C++ on purpose: they use the
-`aho-corasick` crate, where C++ has its own matcher (ACMP) that misses some
-matches and can report a phrase that is not in the list. Every occurrence
-is found, and `TX:0` and the log messages show the phrase that matched.
-
-`@ipMatch`, `@ipMatchFromFile` and `@ipMatchF` differ from C++ on purpose:
-an address matches whenever a listed network contains it. The C++ tree
-misses some addresses when a list holds overlapping networks (`@ipMatch
-10.0.49.87/16,10.0.42.94/18` does not match `10.0.70.67` there). An entry is
-an address or `address/length`; unlike C++, `/0` and `::1/128` are accepted
-and `/24abc` is not. See "Intentional deviations from C++" in `MIGRATION.md`.
-
-PCRE2 is required (linked through `pcre2-sys`). `cargo build --no-default-features`
-builds the core without the optional components.
-
-## Using it from Rust
+## Use from Rust
 
 ```rust
-use modsecurity::inspection::{Blocked, Inspection};
+use modsecurity::inspection::Inspection;
 use modsecurity::{ModSecurity, RulesSet};
 
 let engine = ModSecurity::new();
 let mut rules = RulesSet::new();
-if let Err(error) = rules.load_from_uri("modsecurity.conf") {
-    eprintln!("{error}");
-}
+rules.load_from_uri("modsecurity.conf").ok();
 
-// One exchange, stage by stage: each step gives the next stage, or
-// `Blocked` when the rules interrupt the exchange.
+// Each step returns `Err(Blocked)` when the rules interrupt the exchange.
 let outcome = (|| {
     let client = "10.0.0.7:51234".parse().unwrap();
     let server = "10.0.0.1:80".parse().unwrap();
     let head = Inspection::new(&engine, &rules).connection(client, server)?;
-    let body = head.request_head(b"GET", b"/index.php?id=1", b"1.1", [("Host", "www.example.com")])?;
-    let response = body.finish()?; // or .write(piece)? for each piece of a body first
-    // ... the application answers ...
-    let response_body = response.response_head(200, "HTTP 1.1", [("Content-Type", "text/html")])?;
-    response_body.write(b"<html>...</html>")?.finish()
+    let body = head.request_head(b"GET", b"/?id=1", b"1.1", [("Host", "example.com")])?;
+    let response = body.finish()?;
+    response.response_head(200, "HTTP 1.1", [("Content-Type", "text/html")])?.finish()
 })();
 if let Err(blocked) = outcome {
-    println!("status {}", blocked.intervention().status);
+    println!("blocked with status {}", blocked.intervention().status);
 }
 ```
 
-The stages of `modsecurity::inspection` put the order of the phases in the
-types, and the audit log is written when the exchange ends, wherever that
-is. Underneath is a `Transaction`, which can also be driven directly
-(`process_uri`, `add_request_header`, `process_request_headers`,
-`intervention`, ...): that is what the C API does.
+With the `tower` feature, `modsecurity::middleware::ModSecurityLayer` wraps
+any tower service (axum, hyper, ...). See `examples/axum`.
 
-The API is the types at the crate root (`ModSecurity`, `RulesSet`,
-`Transaction`, `Intervention`, `RuleMessage`, the server log callback and
-the `DebugLog` trait) and `inspection`. `ModSecurity` and `RulesSet` are
-`Send + Sync` (share them between worker threads); an inspection borrows
-both. What the rules found is in `Transaction::rule_messages`, as data.
-
-### In a Rust HTTP server
-
-With the `tower` feature, `modsecurity::middleware::ModSecurityLayer` runs
-an inspection around any tower HTTP service (axum, hyper, tonic,
-...) and answers interventions itself:
-
-```rust,ignore
-use modsecurity::middleware::ModSecurityLayer;
-
-let layer = ModSecurityLayer::new(Arc::new(ModSecurity::new()), Arc::new(rules));
-let app = axum::Router::new().route("/", get(handler)).layer(layer);
-```
-
-The client and server addresses come from a `middleware::Connection`
-request extension. `examples/axum` is a complete server (`cargo run -p
-modsecurity-axum-example`). The `http` feature alone adds
-the stages' `request`/`response` (and `Transaction::process_request_head`/
-`process_response_head`) for `http` crate requests and responses, and
-`Intervention::to_response`.
-
-## Tests
+## Test
 
 ```sh
-cargo test                      # library unit tests + the ported C++ suites
-cargo run --bin regression_tests  # from test/: SecLang regression cases
-cargo run --bin unit_tests        # from test/: operator/transformation cases
+cargo test
 ```
 
-`cargo test` runs the C++ project's regression suite (788 cases) and its
-operator/transformation unit suite (4336 cases) through the ported test
-utilities. `test/differential/run.sh` compares this library with a built C++
-libmodsecurity on the OWASP CRS (see the script header), and `test/crs/run.sh`
-runs the OWASP CRS regression suite (go-ftw) through a real nginx with the
-ModSecurity-nginx connector on top of a given library (or with a prebuilt
-module such as the Rust connector port).
-
-`tools/rules-check` is the port of `modsec-rules-check`.
+This runs the unit tests and the original ModSecurity regression and unit
+suites. `test/crs/run.sh` runs the OWASP CRS suite through nginx.
 
 ## nginx connector
 
-`connectors/nginx` is a Rust port of the
-[ModSecurity-nginx](https://github.com/owasp-modsecurity/ModSecurity-nginx)
-connector: a dynamic nginx module with this library linked in. It needs a
-configured nginx source tree, so plain `cargo build`/`cargo test` skip it:
+`connectors/nginx` is the ModSecurity-nginx module in Rust. See
+[connectors/nginx/README.md](connectors/nginx/README.md).
 
-```sh
-NGINX_SOURCE_DIR=/path/to/nginx NGINX_BUILD_DIR=/path/to/nginx/objs \
-    cargo build --release -p modsecurity-nginx
-```
+## More
 
-See [connectors/nginx/README.md](connectors/nginx/README.md).
+- [ARCHITECTURE.md](ARCHITECTURE.md): how the code is organised
+- [MIGRATION.md](MIGRATION.md): differences from the C++ library
+- [REFACTORING.md](REFACTORING.md): design history
 
 ## License
 
-Apache License 2.0, like the original project (see `LICENSE`).
-`others/libinjection` is a vendored pure-Rust libinjection implementation
-(crate `libinjection`) with its own license file.
+Apache License 2.0 (see `LICENSE`).
