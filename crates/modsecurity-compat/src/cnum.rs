@@ -1,72 +1,44 @@
-//! The number conversions of C (`strtoll`, `atoll`),
-//! with their corner cases: what counts as white space, where parsing
-//! stops, and what overflow gives.
+//! The integer a text starts with, read as C's `strtoll` and `atoll` read
+//! it: leading white space, an optional sign, then the digits there are; 0
+//! without digits, and the `i64` bounds when the number is beyond them.
+//!
+//! This is how ModSecurity reads the numbers it compares and adds (`@gt`,
+//! `setvar:tx.score=+5`, `&#65;`). A request value `500abc` is 500, as for
+//! PHP's `intval` or JavaScript's `parseInt`: reading it as 0 would let text
+//! after a number get it past a limit rule.
 
 use crate::chars::is_space;
 
-/// What `strtoll` makes of a text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Integer {
-    /// The value, saturated at the `i64` bounds on overflow (as
-    /// `strtoll` saturates at `LLONG_MIN`/`LLONG_MAX`); 0 without digits.
-    pub value: i64,
-    /// Whether the number was out of range (`ERANGE`).
-    pub overflow: bool,
-    /// Whether any digit was read.
-    pub digits: bool,
-}
-
-/// Parses like `strtoll(s, NULL, base)`: leading white space, an optional
-/// sign, for base 16 an optional `0x` or `0X` (when a hexadecimal digit
-/// follows it), then digits of `base`.
-pub fn strtoll(s: &[u8], base: u32) -> Integer {
-    let mut i = 0;
-    while i < s.len() && is_space(s[i]) {
-        i += 1;
-    }
-    let mut neg = false;
-    if i < s.len() && (s[i] == b'+' || s[i] == b'-') {
-        neg = s[i] == b'-';
-        i += 1;
-    }
-    if base == 16
-        && s.get(i) == Some(&b'0')
-        && matches!(s.get(i + 1), Some(b'x' | b'X'))
-        && s.get(i + 2).is_some_and(u8::is_ascii_hexdigit)
+/// `strtoll(s, NULL, base)`: for base 16 a `0x` or `0X` before a
+/// hexadecimal digit is skipped.
+pub fn strtoll(s: &[u8], base: u32) -> i64 {
+    let s = &s[s.iter().take_while(|&&c| is_space(c)).count()..];
+    let (negative, mut digits) = match s {
+        [b'-', rest @ ..] => (true, rest),
+        [b'+', rest @ ..] => (false, rest),
+        _ => (false, s),
+    };
+    if base == 16 && digits.len() > 2 && digits[0] == b'0' && digits[1] | 0x20 == b'x' && digits[2].is_ascii_hexdigit()
     {
-        i += 2;
+        digits = &digits[2..];
     }
-    let start = i;
-    // Accumulate negatively so that i64::MIN is representable.
-    let mut v: i64 = 0;
-    let mut overflow = false;
-    while i < s.len() {
-        let Some(d) = (s[i] as char).to_digit(base) else {
-            break;
-        };
-        match v.checked_mul(i64::from(base)).and_then(|x| x.checked_sub(i64::from(d))) {
-            Some(x) => v = x,
-            None => overflow = true,
-        }
-        i += 1;
-    }
-    let digits = i > start;
-    if overflow {
-        return Integer { value: if neg { i64::MIN } else { i64::MAX }, overflow: true, digits };
-    }
-    if neg {
-        Integer { value: v, overflow: false, digits }
-    } else {
-        match v.checked_neg() {
-            Some(x) => Integer { value: x, overflow: false, digits },
-            None => Integer { value: i64::MAX, overflow: true, digits },
-        }
+    // The magnitude of the digits there are (`None` beyond `u64`), then the
+    // sign.
+    let magnitude = digits
+        .iter()
+        .map_while(|&c| char::from(c).to_digit(base))
+        .try_fold(0u64, |m, d| m.checked_mul(u64::from(base))?.checked_add(u64::from(d)));
+    match magnitude {
+        Some(m) if negative => 0i64.checked_sub_unsigned(m).unwrap_or(i64::MIN),
+        Some(m) => i64::try_from(m).unwrap_or(i64::MAX),
+        None if negative => i64::MIN,
+        None => i64::MAX,
     }
 }
 
-/// Parses like `atoll` (glibc: `strtoll(s, NULL, 10)`).
+/// `atoll(s)`: [`strtoll`] in base 10.
 pub fn atoll(s: &[u8]) -> i64 {
-    strtoll(s, 10).value
+    strtoll(s, 10)
 }
 
 #[cfg(test)]
@@ -76,14 +48,19 @@ mod tests {
     #[test]
     fn integers() {
         assert_eq!(atoll(b"  -12abc"), -12);
-        assert_eq!(atoll(b"+7"), 7);
+        assert_eq!(atoll(b"\x0b\x0c+7"), 7);
         assert_eq!(atoll(b"abc"), 0);
+        assert_eq!(atoll(b" -"), 0);
+        assert_eq!(atoll(b"+-1"), 0);
         assert_eq!(atoll(b"99999999999999999999"), i64::MAX);
         assert_eq!(atoll(b"-99999999999999999999"), i64::MIN);
+        assert_eq!(atoll(b"9223372036854775808"), i64::MAX);
         assert_eq!(atoll(b"-9223372036854775808"), i64::MIN);
-        assert_eq!(strtoll(b"9223372036854775808", 10), Integer { value: i64::MAX, overflow: true, digits: true });
-        assert_eq!(strtoll(b" -", 10), Integer { value: 0, overflow: false, digits: false });
-        // (int) of the saturated long, as glibc's atoi.
+        assert_eq!(atoll(b"-9223372036854775809"), i64::MIN);
+        assert_eq!(strtoll(b"0x1fz", 16), 0x1f);
+        assert_eq!(strtoll(b"0xz", 16), 0);
+        assert_eq!(strtoll(b"0x1f", 10), 0);
+        assert_eq!(strtoll(b"777", 8), 0o777);
     }
 
     /// `strtoll` is glibc's `strtol` (compared on generated texts).
@@ -91,14 +68,13 @@ mod tests {
     fn strtoll_matches_libc() {
         use rand::{Rng, SeedableRng};
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
-        let alphabet = b"0123456789abcdefABCDEFxX+- \tgz:";
+        let alphabet = b"0123456789abcdefABCDEFxX+- \t\x0bgz:";
         for _ in 0..300_000 {
             let len = rng.random_range(0..24);
             let text: Vec<u8> = (0..len).map(|_| alphabet[rng.random_range(0..alphabet.len())]).collect();
             for base in [8u32, 10, 16] {
-                let (value, erange) = modsecurity_native::testing::c_strtol(&text, base as i32).unwrap();
-                let n = strtoll(&text, base);
-                assert_eq!((n.value, n.overflow), (value, erange), "{:?} base {base}", String::from_utf8_lossy(&text));
+                let (value, _) = modsecurity_native::testing::c_strtol(&text, base as i32).unwrap();
+                assert_eq!(strtoll(&text, base), value, "{:?} base {base}", String::from_utf8_lossy(&text));
             }
         }
     }

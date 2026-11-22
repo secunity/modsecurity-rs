@@ -140,7 +140,7 @@ fn inplace(input: &mut Vec<u8>) {
                         // `(unsigned char) strtol(digits, nullptr, base)`:
                         // the low byte of the value, which saturates at
                         // LONG_MAX on overflow.
-                        input[d] = strtoll(&input[k..j], base).value as u8;
+                        input[d] = strtoll(&input[k..j], base) as u8;
                         d += 1;
 
                         // Skip over the semicolon if it's there.
