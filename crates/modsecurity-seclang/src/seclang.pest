@@ -155,21 +155,51 @@ op_name         = ${ "@" ~ op_word ~ &(" " | "\"" | ws | nl | EOI) }
 op_word         = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 
 // Operator parameters, with %{VAR} macros.
+param_q = { (macro_ref | text_double)* }
+param_s = { (macro_ref | text_space)+ }
+
+// The texts between macros.
 //
-// The texts follow the C++ scanner classes: what ends them, `%` (a macro,
-// or text), and the escapes that keep a
-// character in the text (`\"`, `\'`, `\=`, `\%{`, `\ `: the backslash stays
-// in the text). Escapes other than quotes need a character before them.
-param_q = { (macro_ref | text_q)* }
-text_q = @{ (text_q_first | text_q_run) ~ (text_q_more | text_q_run)* }
-text_q_run = @{ !("\"" | "%" | "\\") ~ ANY ~ (!("\"" | "%" | "\\") ~ ANY)* }
-text_q_first = _{ "\\\\" | "\\" ~ ("\"") | "%" ~ !"{" | "\\" }
-text_q_more = _{ "\\\\" | "\\" ~ ("\"" | "%{") | "%" ~ !"{" | "\\" }
-param_s = { (macro_ref | text_s)+ }
-text_s = @{ (text_s_first | text_s_run) ~ (text_s_more | text_s_run)* }
-text_s_run = @{ !(" " | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!(" " | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
-text_s_first = _{ "\\\\" | "%" ~ !"{" | "\\" }
-text_s_more = _{ "\\\\" | "\\" ~ (" " | "%{") | "%" ~ !"{" | "\\" }
+// They follow the C++ scanner classes. Each kind of text ends at its own
+// characters (and at `%` and `\`, which `lit` handles), and keeps some
+// escapes: `\"`, `\=`, `\ `, `\%{`, ..., with the backslash staying in the
+// text. Escapes other than quotes need a character before them, so a text
+// cannot start with one: the first part of each rule allows fewer escapes
+// than the rest.
+//
+// What every text may hold: a doubled backslash, a `%` that does not start
+// a macro, and a backslash that is not an escape.
+//
+// The `run_*` rules are the plain characters of each text. They are atomic
+// rules of their own written as `!stop ~ ANY ~ (!stop ~ ANY)*` on purpose:
+// that is the form pest turns into a fast skip to the next stop character.
+// As `(!stop ~ ANY)+`, or as silent rules, parsing CRS takes 60% more
+// instructions.
+lit = _{ "\\\\" | "%" ~ !"{" | "\\" }
+
+// Up to a double quote: operator parameters and `msg:"..."`.
+text_double = @{ ("\\\"" | lit | run_double) ~ ("\\\"" | "\\%{" | lit | run_double)* }
+run_double  = @{ !("\"" | "%" | "\\") ~ ANY ~ (!("\"" | "%" | "\\") ~ ANY)* }
+// Up to a single quote: `msg:'...'`.
+text_single = @{ ("\\'" | lit | run_single) ~ ("\\'" | "\\%{" | lit | run_single)* }
+run_single  = @{ !("'" | "%" | "\\") ~ ANY ~ (!("'" | "%" | "\\") ~ ANY)* }
+// Up to a space or the end of the line: an unquoted operator parameter.
+text_space  = @{ (lit | run_space) ~ ("\\ " | "\\%{" | lit | run_space)* }
+run_space   = @{ !(" " | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!(" " | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+// Up to a comma, a quote or the end of the line: `msg:abc`.
+text_unquoted = @{ ("\\\"" | lit | run_unquoted) ~ ("\\\"" | "\\%{" | lit | run_unquoted)* }
+run_unquoted  = @{ !("," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+// Up to `=`, a comma, a quote or the end of the line: a `setvar` key.
+key_text    = @{ (lit | run_key) ~ ("\\=" | "\\%{" | lit | run_key)* }
+run_key     = @{ !("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+// Up to `=`, a comma, a double quote or the end of the line: a `setvar`
+// value.
+text_setvar = @{ (lit | run_setvar) ~ ("\\=" | "\\%{" | lit | run_setvar)* }
+run_setvar  = @{ !("=" | "," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+// Up to a quote, a comma or `=`: the value of `setvar:'...'`.
+text_setvar_q = @{ ("\\'" | lit | run_setvar_q) ~ ("\\=" | "\\%{" | "\\'" | lit | run_setvar_q)* }
+run_setvar_q  = @{ !("'" | "\"" | "," | "=" | "%" | "\\") ~ ANY ~ (!("'" | "\"" | "," | "=" | "%" | "\\") ~ ANY)* }
+
 // `%{MATCHED_VAR}%` is the variable: a `%` right after a macro is part of
 // it (the C++ scanner reads it so, and the regression tests use the form).
 macro_ref   = ${ "%{" ~ macro_var ~ "}" ~ ("%" ~ !"{")? }
@@ -190,21 +220,11 @@ action = _{ setvar | initcol | macro_action | plain_action }
 // setvar:tx.score=+%{tx.critical}, setvar:'!tx.a', setvar:ip.x=1
 setvar        = ${ ^"setvar:" ~ ("'" ~ setvar_body_q ~ "'" | setvar_body) }
 setvar_body   = ${ unset ~ setvar_target | setvar_target ~ (setvar_op ~ rts_setvar)? }
-setvar_body_q = ${ unset ~ setvar_target_q | setvar_target_q ~ (setvar_op ~ rts_setvar_q)? }
+setvar_body_q = ${ unset ~ setvar_target | setvar_target ~ (setvar_op ~ rts_setvar_q)? }
 unset         = { "!" }
 setvar_op     = { "=+" | "=-" | "=" }
-setvar_target   = ${ var_name ~ ("." | ":") ~ setvar_key }
-setvar_target_q = ${ var_name ~ ("." | ":") ~ setvar_key_q }
-setvar_key      = { (macro_ref | key_text)+ }
-setvar_key_q    = { (macro_ref | key_text_q)+ }
-key_text = @{ (key_text_first | key_text_run) ~ (key_text_more | key_text_run)* }
-key_text_run = @{ !("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
-key_text_first = _{ "\\\\" | "%" ~ !"{" | "\\" }
-key_text_more = _{ "\\\\" | "\\" ~ ("=" | "%{") | "%" ~ !"{" | "\\" }
-key_text_q = @{ (key_text_q_first | key_text_q_run) ~ (key_text_q_more | key_text_q_run)* }
-key_text_q_run = @{ !("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
-key_text_q_first = _{ "\\\\" | "%" ~ !"{" | "\\" }
-key_text_q_more = _{ "\\\\" | "\\" ~ ("=" | "%{") | "%" ~ !"{" | "\\" }
+setvar_target = ${ var_name ~ ("." | ":") ~ setvar_key }
+setvar_key    = { (macro_ref | key_text)+ }
 // initcol:ip=%{REMOTE_ADDR}
 initcol    = ${ initcol_kw ~ col_name ~ "=" ~ macro_value }
 initcol_kw = @{ ^"initcol:" }
@@ -219,30 +239,9 @@ macro_value  = _{ "'" ~ rts_single ~ "'" | "\"" ~ rts_double ~ "\"" | !"'" ~ rts
 rts_single   = { (macro_ref | text_single)+ }
 rts_double   = { (macro_ref | text_double)+ }
 rts_unquoted = { (macro_ref | text_unquoted)+ }
-// The value of a `setvar`: up to a comma, a quote or `=`.
+// The value of a `setvar`, and of a quoted `setvar`.
 rts_setvar   = { (macro_ref | text_setvar)+ }
-text_setvar = @{ (text_setvar_first | text_setvar_run) ~ (text_setvar_more | text_setvar_run)* }
-text_setvar_run = @{ !("=" | "," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
-text_setvar_first = _{ "\\\\" | "%" ~ !"{" | "\\" }
-text_setvar_more = _{ "\\\\" | "\\" ~ ("=" | "%{") | "%" ~ !"{" | "\\" }
-// The value of a quoted `setvar`: up to the quote, a comma or `=`.
 rts_setvar_q = { (macro_ref | text_setvar_q)+ }
-text_setvar_q = @{ (text_setvar_q_first | text_setvar_q_run) ~ (text_setvar_q_more | text_setvar_q_run)* }
-text_setvar_q_run = @{ !("'" | "\"" | "," | "=" | "%" | "\\") ~ ANY ~ (!("'" | "\"" | "," | "=" | "%" | "\\") ~ ANY)* }
-text_setvar_q_first = _{ "\\\\" | "\\" ~ ("'") | "%" ~ !"{" | "\\" }
-text_setvar_q_more = _{ "\\\\" | "\\" ~ ("=" | "%{" | "'") | "%" ~ !"{" | "\\" }
-text_single = @{ (text_single_first | text_single_run) ~ (text_single_more | text_single_run)* }
-text_single_run = @{ !("'" | "%" | "\\") ~ ANY ~ (!("'" | "%" | "\\") ~ ANY)* }
-text_single_first = _{ "\\\\" | "\\" ~ ("'") | "%" ~ !"{" | "\\" }
-text_single_more = _{ "\\\\" | "\\" ~ ("'" | "%{") | "%" ~ !"{" | "\\" }
-text_double = @{ (text_double_first | text_double_run) ~ (text_double_more | text_double_run)* }
-text_double_run = @{ !("\"" | "%" | "\\") ~ ANY ~ (!("\"" | "%" | "\\") ~ ANY)* }
-text_double_first = _{ "\\\\" | "\\" ~ ("\"") | "%" ~ !"{" | "\\" }
-text_double_more = _{ "\\\\" | "\\" ~ ("\"" | "%{") | "%" ~ !"{" | "\\" }
-text_unquoted = @{ (text_unquoted_first | text_unquoted_run) ~ (text_unquoted_more | text_unquoted_run)* }
-text_unquoted_run = @{ !("," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
-text_unquoted_first = _{ "\\\\" | "\\" ~ ("\"") | "%" ~ !"{" | "\\" }
-text_unquoted_more = _{ "\\\\" | "\\" ~ ("\"" | "%{") | "%" ~ !"{" | "\\" }
 // Every other action: a name with an optional plain value. The whole text
 // (`name:value`, quotes included) is what the action is built from.
 plain_action = ${ action_name ~ (":" ~ plain_value)? }

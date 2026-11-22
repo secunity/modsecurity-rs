@@ -401,7 +401,7 @@ fn action(pair: Pair<'_, Rule>, from: usize) -> Action<'_> {
             for p in body.into_inner() {
                 match p.as_rule() {
                     Rule::unset => unset = true,
-                    Rule::setvar_target | Rule::setvar_target_q => {
+                    Rule::setvar_target => {
                         let mut t = p.into_inner();
                         collection = t.next().expect("a collection").as_str();
                         key = pieces(t.next().expect("a key"));
