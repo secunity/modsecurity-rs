@@ -209,4 +209,30 @@ mod tests {
         assert_eq!(run(b"&#x1ffffffffffffffff;"), vec![0xff]);
         assert_eq!(run(b"&#321;"), vec![321u32 as u8]);
     }
+
+    #[test]
+    fn named_entities_ignore_case() {
+        assert_eq!(run(b"&quot;&apos;&amp;&QUOT;&Amp;"), b"\"'&\"&");
+        assert_eq!(run(b"&lpar;&rpar;&sol;&bsol;"), b"()/\\");
+        assert_eq!(run(b"&shy;"), b"\xad");
+    }
+
+    #[test]
+    fn the_semicolon_is_optional() {
+        assert_eq!(run(b"&amp x"), b"& x");
+        assert_eq!(run(b"&#65abc"), b"Aabc");
+        assert_eq!(run(b"&#X41;"), b"A");
+    }
+
+    #[test]
+    fn unknown_or_incomplete_entities_are_kept() {
+        assert_eq!(run(b"&ampx;"), b"&ampx;");
+        assert_eq!(run(b"&nosuch;"), b"&nosuch;");
+        assert_eq!(run(b"&;"), b"&;");
+        assert_eq!(run(b"a&"), b"a&");
+        assert_eq!(run(b"&#"), b"&#");
+        assert_eq!(run(b"&#x"), b"&#x");
+        assert_eq!(run(b"&#xg;"), b"&#xg;");
+        assert_eq!(run(b""), b"");
+    }
 }

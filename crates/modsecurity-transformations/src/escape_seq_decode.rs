@@ -79,4 +79,30 @@ mod tests {
         assert_eq!(run(b"\\xZ"), b"xZ");
         assert_eq!(run(b"abc\\"), b"abc\\");
     }
+
+    #[test]
+    fn simple_escapes() {
+        assert_eq!(run(b"\\a\\b\\f\\n\\r\\t\\v"), b"\x07\x08\x0c\n\r\t\x0b");
+        assert_eq!(run(b"\\\\\\?\\'\\\""), b"\\?'\"");
+    }
+
+    #[test]
+    fn hex_escapes() {
+        assert_eq!(run(b"\\X41\\x6a"), b"Aj");
+        // One digit is not enough.
+        assert_eq!(run(b"\\x4"), b"x4");
+    }
+
+    #[test]
+    fn octal_escapes_take_up_to_three_digits() {
+        assert_eq!(run(b"\\0"), b"\0");
+        assert_eq!(run(b"\\12x"), b"\nx");
+        assert_eq!(run(b"\\1234"), b"S4");
+    }
+
+    #[test]
+    fn unknown_escapes_keep_the_character() {
+        assert_eq!(run(b"\\q\\8"), b"q8");
+        assert_eq!(run(b""), b"");
+    }
 }

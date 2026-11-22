@@ -119,4 +119,34 @@ mod tests {
         assert_eq!(run(b"\\q\\"), b"q\\");
         assert_eq!(run(b"plain"), b"plain");
     }
+
+    #[test]
+    fn simple_escapes() {
+        assert_eq!(run(b"\\a\\b\\f\\n\\r\\t\\v"), b"\x07\x08\x0c\n\r\t\x0b");
+        assert_eq!(run(b"\\\\\\'\\\""), b"\\'\"");
+    }
+
+    #[test]
+    fn incomplete_hex_escapes_keep_the_letter() {
+        assert_eq!(run(b"\\xZZ"), b"xZZ");
+        assert_eq!(run(b"\\u12"), b"u12");
+        assert_eq!(run(b"\\u12zz"), b"u12zz");
+    }
+
+    #[test]
+    fn octal_escapes_stay_within_a_byte() {
+        assert_eq!(run(b"\\0"), b"\0");
+        assert_eq!(run(b"\\12"), b"\n");
+        assert_eq!(run(b"\\377"), b"\xff");
+        // `\400` would not fit: two digits are used.
+        assert_eq!(run(b"\\400"), b" 0");
+    }
+
+    #[test]
+    fn full_width_ascii() {
+        assert_eq!(run(b"\\uff41"), b"a");
+        // Not a full width form: the low byte.
+        assert_eq!(run(b"\\u0391"), b"\x91");
+        assert_eq!(run(b""), b"");
+    }
 }

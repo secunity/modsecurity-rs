@@ -52,4 +52,37 @@ mod tests {
         assert_eq!(v, *b"\x01\x03\x01");
         even(&mut []);
     }
+
+    #[test]
+    fn letters() {
+        // 'A' (0x41) and 'B' (0x42) have two bits set: even parity already.
+        let mut v = *b"AB";
+        even(&mut v);
+        assert_eq!(v, *b"AB");
+        odd(&mut v);
+        assert_eq!(v, [0xc1, 0xc2]);
+        // 'a' (0x61) has three bits set.
+        let mut v = *b"a";
+        even(&mut v);
+        assert_eq!(v, [0xe1]);
+        let mut v = *b"a";
+        odd(&mut v);
+        assert_eq!(v, *b"a");
+    }
+
+    /// For 7-bit input. (The high bit of the input counts in the parity,
+    /// so for bytes above 0x7f the result is the opposite: see `parity`.)
+    #[test]
+    fn every_7bit_byte_gets_the_parity_asked_for() {
+        for b in 0..=0x7fu8 {
+            let mut e = [b];
+            even(&mut e);
+            assert_eq!(e[0].count_ones() % 2, 0, "{b:#x}");
+            assert_eq!(e[0] & 0x7f, b & 0x7f);
+            let mut o = [b];
+            odd(&mut o);
+            assert_eq!(o[0].count_ones() % 2, 1, "{b:#x}");
+            assert_eq!(o[0] & 0x7f, b & 0x7f);
+        }
+    }
 }

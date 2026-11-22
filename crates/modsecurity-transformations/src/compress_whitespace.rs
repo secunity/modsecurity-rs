@@ -25,3 +25,29 @@ pub fn transform(value: &mut Vec<u8>) {
     }
     value.truncate(d);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(input: &[u8]) -> Vec<u8> {
+        let mut v = input.to_vec();
+        transform(&mut v);
+        v
+    }
+
+    #[test]
+    fn compresses_runs_of_whitespace() {
+        assert_eq!(run(b"a \t\n b"), b"a b");
+        assert_eq!(run(b"  a  "), b" a ");
+        assert_eq!(run(b"a\x0b\x0cb\rc"), b"a b c");
+    }
+
+    #[test]
+    fn other_bytes_are_kept() {
+        // A non-breaking space is not whitespace here.
+        assert_eq!(run(b"a\xa0b"), b"a\xa0b");
+        assert_eq!(run(b"ab"), b"ab");
+        assert_eq!(run(b""), b"");
+    }
+}

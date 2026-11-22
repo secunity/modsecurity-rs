@@ -63,3 +63,43 @@ fn inplace(input: &mut Vec<u8>) {
 pub fn transform(value: &mut Vec<u8>) {
     inplace(value);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(input: &[u8]) -> Vec<u8> {
+        let mut v = input.to_vec();
+        transform(&mut v);
+        v
+    }
+
+    #[test]
+    fn removes_c_and_html_comments() {
+        assert_eq!(run(b"a/*x*/b"), b"ab");
+        assert_eq!(run(b"a<!--x-->b"), b"ab");
+        assert_eq!(run(b"un/**/ion"), b"union");
+        // `--` inside a C comment does not end it.
+        assert_eq!(run(b"/* -- */x"), b"x");
+    }
+
+    #[test]
+    fn cuts_the_value_at_double_dash_or_hash() {
+        assert_eq!(run(b"select 1 -- rest"), b"select 1 ");
+        assert_eq!(run(b"a#b"), b"a");
+        assert_eq!(run(b"--"), b"");
+    }
+
+    #[test]
+    fn an_unterminated_comment_becomes_a_space() {
+        assert_eq!(run(b"a/*xyz"), b"a ");
+        assert_eq!(run(b"a<!--x"), b"a ");
+    }
+
+    #[test]
+    fn lone_comment_characters_are_kept() {
+        assert_eq!(run(b"a-b/c*d<!e"), b"a-b/c*d<!e");
+        assert_eq!(run(b"a*/b"), b"a*/b");
+        assert_eq!(run(b""), b"");
+    }
+}

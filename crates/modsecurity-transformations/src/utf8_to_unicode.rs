@@ -103,4 +103,20 @@ mod tests {
         // invalid first byte copied as is
         assert_eq!(run(b"\xff"), b"\xff");
     }
+
+    #[test]
+    fn surrogates_also_copy_the_lead_byte() {
+        assert_eq!(run(b"\xed\xa0\x80"), b"%ud800\xed");
+    }
+
+    #[test]
+    fn lead_bytes_beyond_u10ffff_are_copied_and_decoded() {
+        assert_eq!(run(b"\xf5\x80\x80\x80"), b"\xf5%u140000");
+    }
+
+    #[test]
+    fn stray_continuation_bytes_are_copied() {
+        assert_eq!(run(b"a\x80b"), b"a\x80b");
+        assert_eq!(run(b""), b"");
+    }
 }

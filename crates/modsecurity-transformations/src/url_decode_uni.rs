@@ -91,4 +91,23 @@ mod tests {
         inplace(&mut v, None);
         assert_eq!(v, b"\x91");
     }
+
+    #[test]
+    fn upper_case_u() {
+        assert_eq!(run(b"%U0041"), b"A");
+    }
+
+    #[test]
+    fn incomplete_sequences_are_kept() {
+        assert_eq!(run(b"%u004"), b"%u004");
+        assert_eq!(run(b"%u"), b"%u");
+        assert_eq!(run(b"%u0041%"), b"A%");
+        assert_eq!(run(b"%"), b"%");
+        assert_eq!(run(b""), b"");
+    }
+
+    #[test]
+    fn plus_is_a_space() {
+        assert_eq!(run(b"a+b%2B"), b"a b+");
+    }
 }

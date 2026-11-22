@@ -95,4 +95,31 @@ mod tests {
         assert_eq!(run(b"\\zx"), b"zx");
         assert_eq!(run(b"\\a"), b"\x0a");
     }
+
+    #[test]
+    fn hex_escapes_take_up_to_six_digits() {
+        assert_eq!(run(b"\\000041"), b"A");
+        assert_eq!(run(b"\\0000411"), b"A1");
+        // Only the low byte of the code point is kept.
+        assert_eq!(run(b"\\141"), b"A");
+    }
+
+    #[test]
+    fn one_whitespace_after_a_hex_escape_is_dropped() {
+        assert_eq!(run(b"\\41  b"), b"A b");
+        assert_eq!(run(b"\\41\tb"), b"Ab");
+        // Not after other escapes.
+        assert_eq!(run(b"\\z b"), b"z b");
+    }
+
+    #[test]
+    fn full_width_ascii() {
+        // Five digits up to U+FFFF are checked too.
+        assert_eq!(run(b"\\0ff21"), b"A");
+        // Above U+FFFF they are not: the low byte is kept.
+        assert_eq!(run(b"\\10ff21"), b"!");
+        // U+FF7F is not a full width form of ASCII.
+        assert_eq!(run(b"\\ff7f"), b"\x7f");
+        assert_eq!(run(b""), b"");
+    }
 }

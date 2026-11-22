@@ -71,4 +71,36 @@ mod tests {
         assert_eq!(uri_decode(b"/a%20b%2"), b"/a b%2".to_vec());
         assert_eq!(uri_decode(b"%"), b"%".to_vec());
     }
+
+    #[test]
+    fn plus_is_kept_when_asked() {
+        let mut v = b"a+b%20".to_vec();
+        assert_eq!(urldecode_nonstrict_inplace_ext(&mut v, false), 0);
+        assert_eq!(v, b"a+b ");
+    }
+
+    #[test]
+    fn hex_digits_of_either_case() {
+        let mut v = b"%4a%4A%c3%A9".to_vec();
+        assert_eq!(urldecode_nonstrict_inplace(&mut v), 0);
+        assert_eq!(v, b"JJ\xc3\xa9");
+    }
+
+    #[test]
+    fn invalid_escapes_are_counted_and_kept() {
+        let mut v = b"%".to_vec();
+        assert_eq!(urldecode_nonstrict_inplace(&mut v), 1);
+        assert_eq!(v, b"%");
+        let mut v = b"%%41".to_vec();
+        assert_eq!(urldecode_nonstrict_inplace(&mut v), 1);
+        assert_eq!(v, b"%A");
+        let mut v = Vec::new();
+        assert_eq!(urldecode_nonstrict_inplace(&mut v), 0);
+    }
+
+    #[test]
+    fn uri_decode_keeps_plus() {
+        assert_eq!(uri_decode(b"a+b%2B"), b"a+b+".to_vec());
+        assert_eq!(uri_decode(b""), b"".to_vec());
+    }
 }

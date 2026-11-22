@@ -335,4 +335,70 @@ mod tests {
         T::Identity.apply(&mut v, &Context::default());
         assert_eq!(v, b"x");
     }
+
+    /// No transformation panics, whatever the value: empty, every byte
+    /// value, and escapes or comments cut short at the end.
+    #[test]
+    fn every_transformation_takes_any_value() {
+        let all: Vec<u8> = (0..=255).collect();
+        let mut inputs: Vec<Vec<u8>> = vec![Vec::new(), all.clone(), all.iter().rev().copied().collect()];
+        let tails: [&[u8]; 27] = [
+            b"\\",
+            b"\\x",
+            b"\\x4",
+            b"\\u",
+            b"\\u12",
+            b"\\0",
+            b"%",
+            b"%4",
+            b"%u",
+            b"%u00",
+            b"&",
+            b"&#",
+            b"&#x",
+            b"&amp",
+            b"/*",
+            b"<!-",
+            b"<!--",
+            b"--",
+            b"#",
+            b"0x",
+            b"0x4",
+            b"/..",
+            b"/.",
+            b".",
+            b"\\..",
+            b"\xc3",
+            b"\xf0\x9f",
+        ];
+        for tail in tails {
+            inputs.push(tail.to_vec());
+            inputs.push([b"a".as_slice(), tail].concat());
+        }
+        let mut map = UnicodeMap::default();
+        map.set(0x0041, b'Z');
+        for &(name, t) in NAMES {
+            for input in &inputs {
+                for context in [Context::default(), Context { unicode_map: Some(&map) }] {
+                    let mut v = input.clone();
+                    t.apply(&mut v, &context);
+                    if t == T::Length {
+                        assert_eq!(v, input.len().to_string().as_bytes(), "{name}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn url_decode_uni_uses_the_map_of_the_context() {
+        let mut map = UnicodeMap::default();
+        map.set(0x0041, b'Z');
+        let mut v = b"%u0041%u0042".to_vec();
+        T::UrlDecodeUni.apply(&mut v, &Context { unicode_map: Some(&map) });
+        assert_eq!(v, b"ZB");
+        let mut v = b"%u0041".to_vec();
+        T::UrlDecodeUni.apply(&mut v, &Context::default());
+        assert_eq!(v, b"A");
+    }
 }

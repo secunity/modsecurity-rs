@@ -185,4 +185,35 @@ mod tests {
         assert_eq!(run(b"a\\b\\..\\c", true), b"a/c");
         assert_eq!(run(b".", false), b"");
     }
+
+    #[test]
+    fn self_references_are_removed() {
+        assert_eq!(run(b"/a/./b", false), b"/a/b");
+        assert_eq!(run(b"./a", false), b"a");
+        assert_eq!(run(b"/a/.", false), b"/a");
+    }
+
+    #[test]
+    fn back_references_do_not_go_above_the_root() {
+        assert_eq!(run(b"/a/b/../c", false), b"/a/c");
+        // Known quirk: the root slash is then removed as a trailing slash.
+        assert_eq!(run(b"/a/..", false), b"");
+        assert_eq!(run(b"/a/../", false), b"/");
+        assert_eq!(run(b"/../../a", false), b"/a");
+    }
+
+    #[test]
+    fn a_trailing_slash_is_kept_only_if_there_was_one() {
+        assert_eq!(run(b"/a/b/", false), b"/a/b/");
+        assert_eq!(run(b"/a//", false), b"/a/");
+        assert_eq!(run(b"/a/b", false), b"/a/b");
+    }
+
+    #[test]
+    fn backslashes_are_separators_on_windows_only() {
+        assert_eq!(run(b"\\a\\.\\b", true), b"/a/b");
+        assert_eq!(run(b"a\\\\b", true), b"a/b");
+        assert_eq!(run(b"a\\..\\b", false), b"a\\..\\b");
+        assert_eq!(run(b"", true), b"");
+    }
 }

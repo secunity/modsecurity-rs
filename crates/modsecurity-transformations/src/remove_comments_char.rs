@@ -37,3 +37,35 @@ pub fn transform(value: &mut Vec<u8>) {
 
     value.truncate(d);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(input: &[u8]) -> Vec<u8> {
+        let mut v = input.to_vec();
+        transform(&mut v);
+        v
+    }
+
+    #[test]
+    fn removes_the_comment_characters_only() {
+        assert_eq!(run(b"/*a*/"), b"a");
+        assert_eq!(run(b"<!--a-->"), b"a");
+        assert_eq!(run(b"a--b#c"), b"abc");
+        assert_eq!(run(b"un/**/ion"), b"union");
+    }
+
+    #[test]
+    fn longest_sequence_first() {
+        // `-->` is removed whole, then `--`, leaving `->` of `--->`.
+        assert_eq!(run(b"--->"), b"->");
+        assert_eq!(run(b"--->x"), b"->x");
+    }
+
+    #[test]
+    fn lone_comment_characters_are_kept() {
+        assert_eq!(run(b"a-b/c*d<!e"), b"a-b/c*d<!e");
+        assert_eq!(run(b""), b"");
+    }
+}
