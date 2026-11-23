@@ -91,80 +91,69 @@ impl Rbl {
 
         addr
     }
+}
 
-    /// Logs an httpbl.org answer: days since last activity, threat score
-    /// and visitor type.
-    fn further_info_httpbl(sin_addr: Ipv4Addr, ip_str: &str, cx: &dyn Context) {
-        // inet_ntoa + sscanf("%d.%d.%d.%d")
-        let [first, days, score, ty] = sin_addr.octets();
-
-        if first != 127 {
-            crate::ms_dbg!(cx, 4, "RBL lookup of {} failed: bad response", ip_str);
-            return;
-        }
-
-        let ptype = match ty {
-            0 => "Search Engine",
-            1 => "Suspicious IP",
-            2 => "Harvester IP",
-            3 => "Suspicious harvester IP",
-            4 => "Comment spammer IP",
-            5 => "Suspicious comment spammer IP",
-            6 => "Harvester and comment spammer IP",
-            7 => "Suspicious harvester comment spammer IP",
-            _ => " ",
-        };
-
-        // The literal "%s" is part of the message: the debug log text of the
-        // original ModSecurity, kept as it is.
-        crate::ms_dbg!(
-            cx,
-            4,
-            "RBL lookup of {} succeeded. %s: {} days since last activity, threat score {}. Case: {}",
-            ip_str,
-            days,
-            score,
-            ptype
-        );
+/// What a list's `answer` (the address its DNS name resolved to) says:
+/// `Ok` with the debug log level and what the log says after "RBL lookup
+/// of ... succeeded", or `Err` with why it is not a listing.
+///
+/// Lists answer within 127.0.0.0/8 (RFC 5782); any other address comes
+/// from a resolver that rewrites unknown names, not from the list. Within
+/// it, uribl.com and spamhaus.org also answer when they refuse a query
+/// (most often one sent through a public resolver): those error codes are
+/// not listings either.
+fn read_answer(provider: RblProvider, answer: Ipv4Addr) -> Result<(u8, String), &'static str> {
+    let [first, second, third, last] = answer.octets();
+    if first != 127 {
+        return Err("the answer is not in 127.0.0.0/8, so it does not come from the list");
     }
-
-    /// Logs the spamhaus.org list named by the answer.
-    fn further_info_spamhaus(high8bits: u32, ip_str: &str, cx: &dyn Context) {
-        match high8bits {
-            2 | 3 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (Static UBE sources).", ip_str),
-            4..=7 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (Illegal 3rd party exploits).", ip_str),
-            10 | 11 => {
-                crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (Delivering unauthenticated SMTP email).", ip_str)
+    let info = match provider {
+        RblProvider::UnknownProvider => return Ok((2, ".".to_string())),
+        RblProvider::Httpbl => {
+            // 127.days.score.type
+            let kind = match last {
+                0 => "Search Engine",
+                1 => "Suspicious IP",
+                2 => "Harvester IP",
+                3 => "Suspicious harvester IP",
+                4 => "Comment spammer IP",
+                5 => "Suspicious comment spammer IP",
+                6 => "Harvester and comment spammer IP",
+                7 => "Suspicious harvester comment spammer IP",
+                _ => " ",
+            };
+            // The literal "%s" is part of the message: the debug log text of
+            // the original ModSecurity, kept as it is.
+            format!(". %s: {second} days since last activity, threat score {third}. Case: {kind}")
+        }
+        RblProvider::Uribl => match last {
+            1 => return Err("uribl.com refused the query (127.0.0.1)"),
+            255 => return Err("uribl.com refused the query (DNS IS BLOCKED)"),
+            _ => {
+                let lists: Vec<&str> = [(2, "BLACK"), (4, "GREY"), (8, "RED")]
+                    .iter()
+                    .filter(|(bit, _)| last & bit != 0)
+                    .map(|(_, name)| *name)
+                    .collect();
+                if lists.is_empty() { " (WHITE).".to_string() } else { format!(" ({}).", lists.join(",")) }
             }
-            _ => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded ", ip_str),
+        },
+        RblProvider::Spamhaus if [second, third] == [255, 255] => {
+            return Err(match last {
+                252 => "spamhaus.org refused the query: the list name is wrong (127.255.255.252)",
+                254 => "spamhaus.org refused the query: it does not answer public resolvers (127.255.255.254)",
+                255 => "spamhaus.org refused the query: too many queries (127.255.255.255)",
+                _ => "spamhaus.org answered with an error code (127.255.255.x)",
+            });
         }
-    }
-
-    /// Logs the uribl.com list named by the answer.
-    fn further_info_uribl(high8bits: u32, ip_str: &str, cx: &dyn Context) {
-        match high8bits {
-            2 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (BLACK).", ip_str),
-            4 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (GREY).", ip_str),
-            8 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (RED).", ip_str),
-            14 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (BLACK,GREY,RED).", ip_str),
-            255 => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (DNS IS BLOCKED).", ip_str),
-            _ => crate::ms_dbg!(cx, 4, "RBL lookup of {} succeeded (WHITE).", ip_str),
-        }
-    }
-
-    /// Logs a successful lookup, with the details the provider gives.
-    fn further_info(sin_addr: Ipv4Addr, ip_str: &str, cx: &dyn Context, provider: RblProvider) {
-        // `sin->sin_addr.s_addr >> 24`: s_addr is in network byte order,
-        // read as a host integer (the last octet on little endian hosts).
-        let high8bits = u32::from_ne_bytes(sin_addr.octets()) >> 24;
-
-        match provider {
-            RblProvider::UnknownProvider => crate::ms_dbg!(cx, 2, "RBL lookup of {} succeeded.", ip_str),
-            RblProvider::Httpbl => Self::further_info_httpbl(sin_addr, ip_str, cx),
-            RblProvider::Uribl => Self::further_info_uribl(high8bits, ip_str, cx),
-            RblProvider::Spamhaus => Self::further_info_spamhaus(high8bits, ip_str, cx),
-        }
-    }
+        RblProvider::Spamhaus => match last {
+            2 | 3 => " (Static UBE sources).".to_string(),
+            4..=7 => " (Illegal 3rd party exploits).".to_string(),
+            10 | 11 => " (Delivering unauthenticated SMTP email).".to_string(),
+            _ => " ".to_string(),
+        },
+    };
+    Ok((4, info))
 }
 
 /// Result of resolving a name with `getaddrinfo` (first entry only).
@@ -215,9 +204,13 @@ impl Operator for Rbl {
                 crate::ms_dbg!(cx, 7, "Unsupported address family: {}", family);
                 return false;
             }
-            Resolved::V4(sin_addr) => {
-                Self::further_info(sin_addr, &ip_s, cx, self.provider);
-            }
+            Resolved::V4(answer) => match read_answer(self.provider, answer) {
+                Ok((level, info)) => crate::ms_dbg!(cx, level, "RBL lookup of {} succeeded{}", ip_s, info),
+                Err(why) => {
+                    crate::ms_dbg!(cx, 4, "RBL lookup of {} failed: {}.", ip_s, why);
+                    return false;
+                }
+            },
         }
 
         if cx.captures() {
@@ -284,5 +277,38 @@ mod tests {
         // httpbl.org needs SecHttpBlKey.
         assert!(map(&op, b"1.2.3.4", None).is_empty());
         assert_eq!(map(&op, b"1.2.3.4", Some("abcdefghijkl")), b"abcdefghijkl.4.3.2.1.dnsbl.httpbl.org".to_vec());
+    }
+
+    /// Only answers in 127.0.0.0/8 are listings, and the error codes of
+    /// uribl.com and spamhaus.org are not. (C++ took any answer as a
+    /// listing: through a public resolver, uribl.com answers 127.0.0.1 to
+    /// every query, so every value matched.)
+    #[test]
+    fn refusals_and_foreign_answers_are_not_listings() {
+        let read = |provider, a: [u8; 4]| read_answer(provider, Ipv4Addr::from(a));
+        for provider in [RblProvider::UnknownProvider, RblProvider::Httpbl, RblProvider::Uribl, RblProvider::Spamhaus] {
+            assert!(read(provider, [10, 0, 0, 1]).is_err(), "{provider:?}");
+            assert!(read(provider, [93, 184, 216, 34]).is_err(), "{provider:?}");
+        }
+        assert_eq!(read(RblProvider::Uribl, [127, 0, 0, 1]), Err("uribl.com refused the query (127.0.0.1)"));
+        assert!(read(RblProvider::Uribl, [127, 0, 0, 255]).is_err());
+        for code in [252, 253, 254, 255] {
+            assert!(read(RblProvider::Spamhaus, [127, 255, 255, code]).is_err());
+        }
+    }
+
+    #[test]
+    fn listings_and_their_log_text() {
+        let read = |provider, a: [u8; 4]| read_answer(provider, Ipv4Addr::from(a)).unwrap();
+        assert_eq!(read(RblProvider::UnknownProvider, [127, 0, 0, 2]), (2, ".".to_string()));
+        assert_eq!(read(RblProvider::Uribl, [127, 0, 0, 2]).1, " (BLACK).");
+        assert_eq!(read(RblProvider::Uribl, [127, 0, 0, 6]).1, " (BLACK,GREY).");
+        assert_eq!(read(RblProvider::Uribl, [127, 0, 0, 14]).1, " (BLACK,GREY,RED).");
+        assert_eq!(read(RblProvider::Spamhaus, [127, 0, 0, 2]).1, " (Static UBE sources).");
+        assert_eq!(read(RblProvider::Spamhaus, [127, 0, 0, 10]).1, " (Delivering unauthenticated SMTP email).");
+        assert_eq!(
+            read(RblProvider::Httpbl, [127, 3, 20, 1]).1,
+            ". %s: 3 days since last activity, threat score 20. Case: Suspicious IP"
+        );
     }
 }

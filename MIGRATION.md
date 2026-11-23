@@ -937,6 +937,22 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   that first address; `REMOTE_ADDR`, the usual input, is always one
   address. Regression tests: `rbl::tests::only_a_whole_ipv4_address_is_an_address`,
   `rbl::tests::a_value_that_is_not_an_address_is_looked_up_as_a_domain`.
+- **`@rbl`: refusals and foreign answers are not listings.** *C++:* any
+  IPv4 address the list's DNS name resolves to is a match. Through a
+  public or shared resolver, uribl.com answers `127.0.0.1` ("query
+  refused") to every query, so `@rbl multi.uribl.com` matched every
+  value; spamhaus.org's error codes (`127.255.255.252`/`254`/`255`) and
+  a resolver that rewrites unknown names to its own address matched too;
+  an httpbl.org answer outside 127 was logged as a bad response and then
+  matched. *Here:* only answers in 127.0.0.0/8 (RFC 5782) are listings,
+  and uribl.com's `127.0.0.1`/`127.0.0.255` and spamhaus.org's
+  `127.255.255.x` are refusals; both are failed lookups (no match, and the
+  debug log says why). uribl.com answers are named by their bits
+  (`127.0.0.6` is "BLACK,GREY", not "WHITE"), and the octet read is the
+  last one on every host (C++ read `s_addr >> 24`, the first octet on
+  big-endian hosts). *Why:* false matches on every request. Regression
+  tests: `rbl::tests::refusals_and_foreign_answers_are_not_listings`,
+  `rbl::tests::listings_and_their_log_text`.
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
