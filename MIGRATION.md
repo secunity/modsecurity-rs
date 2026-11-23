@@ -926,6 +926,17 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   SecResponseBodyAccess)", and "redirect". *Why:* readable log; a typo.
   Regression tests: `transaction::tests::response_body_disabled`,
   `actions::disruptive::redirect::tests::redirect`.
+- **`@rbl` reads an address only when the value is exactly one.**
+  *C++:* the value is read with `sscanf("%d.%d.%d.%d")`, so `" 1. 2.3.4xyz"`,
+  `1.2.3.4:80`, `+1.-2.3.4` and `999.1.1.1` are all "addresses" (looked up
+  reversed). *Here:* four numbers from 0 to 255 and nothing else
+  (`Ipv4Addr`); any other value is looked up as a domain name, as C++ does
+  for values `sscanf` rejects. *Why:* spaces, signs and numbers above 255
+  only made lookups that cannot match. A value with a port or a list of
+  addresses after the first one (`1.2.3.4, 5.6.7.8`) no longer looks up
+  that first address; `REMOTE_ADDR`, the usual input, is always one
+  address. Regression tests: `rbl::tests::only_a_whole_ipv4_address_is_an_address`,
+  `rbl::tests::a_value_that_is_not_an_address_is_looked_up_as_a_domain`.
 
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`

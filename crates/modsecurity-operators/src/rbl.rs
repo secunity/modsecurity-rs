@@ -29,39 +29,10 @@ pub struct Rbl {
     provider: RblProvider,
 }
 
-/// The four numbers of a dotted quad, parsed like
-/// `sscanf(s, "%d.%d.%d.%d", ...) == 4`.
-fn scan_dotted_quad(s: &[u8]) -> Option<[i32; 4]> {
-    let mut pos = 0usize;
-    let mut out = [0i32; 4];
-    for (n, slot) in out.iter_mut().enumerate() {
-        if n > 0 {
-            if s.get(pos) != Some(&b'.') {
-                return None;
-            }
-            pos += 1;
-        }
-        // %d: optional white space, optional sign, at least one digit.
-        while pos < s.len() && matches!(s[pos], b' ' | b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r') {
-            pos += 1;
-        }
-        let mut neg = false;
-        if pos < s.len() && (s[pos] == b'+' || s[pos] == b'-') {
-            neg = s[pos] == b'-';
-            pos += 1;
-        }
-        let start = pos;
-        let mut v: i64 = 0;
-        while pos < s.len() && s[pos].is_ascii_digit() {
-            v = v.saturating_mul(10).saturating_add(i64::from(s[pos] - b'0'));
-            pos += 1;
-        }
-        if pos == start {
-            return None;
-        }
-        *slot = (if neg { -v } else { v }) as i32;
-    }
-    Some(out)
+/// The IPv4 address `value` is, if it is exactly one (four numbers from 0
+/// to 255, nothing around them).
+fn ipv4_address(value: &[u8]) -> Option<Ipv4Addr> {
+    std::str::from_utf8(value).ok()?.parse().ok()
 }
 
 impl Rbl {
@@ -85,7 +56,7 @@ impl Rbl {
     pub fn map_ip_to_address(&self, ip_str: &[u8], cx: &dyn Context) -> Vec<u8> {
         let key: Vec<u8> = cx.httpbl_key().to_vec();
 
-        let Some([h0, h1, h2, h3]) = scan_dotted_quad(ip_str) else {
+        let Some(ip) = ipv4_address(ip_str) else {
             crate::ms_dbg!(
                 cx,
                 0,
@@ -107,7 +78,8 @@ impl Rbl {
             return Vec::new();
         }
 
-        let mut addr = format!("{}.{}.{}.{}.", h3, h2, h1, h0).into_bytes();
+        let [h0, h1, h2, h3] = ip.octets();
+        let mut addr = format!("{h3}.{h2}.{h1}.{h0}.").into_bytes();
         addr.extend_from_slice(&self.service);
 
         if self.demands_password {
@@ -261,13 +233,36 @@ impl Operator for Rbl {
 mod tests {
     use super::*;
 
+    /// A value is an address only when it is exactly one; C++ read it with
+    /// `sscanf("%d.%d.%d.%d")`, which also took spaces, signs, numbers
+    /// above 255 and text after the address.
     #[test]
-    fn dotted_quad() {
-        assert_eq!(scan_dotted_quad(b"1.2.3.4"), Some([1, 2, 3, 4]));
-        assert_eq!(scan_dotted_quad(b" 1. 2.3.4xyz"), Some([1, 2, 3, 4]));
-        assert_eq!(scan_dotted_quad(b"1.2.3"), None);
-        assert_eq!(scan_dotted_quad(b"a.b.c.d"), None);
-        assert_eq!(scan_dotted_quad(b"1 .2.3.4"), None);
+    fn only_a_whole_ipv4_address_is_an_address() {
+        assert_eq!(ipv4_address(b"1.2.3.4"), Some(Ipv4Addr::new(1, 2, 3, 4)));
+        assert_eq!(ipv4_address(b"255.0.0.255"), Some(Ipv4Addr::new(255, 0, 0, 255)));
+        for not_one in [
+            &b" 1. 2.3.4xyz"[..],
+            b" 1.2.3.4",
+            b"1.2.3.4 ",
+            b"1.2.3.4:80",
+            b"1.2.3.4, 5.6.7.8",
+            b"+1.2.3.4",
+            b"-1.2.3.4",
+            b"999.1.1.1",
+            b"01.2.3.4",
+            b"1.2.3",
+            b"a.b.c.d",
+            b"",
+        ] {
+            assert_eq!(ipv4_address(not_one), None, "{:?}", String::from_utf8_lossy(not_one));
+        }
+    }
+
+    #[test]
+    fn a_value_that_is_not_an_address_is_looked_up_as_a_domain() {
+        let op = Rbl::new(Param::from_text("zen.spamhaus.org"));
+        assert_eq!(map(&op, b"1.2.3.4:80", None), b"1.2.3.4:80.zen.spamhaus.org".to_vec());
+        assert_eq!(map(&op, b"999.1.1.1", None), b"999.1.1.1.zen.spamhaus.org".to_vec());
     }
 
     /// `op.map_ip_to_address(ip)` with `SecHttpBlKey` set to `key`.
