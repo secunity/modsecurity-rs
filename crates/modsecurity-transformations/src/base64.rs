@@ -1,20 +1,18 @@
 //! Base64 encoding and decoding, strict (mbedtls) and forgiving.
 //!
-//! The strict encoder and decoder follow mbedtls (`mbedtls_base64_encode` /
-//! `mbedtls_base64_decode`), which the original ModSecurity calls. Their
+//! Encoding is standard base64 with `=` padding: the `base64` crate gives
+//! what `mbedtls_base64_encode` gives. The strict decoder follows
+//! `mbedtls_base64_decode`, which the original ModSecurity calls: its
 //! exact semantics (which whitespace is tolerated, how padding is
-//! validated, ...) are observable through `t:base64Decode` and the tests of
-//! the original ModSecurity depend on them, so they are written out here
-//! (`mbedtls_encode` / `mbedtls_decode`, after mbedtls `base64.c`) instead
-//! of using a different base64 implementation. The forgiving decoder
-//! ([`Base64::decode_forgiven`]) is ModSecurity's own algorithm.
+//! validated, ...) are observable through `t:base64Decode`, the tests of
+//! the original ModSecurity depend on them, and the `base64` crate decides
+//! otherwise, so it is written out here (`mbedtls_decode`, after mbedtls
+//! `base64.c`). The forgiving decoder ([`Base64::decode_forgiven`]) is
+//! ModSecurity's own algorithm.
 
 /// Base64 encoding and decoding.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Base64;
-
-/// Standard base64 alphabet (`mbedtls_ct_base64_enc_char`).
-const ENC_TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// `mbedtls_ct_base64_dec_value`: the value of a base64 digit.
 #[inline]
@@ -38,44 +36,6 @@ fn forgiving_digit(c: u8) -> Option<u8> {
         b'_' => Some(63),
         _ => mbedtls_dec_value(c),
     }
-}
-
-/// Encodes `src` as `mbedtls_base64_encode` does.
-fn mbedtls_encode(src: &[u8]) -> Vec<u8> {
-    let slen = src.len();
-    if slen == 0 {
-        return Vec::new();
-    }
-    let n = (slen / 3 + usize::from(!slen.is_multiple_of(3))) * 4;
-    let mut out = Vec::with_capacity(n);
-    let enc = |v: u32| ENC_TABLE[(v & 0x3F) as usize];
-
-    let full = (slen / 3) * 3;
-    let mut i = 0;
-    while i < full {
-        let c1 = u32::from(src[i]);
-        let c2 = u32::from(src[i + 1]);
-        let c3 = u32::from(src[i + 2]);
-        out.push(enc(c1 >> 2));
-        out.push(enc(((c1 & 3) << 4) + (c2 >> 4)));
-        out.push(enc(((c2 & 15) << 2) + (c3 >> 6)));
-        out.push(enc(c3));
-        i += 3;
-    }
-
-    if i < slen {
-        let c1 = u32::from(src[i]);
-        let c2 = if i + 1 < slen { u32::from(src[i + 1]) } else { 0 };
-        out.push(enc(c1 >> 2));
-        out.push(enc(((c1 & 3) << 4) + (c2 >> 4)));
-        if i + 1 < slen {
-            out.push(enc((c2 & 15) << 2));
-        } else {
-            out.push(b'=');
-        }
-        out.push(b'=');
-    }
-    out
 }
 
 /// Decodes `src` as `mbedtls_base64_decode` does: `None` on
@@ -188,9 +148,11 @@ fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
 }
 
 impl Base64 {
-    /// Standard base64 with `=` padding. Encoding cannot fail.
+    /// Standard base64 with `=` padding, as `mbedtls_base64_encode`
+    /// gives it (the `base64` crate). Encoding cannot fail.
     pub fn encode(data: &[u8]) -> Vec<u8> {
-        mbedtls_encode(data)
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(data).into_bytes()
     }
 
     /// Strict (mbedtls) decoding; `None` when the input is not valid

@@ -9,6 +9,9 @@ publish = false
 [dependencies]
 # The byte helpers (hex digits, C locale classes).
 modsecurity-compat = { path = "../modsecurity-compat" }
+# t:base64Encode (standard alphabet, `=` padding: what mbedtls_base64_encode
+# gives). Decoding stays hand-written: mbedtls's acceptance rules differ.
+base64 = "0.23"
 # t:md5 and t:sha1.
 md-5 = "0.11"
 sha1 = "0.11"

@@ -91,6 +91,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -841,6 +847,7 @@ dependencies = [
 name = "modsecurity-transformations"
 version = "3.0.17"
 dependencies = [
+ "base64",
  "md-5",
  "modsecurity-compat",
  "sha1",

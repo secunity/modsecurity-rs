@@ -123,6 +123,7 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
 | `pcre2-sys` | PCRE2 (same library) | used through the C API so options, JIT fallback, match limits and error codes match exactly |
 | `libinjection` (vendored, pure Rust) | libinjection (C) | pure-Rust detectors (SQLi follows libinjection's fingerprinting) |
 | `md-5`, `sha1` | mbedtls md5/sha1 | standard RustCrypto digests |
+| `base64` | mbedtls base64 encoding | `t:base64Encode` (decoding follows mbedtls's own rules, written out in `base64.rs`) |
 | `mlua` (Lua 5.4, vendored) | liblua | Lua engine (`SecRuleScript`, `exec`, `@inspectFile`) |
 | `maxminddb` | libmaxminddb | `@geoLookup` |
 | `lmdb-master-sys` | liblmdb | persistent collections |
