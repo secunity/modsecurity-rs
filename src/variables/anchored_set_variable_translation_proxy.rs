@@ -26,12 +26,12 @@ pub(crate) fn translate(name: &str, v: &VariableValue) -> VariableValue {
 
 #[derive(Debug, Clone)]
 pub struct AnchoredSetVariableTranslationProxy {
-    pub name: String,
+    pub name: &'static str,
 }
 
 impl AnchoredSetVariableTranslationProxy {
-    pub fn new(name: &str) -> Self {
-        AnchoredSetVariableTranslationProxy { name: name.to_string() }
+    pub fn new(name: &'static str) -> Self {
+        AnchoredSetVariableTranslationProxy { name }
     }
 
     /// Replaces each value (of the whole list, including what the caller
@@ -39,7 +39,7 @@ impl AnchoredSetVariableTranslationProxy {
     /// adjusting the origins to point at the key.
     fn translate(&self, l: &mut [VariableValue]) {
         for v in l.iter_mut() {
-            *v = translate(&self.name, v);
+            *v = translate(self.name, v);
         }
     }
 
@@ -47,7 +47,7 @@ impl AnchoredSetVariableTranslationProxy {
     /// translation of its entries, and `l` holds nothing else that
     /// [`Self::translate`] of the whole list would rewrite.
     fn use_stored_names(&self, fount: &AnchoredSetVariable, l: &[VariableValue]) -> bool {
-        l.is_empty() && fount.has_names(&self.name)
+        l.is_empty() && fount.has_names(self.name)
     }
 
     #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.

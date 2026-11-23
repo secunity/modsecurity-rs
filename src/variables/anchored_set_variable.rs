@@ -41,27 +41,29 @@ impl Entry {
 
 #[derive(Debug, Clone)]
 pub struct AnchoredSetVariable {
-    pub name: String,
+    pub name: &'static str,
     map: UnorderedMultimap<Entry>,
     /// The collection name of the translation proxy over this variable.
-    names_collection: Option<String>,
+    names_collection: Option<&'static str>,
 }
 
 impl AnchoredSetVariable {
-    pub fn new(name: &str) -> Self {
-        AnchoredSetVariable { name: name.to_string(), map: UnorderedMultimap::with_reserve(10), names_collection: None }
+    /// An empty variable. It allocates nothing until a value is added:
+    /// every transaction creates all of them, and a request fills a few.
+    pub fn new(name: &'static str) -> Self {
+        AnchoredSetVariable { name, map: UnorderedMultimap::with_reserve(10), names_collection: None }
     }
 
     /// A variable with a translation proxy named `names` (e.g. `ARGS` and
     /// `ARGS_NAMES`).
-    pub fn with_names(name: &str, names: &str) -> Self {
-        AnchoredSetVariable { names_collection: Some(names.to_string()), ..Self::new(name) }
+    pub fn with_names(name: &'static str, names: &'static str) -> Self {
+        AnchoredSetVariable { names_collection: Some(names), ..Self::new(name) }
     }
 
     /// Whether the entries carry values of the translation proxy `names`
     /// (see [`Self::with_names`]).
     pub fn has_names(&self, names: &str) -> bool {
-        self.names_collection.as_deref() == Some(names)
+        self.names_collection == Some(names)
     }
 
     pub fn len(&self) -> usize {

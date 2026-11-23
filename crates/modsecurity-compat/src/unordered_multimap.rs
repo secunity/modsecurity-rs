@@ -419,9 +419,13 @@ pub struct UnorderedMultimap<V> {
     nodes: Vec<Option<Node<V>>>,
     free: Vec<usize>,
     head: Option<usize>,
+    /// The buckets; empty until the first insertion (see [`Self::new`]).
     buckets: Vec<Option<Before>>,
     element_count: usize,
     policy: PrimeRehashPolicy,
+    /// The `reserve` of [`Self::with_reserve`], done with the first
+    /// insertion.
+    reserved: usize,
 }
 
 impl<V> Default for UnorderedMultimap<V> {
@@ -432,23 +436,40 @@ impl<V> Default for UnorderedMultimap<V> {
 
 impl<V> UnorderedMultimap<V> {
     /// Default constructed container (a single bucket).
+    ///
+    /// Nothing is allocated until the first insertion, which sets up the
+    /// buckets as they would have been from the start (libstdc++ keeps the
+    /// single bucket of an empty container inline, too). Lookups and
+    /// removals on an empty container do not look at the buckets.
     pub fn new() -> Self {
         UnorderedMultimap {
             nodes: Vec::new(),
             free: Vec::new(),
             head: None,
-            buckets: vec![None],
+            buckets: Vec::new(),
             element_count: 0,
             policy: PrimeRehashPolicy::default(),
+            reserved: 0,
         }
     }
 
     /// An empty container with buckets for `n` elements (a default
-    /// constructed one followed by `reserve(n)`).
+    /// constructed one followed by `reserve(n)`, done with the first
+    /// insertion).
     pub fn with_reserve(n: usize) -> Self {
-        let mut m = Self::new();
-        m.reserve(n);
-        m
+        UnorderedMultimap { reserved: n, ..Self::new() }
+    }
+
+    /// Sets up the buckets of a container that has none yet: the single
+    /// bucket of a default constructed one, then its pending `reserve`.
+    fn ensure_buckets(&mut self) {
+        if self.buckets.is_empty() {
+            self.buckets.push(None);
+            let n = std::mem::take(&mut self.reserved);
+            if n > 0 {
+                self.reserve(n);
+            }
+        }
     }
 
     fn node(&self, i: usize) -> &Node<V> {
@@ -488,12 +509,14 @@ impl<V> UnorderedMultimap<V> {
     /// Makes room for `n` elements without exceeding the load factor, as
     /// libstdc++'s `reserve(n)`.
     pub fn reserve(&mut self, n: usize) {
+        self.ensure_buckets();
         self.rehash(PrimeRehashPolicy::bkt_for_elements(n));
     }
 
     /// Rehashes to at least `bkt_count` buckets (and enough for the current
     /// elements), as libstdc++'s `rehash(n)`.
     pub fn rehash(&mut self, bkt_count: usize) {
+        self.ensure_buckets();
         let saved = self.policy;
         let bkt_count = std::cmp::max(PrimeRehashPolicy::bkt_for_elements(self.element_count + 1), bkt_count);
         let bkt_count = self.policy.next_bkt(bkt_count);
@@ -590,6 +613,7 @@ impl<V> UnorderedMultimap<V> {
     /// Inserts `value` under `key` where libstdc++'s `emplace` puts it: in
     /// front of its equivalents, or else at the start of its bucket.
     pub fn insert(&mut self, key: Vec<u8>, value: V) {
+        self.ensure_buckets();
         let hash = my_hash(&key);
         let node = Node { key, value, hash, next: None };
         let idx = match self.free.pop() {
@@ -682,9 +706,15 @@ impl<V> UnorderedMultimap<V> {
         })
     }
 
+    /// The bucket count, as it is or as the first insertion will set it up.
     #[cfg(test)]
-    pub fn bucket_count(&self) -> usize {
-        self.buckets.len()
+    pub fn bucket_count(&self) -> usize
+    where
+        V: Clone,
+    {
+        let mut m = self.clone();
+        m.ensure_buckets();
+        m.buckets.len()
     }
 
     /// Iteration in container order.
@@ -871,6 +901,48 @@ mod tests {
                 recomputed.rebuild_buckets();
                 assert_eq!(m.buckets, recomputed.buckets, "step {step}");
                 assert_eq!(m.iter().count(), m.len());
+            }
+        }
+    }
+
+    /// A container allocates nothing until the first insertion, and then
+    /// has the buckets it would have had from the start: the same order
+    /// and bucket count as one whose buckets are set up at once (an
+    /// explicit `reserve` does that), after any sequence of insertions and
+    /// removals.
+    #[test]
+    fn buckets_set_up_on_first_insertion() {
+        use rand::{Rng, SeedableRng};
+        let empty: UnorderedMultimap<String> = UnorderedMultimap::with_reserve(10);
+        assert_eq!(empty.buckets.capacity(), 0);
+        assert_eq!(empty.bucket_count(), 11);
+        assert!(empty.find(b"a").is_none());
+        let mut cleared = UnorderedMultimap::<String>::with_reserve(10);
+        cleared.clear();
+        assert_eq!(cleared.erase(b"a"), 0);
+        assert_eq!(cleared.buckets.capacity(), 0);
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(3);
+        for reserve in [0usize, 1, 10, 30] {
+            for _ in 0..200 {
+                let mut lazy = UnorderedMultimap::with_reserve(reserve);
+                let mut eager = UnorderedMultimap::new();
+                eager.reserve(reserve);
+                if reserve == 0 {
+                    lazy = UnorderedMultimap::new();
+                    eager = UnorderedMultimap::new();
+                    eager.ensure_buckets();
+                }
+                for step in 0..rng.random_range(1..60) {
+                    let key = format!("k{}", rng.random_range(0..25)).into_bytes();
+                    if rng.random_range(0..4) == 0 {
+                        assert_eq!(lazy.erase(&key), eager.erase(&key));
+                    } else {
+                        lazy.insert(key.clone(), step.to_string());
+                        eager.insert(key, step.to_string());
+                    }
+                    assert_eq!(dump(&lazy), dump(&eager));
+                }
             }
         }
     }
