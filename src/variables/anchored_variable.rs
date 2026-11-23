@@ -3,25 +3,41 @@
 //! The variable holds its name, value and origin; it has no reference to
 //! the transaction that owns it.
 
+use std::cell::OnceCell;
+
 use crate::variables::variable_origin::VariableOrigin;
 use crate::variables::variable_value::VariableValue;
 
 #[derive(Debug, Clone)]
 pub struct AnchoredVariable {
+    name: &'static str,
     /// Where the value starts in the request.
     offset: usize,
-    /// The name (as the key), the value and where the value comes from.
-    var: VariableValue,
+    /// The name (as the key), the value and where the value comes from;
+    /// created when the variable is first set or read. Every transaction
+    /// has all of these variables, and a request sets a few of them.
+    var: OnceCell<VariableValue>,
 }
 
 impl AnchoredVariable {
-    pub fn new(name: &str) -> Self {
-        AnchoredVariable { offset: 0, var: VariableValue::new(name.as_bytes(), b"") }
+    /// An empty variable; it allocates nothing until it is set or read.
+    pub fn new(name: &'static str) -> Self {
+        AnchoredVariable { name, offset: 0, var: OnceCell::new() }
+    }
+
+    /// The variable's value, created empty if it has none yet.
+    fn var(&self) -> &VariableValue {
+        self.var.get_or_init(|| VariableValue::new(self.name.as_bytes(), b""))
+    }
+
+    fn var_mut(&mut self) -> &mut VariableValue {
+        self.var();
+        self.var.get_mut().expect("initialized above")
     }
 
     /// The current value.
     pub fn value(&self) -> &[u8] {
-        self.var.value()
+        self.var.get().map_or(b"", VariableValue::value)
     }
 
     /// Where the current value starts in the request.
@@ -31,17 +47,20 @@ impl AnchoredVariable {
 
     /// Empties the value; it has no origin then.
     pub fn unset(&mut self) {
-        self.var.set_value(b"");
-        self.var.clear_origins();
+        if let Some(var) = self.var.get_mut() {
+            var.set_value(b"");
+            var.clear_origins();
+        }
     }
 
     /// Sets the value to `a`, found at `offset` in `offset_len` bytes of
     /// the request (its origin).
     pub fn set_with_len(&mut self, a: &[u8], offset: usize, offset_len: usize) {
         self.offset = offset;
-        self.var.set_value(a);
-        self.var.clear_origins();
-        self.var.add_origin(VariableOrigin::new(offset_len, offset));
+        let var = self.var_mut();
+        var.set_value(a);
+        var.clear_origins();
+        var.add_origin(VariableOrigin::new(offset_len, offset));
     }
 
     /// Sets the value to `a`, found as is at `offset` in the request.
@@ -53,17 +72,17 @@ impl AnchoredVariable {
     /// `origins` are added to the ones the value has
     /// (`ARGS_COMBINED_SIZE` comes from every argument).
     pub fn set_adding_origins(&mut self, a: &[u8], origins: impl IntoIterator<Item = VariableOrigin>) {
-        self.var.set_value(a);
+        self.var_mut().set_value(a);
         for origin in origins {
             self.offset = origin.offset;
-            self.var.add_origin(origin);
+            self.var_mut().add_origin(origin);
         }
     }
 
     /// Appends the variable to `l`.
     pub fn evaluate_into(&self, l: &mut Vec<VariableValue>) {
         // Shares the value (a reference count).
-        l.push(self.var.clone());
+        l.push(self.var().clone());
     }
 
     #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
@@ -125,6 +144,25 @@ mod tests {
         // Three matches of ARGS, then one of MATCHED_VAR, set once per
         // match of ARGS: one origin.
         assert_eq!(reference, "o0,1v8,1o0,1v12,1o0,1v16,1o0,1v27,1");
+    }
+
+    /// A variable allocates nothing until it is set or read, and reads as
+    /// the empty value of its name until then.
+    #[test]
+    fn created_when_first_set_or_read() {
+        let mut v = AnchoredVariable::new("REQUEST_BODY");
+        assert!(v.var.get().is_none());
+        assert_eq!((v.value(), v.offset(), v.resolve_first()), (&b""[..], 0, None));
+        v.unset();
+        assert!(v.var.get().is_none());
+        let mut l = Vec::new();
+        v.evaluate_into(&mut l);
+        assert_eq!((l[0].key(), l[0].value(), l[0].origin().len()), (&b"REQUEST_BODY"[..], &b""[..], 0));
+        assert!(v.var.get().is_some());
+
+        let mut w = AnchoredVariable::new("REQUEST_METHOD");
+        w.set(b"GET", 0);
+        assert_eq!(w.value(), b"GET");
     }
 
     /// A value computed from several places keeps all of them.
