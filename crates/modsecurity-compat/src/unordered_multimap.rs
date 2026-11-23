@@ -464,11 +464,19 @@ impl<V> UnorderedMultimap<V> {
     /// bucket of a default constructed one, then its pending `reserve`.
     fn ensure_buckets(&mut self) {
         if self.buckets.is_empty() {
-            self.buckets.push(None);
             let n = std::mem::take(&mut self.reserved);
-            if n > 0 {
-                self.reserve(n);
-            }
+            // What `reserve(n)` does to the single bucket of an empty
+            // container (`rehash` of at least one element's worth): set up
+            // directly, without the single bucket first.
+            let bkt_count = if n > 0 {
+                self.policy.next_bkt(std::cmp::max(
+                    PrimeRehashPolicy::bkt_for_elements(1),
+                    PrimeRehashPolicy::bkt_for_elements(n),
+                ))
+            } else {
+                1
+            };
+            self.buckets = vec![None; bkt_count];
         }
     }
 

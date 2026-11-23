@@ -57,10 +57,20 @@ impl AnchoredVariable {
     /// the request (its origin).
     pub fn set_with_len(&mut self, a: &[u8], offset: usize, offset_len: usize) {
         self.offset = offset;
-        let var = self.var_mut();
-        var.set_value(a);
-        var.clear_origins();
-        var.add_origin(VariableOrigin::new(offset_len, offset));
+        let origin = VariableOrigin::new(offset_len, offset);
+        match self.var.get_mut() {
+            Some(var) => {
+                var.set_value(a);
+                var.clear_origins();
+                var.add_origin(origin);
+            }
+            None => {
+                // The first value: built at once, in a buffer of its size.
+                let mut var = VariableValue::new(self.name.as_bytes(), a);
+                var.add_origin(origin);
+                let _ = self.var.set(var);
+            }
+        }
     }
 
     /// Sets the value to `a`, found as is at `offset` in the request.

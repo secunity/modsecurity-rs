@@ -93,6 +93,9 @@ http = ["dep:http"]
 tower = ["http", "dep:bytes", "dep:http-body", "dep:http-body-util", "dep:tower-layer", "dep:tower-service"]
 
 [dependencies]
+# Decimal numbers without a heap string (ARGS_COMBINED_SIZE, once per
+# argument); already in the dependency tree through `http`.
+itoa = "1"
 # The C libraries (PCRE2, libxml2, LMDB, ssdeep, Lua, libc calls) behind
 # safe APIs: all the unsafe code.
 modsecurity-native = { path = "crates/modsecurity-native" }

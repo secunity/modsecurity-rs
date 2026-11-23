@@ -82,7 +82,8 @@ impl ArgumentWriter<'_> {
             ArgumentOrigin::Json | ArgumentOrigin::Xml => {}
         }
         *self.combined_size += key.len() + value.len();
-        let size = self.combined_size.to_string();
+        let mut size = itoa::Buffer::new();
+        let size = size.format(*self.combined_size);
         // The size comes from every argument: each adds its name and value
         // to the origins.
         let origins =
@@ -189,5 +190,29 @@ mod tests {
         t.argument_writer().add(ArgumentOrigin::Json, b"a", b"1", 0);
         assert_eq!(t.vars.args.resolve_first(b"a").unwrap(), b"1");
         assert!(t.vars.args_get.is_empty() && t.vars.args_post.is_empty());
+    }
+
+    /// The variables of the request line, and what a second URI without a
+    /// query string does: QUERY_STRING keeps the first one, whose arguments
+    /// are added again.
+    #[test]
+    fn request_line_variables_and_a_second_uri() {
+        let ms = ModSecurity::new();
+        let rules = new_rules();
+        let mut t = Transaction::new(&ms, &rules, None);
+        t.process_uri(b"http://example.com/dir/file.php?a=1&b=%32#frag", b"GET", b"1.1");
+        assert_eq!(t.vars.request_line.value(), b"GET http://example.com/dir/file.php?a=1&b=%32#frag HTTP/1.1");
+        assert_eq!(t.vars.request_protocol.value(), b"HTTP/1.1");
+        assert_eq!(t.vars.request_protocol.offset(), 51);
+        assert_eq!((t.vars.query_string.value(), t.vars.query_string.offset()), (&b"a=1&b=%32"[..], 36));
+        assert_eq!(t.vars.request_basename.value(), b"file.php");
+        assert_eq!(t.vars.request_uri.value(), b"/dir/file.php?a=1&b=2");
+        assert_eq!(t.vars.args_get.resolve_first(b"b").unwrap(), b"2");
+        assert_eq!(t.vars.args_get.len(), 2);
+
+        t.process_uri(b"/other", b"GET", b"1.1");
+        assert_eq!(t.vars.query_string.value(), b"a=1&b=%32");
+        assert_eq!(t.vars.request_uri.value(), b"/other");
+        assert_eq!(t.vars.args_get.len(), 4);
     }
 }

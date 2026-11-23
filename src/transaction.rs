@@ -607,23 +607,21 @@ impl<'a> Transaction<'a> {
         let off = self.vars.offset;
         self.vars.request_method.set(method, 0);
 
-        let mut request_line = method.to_vec();
-        request_line.push(b' ');
-        request_line.extend_from_slice(uri);
-        let mut rl = request_line.clone();
+        // `METHOD URI HTTP/VERSION`: REQUEST_LINE, and REQUEST_PROTOCOL at
+        // its end.
+        let request_line_len = method.len() + 1 + uri.len();
+        let mut rl = Vec::with_capacity(request_line_len + 6 + http_version.len());
+        rl.extend_from_slice(method);
+        rl.push(b' ');
+        rl.extend_from_slice(uri);
         rl.extend_from_slice(b" HTTP/");
         rl.extend_from_slice(http_version);
         self.vars.request_line.set(&rl, off);
+        self.vars.request_protocol.set(&rl[request_line_len + 1..], off + request_line_len + 1);
 
-        let mut proto = b"HTTP/".to_vec();
-        proto.extend_from_slice(http_version);
-        self.vars.request_protocol.set(&proto, off + request_line.len() + 1);
-
-        self.http.uri_no_query_string_decoded = path_info.clone();
-
-        if let Some(p) = pos_raw_query {
-            let qry = uri_s[p + 1..].to_vec();
-            self.vars.query_string.set(&qry, p + 1 + method.len() + 1);
+        let query = pos_raw_query.map(|p| (&uri_s[p + 1..], p + 1 + method.len() + 1));
+        if let Some((qry, qry_offset)) = query {
+            self.vars.query_string.set(qry, qry_offset);
         }
 
         let var_size = pos_raw_query.unwrap_or(uri_s.len());
@@ -633,15 +631,16 @@ impl<'a> Transaction<'a> {
         if let Some(o) = path_info.iter().rposition(|&c| c == b'/' || c == b'\\')
             && path_info.len() > o + 1
         {
-            let basename = path_info[o + 1..].to_vec();
-            self.vars.request_basename.set(&basename, off + method.len() + 1 + o + 1);
+            self.vars.request_basename.set(&path_info[o + 1..], off + method.len() + 1 + o + 1);
         }
+        self.http.uri_no_query_string_decoded = path_info;
         self.vars.offset = self.vars.request_line.value().len();
 
-        let mut parsed_uri = self.http.uri_decoded.clone();
-        // The more popular case is without domain
-        if !self.http.uri_decoded.is_empty() && self.http.uri_decoded[0] != b'/' {
-            let d = &self.http.uri_decoded;
+        // REQUEST_URI: the decoded URI without its scheme and host, when it
+        // has them. The more popular case is without domain.
+        let d = &self.http.uri_decoded;
+        let mut path_start = 0;
+        if !d.is_empty() && d[0] != b'/' {
             // The position after the first `:`, 0 when there is none.
             let scheme = d.iter().position(|&c| c == b':').map(|p| p + 1).unwrap_or(0);
             // The position after the next `//`, 1 when there is none.
@@ -649,16 +648,28 @@ impl<'a> Transaction<'a> {
             if netloc == scheme + 2
                 && let Some(path) = d.iter().skip(netloc).position(|&c| c == b'/').map(|p| p + netloc)
             {
-                parsed_uri = d[path..].to_vec();
+                path_start = path;
             }
         }
-        self.vars.request_uri.set_with_len(&parsed_uri, method.len() + 1, uri_s.len());
+        self.vars.request_uri.set_with_len(&self.http.uri_decoded[path_start..], method.len() + 1, uri_s.len());
         self.vars.request_uri_raw.set(uri, method.len() + 1);
 
-        if !self.vars.query_string.value().is_empty() {
-            let qs = self.vars.query_string.value().to_vec();
-            let qo = self.vars.query_string.offset();
-            self.extract_arguments(ArgumentOrigin::Get, &qs, qo);
+        match query {
+            // The query string of this URI, as QUERY_STRING has it.
+            Some((qry, qry_offset)) => {
+                if !qry.is_empty() {
+                    self.extract_arguments(ArgumentOrigin::Get, qry, qry_offset);
+                }
+            }
+            // No query string: QUERY_STRING keeps what an earlier URI of
+            // the transaction set, and its arguments are added again.
+            None => {
+                if !self.vars.query_string.value().is_empty() {
+                    let qs = self.vars.query_string.value().to_vec();
+                    let qo = self.vars.query_string.offset();
+                    self.extract_arguments(ArgumentOrigin::Get, &qs, qo);
+                }
+            }
         }
 
         self.vars.offset += 1;

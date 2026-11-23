@@ -735,6 +735,7 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
+ "itoa",
  "jiff",
  "md-5",
  "mlua",
