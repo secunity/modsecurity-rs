@@ -181,6 +181,9 @@ struct Scratch {
     md: MatchData,
     pairs: u32,
     ctx: MatchContext,
+    /// The match limit set on `ctx` (0: none yet): set again only when it
+    /// changes, not for every search.
+    limit: u64,
 }
 
 /// Initial size of the per-thread match data, in (start, end) pairs.
@@ -325,13 +328,16 @@ impl Regex {
                     if md.0.is_null() {
                         return None;
                     }
-                    let ctx = slot.take().map_or_else(MatchContext::create, |sc| sc.ctx);
-                    *slot = Some(Scratch { md, pairs, ctx });
+                    let (ctx, limit) = slot.take().map_or_else(|| (MatchContext::create(), 0), |sc| (sc.ctx, sc.limit));
+                    *slot = Some(Scratch { md, pairs, ctx, limit });
                 }
-                let sc = slot.as_ref()?;
+                let sc = slot.as_mut()?;
                 let ctx = if match_limit > 0 && !sc.ctx.0.is_null() {
-                    // SAFETY: ctx is a valid match context.
-                    unsafe { pcre2_set_match_limit_8(sc.ctx.0, match_limit as u32) };
+                    if sc.limit != match_limit {
+                        // SAFETY: ctx is a valid match context.
+                        unsafe { pcre2_set_match_limit_8(sc.ctx.0, match_limit as u32) };
+                        sc.limit = match_limit;
+                    }
                     sc.ctx.0
                 } else {
                     ptr::null_mut()

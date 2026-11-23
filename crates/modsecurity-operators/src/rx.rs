@@ -88,6 +88,10 @@ impl Rx {
             return None;
         }
 
+        if captures.is_empty() {
+            return Some(false);
+        }
+
         if cx.captures() {
             for capture in &captures {
                 let capture_substring = &input[capture.offset..capture.offset + capture.length];
@@ -108,7 +112,7 @@ impl Rx {
             cx.offset(capture.offset, capture.length);
         }
 
-        Some(!captures.is_empty())
+        Some(true)
     }
 }
 
