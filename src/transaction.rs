@@ -682,13 +682,13 @@ impl<'a> Transaction<'a> {
         let off = self.vars.offset;
         self.vars.request_headers.set(key, value, off);
 
-        let keyl = key.to_ascii_lowercase();
-        if keyl == b"authorization" {
+        let is = |name: &[u8]| key.eq_ignore_ascii_case(name);
+        if is(b"authorization") {
             let ty = split(value, b' ');
             self.vars.auth_type.set(&ty[0], off);
         }
 
-        if keyl == b"cookie" {
+        if is(b"cookie") {
             let mut local_offset = off;
             let mut cookies = ssplit(value, b';');
             if let Some(final_cookie_pair) = cookies.last_mut() {
@@ -723,7 +723,7 @@ impl<'a> Transaction<'a> {
             }
         }
 
-        if keyl == b"content-type" {
+        if is(b"content-type") {
             let l = value.to_ascii_lowercase();
             if l.starts_with(b"multipart/form-data") {
                 self.body.request_body_type = Some(RequestBodyType::Multipart);
@@ -735,7 +735,7 @@ impl<'a> Transaction<'a> {
             }
         }
 
-        if keyl == b"host" {
+        if is(b"host") {
             let host = split(value, b':');
             self.vars.server_name.set(&host[0], off);
         }

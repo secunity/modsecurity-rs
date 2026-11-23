@@ -858,6 +858,7 @@ name = "modsecurity-types"
 version = "3.0.17"
 dependencies = [
  "modsecurity-native",
+ "smallvec",
 ]
 
 [[package]]

@@ -22,7 +22,9 @@ pub fn move_to_front_reversed(l: &mut [VariableValue], start: usize) {
     l.rotate_right(added);
 }
 
-pub type Origins = Vec<VariableOrigin>;
+/// Where a value came from. Almost every value has one origin, which is
+/// kept inline.
+pub type Origins = smallvec::SmallVec<[VariableOrigin; 1]>;
 
 /// A resolved variable: collection name, key and value, plus where the value
 /// came from. Resolution produces owned values in a `Vec`.
@@ -53,7 +55,7 @@ impl VariableValue {
         let mut data = Vec::with_capacity(key.len() + value.len());
         data.extend_from_slice(key);
         data.extend_from_slice(value);
-        VariableValue(Arc::new(Inner { origin: Vec::new(), data, kwc_len: key.len(), collection_len: None }))
+        VariableValue(Arc::new(Inner { origin: Origins::new(), data, kwc_len: key.len(), collection_len: None }))
     }
 
     /// A value of `collection`: its full name is `collection:key`.
@@ -64,7 +66,7 @@ impl VariableValue {
         data.push(b':');
         data.extend_from_slice(key);
         data.extend_from_slice(value);
-        VariableValue(Arc::new(Inner { origin: Vec::new(), data, kwc_len, collection_len: Some(collection.len()) }))
+        VariableValue(Arc::new(Inner { origin: Origins::new(), data, kwc_len, collection_len: Some(collection.len()) }))
     }
 
     pub fn key(&self) -> &[u8] {
@@ -107,7 +109,7 @@ impl VariableValue {
         }
     }
 
-    pub fn origin(&self) -> &Origins {
+    pub fn origin(&self) -> &[VariableOrigin] {
         &self.0.origin
     }
 

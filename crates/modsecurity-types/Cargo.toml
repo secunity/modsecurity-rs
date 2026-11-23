@@ -9,3 +9,6 @@ publish = false
 [dependencies]
 # Regex key exclusions (`!ARGS:/regex/`): PCRE2, as everywhere in the engine.
 modsecurity-native = { path = "../modsecurity-native" }
+# A value's origins: almost every value has one, kept inline instead of in
+# an allocation of its own.
+smallvec = "1.13"
