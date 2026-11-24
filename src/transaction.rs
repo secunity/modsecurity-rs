@@ -10,7 +10,7 @@
 //!
 //! - `http` ([`HttpData`]): the request and response as the connector
 //!   reported them (addresses, URI, bodies, status);
-//! - `vars` ([`TransactionAnchoredVariables`]), `collections` and
+//! - `vars` ([`TransactionVariables`]), `collections` and
 //!   `variable_envs`: the variables rules inspect (`ARGS` is
 //!   `t.vars.args`);
 //! - `body` ([`BodyProcessing`]): the request body processors' state;
@@ -39,9 +39,9 @@ use crate::rule::{Rule, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine};
 use crate::utils::string::{is_space, split, ssplit};
-use crate::variables::anchored_set_variable::AnchoredSetVariable;
 use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
-use crate::variables::anchored_variable::AnchoredVariable;
+use crate::variables::multi::MultiVariable;
+use crate::variables::single::SingleVariable;
 use crate::variables::variable::Variable;
 use crate::variables::variable_value::VariableValue;
 use modsecurity_body::json::Json;
@@ -78,104 +78,104 @@ enum BodyDirection {
 /// The request/response variables filled while the transaction is
 /// processed.
 #[derive(Debug, Clone)]
-pub struct TransactionAnchoredVariables {
-    pub request_headers_names: AnchoredSetVariable,
-    pub response_content_type: AnchoredVariable,
-    pub response_headers_names: AnchoredSetVariable,
-    pub args_combined_size: AnchoredVariable,
-    pub auth_type: AnchoredVariable,
-    pub files_combined_size: AnchoredVariable,
-    pub full_request: AnchoredVariable,
-    pub full_request_length: AnchoredVariable,
-    pub inbound_data_error: AnchoredVariable,
-    pub matched_var: AnchoredVariable,
-    pub matched_var_name: AnchoredVariable,
-    pub msc_pcre_error: AnchoredVariable,
-    pub msc_pcre_limits_exceeded: AnchoredVariable,
-    pub multipart_boundary_quoted: AnchoredVariable,
-    pub multipart_boundary_white_space: AnchoredVariable,
-    pub multipart_crlf_lf_lines: AnchoredVariable,
-    pub multipart_data_after: AnchoredVariable,
-    pub multipart_data_before: AnchoredVariable,
-    pub multipart_duplicate_part_header: AnchoredVariable,
-    pub multipart_file_limit_exceeded: AnchoredVariable,
-    pub multipart_header_folding: AnchoredVariable,
-    pub multipart_invalid_header_folding: AnchoredVariable,
-    pub multipart_invalid_part: AnchoredVariable,
-    pub multipart_invalid_quoting: AnchoredVariable,
-    pub multipart_lf_line: AnchoredVariable,
-    pub multipart_missing_semicolon: AnchoredVariable,
-    pub multipart_strict_error: AnchoredVariable,
-    pub multipart_unmatched_boundary: AnchoredVariable,
-    pub outbound_data_error: AnchoredVariable,
-    pub path_info: AnchoredVariable,
-    pub query_string: AnchoredVariable,
-    pub remote_addr: AnchoredVariable,
-    pub remote_host: AnchoredVariable,
-    pub remote_port: AnchoredVariable,
-    pub reqbody_error: AnchoredVariable,
-    pub reqbody_error_msg: AnchoredVariable,
-    pub reqbody_processor_error: AnchoredVariable,
-    pub reqbody_processor_error_msg: AnchoredVariable,
-    pub reqbody_processor: AnchoredVariable,
-    pub request_basename: AnchoredVariable,
-    pub request_body: AnchoredVariable,
-    pub request_body_length: AnchoredVariable,
-    pub request_filename: AnchoredVariable,
-    pub request_line: AnchoredVariable,
-    pub request_method: AnchoredVariable,
-    pub request_protocol: AnchoredVariable,
-    pub request_uri: AnchoredVariable,
-    pub request_uri_raw: AnchoredVariable,
-    pub resource: AnchoredVariable,
-    pub response_body: AnchoredVariable,
-    pub response_content_length: AnchoredVariable,
-    pub response_protocol: AnchoredVariable,
-    pub response_status: AnchoredVariable,
-    pub server_addr: AnchoredVariable,
-    pub server_name: AnchoredVariable,
-    pub server_port: AnchoredVariable,
-    pub session_id: AnchoredVariable,
-    pub unique_id: AnchoredVariable,
-    pub url_encoded_error: AnchoredVariable,
-    pub user_id: AnchoredVariable,
-    pub args: AnchoredSetVariable,
-    pub args_get: AnchoredSetVariable,
-    pub args_post: AnchoredSetVariable,
-    pub files_sizes: AnchoredSetVariable,
-    pub files_names: AnchoredSetVariable,
-    pub files_tmp_content: AnchoredSetVariable,
-    pub multipart_file_name: AnchoredSetVariable,
-    pub multipart_file_name_charset: AnchoredSetVariable,
-    pub multipart_file_name_language: AnchoredSetVariable,
-    pub multipart_name: AnchoredSetVariable,
-    pub matched_vars_names: AnchoredSetVariable,
-    pub matched_vars: AnchoredSetVariable,
-    pub files: AnchoredSetVariable,
-    pub request_cookies: AnchoredSetVariable,
-    pub request_headers: AnchoredSetVariable,
-    pub response_headers: AnchoredSetVariable,
-    pub geo: AnchoredSetVariable,
-    pub request_cookies_names: AnchoredSetVariable,
-    pub files_tmp_names: AnchoredSetVariable,
-    pub multipart_part_headers: AnchoredSetVariable,
+pub struct TransactionVariables {
+    pub request_headers_names: MultiVariable,
+    pub response_content_type: SingleVariable,
+    pub response_headers_names: MultiVariable,
+    pub args_combined_size: SingleVariable,
+    pub auth_type: SingleVariable,
+    pub files_combined_size: SingleVariable,
+    pub full_request: SingleVariable,
+    pub full_request_length: SingleVariable,
+    pub inbound_data_error: SingleVariable,
+    pub matched_var: SingleVariable,
+    pub matched_var_name: SingleVariable,
+    pub msc_pcre_error: SingleVariable,
+    pub msc_pcre_limits_exceeded: SingleVariable,
+    pub multipart_boundary_quoted: SingleVariable,
+    pub multipart_boundary_white_space: SingleVariable,
+    pub multipart_crlf_lf_lines: SingleVariable,
+    pub multipart_data_after: SingleVariable,
+    pub multipart_data_before: SingleVariable,
+    pub multipart_duplicate_part_header: SingleVariable,
+    pub multipart_file_limit_exceeded: SingleVariable,
+    pub multipart_header_folding: SingleVariable,
+    pub multipart_invalid_header_folding: SingleVariable,
+    pub multipart_invalid_part: SingleVariable,
+    pub multipart_invalid_quoting: SingleVariable,
+    pub multipart_lf_line: SingleVariable,
+    pub multipart_missing_semicolon: SingleVariable,
+    pub multipart_strict_error: SingleVariable,
+    pub multipart_unmatched_boundary: SingleVariable,
+    pub outbound_data_error: SingleVariable,
+    pub path_info: SingleVariable,
+    pub query_string: SingleVariable,
+    pub remote_addr: SingleVariable,
+    pub remote_host: SingleVariable,
+    pub remote_port: SingleVariable,
+    pub reqbody_error: SingleVariable,
+    pub reqbody_error_msg: SingleVariable,
+    pub reqbody_processor_error: SingleVariable,
+    pub reqbody_processor_error_msg: SingleVariable,
+    pub reqbody_processor: SingleVariable,
+    pub request_basename: SingleVariable,
+    pub request_body: SingleVariable,
+    pub request_body_length: SingleVariable,
+    pub request_filename: SingleVariable,
+    pub request_line: SingleVariable,
+    pub request_method: SingleVariable,
+    pub request_protocol: SingleVariable,
+    pub request_uri: SingleVariable,
+    pub request_uri_raw: SingleVariable,
+    pub resource: SingleVariable,
+    pub response_body: SingleVariable,
+    pub response_content_length: SingleVariable,
+    pub response_protocol: SingleVariable,
+    pub response_status: SingleVariable,
+    pub server_addr: SingleVariable,
+    pub server_name: SingleVariable,
+    pub server_port: SingleVariable,
+    pub session_id: SingleVariable,
+    pub unique_id: SingleVariable,
+    pub url_encoded_error: SingleVariable,
+    pub user_id: SingleVariable,
+    pub args: MultiVariable,
+    pub args_get: MultiVariable,
+    pub args_post: MultiVariable,
+    pub files_sizes: MultiVariable,
+    pub files_names: MultiVariable,
+    pub files_tmp_content: MultiVariable,
+    pub multipart_file_name: MultiVariable,
+    pub multipart_file_name_charset: MultiVariable,
+    pub multipart_file_name_language: MultiVariable,
+    pub multipart_name: MultiVariable,
+    pub matched_vars_names: MultiVariable,
+    pub matched_vars: MultiVariable,
+    pub files: MultiVariable,
+    pub request_cookies: MultiVariable,
+    pub request_headers: MultiVariable,
+    pub response_headers: MultiVariable,
+    pub geo: MultiVariable,
+    pub request_cookies_names: MultiVariable,
+    pub files_tmp_names: MultiVariable,
+    pub multipart_part_headers: MultiVariable,
     pub offset: usize,
     pub args_names: AnchoredSetVariableTranslationProxy,
     pub args_get_names: AnchoredSetVariableTranslationProxy,
     pub args_post_names: AnchoredSetVariableTranslationProxy,
 }
 
-impl Default for TransactionAnchoredVariables {
+impl Default for TransactionVariables {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TransactionAnchoredVariables {
+impl TransactionVariables {
     pub fn new() -> Self {
-        let a = AnchoredVariable::new;
-        let s = AnchoredSetVariable::new;
-        TransactionAnchoredVariables {
+        let a = SingleVariable::new;
+        let s = MultiVariable::new;
+        TransactionVariables {
             request_headers_names: s("REQUEST_HEADERS_NAMES"),
             response_content_type: a("RESPONSE_CONTENT_TYPE"),
             response_headers_names: s("RESPONSE_HEADERS_NAMES"),
@@ -236,9 +236,9 @@ impl TransactionAnchoredVariables {
             unique_id: a("UNIQUE_ID"),
             url_encoded_error: a("URLENCODED_ERROR"),
             user_id: a("USERID"),
-            args: AnchoredSetVariable::with_names("ARGS", "ARGS_NAMES"),
-            args_get: AnchoredSetVariable::with_names("ARGS_GET", "ARGS_GET_NAMES"),
-            args_post: AnchoredSetVariable::with_names("ARGS_POST", "ARGS_POST_NAMES"),
+            args: MultiVariable::with_names("ARGS", "ARGS_NAMES"),
+            args_get: MultiVariable::with_names("ARGS_GET", "ARGS_GET_NAMES"),
+            args_post: MultiVariable::with_names("ARGS_POST", "ARGS_POST_NAMES"),
             files_sizes: s("FILES_SIZES"),
             files_names: s("FILES_NAMES"),
             files_tmp_content: s("FILES_TMP_CONTENT"),
@@ -386,7 +386,7 @@ pub struct Transaction<'a> {
     /// CPU time at creation, base of the `DURATION` variable.
     pub(crate) creation_time_stamp: f64,
     pub(crate) http: HttpData,
-    pub(crate) vars: TransactionAnchoredVariables,
+    pub(crate) vars: TransactionVariables,
     pub(crate) collections: Collections<'a>,
     /// Environment variables set by `setenv`.
     pub(crate) variable_envs: BTreeMap<Vec<u8>, Vec<u8>>,
@@ -449,7 +449,7 @@ impl<'a> Transaction<'a> {
                 args_combined_size: 0,
                 http_code_returned: 200,
             },
-            vars: TransactionAnchoredVariables::new(),
+            vars: TransactionVariables::new(),
             collections: Collections::new(
                 ms.global_collection.as_ref(),
                 ms.ip_collection.as_ref(),

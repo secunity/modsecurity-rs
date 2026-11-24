@@ -40,24 +40,24 @@ impl Entry {
 }
 
 #[derive(Debug, Clone)]
-pub struct AnchoredSetVariable {
+pub struct MultiVariable {
     pub name: &'static str,
     map: UnorderedMultimap<Entry>,
     /// The collection name of the translation proxy over this variable.
     names_collection: Option<&'static str>,
 }
 
-impl AnchoredSetVariable {
+impl MultiVariable {
     /// An empty variable. It allocates nothing until a value is added:
     /// every transaction creates all of them, and a request fills a few.
     pub fn new(name: &'static str) -> Self {
-        AnchoredSetVariable { name, map: UnorderedMultimap::with_reserve(10), names_collection: None }
+        MultiVariable { name, map: UnorderedMultimap::with_reserve(10), names_collection: None }
     }
 
     /// A variable with a translation proxy named `names` (e.g. `ARGS` and
     /// `ARGS_NAMES`).
     pub fn with_names(name: &'static str, names: &'static str) -> Self {
-        AnchoredSetVariable { names_collection: Some(names), ..Self::new(name) }
+        MultiVariable { names_collection: Some(names), ..Self::new(name) }
     }
 
     /// Whether the entries carry values of the translation proxy `names`

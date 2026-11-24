@@ -7,12 +7,12 @@
 
 use crate::rule::Rule;
 use crate::run_time_string::RunTimeString;
-use crate::transaction::{Transaction, TransactionAnchoredVariables};
-use crate::variables::anchored_set_variable::AnchoredSetVariable;
+use crate::transaction::{Transaction, TransactionVariables};
 use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
-use crate::variables::anchored_variable::AnchoredVariable;
 use crate::variables::computed::Computed;
+use crate::variables::multi::MultiVariable;
 use crate::variables::persistent::Persistent;
+use crate::variables::single::SingleVariable;
 use crate::variables::variable_value::VariableValue;
 use crate::variables::{VariableError, VariableSelector, env, rule, selector_regex, xml};
 use modsecurity_native::regex::Regex;
@@ -23,7 +23,7 @@ pub use modsecurity_types::key_exclusions::{KeyExclusion, KeyExclusions};
 // Variable
 // ---------------------------------------------------------------------------
 
-type Vars = TransactionAnchoredVariables;
+type Vars = TransactionVariables;
 
 /// Which entries of a multi valued variable are selected: `ARGS`,
 /// `ARGS:key` or `ARGS:/regex/`.
@@ -50,12 +50,12 @@ pub(crate) enum CollectionKey {
 #[derive(Debug)]
 pub(crate) enum Source {
     /// A single valued variable of the transaction (`REQUEST_METHOD`).
-    Single(fn(&Vars) -> &AnchoredVariable),
+    Single(fn(&Vars) -> &SingleVariable),
     /// A multi valued variable of the transaction (`ARGS`).
-    Set(fn(&Vars) -> &AnchoredSetVariable, Selector),
+    Set(fn(&Vars) -> &MultiVariable, Selector),
     /// The names of a multi valued variable (`ARGS_NAMES`): the proxy and
     /// the variable it translates.
-    Names(fn(&Vars) -> (&AnchoredSetVariableTranslationProxy, &AnchoredSetVariable), Selector),
+    Names(fn(&Vars) -> (&AnchoredSetVariableTranslationProxy, &MultiVariable), Selector),
     /// The `TX` collection.
     Tx(CollectionKey),
     /// A persistent collection (`IP`, `GLOBAL`, ...).
@@ -400,7 +400,7 @@ pub fn string_match_resolve_multi(
     if delim.is_some() {
         return Err(VariableNotFound);
     }
-    match single_anchored(t, variable) {
+    match single_variable(t, variable) {
         Some(a) => {
             a.evaluate_into(l);
             Ok(())
@@ -411,10 +411,7 @@ pub fn string_match_resolve_multi(
 
 #[cfg(feature = "lua")]
 /// The single valued variable named `variable`, among the ones Lua knows.
-fn single_anchored<'t>(
-    t: &'t Transaction<'_>,
-    variable: &str,
-) -> Option<&'t crate::variables::anchored_variable::AnchoredVariable> {
+fn single_variable<'t>(t: &'t Transaction<'_>, variable: &str) -> Option<&'t crate::variables::single::SingleVariable> {
     let v = crate::variables::names::SINGLE.iter().find(|v| v.lua && comp(variable, v.token))?;
     Some((v.get)(&t.vars))
 }
@@ -427,7 +424,7 @@ pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u
     let cols = &t.collections;
     let vv: Option<Vec<u8>> = match collection {
         None => {
-            if let Some(a) = single_anchored(t, variable) {
+            if let Some(a) = single_variable(t, variable) {
                 // RESOURCE is matched here, as the single variable set by
                 // `setrsc`, and not as the persistent collection.
                 a.resolve_first()

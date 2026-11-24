@@ -3,7 +3,7 @@
 //! This view borrows only argument state and logging/configuration context,
 //! leaving the transaction's body and parser available for independent borrows.
 
-use super::TransactionAnchoredVariables;
+use super::TransactionVariables;
 use crate::rules_set::RulesSet;
 use crate::utils::string::ssplit_pair;
 use crate::variables::variable_origin::VariableOrigin;
@@ -38,7 +38,7 @@ impl ArgumentOrigin {
 }
 
 pub(super) struct ArgumentWriter<'a> {
-    pub vars: &'a mut TransactionAnchoredVariables,
+    pub vars: &'a mut TransactionVariables,
     pub combined_size: &'a mut usize,
     pub rules: &'a RulesSet,
     pub id: &'a str,

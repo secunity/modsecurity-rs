@@ -10,10 +10,10 @@
 //! collection. The variables with logic of their own (the collections,
 //! `RULE`, `ENV`, `XML`, the computed ones) are not in these tables.
 
-use crate::transaction::TransactionAnchoredVariables as Vars;
-use crate::variables::anchored_set_variable::AnchoredSetVariable;
+use crate::transaction::TransactionVariables as Vars;
 use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
-use crate::variables::anchored_variable::AnchoredVariable;
+use crate::variables::multi::MultiVariable;
+use crate::variables::single::SingleVariable;
 
 /// A single valued variable of the transaction.
 pub(crate) struct Single {
@@ -22,7 +22,7 @@ pub(crate) struct Single {
     /// The name of the SecLang variable, as it shows in the logs. For a
     /// few it differs from the token (sic: `UNIQUEID`, `PROCESSOR_ERROR_MSG`).
     pub(crate) name: &'static str,
-    pub(crate) get: fn(&Vars) -> &AnchoredVariable,
+    pub(crate) get: fn(&Vars) -> &SingleVariable,
     /// Whether SecLang targets know it.
     pub(crate) seclang: bool,
     /// Whether Lua's lookup by name knows it.
@@ -33,7 +33,7 @@ pub(crate) struct Single {
 /// A multi valued variable of the transaction.
 pub(crate) struct Set {
     pub(crate) token: &'static str,
-    pub(crate) get: fn(&Vars) -> &AnchoredSetVariable,
+    pub(crate) get: fn(&Vars) -> &MultiVariable,
     /// Lua's lookup compares the whole name, key included, with the token
     /// (sic), so it finds the variable only without a key.
     #[cfg_attr(not(feature = "lua"), allow(dead_code))]
@@ -44,7 +44,7 @@ pub(crate) struct Set {
 /// variable it translates.
 pub(crate) struct Names {
     pub(crate) token: &'static str,
-    pub(crate) get: fn(&Vars) -> (&AnchoredSetVariableTranslationProxy, &AnchoredSetVariable),
+    pub(crate) get: fn(&Vars) -> (&AnchoredSetVariableTranslationProxy, &MultiVariable),
 }
 
 macro_rules! single {
@@ -53,7 +53,7 @@ macro_rules! single {
             token: $t,
             name: $n,
             get: {
-                fn get(v: &Vars) -> &AnchoredVariable {
+                fn get(v: &Vars) -> &SingleVariable {
                     &v.$f
                 }
                 get
@@ -69,7 +69,7 @@ macro_rules! set {
         Set {
             token: $t,
             get: {
-                fn get(v: &Vars) -> &AnchoredSetVariable {
+                fn get(v: &Vars) -> &MultiVariable {
                     &v.$f
                 }
                 get
@@ -84,7 +84,7 @@ macro_rules! names {
         Names {
             token: $t,
             get: {
-                fn get(v: &Vars) -> (&AnchoredSetVariableTranslationProxy, &AnchoredSetVariable) {
+                fn get(v: &Vars) -> (&AnchoredSetVariableTranslationProxy, &MultiVariable) {
                     (&v.$proxy, &v.$fount)
                 }
                 get

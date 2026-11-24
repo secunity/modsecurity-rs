@@ -1,4 +1,4 @@
-//! The multimap of `AnchoredSetVariable` and the in-memory collection
+//! The multimap of `MultiVariable` and the in-memory collection
 //! backend. It iterates in the order of libstdc++'s
 //! `std::unordered_multimap<std::string, T, MyHash, MyEqual>`.
 //!

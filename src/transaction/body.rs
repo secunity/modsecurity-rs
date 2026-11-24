@@ -283,7 +283,7 @@ impl multipart::Context for Transaction<'_> {
 
 impl Transaction<'_> {
     /// The variable of a multipart [`Flag`].
-    fn flag(&mut self, flag: Flag) -> &mut crate::variables::anchored_variable::AnchoredVariable {
+    fn flag(&mut self, flag: Flag) -> &mut crate::variables::single::SingleVariable {
         let v = &mut self.vars;
         match flag {
             Flag::MultipartBoundaryQuoted => &mut v.multipart_boundary_quoted,
@@ -305,7 +305,7 @@ impl Transaction<'_> {
     }
 
     /// The variable of multipart [`Entries`].
-    fn entries(&mut self, entries: Entries) -> &mut crate::variables::anchored_set_variable::AnchoredSetVariable {
+    fn entries(&mut self, entries: Entries) -> &mut crate::variables::multi::MultiVariable {
         let v = &mut self.vars;
         match entries {
             Entries::Args => &mut v.args,

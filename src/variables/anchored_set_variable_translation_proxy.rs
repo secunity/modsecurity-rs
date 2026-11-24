@@ -1,13 +1,13 @@
 //! The `*_NAMES` collections (`ARGS_NAMES`, ...): the keys of a multi
 //! valued variable, resolved as values.
 //!
-//! Exposes the *names* of an [`AnchoredSetVariable`] as a collection of its
+//! Exposes the *names* of an [`MultiVariable`] as a collection of its
 //! own (`ARGS_NAMES` over `ARGS`, ...). The proxy holds no reference to
 //! its source; the source is passed in by the caller (both live in the
 //! same transaction).
 
 use crate::transaction::Transaction;
-use crate::variables::anchored_set_variable::AnchoredSetVariable;
+use crate::variables::multi::MultiVariable;
 use crate::variables::variable::KeyExclusions;
 use crate::variables::variable_origin::VariableOrigin;
 use crate::variables::variable_value::VariableValue;
@@ -46,12 +46,12 @@ impl AnchoredSetVariableTranslationProxy {
     /// Whether `fount`'s stored name values can be used: they are the
     /// translation of its entries, and `l` holds nothing else that
     /// [`Self::translate`] of the whole list would rewrite.
-    fn use_stored_names(&self, fount: &AnchoredSetVariable, l: &[VariableValue]) -> bool {
+    fn use_stored_names(&self, fount: &MultiVariable, l: &[VariableValue]) -> bool {
         l.is_empty() && fount.has_names(self.name)
     }
 
     #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
-    pub fn resolve(&self, fount: &AnchoredSetVariable, l: &mut Vec<VariableValue>) {
+    pub fn resolve(&self, fount: &MultiVariable, l: &mut Vec<VariableValue>) {
         if self.use_stored_names(fount, l) {
             return fount.resolve_names(l);
         }
@@ -61,7 +61,7 @@ impl AnchoredSetVariableTranslationProxy {
 
     pub fn resolve_with_exclusions(
         &self,
-        fount: &AnchoredSetVariable,
+        fount: &MultiVariable,
         l: &mut Vec<VariableValue>,
         ke: &KeyExclusions,
         t: Option<&Transaction<'_>>,
@@ -73,7 +73,7 @@ impl AnchoredSetVariableTranslationProxy {
         self.translate(l);
     }
 
-    pub fn resolve_key(&self, fount: &AnchoredSetVariable, key: &[u8], l: &mut Vec<VariableValue>) {
+    pub fn resolve_key(&self, fount: &MultiVariable, key: &[u8], l: &mut Vec<VariableValue>) {
         if self.use_stored_names(fount, l) {
             return fount.resolve_names_key(key, l);
         }
@@ -83,7 +83,7 @@ impl AnchoredSetVariableTranslationProxy {
 
     pub fn resolve_regular_expression_with_exclusions(
         &self,
-        fount: &AnchoredSetVariable,
+        fount: &MultiVariable,
         r: &Regex,
         l: &mut Vec<VariableValue>,
         ke: &KeyExclusions,
@@ -107,15 +107,15 @@ mod tests {
     #[test]
     fn stored_names_match_translation() {
         let proxy = AnchoredSetVariableTranslationProxy::new("ARGS_NAMES");
-        let mut with = AnchoredSetVariable::with_names("ARGS", "ARGS_NAMES");
-        let mut without = AnchoredSetVariable::new("ARGS");
+        let mut with = MultiVariable::with_names("ARGS", "ARGS_NAMES");
+        let mut without = MultiVariable::new("ARGS");
         for (k, v, off) in [(&b"a"[..], &b"1"[..], 3), (b"b", b"22", 0), (b"a", b"333", 9), (b"", b"x", 1)] {
             with.set(k, v, off);
             without.set(k, v, off);
         }
         let r = Regex::new("^a");
         let ke = KeyExclusions::default();
-        type Run<'r> = &'r dyn Fn(&AnchoredSetVariable, &mut Vec<VariableValue>);
+        type Run<'r> = &'r dyn Fn(&MultiVariable, &mut Vec<VariableValue>);
         let runs: [Run; 4] = [
             &|f, l| proxy.resolve(f, l),
             &|f, l| proxy.resolve_with_exclusions(f, l, &ke, None),

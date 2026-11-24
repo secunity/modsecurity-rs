@@ -900,7 +900,7 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   FILES_COMBINED_SIZE still carry the origins of every argument or file.
   *Why:* memory grew with the number of matches, and the reference was
   wrong. Regression test:
-  `variables::anchored_variable::tests::matched_var_has_the_origin_of_its_value`.
+  `variables::single::tests::matched_var_has_the_origin_of_its_value`.
 - **A handed-out intervention leaves nothing behind.** *C++:*
   `intervention::reset` after `msc_intervention` resets status and
   `disruptive` but keeps `url` and `log`, so a `deny` in a later phase

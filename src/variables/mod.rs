@@ -8,14 +8,14 @@
 //! the collections ([`persistent`], and `TX` in [`variable`]), [`rule`],
 //! [`env`], [`xml`] and the [`computed`] ones (`TIME*`, `DURATION`, ...).
 
-pub mod anchored_set_variable;
 pub mod anchored_set_variable_translation_proxy;
-pub mod anchored_variable;
 pub(crate) mod computed;
 pub mod env;
+pub mod multi;
 pub(crate) mod names;
 pub mod persistent;
 pub mod rule;
+pub mod single;
 pub mod variable;
 pub mod xml;
 
@@ -426,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn anchored_variables() {
+    fn transaction_variables() {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
         let mut t = Transaction::new(&ms, &rules, None);

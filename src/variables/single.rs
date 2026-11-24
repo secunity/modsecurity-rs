@@ -9,7 +9,7 @@ use crate::variables::variable_origin::VariableOrigin;
 use crate::variables::variable_value::VariableValue;
 
 #[derive(Debug, Clone)]
-pub struct AnchoredVariable {
+pub struct SingleVariable {
     name: &'static str,
     /// Where the value starts in the request.
     offset: usize,
@@ -19,10 +19,10 @@ pub struct AnchoredVariable {
     var: OnceCell<VariableValue>,
 }
 
-impl AnchoredVariable {
+impl SingleVariable {
     /// An empty variable; it allocates nothing until it is set or read.
     pub fn new(name: &'static str) -> Self {
-        AnchoredVariable { name, offset: 0, var: OnceCell::new() }
+        SingleVariable { name, offset: 0, var: OnceCell::new() }
     }
 
     /// The variable's value, created empty if it has none yet.
@@ -109,7 +109,7 @@ mod tests {
     /// A value set again replaces the one before, and its origin.
     #[test]
     fn set_replaces_value_and_origin() {
-        let mut v = AnchoredVariable::new("MATCHED_VAR");
+        let mut v = SingleVariable::new("MATCHED_VAR");
         for i in 0..1000 {
             v.set(format!("value {i}").as_bytes(), i);
         }
@@ -160,7 +160,7 @@ mod tests {
     /// the empty value of its name until then.
     #[test]
     fn created_when_first_set_or_read() {
-        let mut v = AnchoredVariable::new("REQUEST_BODY");
+        let mut v = SingleVariable::new("REQUEST_BODY");
         assert!(v.var.get().is_none());
         assert_eq!((v.value(), v.offset(), v.resolve_first()), (&b""[..], 0, None));
         v.unset();
@@ -170,7 +170,7 @@ mod tests {
         assert_eq!((l[0].key(), l[0].value(), l[0].origin().len()), (&b"REQUEST_BODY"[..], &b""[..], 0));
         assert!(v.var.get().is_some());
 
-        let mut w = AnchoredVariable::new("REQUEST_METHOD");
+        let mut w = SingleVariable::new("REQUEST_METHOD");
         w.set(b"GET", 0);
         assert_eq!(w.value(), b"GET");
     }
@@ -178,7 +178,7 @@ mod tests {
     /// A value computed from several places keeps all of them.
     #[test]
     fn set_adding_origins() {
-        let mut v = AnchoredVariable::new("ARGS_COMBINED_SIZE");
+        let mut v = SingleVariable::new("ARGS_COMBINED_SIZE");
         v.set_adding_origins(b"2", [VariableOrigin::new(1, 0), VariableOrigin::new(1, 2)]);
         v.set_adding_origins(b"4", [VariableOrigin::new(1, 4), VariableOrigin::new(1, 6)]);
         let mut l = Vec::new();
