@@ -1608,3 +1608,19 @@ The C++ names went with it: `TransactionAnchoredVariables` is
 `TransactionVariables`, `AnchoredVariable` is `SingleVariable`
 (`variables::single`) and `AnchoredSetVariable` is `MultiVariable`
 (`variables::multi`).
+
+
+## Matched variables and `ctl:` removals have one owner
+
+`MATCHED_VAR`, `MATCHED_VAR_NAME`, `MATCHED_VARS` and
+`MATCHED_VARS_NAMES` were set by `SecRule::update_matched_vars` and
+cleared by `RulesSet::clean_matched_vars`, each reaching into the
+transaction's variables. They are `TransactionVariables::record_match`
+and `clear_matches` now.
+
+`CtlOverrides` moved to `src/transaction/ctl.rs` with its constructor
+and the three questions its callers asked by reading its lists:
+`removes_rule_id`, `removes_rule_by_tag` and `removes_target`. The
+target predicate was written twice in `sec_rule.rs` (for a target and
+for a value); it is written once.
+

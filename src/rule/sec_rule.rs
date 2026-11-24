@@ -3,14 +3,12 @@
 
 use crate::operators::operator::RuleOperator;
 use crate::rule::message::{Matched, RuleMessage};
-use crate::rule::{Id, LogPoint, Rule, TransformationPath};
+use crate::rule::{LogPoint, Rule, TransformationPath};
 use crate::rules_set::plan::Link;
 use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
 use crate::variables::variable::{Variable, variables_to_string};
-use crate::variables::variable_value::VariableValue;
-use modsecurity_types::key_exclusions::same_name;
 
 /// The `SecRule` specific part of a rule: its targets and its operator.
 #[derive(Debug)]
@@ -29,17 +27,6 @@ impl SecRule {
     /// The operator name (`rx`, `pm`, ...).
     pub fn operator_name(&self) -> &str {
         self.operator.op.name()
-    }
-
-    /// Records a matched target in `MATCHED_VAR`, `MATCHED_VAR_NAME`,
-    /// `MATCHED_VARS` and `MATCHED_VARS_NAMES`.
-    pub fn update_matched_vars(t: &mut Transaction<'_>, key: &[u8], value: &[u8]) {
-        crate::ms_dbg!(t, 9, "Matched vars updated.");
-        let off = t.vars.offset;
-        t.vars.matched_var.set(value, off);
-        t.vars.matched_var_name.set(key, off);
-        t.vars.matched_vars.set(key, value, off);
-        t.vars.matched_vars_names.set(key, key, off);
     }
 
     /// Runs the operator on one (transformed) target value.
@@ -64,34 +51,13 @@ impl SecRule {
     /// The targets to inspect: the ones of the rule's plan, minus the
     /// ones the transaction removed (`ctl:ruleRemoveTargetById` and
     /// `...ByTag`, which only remove targets the rule was written with).
-    /// Names are compared ignoring case ([`same_name`]).
     fn targets<'a>(&'a self, rule: &'a Rule, link: &'a Link, t: &Transaction<'a>, vars: &mut Vec<&'a Variable>) {
-        let ctl = &t.ctl;
         for variable in link.targets.iter().map(|&i| &self.variables[i]) {
-            let name = variable.full_name().as_bytes();
-            let by_id = |(id, target): &(Id, String)| rule.rule_id == Some(*id) && same_name(target.as_bytes(), name);
-            let by_tag =
-                |(tag, target): &(String, String)| same_name(target.as_bytes(), name) && rule.contains_tag(tag, t);
-            if !ctl.rule_remove_target_by_id.iter().any(by_id) && !ctl.rule_remove_target_by_tag.iter().any(by_tag) {
+            if !t.ctl.removes_target(rule, variable.full_name().as_bytes(), t) {
                 vars.push(variable);
             }
         }
         vars.extend(link.added_targets.iter().map(|v| v.as_ref()));
-    }
-
-    /// Whether the transaction removed the value `v` from the rule's
-    /// targets (`ctl:ruleRemoveTargetById=<id>;ARGS:name` and `...ByTag`),
-    /// comparing names ignoring case ([`same_name`]).
-    fn removed_value(rule: &Rule, t: &Transaction<'_>, v: &VariableValue) -> bool {
-        let name = v.key_with_collection();
-        let ctl = &t.ctl;
-        ctl.rule_remove_target_by_id
-            .iter()
-            .any(|(id, target)| rule.rule_id == Some(*id) && same_name(target.as_bytes(), name))
-            || ctl
-                .rule_remove_target_by_tag
-                .iter()
-                .any(|(tag, target)| same_name(target.as_bytes(), name) && rule.contains_tag(tag, t))
     }
 
     /// Evaluates the rule: runs the operator on every transformed target
@@ -110,10 +76,8 @@ impl SecRule {
 
         rule.evaluate_base(t);
 
-        if let Some(id) = rule.rule_id
-            && t.ctl.rule_remove_by_id.iter().any(|ids| ids.contains(&id))
-        {
-            crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", id);
+        if t.ctl.removes_rule_id(rule.rule_id) {
+            crate::ms_dbg!(t, 9, "Rule id: {} was skipped due to a ruleRemoveById action...", rule.logged_id());
             return true;
         }
 
@@ -169,7 +133,8 @@ impl SecRule {
                 let value = v.value();
                 let key = v.key_with_collection();
 
-                if link.excludes_value(&v) || Self::removed_value(rule, t, &v) {
+                // A value is removed like a target (`ARGS:name`).
+                if link.excludes_value(&v) || t.ctl.removes_target(rule, key, t) {
                     continue;
                 }
 
@@ -190,7 +155,8 @@ impl SecRule {
                                 rm.reference.extend_from_slice(link.transformation_path.as_bytes())
                             }
                         }
-                        Self::update_matched_vars(t, key, value_after_trans);
+                        crate::ms_dbg!(t, 9, "Matched vars updated.");
+                        t.vars.record_match(key, value_after_trans);
                         rule.execute_actions_independent_of_chained_rule_result(t, rm);
                         rule.perform_logging(t, rm, LogPoint::EachMatch);
                         global_ret = true;

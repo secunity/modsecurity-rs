@@ -160,22 +160,6 @@ impl RulesSet {
         self.properties.parser_error.clone()
     }
 
-    /// Clears `MATCHED_VAR`, `MATCHED_VARS` and their `*_NAME(S)`
-    /// counterparts after a rule.
-    pub(crate) fn clean_matched_vars(t: &mut Transaction<'_>) {
-        crate::ms_dbg!(t, 9, "Matched vars cleaned.");
-        // Every match adds to MATCHED_VARS, so when that is empty no rule
-        // matched since the last cleaning and there is nothing to unset
-        // (this runs after every rule).
-        if t.vars.matched_vars.is_empty() {
-            return;
-        }
-        t.vars.matched_var.unset();
-        t.vars.matched_vars.unset();
-        t.vars.matched_var_name.unset();
-        t.vars.matched_vars_names.unset();
-    }
-
     /// Runs the rules of `phase`, honouring `allow`, `skip`, `skipAfter`,
     /// the rule removals and a disruptive intervention.
     pub(crate) fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
@@ -246,11 +230,12 @@ impl RulesSet {
                     rule.reference(),
                     by.directive()
                 );
-            } else if t.ctl.rule_remove_by_tag.iter().any(|z| r.contains_tag(z, t)) {
+            } else if t.ctl.removes_rule_by_tag(r, t) {
                 crate::ms_dbg!(t, 9, "Skipped rule id '{}'. Skipped due to a ruleRemoveByTag action.", r.reference());
             } else {
                 r.evaluate(chain, t);
-                Self::clean_matched_vars(t);
+                crate::ms_dbg!(t, 9, "Matched vars cleaned.");
+                t.vars.clear_matches();
 
                 if t.outcome.intervention.is_disruptive() {
                     crate::ms_dbg!(t, 8, "Skipping this phase as this request was already intercepted.");

@@ -22,14 +22,15 @@
 
 mod arguments;
 mod body;
+mod ctl;
 
 use arguments::{ArgumentOrigin, ArgumentWriter};
+pub(crate) use ctl::CtlOverrides;
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::actions::disruptive::allow::AllowType;
-use crate::audit_log::{AuditLogStatus, Parts, PartsChange};
 use crate::collection::collections::Collections;
 use crate::instance::ModSecurity;
 use crate::intervention::{Intervention, InterventionLog, PendingIntervention};
@@ -37,7 +38,7 @@ use crate::phases::Phases;
 use crate::rule::message::RuleMessage;
 use crate::rule::{Rule, TransformationResults};
 use crate::rules_set::RulesSet;
-use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine};
+use crate::rules_set::properties::{BodyLimitAction, RuleEngine};
 use crate::utils::string::{is_space, split, ssplit};
 pub use crate::variables::table::TransactionVariables;
 use crate::variables::variable::Variable;
@@ -120,26 +121,6 @@ pub(crate) struct BodyProcessing {
     pub(crate) xml: Option<Box<Xml>>,
     pub(crate) json: Json,
     pub(crate) multipart_part_tmp_files: Vec<Arc<MultipartPartTmpFile>>,
-}
-
-/// The settings rules changed for this transaction with `ctl:` (`None`:
-/// the rule set's value applies).
-pub(crate) struct CtlOverrides {
-    /// `ctl:ruleEngine`.
-    pub(crate) rule_engine: Option<RuleEngine>,
-    /// `ctl:requestBodyAccess`.
-    pub(crate) request_body_access: Option<bool>,
-    /// `ctl:parseXmlIntoArgs` (starts as the rule set's value).
-    pub(crate) parse_xml_into_args: Option<ParseXmlIntoArgs>,
-    /// `ctl:auditEngine`.
-    pub(crate) audit_engine: Option<AuditLogStatus>,
-    /// `ctl:auditLogParts` changes, in rule order.
-    pub(crate) audit_log_modifier: Vec<(PartsChange, Parts)>,
-    /// `ctl:ruleRemoveById`: ranges of ids (of one id for a single one).
-    pub(crate) rule_remove_by_id: Vec<std::ops::RangeInclusive<crate::rule::Id>>,
-    pub(crate) rule_remove_by_tag: Vec<String>,
-    pub(crate) rule_remove_target_by_tag: Vec<(String, String)>,
-    pub(crate) rule_remove_target_by_id: Vec<(crate::rule::Id, String)>,
 }
 
 /// Where rule evaluation is: skips, markers, `allow`, the chain being
@@ -275,17 +256,7 @@ impl<'a> Transaction<'a> {
                 json: Json::new(),
                 multipart_part_tmp_files: Vec::new(),
             },
-            ctl: CtlOverrides {
-                rule_engine: None,
-                request_body_access: None,
-                parse_xml_into_args: rules.properties.settings.sec_xml_parse_xml_into_args,
-                audit_engine: None,
-                audit_log_modifier: Vec::new(),
-                rule_remove_by_id: Vec::new(),
-                rule_remove_by_tag: Vec::new(),
-                rule_remove_target_by_tag: Vec::new(),
-                rule_remove_target_by_id: Vec::new(),
-            },
+            ctl: CtlOverrides::new(rules),
             eval: EvalState {
                 skip_next: 0,
                 marker: None,

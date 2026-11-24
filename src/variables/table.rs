@@ -218,6 +218,33 @@ impl Default for TransactionVariables {
     }
 }
 
+impl TransactionVariables {
+    /// Records a matched target, its name `key` and its (transformed)
+    /// `value`, in `MATCHED_VAR`, `MATCHED_VAR_NAME`, `MATCHED_VARS` and
+    /// `MATCHED_VARS_NAMES`.
+    pub(crate) fn record_match(&mut self, key: &[u8], value: &[u8]) {
+        let off = self.offset;
+        self.matched_var.set(value, off);
+        self.matched_var_name.set(key, off);
+        self.matched_vars.set(key, value, off);
+        self.matched_vars_names.set(key, key, off);
+    }
+
+    /// Empties the four variables of [`Self::record_match`] (after each
+    /// rule).
+    pub(crate) fn clear_matches(&mut self) {
+        // Every match adds to MATCHED_VARS, so when that is empty nothing
+        // matched since the last clearing and there is nothing to unset.
+        if self.matched_vars.is_empty() {
+            return;
+        }
+        self.matched_var.unset();
+        self.matched_vars.unset();
+        self.matched_var_name.unset();
+        self.matched_vars_names.unset();
+    }
+}
+
 /// The multi valued variable whose names variable (`ARGS_NAMES`, ...) is
 /// the one `matches` accepts.
 pub(crate) fn names_of(matches: impl Fn(&str) -> bool) -> Option<&'static Multi> {
