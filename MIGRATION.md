@@ -955,6 +955,27 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   tests: `rbl::tests::refusals_and_foreign_answers_are_not_listings`,
   `rbl::tests::listings_and_their_log_text`.
 
+- **`setvar:ip.x=+N` (and `-N`) is one step of the storage.** *C++:* the
+  value of a persistent collection (`IP`, `SESSION`, `USER`, `GLOBAL`,
+  `RESOURCE`) is read, and the sum stored in a second step; another
+  transaction (thread or nginx worker) that read the same value in
+  between stores the same sum, and one addition is lost. Under load
+  most are: with 4 nginx workers, 16 parallel clients and a rule that
+  denies an address above 100 hits, 394-396 of 400 requests passed (LMDB
+  and redb alike), so a per-address limit did not limit. *Here:* the
+  read and the write are one write transaction of LMDB or redb (one
+  writer at a time, across processes) or one hold of the in-memory
+  backend's lock (`Collection::update_first`); the same test lets exactly
+  100 pass. An expired value still starts over at 0 and a live one keeps
+  its expiry. `TX` belongs to one transaction and is unchanged; so are
+  `=value` and removal. The debug line "Saving variable: ..." now comes
+  after the value is stored, and is not written when the storage fails
+  (the failure is). *Why:* counters in persistent collections exist to
+  count across requests. Regression tests:
+  `actions::set_var::tests::concurrent_additions_to_a_persistent_collection_are_all_counted`,
+  `backend::contract::lmdb_processes_share`,
+  `backend::contract::redb_processes_share`.
+
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
 semantics).

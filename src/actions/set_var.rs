@@ -5,7 +5,7 @@
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::run_time_string::RunTimeString;
-use crate::variables::variable::Variable;
+use crate::variables::variable::{Variable, WriteTarget};
 use modsecurity_compat::cnum::atoll;
 
 /// Each operation owns exactly the operand it needs. Bare assignment and
@@ -65,20 +65,38 @@ impl Action for SetVar {
                 // A value counts as the integer it starts with, 0 when it
                 // starts with none.
                 let pre = atoll(&resolved_pre);
+                // The result stops at the ends of the 64 bit range.
+                let add = matches!(self.operation, SetVarOperation::Add(_));
+                let apply = |value: i64| if add { value.saturating_add(pre) } else { value.saturating_sub(pre) };
+
+                // A persistent collection is shared with the other
+                // transactions, threads and processes: it reads and writes
+                // the value in one step, so that no other one's change in
+                // between is lost.
+                if let Some(WriteTarget::Persistent { collection, .. }) = &target {
+                    let app = t.rules.properties.web_app_id();
+                    let mut compute = |v: Option<&[u8]>| apply(v.map_or(0, atoll)).to_string().into_bytes();
+                    let updated =
+                        t.collections.persistent(*collection).update(&variable_name_expanded, app, &mut compute);
+                    if let Some(value) = t.stored(updated.map(Some)) {
+                        crate::ms_dbg!(
+                            t,
+                            8,
+                            "Saving variable: {}:{} with value: {}",
+                            self.variable.collection_name(),
+                            String::from_utf8_lossy(&variable_name_expanded),
+                            String::from_utf8_lossy(&value)
+                        );
+                    }
+                    return;
+                }
 
                 let mut l = Vec::new();
                 // The variable sees the rule only when it is a `SecRule`.
                 let rr = Some(rule).filter(|r| r.is_sec_rule());
                 self.variable.evaluate(t, rr, &mut l);
                 let value = l.first().map(|v| atoll(v.value())).unwrap_or(0);
-
-                // The result stops at the ends of the 64 bit range.
-                let r = if matches!(self.operation, SetVarOperation::Add(_)) {
-                    value.saturating_add(pre)
-                } else {
-                    value.saturating_sub(pre)
-                };
-                r.to_string().into_bytes()
+                apply(value).to_string().into_bytes()
             }
         };
 
@@ -201,5 +219,37 @@ mod tests {
         {
             assert_eq!(t.collections.tx.get(key), expected);
         }
+    }
+
+    /// Transactions on several threads add to one value of a persistent
+    /// collection: none of the additions is lost (each reads and writes the
+    /// value in one step of the storage).
+    #[test]
+    fn concurrent_additions_to_a_persistent_collection_are_all_counted() {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let ip = format!("setvar-{}-{now}", std::process::id());
+        let ms = ModSecurity::new();
+        let mut rules = crate::rules_set::RulesSet::new();
+        rules
+            .load(&format!(
+                "SecRuleEngine On\n\
+                 SecAction \"id:1,phase:1,pass,nolog,initcol:ip={ip}\"\n\
+                 SecAction \"id:2,phase:1,pass,nolog,setvar:ip.hits=+1\"\n\
+                 SecRule IP:hits \"@eq 401\" \"id:3,phase:1,deny,status:403,nolog\"\n"
+            ))
+            .unwrap();
+        let request = || {
+            let mut t = Transaction::new(&ms, &rules, None);
+            t.process_uri(b"/", b"GET", b"1.1");
+            t.process_request_headers();
+            t.intervention().map(|i| i.status)
+        };
+        std::thread::scope(|s| {
+            for _ in 0..8 {
+                s.spawn(|| (0..50).for_each(|_| assert_eq!(request(), None)));
+            }
+        });
+        // The 401st addition.
+        assert_eq!(request(), Some(403));
     }
 }
