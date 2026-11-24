@@ -124,7 +124,7 @@ impl Lmdb {
 
 /// An error of LMDB in `operation`.
 fn failed(operation: &'static str) -> impl Fn(Code) -> StorageError {
-    move |code| StorageError { operation, code }
+    move |code| StorageError::new(operation, format!("code {code}"))
 }
 
 /// What a lookup found: a key that is not there is `None`, not an error.
@@ -226,7 +226,7 @@ pub(crate) mod tests {
         assert_eq!(found(Ok(1)), Ok(Some(1)));
         assert_eq!(found::<u8>(Err(MDB_NOTFOUND)), Ok(None));
         let error = found::<u8>(Err(-30796)).unwrap_err();
-        assert_eq!(error, StorageError { operation: "get", code: -30796 });
+        assert_eq!(error, StorageError::new("get", "code -30796"));
         assert_eq!(error.to_string(), "get failed (code -30796)");
     }
 

@@ -32,16 +32,22 @@ pub fn compartment_key(key: &[u8], compartment: &[u8], compartment2: Option<&[u8
 }
 
 /// The storage behind a persistent collection failed: the operation that
-/// did, and the code of the storage (an LMDB code).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// did, and what the storage said (for LMDB, `code N`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorageError {
     pub operation: &'static str,
-    pub code: i32,
+    pub cause: String,
+}
+
+impl StorageError {
+    pub fn new(operation: &'static str, cause: impl Into<String>) -> Self {
+        StorageError { operation, cause: cause.into() }
+    }
 }
 
 impl std::fmt::Display for StorageError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} failed (code {})", self.operation, self.code)
+        write!(f, "{} failed ({})", self.operation, self.cause)
     }
 }
 
