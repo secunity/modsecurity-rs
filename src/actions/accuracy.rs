@@ -28,7 +28,7 @@ impl Action for Accuracy {
     }
 
     fn configure(&self, rule: &mut Rule) {
-        rule.accuracy = self.accuracy;
+        rule.metadata.accuracy = self.accuracy;
     }
 }
 
@@ -60,11 +60,11 @@ mod tests {
             RuleAction::from(ver),
             RuleAction::from(c),
         ]);
-        assert_eq!(r.accuracy, 8);
-        assert_eq!(r.maturity, 9);
-        assert_eq!(r.rev, "2.1.3");
-        assert_eq!(r.ver, "CRS/3");
-        assert!(r.is_chained());
+        assert_eq!(r.metadata.accuracy, 8);
+        assert_eq!(r.metadata.maturity, 9);
+        assert_eq!(r.metadata.rev, "2.1.3");
+        assert_eq!(r.metadata.ver, "CRS/3");
+        assert!(r.chain.continued);
 
         assert_eq!(Accuracy::new("accuracy", "x").unwrap_err(), "Accuracy: The input \"x\" is not a number.");
         assert_eq!(Maturity::new("maturity", "").unwrap_err(), "Maturity: The input \"\" is not a number.");

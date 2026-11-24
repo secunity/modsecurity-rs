@@ -122,9 +122,8 @@ impl Step {
         if let Some(by) = by {
             return Step::Removed { rule: entry.clone(), by };
         }
-        let chain = std::iter::successors(Some(rule), |r| r.chained_rule_child.as_deref())
-            .map(|r| Link::compile(r, rules))
-            .collect();
+        let chain =
+            std::iter::successors(Some(rule), |r| r.chain.next.as_deref()).map(|r| Link::compile(r, rules)).collect();
         Step::Rule { rule: entry.clone(), chain }
     }
 }
@@ -230,7 +229,7 @@ mod tests {
                 Step::Marker(_) => "marker".to_string(),
                 Step::Removed { by, .. } => format!("removed by {}", by.directive()),
                 Step::Rule { rule, chain } => {
-                    let links = std::iter::successors(rule.as_rule(), |r| r.chained_rule_child.as_deref());
+                    let links = std::iter::successors(rule.as_rule(), |r| r.chain.next.as_deref());
                     links.zip(chain).map(|(r, l)| describe(r, l)).collect::<Vec<_>>().join(" -> ")
                 }
             })

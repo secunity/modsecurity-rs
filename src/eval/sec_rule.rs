@@ -87,8 +87,8 @@ impl<'a> RuleRun<'_, 'a> {
         }
         crate::ms_dbg!(self.t, 4, "Rule returned 1.");
 
-        if rule.is_chained() {
-            let Some(child) = rule.chained_rule_child.as_deref() else {
+        if rule.chain.continued {
+            let Some(child) = rule.chain.next.as_deref() else {
                 // A rule marked as chained without a rule after it does not match.
                 crate::ms_dbg!(self.t, 4, "Rule is marked as chained but there isn't a subsequent rule.");
                 return false;

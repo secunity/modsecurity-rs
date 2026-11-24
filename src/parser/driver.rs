@@ -106,7 +106,7 @@ impl Driver {
         // While parsing, the driver holds the only reference to its rules.
         let mut r = Arc::get_mut(arc)?.as_rule_mut()?;
         for _ in 0..lr.depth {
-            r = r.chained_rule_child.as_deref_mut()?;
+            r = r.chain.next.as_deref_mut()?;
         }
         Some(r)
     }
@@ -116,7 +116,7 @@ impl Driver {
     pub fn add_sec_rule(&mut self, mut r: Rule) -> bool {
         // is it a chained rule?
         if let Some(last) = self.last_rule_mut()
-            && last.is_chained()
+            && last.chain.continued
         {
             r.set_phase(last.phase());
             if r.has_disruptive_action() {
@@ -125,8 +125,8 @@ impl Driver {
                     .push_str("Disruptive actions can only be specified by chain starter rules.");
                 return false;
             }
-            r.chained_rule_parent = true;
-            last.chained_rule_child = Some(Box::new(r));
+            r.chain.is_continuation = true;
+            last.chain.next = Some(Box::new(r));
             if let Some(lr) = self.last_rule.as_mut() {
                 lr.depth += 1;
             }

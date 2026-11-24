@@ -31,7 +31,7 @@ fn chained_rule_parent<'r>(t: &'r Transaction<'_>, r: &Rule) -> Option<&'r Rule>
         .chained_rule_parents
         .iter()
         .rev()
-        .find(|p| p.chained_rule_child.as_deref().is_some_and(|c| std::ptr::eq(c, r)))
+        .find(|p| p.chain.next.as_deref().is_some_and(|c| std::ptr::eq(c, r)))
         .copied()
 }
 
@@ -66,10 +66,10 @@ fn id(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
 /// `RULE:rev`: the revision of the rule or of the nearest chain parent
 /// with one.
 fn rev(t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
-    let Some(r) = find_in_chain(t, rule, |r| !r.rev.is_empty()) else {
+    let Some(r) = find_in_chain(t, rule, |r| !r.metadata.rev.is_empty()) else {
         return;
     };
-    add_variable_origin(RULE_REV, r.rev.as_bytes(), l);
+    add_variable_origin(RULE_REV, r.metadata.rev.as_bytes(), l);
 }
 
 /// `RULE:severity`: the severity of the rule or of the nearest chain

@@ -25,6 +25,6 @@ impl Action for Rev {
     }
 
     fn configure(&self, rule: &mut Rule) {
-        rule.rev.clone_from(&self.rev);
+        rule.metadata.rev.clone_from(&self.rev);
     }
 }

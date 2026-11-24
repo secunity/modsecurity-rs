@@ -20,16 +20,16 @@ impl RuleMessage<'_> {
         g.add("data", to_hex_if_needed(&self.data, false).as_bytes());
         // 0 without a severity.
         g.add("severity", self.severity.unwrap_or(0).to_string().as_bytes());
-        g.add("ver", self.rule.ver.as_bytes());
-        g.add("rev", self.rule.rev.as_bytes());
+        g.add("ver", self.rule.metadata.ver.as_bytes());
+        g.add("rev", self.rule.metadata.rev.as_bytes());
         g.string(b"tags");
         g.array_open();
         for tag in &self.tags {
             g.string(tag);
         }
         g.array_close();
-        g.add("maturity", self.rule.maturity.to_string().as_bytes());
-        g.add("accuracy", self.rule.accuracy.to_string().as_bytes());
+        g.add("maturity", self.rule.metadata.maturity.to_string().as_bytes());
+        g.add("accuracy", self.rule.metadata.accuracy.to_string().as_bytes());
         g.map_close();
         g.map_close();
     }

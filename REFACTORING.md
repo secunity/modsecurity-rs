@@ -1652,3 +1652,13 @@ queries asked of it at load time; `rule/sec_action.rs` is gone. A
 `SecRuleScript` still keeps the matched values (`capture`) of the rule
 before it, as before: only `SecRule` and `SecAction` clear them.
 
+
+## `Rule`: `Chain` and `Metadata`
+
+A rule's place in a chain was three fields: `is_chained` (the `chain`
+action), `chained_rule_child` and `chained_rule_parent`, a bool whose C++
+name (a pointer there) suggested a rule. They are one `Chain`:
+`continued`, `next` and `is_continuation`. What a rule says about itself
+for the logs (`rev`, `ver`, `accuracy`, `maturity`) is a `Metadata`.
+Renames only.
+

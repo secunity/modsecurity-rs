@@ -25,6 +25,6 @@ impl Action for Ver {
     }
 
     fn configure(&self, rule: &mut Rule) {
-        rule.ver.clone_from(&self.ver);
+        rule.metadata.ver.clone_from(&self.ver);
     }
 }

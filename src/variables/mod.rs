@@ -548,7 +548,7 @@ mod tests {
         let rules = RulesSet::new();
         let mut parent = Rule::new(None, None, "f", 1, RuleKind::SecAction);
         parent.rule_id = Some(10);
-        parent.rev = "3".to_string();
+        parent.metadata.rev = "3".to_string();
         let sev = crate::actions::severity::Severity::new("severity", "2").unwrap();
         let mut child = Rule::new(
             Some(vec![crate::actions::rule_action::RuleAction::Severity(sev)]),
@@ -558,8 +558,8 @@ mod tests {
             RuleKind::SecAction,
         );
         child.rule_id = None;
-        parent.chained_rule_child = Some(Box::new(child));
-        let child = parent.chained_rule_child.as_deref().unwrap();
+        parent.chain.next = Some(Box::new(child));
+        let child = parent.chain.next.as_deref().unwrap();
 
         let mut t = Transaction::new(&ms, &rules, None);
         // Outside of the chain evaluation the child has no parent.

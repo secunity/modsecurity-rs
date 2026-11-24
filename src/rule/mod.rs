@@ -2,10 +2,11 @@
 //! transformations, as the configuration gave it (`crate::eval` runs it).
 //!
 //! What the three have in common is [`Rule`]; what differs is its
-//! [`RuleKind`]. A chained rule owns its child (`chained_rule_child`); the
-//! parent is not linked back: `chained_rule_parent` records that there is
-//! one, and the transaction keeps the stack of chain ancestors during
-//! evaluation (the `RULE` variable walks it).
+//! [`RuleKind`]. The first rule of a chain owns the next one
+//! ([`Chain::next`]); a rule is not linked back to the one before it
+//! ([`Chain::is_continuation`] says there is one), and the transaction keeps
+//! the stack of chain ancestors during evaluation (the `RULE` variable walks
+//! it).
 
 mod actions;
 pub mod id;
@@ -66,6 +67,34 @@ pub enum RuleKind {
     SecRuleScript(Script),
 }
 
+/// What a rule says about itself, for the logs.
+#[derive(Debug, Default)]
+pub struct Metadata {
+    /// `rev`.
+    pub rev: String,
+    /// `ver`.
+    pub ver: String,
+    /// `accuracy`.
+    pub accuracy: u8,
+    /// `maturity`.
+    pub maturity: u8,
+}
+
+/// A rule's place in a chain. With the `chain` action, the rule that comes
+/// next in the configuration continues it; the first rule of a chain owns
+/// the others.
+#[derive(Debug, Default)]
+pub struct Chain {
+    /// The rule has the `chain` action.
+    pub continued: bool,
+    /// The rule that continues it: `None` until the parser reads it, and
+    /// for good when the configuration ends first (the chain then does not
+    /// match).
+    pub next: Option<Box<Rule>>,
+    /// The rule continues another one (it is not the first of its chain).
+    pub is_continuation: bool,
+}
+
 /// A rule of a configuration.
 #[derive(Debug)]
 pub struct Rule {
@@ -73,23 +102,18 @@ pub struct Rule {
     pub file_name: String,
     pub line_number: usize,
     phase: Phases,
-
-    pub rev: String,
-    pub ver: String,
-    pub accuracy: u8,
-    pub maturity: u8,
     /// `id:N`: every `SecRule` that starts a chain has one.
     pub rule_id: Option<Id>,
-    pub chained_rule_child: Option<Box<Rule>>,
-    pub chained_rule_parent: bool,
+    pub metadata: Metadata,
+    pub chain: Chain,
 
     actions: Actions,
     transformations: Vec<Transformation>,
 
+    // Actions that are not kept, only recorded.
     contains_capture_action: bool,
     contains_multi_match_action: bool,
     contains_static_block_action: bool,
-    is_chained: bool,
 
     pub kind: RuleKind,
 }
@@ -110,19 +134,14 @@ impl Rule {
             file_name: file_name.to_string(),
             line_number,
             phase: Phases::RequestHeaders,
-            rev: String::new(),
-            ver: String::new(),
-            accuracy: 0,
-            maturity: 0,
             rule_id: None,
-            chained_rule_child: None,
-            chained_rule_parent: false,
+            metadata: Metadata::default(),
+            chain: Chain::default(),
             actions: Actions::default(),
             transformations: transformations.unwrap_or_default(),
             contains_capture_action: false,
             contains_multi_match_action: false,
             contains_static_block_action: false,
-            is_chained: false,
             kind,
         };
         for a in actions.into_iter().flatten() {
@@ -203,14 +222,8 @@ impl Rule {
 
     // --- flags ---
 
-    pub fn is_chained(&self) -> bool {
-        self.is_chained
-    }
     pub fn has_capture_action(&self) -> bool {
         self.contains_capture_action
-    }
-    pub fn set_chained(&mut self, b: bool) {
-        self.is_chained = b;
     }
     pub fn has_disruptive_action(&self) -> bool {
         self.actions.disruptive().is_some()

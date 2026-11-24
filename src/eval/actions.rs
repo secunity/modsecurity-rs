@@ -23,7 +23,7 @@ impl<'a> RuleRun<'_, 'a> {
             a.evaluate(&mut self.context());
         }
 
-        if rule.has_multimatch() && !rule.chained_rule_parent {
+        if rule.has_multimatch() && !rule.chain.is_continuation {
             let describing = |a: &&RuleAction| stage(a) < Stage::Other;
             for a in actions.after_tags().iter().filter(describing) {
                 a.evaluate(&mut self.context());

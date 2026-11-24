@@ -129,7 +129,7 @@ impl<'r, 'a> RuleRun<'r, 'a> {
         let mut is_it_to_be_logged = rm.save_message;
         if point != LogPoint::EachMatch {
             if point == LogPoint::RuleEnd {
-                is_it_to_be_logged = rm.save_message && !rule.chained_rule_parent;
+                is_it_to_be_logged = rm.save_message && !rule.chain.is_continuation;
                 if is_it_to_be_logged && !rule.has_multimatch() {
                     t.outcome.rules_messages.push(rm.clone());
                     if !rm.is_disruptive {

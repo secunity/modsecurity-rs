@@ -25,6 +25,6 @@ impl Action for Chain {
     }
 
     fn configure(&self, rule: &mut Rule) {
-        rule.set_chained(true);
+        rule.chain.continued = true;
     }
 }

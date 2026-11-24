@@ -28,6 +28,6 @@ impl Action for Maturity {
     }
 
     fn configure(&self, rule: &mut Rule) {
-        rule.maturity = self.maturity;
+        rule.metadata.maturity = self.maturity;
     }
 }

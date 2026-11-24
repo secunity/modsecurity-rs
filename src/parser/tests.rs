@@ -395,9 +395,9 @@ fn chains_and_duplicates() {
     let phase = d.rules_set_phases.for_phase(Phases::RequestBody);
     assert_eq!(phase.len(), 2);
     let r = phase[0].as_rule().unwrap();
-    let child = r.chained_rule_child.as_ref().unwrap();
-    assert!(child.chained_rule_parent);
-    assert!(child.chained_rule_child.is_some());
+    let child = r.chain.next.as_ref().unwrap();
+    assert!(child.chain.is_continuation);
+    assert!(child.chain.next.is_some());
     assert_eq!(child.phase(), Phases::RequestBody);
     let (n, err) = load("SecRule ARGS \"@rx a\" \"id:40\"\nSecRule ARGS \"@rx a\" \"id:40\"\n", "t");
     assert_eq!(n, -1);

@@ -119,22 +119,22 @@ impl<'r> RuleMessage<'r> {
 
     /// The `rev` of the rule.
     pub fn rev(&self) -> &'r str {
-        &self.rule.rev
+        &self.rule.metadata.rev
     }
 
     /// The `ver` of the rule.
     pub fn ver(&self) -> &'r str {
-        &self.rule.ver
+        &self.rule.metadata.ver
     }
 
     /// The `maturity` of the rule.
     pub fn maturity(&self) -> u8 {
-        self.rule.maturity
+        self.rule.metadata.maturity
     }
 
     /// The `accuracy` of the rule.
     pub fn accuracy(&self) -> u8 {
-        self.rule.accuracy
+        self.rule.metadata.accuracy
     }
 
     // --- what the rule says about the match ---
