@@ -72,7 +72,9 @@ the `ModSecurity` instance and the `RulesSet`, and holds:
 
 - `http`: the exchange as reported (addresses, URI, bodies, status);
 - `vars`: the variables rules inspect, one field per variable
-  (`ARGS`, `REQUEST_HEADERS`, `MATCHED_VAR`, the `MULTIPART_*` flags, ...);
+  (`ARGS`, `REQUEST_HEADERS`, `MATCHED_VAR`, the `MULTIPART_*` flags, ...),
+  declared once in `src/variables/table.rs` with the names rules and Lua
+  find them by;
 - `collections`: `TX` and the persistent collections;
 - `ctl`: what `ctl:` actions changed for this transaction;
 - `eval`: the state of the rule evaluation (skips, markers, the chain
@@ -173,7 +175,7 @@ outcome; the caller reads it after the phase.
 | An operator | `crates/modsecurity-operators/src/<name>.rs` |
 | A transformation | `crates/modsecurity-transformations/src/<name>.rs` |
 | An action | `src/actions/<name>.rs`; the table of actions is in `src/actions/seclang.rs` |
-| A variable | `src/variables/` (`mod.rs` maps names to variables) |
+| A variable | `src/variables/` (`table.rs` declares the transaction's variables, `mod.rs` maps names to variables) |
 | How rules of a phase are walked | `src/rules_set/mod.rs`, `src/rules_set/plan.rs` |
 | How one rule is evaluated | `src/rule/sec_rule.rs`, `src/rule/actions.rs` |
 | Body parsing | `crates/modsecurity-body/src/`, `src/transaction/body.rs` |

@@ -1582,3 +1582,29 @@ forwarded.
 `Option<RequestBodyProcessor>` {Json, Xml} for `ctl:requestBodyProcessor`;
 `Outcome::highest_severity: Option<u8>` with `highest_severity_value()`
 giving 255 when none.
+
+
+## Transaction variables declared once
+
+Each variable of the transaction (`REQUEST_METHOD`, `ARGS`, ...) used to
+be written three times: a field of the struct, its name in the
+constructor, and a row of the lookup tables (`variables/names.rs`) that
+repeated the name and the field. `variables/table.rs` now has one line
+per variable, `field: "TOKEN"` plus the row fields that differ from the
+defaults (`{ lua: false }`, `{ name: "UNIQUEID" }`), and a
+`macro_rules!` makes the struct (`TransactionVariables`), its
+constructor and the rows (`SINGLE`, `MULTI`). SecLang-only aliases
+(`STATUS`, `STATUS_LINE`, `MULTIPART_SEMICOLON_MISSING`) are rows
+without a field.
+
+`ARGS_NAMES`, `ARGS_GET_NAMES` and `ARGS_POST_NAMES` are no longer fields
+holding a proxy: a multi valued variable declared with `names` stores the
+name values, and `MultiVariable::names()` is the view that resolves them.
+The proxy's other path (translate the whole result list when it was not
+empty) was unreachable, since every caller passes an empty list, and is
+gone.
+
+The C++ names went with it: `TransactionAnchoredVariables` is
+`TransactionVariables`, `AnchoredVariable` is `SingleVariable`
+(`variables::single`) and `AnchoredSetVariable` is `MultiVariable`
+(`variables::multi`).

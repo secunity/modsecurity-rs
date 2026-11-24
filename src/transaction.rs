@@ -10,7 +10,7 @@
 //!
 //! - `http` ([`HttpData`]): the request and response as the connector
 //!   reported them (addresses, URI, bodies, status);
-//! - `vars` ([`TransactionVariables`]), `collections` and
+//! - `vars` ([`TransactionVariables`], declared in `variables::table`), `collections` and
 //!   `variable_envs`: the variables rules inspect (`ARGS` is
 //!   `t.vars.args`);
 //! - `body` ([`BodyProcessing`]): the request body processors' state;
@@ -39,9 +39,7 @@ use crate::rule::{Rule, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set::properties::{BodyLimitAction, ParseXmlIntoArgs, RuleEngine};
 use crate::utils::string::{is_space, split, ssplit};
-use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
-use crate::variables::multi::MultiVariable;
-use crate::variables::single::SingleVariable;
+pub use crate::variables::table::TransactionVariables;
 use crate::variables::variable::Variable;
 use crate::variables::variable_value::VariableValue;
 use modsecurity_body::json::Json;
@@ -73,195 +71,6 @@ pub enum RequestBodyProcessor {
 enum BodyDirection {
     Request,
     Response,
-}
-
-/// The request/response variables filled while the transaction is
-/// processed.
-#[derive(Debug, Clone)]
-pub struct TransactionVariables {
-    pub request_headers_names: MultiVariable,
-    pub response_content_type: SingleVariable,
-    pub response_headers_names: MultiVariable,
-    pub args_combined_size: SingleVariable,
-    pub auth_type: SingleVariable,
-    pub files_combined_size: SingleVariable,
-    pub full_request: SingleVariable,
-    pub full_request_length: SingleVariable,
-    pub inbound_data_error: SingleVariable,
-    pub matched_var: SingleVariable,
-    pub matched_var_name: SingleVariable,
-    pub msc_pcre_error: SingleVariable,
-    pub msc_pcre_limits_exceeded: SingleVariable,
-    pub multipart_boundary_quoted: SingleVariable,
-    pub multipart_boundary_white_space: SingleVariable,
-    pub multipart_crlf_lf_lines: SingleVariable,
-    pub multipart_data_after: SingleVariable,
-    pub multipart_data_before: SingleVariable,
-    pub multipart_duplicate_part_header: SingleVariable,
-    pub multipart_file_limit_exceeded: SingleVariable,
-    pub multipart_header_folding: SingleVariable,
-    pub multipart_invalid_header_folding: SingleVariable,
-    pub multipart_invalid_part: SingleVariable,
-    pub multipart_invalid_quoting: SingleVariable,
-    pub multipart_lf_line: SingleVariable,
-    pub multipart_missing_semicolon: SingleVariable,
-    pub multipart_strict_error: SingleVariable,
-    pub multipart_unmatched_boundary: SingleVariable,
-    pub outbound_data_error: SingleVariable,
-    pub path_info: SingleVariable,
-    pub query_string: SingleVariable,
-    pub remote_addr: SingleVariable,
-    pub remote_host: SingleVariable,
-    pub remote_port: SingleVariable,
-    pub reqbody_error: SingleVariable,
-    pub reqbody_error_msg: SingleVariable,
-    pub reqbody_processor_error: SingleVariable,
-    pub reqbody_processor_error_msg: SingleVariable,
-    pub reqbody_processor: SingleVariable,
-    pub request_basename: SingleVariable,
-    pub request_body: SingleVariable,
-    pub request_body_length: SingleVariable,
-    pub request_filename: SingleVariable,
-    pub request_line: SingleVariable,
-    pub request_method: SingleVariable,
-    pub request_protocol: SingleVariable,
-    pub request_uri: SingleVariable,
-    pub request_uri_raw: SingleVariable,
-    pub resource: SingleVariable,
-    pub response_body: SingleVariable,
-    pub response_content_length: SingleVariable,
-    pub response_protocol: SingleVariable,
-    pub response_status: SingleVariable,
-    pub server_addr: SingleVariable,
-    pub server_name: SingleVariable,
-    pub server_port: SingleVariable,
-    pub session_id: SingleVariable,
-    pub unique_id: SingleVariable,
-    pub url_encoded_error: SingleVariable,
-    pub user_id: SingleVariable,
-    pub args: MultiVariable,
-    pub args_get: MultiVariable,
-    pub args_post: MultiVariable,
-    pub files_sizes: MultiVariable,
-    pub files_names: MultiVariable,
-    pub files_tmp_content: MultiVariable,
-    pub multipart_file_name: MultiVariable,
-    pub multipart_file_name_charset: MultiVariable,
-    pub multipart_file_name_language: MultiVariable,
-    pub multipart_name: MultiVariable,
-    pub matched_vars_names: MultiVariable,
-    pub matched_vars: MultiVariable,
-    pub files: MultiVariable,
-    pub request_cookies: MultiVariable,
-    pub request_headers: MultiVariable,
-    pub response_headers: MultiVariable,
-    pub geo: MultiVariable,
-    pub request_cookies_names: MultiVariable,
-    pub files_tmp_names: MultiVariable,
-    pub multipart_part_headers: MultiVariable,
-    pub offset: usize,
-    pub args_names: AnchoredSetVariableTranslationProxy,
-    pub args_get_names: AnchoredSetVariableTranslationProxy,
-    pub args_post_names: AnchoredSetVariableTranslationProxy,
-}
-
-impl Default for TransactionVariables {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TransactionVariables {
-    pub fn new() -> Self {
-        let a = SingleVariable::new;
-        let s = MultiVariable::new;
-        TransactionVariables {
-            request_headers_names: s("REQUEST_HEADERS_NAMES"),
-            response_content_type: a("RESPONSE_CONTENT_TYPE"),
-            response_headers_names: s("RESPONSE_HEADERS_NAMES"),
-            args_combined_size: a("ARGS_COMBINED_SIZE"),
-            auth_type: a("AUTH_TYPE"),
-            files_combined_size: a("FILES_COMBINED_SIZE"),
-            full_request: a("FULL_REQUEST"),
-            full_request_length: a("FULL_REQUEST_LENGTH"),
-            inbound_data_error: a("INBOUND_DATA_ERROR"),
-            matched_var: a("MATCHED_VAR"),
-            matched_var_name: a("MATCHED_VAR_NAME"),
-            msc_pcre_error: a("MSC_PCRE_ERROR"),
-            msc_pcre_limits_exceeded: a("MSC_PCRE_LIMITS_EXCEEDED"),
-            multipart_boundary_quoted: a("MULTIPART_BOUNDARY_QUOTED"),
-            multipart_boundary_white_space: a("MULTIPART_BOUNDARY_WHITESPACE"),
-            multipart_crlf_lf_lines: a("MULTIPART_CRLF_LF_LINES"),
-            multipart_data_after: a("MULTIPART_DATA_AFTER"),
-            multipart_data_before: a("MULTIPART_DATA_BEFORE"),
-            multipart_duplicate_part_header: a("MULTIPART_DUPLICATE_PART_HEADER"),
-            multipart_file_limit_exceeded: a("MULTIPART_FILE_LIMIT_EXCEEDED"),
-            multipart_header_folding: a("MULTIPART_HEADER_FOLDING"),
-            multipart_invalid_header_folding: a("MULTIPART_INVALID_HEADER_FOLDING"),
-            multipart_invalid_part: a("MULTIPART_INVALID_PART"),
-            multipart_invalid_quoting: a("MULTIPART_INVALID_QUOTING"),
-            multipart_lf_line: a("MULTIPART_LF_LINE"),
-            multipart_missing_semicolon: a("MULTIPART_MISSING_SEMICOLON"),
-            multipart_strict_error: a("MULTIPART_STRICT_ERROR"),
-            multipart_unmatched_boundary: a("MULTIPART_UNMATCHED_BOUNDARY"),
-            outbound_data_error: a("OUTBOUND_DATA_ERROR"),
-            path_info: a("PATH_INFO"),
-            query_string: a("QUERY_STRING"),
-            remote_addr: a("REMOTE_ADDR"),
-            remote_host: a("REMOTE_HOST"),
-            remote_port: a("REMOTE_PORT"),
-            reqbody_error: a("REQBODY_ERROR"),
-            reqbody_error_msg: a("REQBODY_ERROR_MSG"),
-            reqbody_processor_error: a("REQBODY_PROCESSOR_ERROR"),
-            reqbody_processor_error_msg: a("REQBODY_PROCESSOR_ERROR_MSG"),
-            reqbody_processor: a("REQBODY_PROCESSOR"),
-            request_basename: a("REQUEST_BASENAME"),
-            request_body: a("REQUEST_BODY"),
-            request_body_length: a("REQUEST_BODY_LENGTH"),
-            request_filename: a("REQUEST_FILENAME"),
-            request_line: a("REQUEST_LINE"),
-            request_method: a("REQUEST_METHOD"),
-            request_protocol: a("REQUEST_PROTOCOL"),
-            request_uri: a("REQUEST_URI"),
-            request_uri_raw: a("REQUEST_URI_RAW"),
-            resource: a("RESOURCE"),
-            response_body: a("RESPONSE_BODY"),
-            response_content_length: a("RESPONSE_CONTENT_LENGTH"),
-            response_protocol: a("RESPONSE_PROTOCOL"),
-            response_status: a("RESPONSE_STATUS"),
-            server_addr: a("SERVER_ADDR"),
-            server_name: a("SERVER_NAME"),
-            server_port: a("SERVER_PORT"),
-            session_id: a("SESSIONID"),
-            unique_id: a("UNIQUE_ID"),
-            url_encoded_error: a("URLENCODED_ERROR"),
-            user_id: a("USERID"),
-            args: MultiVariable::with_names("ARGS", "ARGS_NAMES"),
-            args_get: MultiVariable::with_names("ARGS_GET", "ARGS_GET_NAMES"),
-            args_post: MultiVariable::with_names("ARGS_POST", "ARGS_POST_NAMES"),
-            files_sizes: s("FILES_SIZES"),
-            files_names: s("FILES_NAMES"),
-            files_tmp_content: s("FILES_TMP_CONTENT"),
-            multipart_file_name: s("MULTIPART_FILENAME"),
-            multipart_file_name_charset: s("MULTIPART_FILENAME_CHARSET"),
-            multipart_file_name_language: s("MULTIPART_FILENAME_LANGUAGE"),
-            multipart_name: s("MULTIPART_NAME"),
-            matched_vars_names: s("MATCHED_VARS_NAMES"),
-            matched_vars: s("MATCHED_VARS"),
-            files: s("FILES"),
-            request_cookies: s("REQUEST_COOKIES"),
-            request_headers: s("REQUEST_HEADERS"),
-            response_headers: s("RESPONSE_HEADERS"),
-            geo: s("GEO"),
-            request_cookies_names: s("REQUEST_COOKIES_NAMES"),
-            files_tmp_names: s("FILES_TMPNAMES"),
-            multipart_part_headers: s("MULTIPART_PART_HEADERS"),
-            offset: 0,
-            args_names: AnchoredSetVariableTranslationProxy::new("ARGS_NAMES"),
-            args_get_names: AnchoredSetVariableTranslationProxy::new("ARGS_GET_NAMES"),
-            args_post_names: AnchoredSetVariableTranslationProxy::new("ARGS_POST_NAMES"),
-        }
-    }
 }
 
 /// Buffers of `SecRule::evaluate`, kept in the transaction so

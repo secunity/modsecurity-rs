@@ -2,20 +2,19 @@
 //!
 //! [`variable::Variable`] is a target; [`new_variable`] builds it from its
 //! name in the rule. The variables that only read a value of the
-//! transaction are rows of the tables in `names`, which
+//! transaction are declared in [`table`], which
 //! [`new_variable`] looks up first.
 //! The variables with logic of their own have a module:
 //! the collections ([`persistent`], and `TX` in [`variable`]), [`rule`],
 //! [`env`], [`xml`] and the [`computed`] ones (`TIME*`, `DURATION`, ...).
 
-pub mod anchored_set_variable_translation_proxy;
 pub(crate) mod computed;
 pub mod env;
 pub mod multi;
-pub(crate) mod names;
 pub mod persistent;
 pub mod rule;
 pub mod single;
+pub(crate) mod table;
 pub mod variable;
 pub mod xml;
 
@@ -101,15 +100,15 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Result<Variable, 
 
     let token = name.to_ascii_uppercase();
     // The variables of the transaction (the shared table).
-    if let Some(v) = names::SETS.iter().find(|v| v.token == token) {
+    if let Some(v) = table::MULTI.iter().find(|v| v.token == token) {
         let (name, selector) = Variable::selected(v.token, selector)?;
-        return Ok(Variable::new(&name, Source::Set(v.get, selector)));
+        return Ok(Variable::new(&name, Source::Multi(v.get, selector)));
     }
-    if let Some(v) = names::NAMES.iter().find(|v| v.token == token) {
-        let (name, selector) = Variable::selected(v.token, selector)?;
+    if let Some(v) = table::names_of(|names| names == token) {
+        let (name, selector) = Variable::selected(&token, selector)?;
         return Ok(Variable::new(&name, Source::Names(v.get, selector)));
     }
-    if let Some(v) = names::SINGLE.iter().find(|v| v.seclang && v.token == token) {
+    if let Some(v) = table::SINGLE.iter().find(|v| v.seclang && v.token == token) {
         return match selector {
             S::None => Ok(Variable::new(v.name, Source::Single(v.get))),
             _ => Err(VariableError::Unknown),

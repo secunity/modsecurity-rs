@@ -8,7 +8,6 @@
 use crate::rule::Rule;
 use crate::run_time_string::RunTimeString;
 use crate::transaction::{Transaction, TransactionVariables};
-use crate::variables::anchored_set_variable_translation_proxy::AnchoredSetVariableTranslationProxy;
 use crate::variables::computed::Computed;
 use crate::variables::multi::MultiVariable;
 use crate::variables::persistent::Persistent;
@@ -52,10 +51,9 @@ pub(crate) enum Source {
     /// A single valued variable of the transaction (`REQUEST_METHOD`).
     Single(fn(&Vars) -> &SingleVariable),
     /// A multi valued variable of the transaction (`ARGS`).
-    Set(fn(&Vars) -> &MultiVariable, Selector),
-    /// The names of a multi valued variable (`ARGS_NAMES`): the proxy and
-    /// the variable it translates.
-    Names(fn(&Vars) -> (&AnchoredSetVariableTranslationProxy, &MultiVariable), Selector),
+    Multi(fn(&Vars) -> &MultiVariable, Selector),
+    /// The names of a multi valued variable (`ARGS_NAMES`): the variable.
+    Names(fn(&Vars) -> &MultiVariable, Selector),
     /// The `TX` collection.
     Tx(CollectionKey),
     /// A persistent collection (`IP`, `GLOBAL`, ...).
@@ -193,7 +191,7 @@ impl Variable {
         let ke = &self.key_exclusion;
         match &self.source {
             Source::Single(get) => get(&t.vars).evaluate_into(l),
-            Source::Set(get, selector) => {
+            Source::Multi(get, selector) => {
                 let set = get(&t.vars);
                 match selector {
                     Selector::All => set.resolve_with_exclusions(l, ke, Some(t)),
@@ -202,11 +200,11 @@ impl Variable {
                 }
             }
             Source::Names(get, selector) => {
-                let (names, fount) = get(&t.vars);
+                let names = get(&t.vars).names();
                 match selector {
-                    Selector::All => names.resolve_with_exclusions(fount, l, ke, Some(t)),
-                    Selector::Key(key) => names.resolve_key(fount, key.as_bytes(), l),
-                    Selector::Regex(r) => names.resolve_regular_expression_with_exclusions(fount, r, l, ke, Some(t)),
+                    Selector::All => names.resolve_with_exclusions(l, ke, Some(t)),
+                    Selector::Key(key) => names.resolve_key(key.as_bytes(), l),
+                    Selector::Regex(r) => names.resolve_regular_expression_with_exclusions(r, l, ke, Some(t)),
                 }
             }
             Source::Tx(key) => {
@@ -247,7 +245,7 @@ impl Variable {
     /// The selection regex, if this is a `COLLECTION:/regex/` variable.
     pub fn regex(&self) -> Option<&Regex> {
         match &self.source {
-            Source::Set(_, Selector::Regex(r))
+            Source::Multi(_, Selector::Regex(r))
             | Source::Names(_, Selector::Regex(r))
             | Source::Rule(Selector::Regex(r)) => Some(r),
             Source::Tx(CollectionKey::Regex(r)) | Source::Persistent(_, CollectionKey::Regex(r)) => Some(r),
@@ -360,9 +358,9 @@ pub fn comp(a: &str, b: &str) -> bool {
 #[cfg(feature = "lua")]
 /// The multi valued variable `col` of the shared table, as Lua looks it
 /// up: `whole` is the name as given, key included (see
-/// [`names::Set::lua_whole_name`](crate::variables::names::Set)).
-fn lua_set(col: &str, whole: &str) -> Option<&'static crate::variables::names::Set> {
-    crate::variables::names::SETS.iter().find(|v| comp(if v.lua_whole_name { whole } else { col }, v.token))
+/// [`table::Multi::lua_whole_name`](crate::variables::table::Multi)).
+fn lua_set(col: &str, whole: &str) -> Option<&'static crate::variables::table::Multi> {
+    crate::variables::table::MULTI.iter().find(|v| comp(if v.lua_whole_name { whole } else { col }, v.token))
 }
 
 #[cfg(feature = "lua")]
@@ -388,12 +386,12 @@ pub fn string_match_resolve_multi(
         }
         return Ok(());
     }
-    if let Some(names) = crate::variables::names::NAMES.iter().find(|n| comp(&col, n.token)) {
-        let (p, fount) = (names.get)(v);
+    if let Some(multi) = crate::variables::table::names_of(|names| comp(&col, names)) {
+        let names = (multi.get)(v).names();
         if delim.is_none() {
-            p.resolve(fount, l);
+            names.resolve(l);
         } else {
-            p.resolve_key(fount, var.as_bytes(), l);
+            names.resolve_key(var.as_bytes(), l);
         }
         return Ok(());
     }
@@ -412,7 +410,7 @@ pub fn string_match_resolve_multi(
 #[cfg(feature = "lua")]
 /// The single valued variable named `variable`, among the ones Lua knows.
 fn single_variable<'t>(t: &'t Transaction<'_>, variable: &str) -> Option<&'t crate::variables::single::SingleVariable> {
-    let v = crate::variables::names::SINGLE.iter().find(|v| v.lua && comp(variable, v.token))?;
+    let v = crate::variables::table::SINGLE.iter().find(|v| v.lua && comp(variable, v.token))?;
     Some((v.get)(&t.vars))
 }
 
@@ -445,7 +443,7 @@ pub fn string_match_resolve(t: &Transaction<'_>, variable: &str) -> Result<Vec<u
         Some(c) => {
             let col = &variable[..c];
             let var = &variable.as_bytes()[c + 1..];
-            // (The `*_NAMES` proxies are not found here: with a key, only
+            // (The `*_NAMES` variables are not found here: with a key, only
             // the multi valued variables and the collections are looked up.)
             if let Some(set) = lua_set(col, variable) {
                 (set.get)(&t.vars).resolve_first(var)

@@ -7,16 +7,15 @@
 //! and it is kept because the upstream tests depend on it.
 
 use crate::transaction::Transaction;
-use crate::variables::anchored_set_variable_translation_proxy::translate;
 use crate::variables::variable::KeyExclusions;
 use crate::variables::variable_origin::VariableOrigin;
 use crate::variables::variable_value::{VariableValue, move_to_front_reversed};
 use modsecurity_compat::unordered_multimap::UnorderedMultimap;
 use modsecurity_native::regex::Regex;
 
-/// An entry: the value and, for collections with a `*_NAMES` translation
-/// proxy (`ARGS`, `ARGS_GET`, `ARGS_POST`), its key as a value of that
-/// proxy, built once here instead of on every resolution of the proxy.
+/// An entry: the value and, for a variable with [`Names`] (`ARGS`,
+/// `ARGS_GET`, `ARGS_POST`), its key as a value of the names variable,
+/// built once here instead of on every resolution of the names.
 #[derive(Debug, Clone)]
 struct Entry {
     value: VariableValue,
@@ -34,7 +33,7 @@ impl Entry {
     fn get(&self, pick: Pick) -> &VariableValue {
         match pick {
             Pick::Value => &self.value,
-            Pick::Name => self.name.as_ref().expect("names_collection is set"),
+            Pick::Name => self.name.as_ref().expect("a variable with names"),
         }
     }
 }
@@ -43,7 +42,8 @@ impl Entry {
 pub struct MultiVariable {
     pub name: &'static str,
     map: UnorderedMultimap<Entry>,
-    /// The collection name of the translation proxy over this variable.
+    /// The name of the variable of its keys (`ARGS_NAMES` of `ARGS`), if
+    /// it has one.
     names_collection: Option<&'static str>,
 }
 
@@ -54,16 +54,17 @@ impl MultiVariable {
         MultiVariable { name, map: UnorderedMultimap::with_reserve(10), names_collection: None }
     }
 
-    /// A variable with a translation proxy named `names` (e.g. `ARGS` and
-    /// `ARGS_NAMES`).
+    /// A variable whose keys are also the variable `names` (e.g. `ARGS`
+    /// and `ARGS_NAMES`), see [`Self::names`].
     pub fn with_names(name: &'static str, names: &'static str) -> Self {
         MultiVariable { names_collection: Some(names), ..Self::new(name) }
     }
 
-    /// Whether the entries carry values of the translation proxy `names`
-    /// (see [`Self::with_names`]).
-    pub fn has_names(&self, names: &str) -> bool {
-        self.names_collection == Some(names)
+    /// The keys as a variable of their own (`ARGS_NAMES` of `ARGS`). Only
+    /// a variable made [`Self::with_names`] has them.
+    pub fn names(&self) -> Names<'_> {
+        assert!(self.names_collection.is_some(), "{} has no names variable", self.name);
+        Names { of: self }
     }
 
     pub fn len(&self) -> usize {
@@ -188,34 +189,93 @@ impl MultiVariable {
         }
         move_to_front_reversed(l, start);
     }
+}
 
+/// The keys of a [`MultiVariable`] as a variable of their own: `ARGS_NAMES`
+/// is the keys of `ARGS`. Each value has the key as its key and value, and
+/// its origin points at the key. The resolutions are the variable's, with
+/// these values.
+#[derive(Clone, Copy)]
+pub struct Names<'v> {
+    of: &'v MultiVariable,
+}
+
+impl Names<'_> {
     #[cfg_attr(not(feature = "lua"), allow(dead_code))] // Used by the Lua engine.
-    /// The translation proxy's resolutions: the same as the ones above
-    /// with the entries' name values (only for [`Self::has_names`]).
-    pub(crate) fn resolve_names(&self, l: &mut Vec<VariableValue>) {
-        self.resolve_pick(Pick::Name, l)
+    pub fn resolve(&self, l: &mut Vec<VariableValue>) {
+        self.of.resolve_pick(Pick::Name, l)
     }
 
-    pub(crate) fn resolve_names_with_exclusions(
-        &self,
-        l: &mut Vec<VariableValue>,
-        ke: &KeyExclusions,
-        t: Option<&Transaction<'_>>,
-    ) {
-        self.resolve_with_exclusions_pick(Pick::Name, l, ke, t)
+    pub fn resolve_with_exclusions(&self, l: &mut Vec<VariableValue>, ke: &KeyExclusions, t: Option<&Transaction<'_>>) {
+        self.of.resolve_with_exclusions_pick(Pick::Name, l, ke, t)
     }
 
-    pub(crate) fn resolve_names_key(&self, key: &[u8], l: &mut Vec<VariableValue>) {
-        self.resolve_key_pick(Pick::Name, key, l)
+    pub fn resolve_key(&self, key: &[u8], l: &mut Vec<VariableValue>) {
+        self.of.resolve_key_pick(Pick::Name, key, l)
     }
 
-    pub(crate) fn resolve_names_regular_expression_with_exclusions(
+    pub fn resolve_regular_expression_with_exclusions(
         &self,
         r: &Regex,
         l: &mut Vec<VariableValue>,
         ke: &KeyExclusions,
         t: Option<&Transaction<'_>>,
     ) {
-        self.resolve_regular_expression_with_exclusions_pick(Pick::Name, r, l, ke, t)
+        self.of.resolve_regular_expression_with_exclusions_pick(Pick::Name, r, l, ke, t)
+    }
+}
+
+/// The value of the names variable `name` for the value `v`: `v`'s key as
+/// key and value, with the origins moved to point at the key.
+fn translate(name: &str, v: &VariableValue) -> VariableValue {
+    let mut nv = VariableValue::with_collection(name.as_bytes(), v.key(), v.key());
+    nv.reserve_origin(v.origin().len());
+    for o in v.origin() {
+        nv.add_origin(VariableOrigin::new(v.key().len(), o.offset.wrapping_sub(v.key().len()).wrapping_sub(1)));
+    }
+    nv
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each resolution of the names is the variable's resolution with every
+    /// value translated.
+    #[test]
+    fn names_are_the_translated_values() {
+        let mut args = MultiVariable::with_names("ARGS", "ARGS_NAMES");
+        for (k, v, off) in [(&b"a"[..], &b"1"[..], 3), (b"b", b"22", 0), (b"a", b"333", 9), (b"", b"x", 1)] {
+            args.set(k, v, off);
+        }
+        let names = args.names();
+        let r = Regex::new("^a");
+        let ke = KeyExclusions::default();
+        let run = |f: &dyn Fn(&mut Vec<VariableValue>)| {
+            let mut l = Vec::new();
+            f(&mut l);
+            l
+        };
+        let translated = |l: Vec<VariableValue>| l.iter().map(|v| translate("ARGS_NAMES", v)).collect::<Vec<_>>();
+
+        let all = run(&|l| names.resolve(l));
+        assert_eq!(all.len(), 4);
+        assert!(all.iter().all(|v| v.collection() == b"ARGS_NAMES" && v.key() == v.value()));
+        assert_eq!(all, translated(run(&|l| args.resolve(l))));
+        assert_eq!(
+            run(&|l| names.resolve_with_exclusions(l, &ke, None)),
+            translated(run(&|l| args.resolve_with_exclusions(l, &ke, None)))
+        );
+        assert_eq!(run(&|l| names.resolve_key(b"a", l)), translated(run(&|l| args.resolve_key(b"a", l))));
+        assert_eq!(
+            run(&|l| names.resolve_regular_expression_with_exclusions(&r, l, &ke, None)),
+            translated(run(&|l| args.resolve_regular_expression_with_exclusions(&r, l, &ke, None)))
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "FILES has no names variable")]
+    fn only_a_variable_with_names_has_them() {
+        MultiVariable::new("FILES").names();
     }
 }
