@@ -108,6 +108,26 @@ impl Collection for InMemoryPerProcess {
         Ok(())
     }
 
+    fn update_first(
+        &self,
+        key: &[u8],
+        compute: &mut dyn FnMut(Option<&[u8]>) -> Vec<u8>,
+    ) -> Result<Vec<u8>, StorageError> {
+        // Under the write lock from the read to the write.
+        let mut m = self.write();
+        if let Some(d) = m.find_mut(key) {
+            if d.is_expired() {
+                *d = CollectionData::default();
+            }
+            let value = compute(d.value.as_deref());
+            d.set_value(&value);
+            return Ok(value);
+        }
+        let value = compute(None);
+        self.insert(&mut m, key, CollectionData::with_value(&value));
+        Ok(value)
+    }
+
     fn del(&self, key: &[u8]) -> Result<(), StorageError> {
         self.write().erase(key);
         Ok(())

@@ -30,6 +30,17 @@ impl<'a> CollectionBinding<'a> {
         self.backend.store_or_update_first(&compartment_key(name, &self.key, Some(app)), value)
     }
 
+    /// Sets the value of `name` to what `compute` makes of the current one,
+    /// in one step of the storage (see [`Collection::update_first`]).
+    pub fn update(
+        &self,
+        name: &[u8],
+        app: &[u8],
+        compute: &mut dyn FnMut(Option<&[u8]>) -> Vec<u8>,
+    ) -> Result<Vec<u8>, StorageError> {
+        self.backend.update_first(&compartment_key(name, &self.key, Some(app)), compute)
+    }
+
     pub fn remove(&self, name: &[u8], second_compartment: &[u8]) -> Result<(), StorageError> {
         self.backend.del(&compartment_key(name, &self.key, Some(second_compartment)))
     }

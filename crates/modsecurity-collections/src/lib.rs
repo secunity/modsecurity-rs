@@ -59,6 +59,18 @@ pub trait Collection: Send + Sync {
     /// Sets the value of `key`, keeping its expiry.
     fn store_or_update_first(&self, key: &[u8], value: &[u8]) -> Result<(), StorageError>;
 
+    /// Sets the value of `key` to what `compute` makes of its current
+    /// value, in one step that no other writer (thread or process) comes
+    /// between: concurrent increments are all counted. The current value
+    /// is the live one, `None` when the key has none or it has expired (an
+    /// expired entry starts over, without its expiry); a live entry keeps
+    /// its expiry. Returns the value stored.
+    fn update_first(
+        &self,
+        key: &[u8],
+        compute: &mut dyn FnMut(Option<&[u8]>) -> Vec<u8>,
+    ) -> Result<Vec<u8>, StorageError>;
+
     fn del(&self, key: &[u8]) -> Result<(), StorageError>;
 
     fn set_expiry(&self, key: &[u8], expiry_seconds: u64) -> Result<(), StorageError>;

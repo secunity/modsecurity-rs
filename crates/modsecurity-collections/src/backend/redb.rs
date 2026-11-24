@@ -149,6 +149,24 @@ impl Collection for Redb {
         })
     }
 
+    fn update_first(
+        &self,
+        key: &[u8],
+        compute: &mut dyn FnMut(Option<&[u8]>) -> Vec<u8>,
+    ) -> Result<Vec<u8>, StorageError> {
+        // One write transaction: redb lets one process write at a time.
+        let mut stored = Vec::new();
+        self.replace(key, |mut record| {
+            if record.is_expired() {
+                record = CollectionData::default();
+            }
+            stored = compute(record.value.as_deref());
+            record.set_value(&stored);
+            record
+        })?;
+        Ok(stored)
+    }
+
     fn del(&self, key: &[u8]) -> Result<(), StorageError> {
         self.delete(key, false)
     }
@@ -230,47 +248,9 @@ pub(crate) mod tests {
         shared(&temp_path()).unwrap();
     }
 
-    const WORKER: &str = "MSRS_REDB_WORKER";
-    const KEYS_PER_WORKER: usize = 200;
-
-    /// Run by [`processes_share_the_collections`] in a process of its own:
-    /// writes its keys to the file named in `MSRS_REDB_WORKER`.
-    #[test]
-    #[ignore = "a worker process of processes_share_the_collections"]
-    fn worker() {
-        let Ok(spec) = std::env::var(WORKER) else { return };
-        let (path, prefix) = spec.split_once('|').unwrap();
+    /// Opens the database of this process at `path` (if none is open).
+    pub(in crate::backend) fn open_at(path: &str) {
         shared(path).unwrap();
-        let c = Redb::new("IP");
-        for i in 0..KEYS_PER_WORKER {
-            c.store_or_update_first(format!("{prefix}{i}").as_bytes(), b"v").unwrap();
-        }
-    }
-
-    /// Processes write to one file at the same time, while this one has it
-    /// open, and each sees what the others wrote.
-    #[test]
-    fn processes_share_the_collections() {
-        database_in_temp_dir();
-        let path = temp_path();
-        let run = format!("p{}-", std::process::id());
-        let workers: Vec<_> = (0..4)
-            .map(|w| {
-                std::process::Command::new(std::env::current_exe().unwrap())
-                    .args(["--exact", "backend::redb::tests::worker", "--ignored", "--quiet"])
-                    .env(WORKER, format!("{path}|{run}{w}-"))
-                    .stdout(std::process::Stdio::null())
-                    .spawn()
-                    .unwrap()
-            })
-            .collect();
-        for mut w in workers {
-            assert!(w.wait().unwrap().success());
-        }
-        let mut l = Vec::new();
-        Redb::new("IP").resolve_multi_matches(b"", &mut l, &KeyExclusions::default()).unwrap();
-        let mine = l.iter().filter(|v| v.key().starts_with(run.as_bytes())).count();
-        assert_eq!(mine, 4 * KEYS_PER_WORKER);
     }
 
     /// The errors of redb are reported with what redb said.

@@ -76,6 +76,26 @@ mod contract {
         c.resolve_regex(prefix.as_bytes(), &Regex::new_case(".", true), &mut l, &excluded).unwrap();
         assert_eq!(pairs(l), [(shown("one", "ab"), "2".to_string()), (shown("one", "b"), "3".to_string())]);
 
+        // Updates from the current value.
+        let add = |n: u64| {
+            move |v: Option<&[u8]>| -> Vec<u8> {
+                let current = v.map_or(0, |v| std::str::from_utf8(v).unwrap().parse::<u64>().unwrap());
+                (current + n).to_string().into_bytes()
+            }
+        };
+        assert_eq!(c.update_first(&k("one", "n"), &mut add(2)).unwrap(), b"2", "a new key");
+        assert_eq!(c.update_first(&k("one", "n"), &mut add(3)).unwrap(), b"5");
+        assert_eq!(c.resolve_first(&k("one", "n")).unwrap(), Some(b"5".to_vec()));
+        c.set_expiry(&k("one", "n"), 1000).unwrap();
+        c.update_first(&k("one", "n"), &mut add(1)).unwrap();
+        c.set_expiry(&k("one", "n"), 0).unwrap();
+        assert_eq!(c.update_first(&k("one", "n"), &mut add(1)).unwrap(), b"1", "an expired value starts over");
+        assert_eq!(c.resolve_first(&k("one", "n")).unwrap(), Some(b"1".to_vec()), "without its expiry");
+        c.set_expiry(&k("one", "m"), 1000).unwrap();
+        assert_eq!(c.update_first(&k("one", "m"), &mut add(4)).unwrap(), b"4", "an expiry alone");
+        c.del(&k("one", "n")).unwrap();
+        c.del(&k("one", "m")).unwrap();
+
         // Removal.
         c.del(&k("one", "a")).unwrap();
         c.del(&k("one", "missing")).unwrap();
@@ -94,6 +114,97 @@ mod contract {
     #[test]
     fn in_memory() {
         check(&super::in_memory_per_process::InMemoryPerProcess::new("IP"), &run_id());
+    }
+
+    // The multi-process tests, for the backends whose file processes share.
+    #[cfg(any(feature = "lmdb", feature = "redb"))]
+    const WORKER: &str = "MSRS_COLLECTION_WORKER";
+    #[cfg(any(feature = "lmdb", feature = "redb"))]
+    const WRITES_PER_WORKER: usize = 100;
+
+    /// The backend `name` with its file at `path`.
+    #[cfg(any(feature = "lmdb", feature = "redb"))]
+    fn backend_at(name: &str, path: &str) -> Box<dyn Collection> {
+        match name {
+            #[cfg(feature = "lmdb")]
+            "lmdb" => {
+                super::lmdb::tests::open_at(path);
+                Box::new(super::lmdb::Lmdb::new("IP"))
+            }
+            #[cfg(feature = "redb")]
+            "redb" => {
+                super::redb::tests::open_at(path);
+                Box::new(super::redb::Redb::new("IP"))
+            }
+            _ => panic!("no backend {name} in this build"),
+        }
+    }
+
+    /// Run by [`processes_share`] in a process of its own: a writer writes
+    /// its keys and adds 1 to the shared counter as many times; the
+    /// checker (`check`) then finds every key and the whole count.
+    #[cfg(any(feature = "lmdb", feature = "redb"))]
+    #[test]
+    #[ignore = "a worker process of the multi-process tests"]
+    fn worker() {
+        let Ok(spec) = std::env::var(WORKER) else { return };
+        let [name, path, run, me] = spec.split('|').collect::<Vec<_>>()[..] else { panic!("{spec}") };
+        let c = backend_at(name, path);
+        let counter = format!("{run}counter").into_bytes();
+        if me == "check" {
+            let mut l = Vec::new();
+            c.resolve_multi_matches(b"", &mut l, &KeyExclusions::default()).unwrap();
+            let written = l.iter().filter(|v| v.key().starts_with(format!("{run}w").as_bytes())).count();
+            assert_eq!(written, 4 * WRITES_PER_WORKER);
+            let total = (4 * WRITES_PER_WORKER).to_string().into_bytes();
+            assert_eq!(c.resolve_first(&counter).unwrap(), Some(total));
+            return;
+        }
+        let mut add_one = |v: Option<&[u8]>| -> Vec<u8> {
+            let current = v.map_or(0, |v| std::str::from_utf8(v).unwrap().parse::<u64>().unwrap());
+            (current + 1).to_string().into_bytes()
+        };
+        for i in 0..WRITES_PER_WORKER {
+            c.store_or_update_first(format!("{run}{me}-{i}").as_bytes(), b"v").unwrap();
+            c.update_first(&counter, &mut add_one).unwrap();
+        }
+    }
+
+    /// Four processes write to one file at the same time; a fifth then
+    /// finds what each wrote, and no increment of the shared counter is
+    /// lost. (Processes of their own: the one of the tests may have opened
+    /// another file already.)
+    #[cfg(any(feature = "lmdb", feature = "redb"))]
+    fn processes_share(name: &str) {
+        let dir = std::env::temp_dir().join(format!("msrs-{name}-processes-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("collections").to_str().unwrap().to_string();
+        let run = run_id();
+        let spawn = |me: &str| {
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "backend::contract::worker", "--ignored", "--quiet"])
+                .env(WORKER, format!("{name}|{path}|{run}|{me}"))
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap()
+        };
+        let writers: Vec<_> = (0..4).map(|w| spawn(&format!("w{w}"))).collect();
+        for mut w in writers {
+            assert!(w.wait().unwrap().success(), "a writer failed");
+        }
+        assert!(spawn("check").wait().unwrap().success(), "the checker failed");
+    }
+
+    #[cfg(feature = "lmdb")]
+    #[test]
+    fn lmdb_processes_share() {
+        processes_share("lmdb");
+    }
+
+    #[cfg(feature = "redb")]
+    #[test]
+    fn redb_processes_share() {
+        processes_share("redb");
     }
 
     #[cfg(feature = "redb")]

@@ -144,6 +144,24 @@ impl Collection for Lmdb {
         })
     }
 
+    fn update_first(
+        &self,
+        key: &[u8],
+        compute: &mut dyn FnMut(Option<&[u8]>) -> Vec<u8>,
+    ) -> Result<Vec<u8>, StorageError> {
+        // One write transaction: LMDB lets one process write at a time.
+        let mut stored = Vec::new();
+        self.replace(key, |mut record| {
+            if record.is_expired() {
+                record = CollectionData::default();
+            }
+            stored = compute(record.value.as_deref());
+            record.set_value(&stored);
+            record
+        })?;
+        Ok(stored)
+    }
+
     fn del(&self, key: &[u8]) -> Result<(), StorageError> {
         self.delete(key, false)
     }
@@ -217,6 +235,11 @@ pub(crate) mod tests {
         // If another test already opened the default file, that one is
         // used; the keys below are unique to this test run.
         assert!(Environment::shared(&path).is_some());
+    }
+
+    /// Opens the environment of this process at `path` (if none is open).
+    pub(in crate::backend) fn open_at(path: &str) {
+        assert!(Environment::shared(&std::ffi::CString::new(path).unwrap()).is_some());
     }
 
     /// A key that is not there is nothing found; any other code of LMDB
