@@ -51,6 +51,7 @@ pub(crate) mod audit_log;
 /// The collections (the `modsecurity-collections` crate).
 pub(crate) use modsecurity_collections as collection;
 pub(crate) mod debug_log;
+pub(crate) mod eval;
 #[cfg(feature = "http")]
 mod http_support;
 pub mod inspection;

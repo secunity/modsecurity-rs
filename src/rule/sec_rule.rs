@@ -1,11 +1,11 @@
 //! The evaluation of a `SecRule`: its targets are resolved, transformed
 //! and passed to its operator.
 
+use crate::eval::EvalScratch;
 use crate::operators::operator::RuleOperator;
 use crate::rule::message::{Matched, RuleMessage};
 use crate::rule::{LogPoint, Rule, TransformationPath};
 use crate::rules_set::plan::Link;
-use crate::transaction::EvalScratch;
 use crate::transaction::Transaction;
 use crate::utils::string::{limit_to, to_hex_if_needed};
 use crate::variables::variable::{Variable, variables_to_string};

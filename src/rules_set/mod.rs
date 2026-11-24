@@ -1,4 +1,4 @@
-//! A loaded rule set: loading, merging and per-phase evaluation.
+//! A loaded rule set: loading and merging. `crate::eval` runs it.
 
 pub mod entry;
 pub mod exceptions;
@@ -7,14 +7,11 @@ pub mod phases;
 pub mod plan;
 pub mod properties;
 
-use crate::actions::disruptive::allow::AllowType;
 use crate::debug_log::DebugLog;
 use crate::parser::driver::Driver;
-use crate::phases::Phases;
 use crate::rules_set::phases::RulesSetPhases;
-use crate::rules_set::plan::{Plan, Step};
+use crate::rules_set::plan::Plan;
 use crate::rules_set::properties::RulesSetProperties;
-use crate::transaction::Transaction;
 use crate::utils::https_client::HttpsClient;
 use std::sync::OnceLock;
 
@@ -160,108 +157,6 @@ impl RulesSet {
         self.properties.parser_error.clone()
     }
 
-    /// Runs the rules of `phase`, honouring `allow`, `skip`, `skipAfter`,
-    /// the rule removals and a disruptive intervention.
-    pub(crate) fn evaluate<'a>(&'a self, phase: Phases, t: &mut Transaction<'a>) {
-        crate::ms_dbg!(t, 9, "This phase consists of {} rule(s).", self.rules_set_phases.for_phase(phase).len());
-
-        if t.eval.allow_type == Some(AllowType::FromNowOn) && phase != Phases::Logging {
-            crate::ms_dbg!(
-                t,
-                9,
-                "Skipping all rules evaluation on this phase as request through the utilization of an `allow' action."
-            );
-            return;
-        }
-        if t.eval.allow_type == Some(AllowType::Request) && phase <= Phases::RequestBody {
-            crate::ms_dbg!(
-                t,
-                9,
-                "Skipping all rules evaluation on this phase as request through the utilization of an `allow' action."
-            );
-            return;
-        }
-        t.eval.allow_type = None;
-
-        for step in self.plan().for_phase(phase) {
-            let (rule, chain, removed) = match step {
-                Step::Marker(marker) => {
-                    if let Some(m) = marker.as_marker() {
-                        m.evaluate(t);
-                    }
-                    continue;
-                }
-                Step::Rule { rule, chain } => (rule, chain.as_slice(), None),
-                Step::Removed { rule, by } => (rule, &[][..], Some(*by)),
-            };
-            let Some(r) = rule.as_rule() else { continue };
-
-            if t.is_inside_a_marker() {
-                crate::ms_dbg!(
-                    t,
-                    9,
-                    "Skipped rule id '{}' due to a SecMarker: {}",
-                    rule.reference(),
-                    t.current_marker().unwrap_or_default()
-                );
-            } else if t.eval.skip_next > 0 {
-                t.eval.skip_next -= 1;
-                crate::ms_dbg!(
-                    t,
-                    9,
-                    "Skipped rule id '{}' due to a `skip' action. Still {} to be skipped.",
-                    rule.reference(),
-                    t.eval.skip_next
-                );
-            } else if t.eval.allow_type.is_some() {
-                // Sic: "trough". The regression test action-allow.json
-                // looks for this text in the debug log.
-                crate::ms_dbg!(
-                    t,
-                    9,
-                    "Skipped rule id '{}' as request trough the utilization of an `allow' action.",
-                    rule.reference()
-                );
-            } else if let Some(by) = removed {
-                crate::ms_dbg!(
-                    t,
-                    9,
-                    "Skipped rule id '{}'. Removed by {} directive.",
-                    rule.reference(),
-                    by.directive()
-                );
-            } else if t.ctl.removes_rule_by_tag(r, t) {
-                crate::ms_dbg!(t, 9, "Skipped rule id '{}'. Skipped due to a ruleRemoveByTag action.", r.reference());
-            } else {
-                r.evaluate(chain, t);
-                crate::ms_dbg!(t, 9, "Matched vars cleaned.");
-                t.vars.clear_matches();
-
-                if t.outcome.intervention.is_disruptive() {
-                    crate::ms_dbg!(t, 8, "Skipping this phase as this request was already intercepted.");
-                    break;
-                }
-            }
-        }
-
-        // A `skipAfter` whose marker is in no phase list (every marker is in
-        // all of them) ends with its phase instead of skipping every later
-        // rule. Such a rule set still loads: nginx loads the rules of a
-        // location before merging those of the server, where the marker
-        // may be.
-        if let Some(name) = t.current_marker().map(str::to_owned) {
-            let known = self
-                .plan()
-                .for_phase(phase)
-                .iter()
-                .any(|step| matches!(step, Step::Marker(m) if m.as_marker().is_some_and(|m| m.name == *name)));
-            if !known {
-                crate::ms_dbg!(t, 9, "No SecMarker named '{}': the skip ends with this phase.", name);
-                t.remove_marker();
-            }
-        }
-    }
-
     /// The plan of the rule set, compiled the first time it is needed
     /// after the rules changed.
     pub(crate) fn plan(&self) -> &Plan {
@@ -315,6 +210,8 @@ impl RulesSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::phases::Phases;
+    use crate::transaction::Transaction;
 
     #[test]
     fn load_errors() {

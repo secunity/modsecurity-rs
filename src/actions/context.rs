@@ -124,7 +124,7 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
 
     /// `skipAfter`: skips rules up to the `SecMarker` `name`.
     pub fn skip_after(&mut self, name: &str) {
-        self.t.add_marker(name);
+        self.t.eval.marker = Some(name.to_string());
     }
 
     /// `allow`.

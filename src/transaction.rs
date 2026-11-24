@@ -15,7 +15,7 @@
 //!   `t.vars.args`);
 //! - `body` ([`BodyProcessing`]): the request body processors' state;
 //! - `ctl` ([`CtlOverrides`]): the settings rules changed with `ctl:`;
-//! - `eval` ([`EvalState`]): where rule evaluation is (skips, the
+//! - `eval` ([`EvalState`], see `crate::eval`): where rule evaluation is (skips, the
 //!   `SecMarker` being skipped to, `allow`, chains, captures);
 //! - `outcome` ([`Outcome`]): the intervention and the messages for the
 //!   logs.
@@ -30,19 +30,16 @@ use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::actions::disruptive::allow::AllowType;
 use crate::collection::collections::Collections;
+use crate::eval::EvalState;
 use crate::instance::ModSecurity;
 use crate::intervention::{Intervention, InterventionLog, PendingIntervention};
 use crate::phases::Phases;
 use crate::rule::message::RuleMessage;
-use crate::rule::{Rule, TransformationResults};
 use crate::rules_set::RulesSet;
 use crate::rules_set::properties::{BodyLimitAction, RuleEngine};
 use crate::utils::string::{is_space, split, ssplit};
 pub use crate::variables::table::TransactionVariables;
-use crate::variables::variable::Variable;
-use crate::variables::variable_value::VariableValue;
 use modsecurity_body::json::Json;
 use modsecurity_body::multipart::MultipartPartTmpFile;
 #[cfg(feature = "libxml2")]
@@ -72,18 +69,6 @@ pub enum RequestBodyProcessor {
 enum BodyDirection {
     Request,
     Response,
-}
-
-/// Buffers of `SecRule::evaluate`, kept in the transaction so
-/// that evaluating a rule does not allocate them again.
-#[derive(Default)]
-pub struct EvalScratch<'a> {
-    /// The rule's final list of variables.
-    pub vars: Vec<&'a Variable>,
-    /// The values of one variable.
-    pub e: Vec<VariableValue>,
-    /// The transformation results of one value.
-    pub values: TransformationResults,
 }
 
 /// The HTTP exchange as the connector reported it, and what is derived
@@ -121,25 +106,6 @@ pub(crate) struct BodyProcessing {
     pub(crate) xml: Option<Box<Xml>>,
     pub(crate) json: Json,
     pub(crate) multipart_part_tmp_files: Vec<Arc<MultipartPartTmpFile>>,
-}
-
-/// Where rule evaluation is: skips, markers, `allow`, the chain being
-/// evaluated, captures, and buffers reused from rule to rule.
-pub(crate) struct EvalState<'a> {
-    /// Rules still to be skipped because of a `skip` action.
-    pub(crate) skip_next: usize,
-    /// The `SecMarker` being skipped to (by `skipAfter`).
-    pub(crate) marker: Option<String>,
-    /// Set by a matching `allow` action, until the rules it covers are
-    /// skipped.
-    pub(crate) allow_type: Option<AllowType>,
-    /// Chain ancestors of the rule being evaluated, innermost last (a
-    /// rule has no pointer to its parent).
-    pub(crate) chained_rule_parents: Vec<&'a Rule>,
-    /// Matched strings, used by the `capture` action.
-    pub(crate) matched: Vec<Vec<u8>>,
-    /// Buffers reused by rule evaluation.
-    pub(crate) scratch: EvalScratch<'a>,
 }
 
 /// What the rules decided and reported: the intervention, the messages
@@ -257,14 +223,7 @@ impl<'a> Transaction<'a> {
                 multipart_part_tmp_files: Vec::new(),
             },
             ctl: CtlOverrides::new(rules),
-            eval: EvalState {
-                skip_next: 0,
-                marker: None,
-                allow_type: None,
-                chained_rule_parents: Vec::new(),
-                matched: Vec::new(),
-                scratch: EvalScratch::default(),
-            },
+            eval: EvalState::default(),
             outcome: Outcome {
                 rules_messages: Vec::new(),
                 intervention: PendingIntervention::default(),
@@ -281,32 +240,11 @@ impl<'a> Transaction<'a> {
     }
 
     // ------------------------------------------------------------------
-    // SecMarker management
-    // ------------------------------------------------------------------
-
-    pub(crate) fn is_inside_a_marker(&self) -> bool {
-        self.eval.marker.is_some()
-    }
-
-    pub(crate) fn current_marker(&self) -> Option<&str> {
-        self.eval.marker.as_deref()
-    }
-
-    pub(crate) fn remove_marker(&mut self) {
-        self.eval.marker = None;
-    }
-
-    pub(crate) fn add_marker(&mut self, name: &str) {
-        self.eval.marker = Some(name.to_string());
-    }
-
-    // ------------------------------------------------------------------
     // Phases
     // ------------------------------------------------------------------
 
     fn evaluate_phase(&mut self, phase: Phases) {
-        let rules = self.rules;
-        rules.evaluate(phase, self);
+        crate::eval::run_phase(self.rules, phase, self);
     }
 
     /// [`Self::process_connection`] with socket addresses. IPv6 addresses
