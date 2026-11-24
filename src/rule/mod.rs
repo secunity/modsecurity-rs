@@ -1,5 +1,5 @@
 //! A rule: `SecRule`, `SecAction` or `SecRuleScript`, with its actions and
-//! transformations and how they run.
+//! transformations, as the configuration gave it (`crate::eval` runs it).
 //!
 //! What the three have in common is [`Rule`]; what differs is its
 //! [`RuleKind`]. A chained rule owns its child (`chained_rule_child`); the
@@ -10,23 +10,20 @@
 mod actions;
 pub mod id;
 pub mod message;
-pub mod sec_action;
 pub mod sec_rule;
 pub mod sec_rule_script;
 
 pub use actions::Actions;
+pub(crate) use actions::{Stage, stage};
 pub use id::Id;
 
 use crate::actions::action::{Action, Kind};
 use crate::actions::rule_action::RuleAction;
 use crate::actions::transformation::Transformation;
 use crate::phases::Phases;
-use crate::rule::message::RuleMessage;
 use crate::rule::sec_rule::SecRule;
 use crate::rule::sec_rule_script::Script;
-use crate::rules_set::plan::Link;
 use crate::transaction::Transaction;
-use crate::utils::string::limit_to;
 
 /// A transformed value and the transformation path that produced it
 /// (e.g. `t:lowercase,t:urlDecode`).
@@ -38,13 +35,13 @@ pub enum TransformationPath {
     /// With `multiMatch`: the original value (empty path) or the one
     /// transformation that produced this value.
     Step(String),
-    /// All the transformations of the rule (see
-    /// [`Rule::transformation_path`]).
+    /// All the transformations of the rule (the `transformation_path` of
+    /// its `Link`).
     Full,
 }
 pub type TransformationResults = Vec<TransformationResult>;
 
-/// Where [`Rule::perform_logging`] is called from, which decides
+/// Where a rule's message is logged from (`crate::eval`), which decides
 /// whether the message is logged there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogPoint {
@@ -258,84 +255,6 @@ impl Rule {
         &self.actions
     }
 
-    // --- evaluation ---
-
-    /// Evaluates the rule with a new rule message. `chain` is the plan of
-    /// the rule and of the rules chained to it. Returns whether it
-    /// matched.
-    pub fn evaluate<'a>(&'a self, chain: &'a [Link], t: &mut Transaction<'a>) -> bool {
-        let mut rm = RuleMessage::new(self);
-        self.evaluate_with_message(chain, t, &mut rm)
-    }
-
-    /// Evaluates the rule with the message `rm`, according to its kind.
-    pub fn evaluate_with_message<'a>(
-        &'a self,
-        chain: &'a [Link],
-        t: &mut Transaction<'a>,
-        rm: &mut RuleMessage<'a>,
-    ) -> bool {
-        match &self.kind {
-            RuleKind::SecRule(o) => o.evaluate(self, chain, t, rm),
-            RuleKind::SecAction => crate::rule::sec_action::evaluate(self, &chain[0], t, rm),
-            RuleKind::SecRuleScript(s) => s.evaluate(self, &chain[0], t, rm),
-        }
-    }
-
-    /// The part of the evaluation shared by every kind of rule: matched
-    /// values are cleared at every new rule execution.
-    pub fn evaluate_base(&self, t: &mut Transaction<'_>) {
-        t.eval.matched.clear();
-    }
-
-    /// Applies `chain` (the transformations of the rule's [`Link`]) to
-    /// `input`.
-    ///
-    /// `ret` is cleared first; the buffer of its last value is reused. The
-    /// path of the final value (without `multiMatch`) is
-    /// [`TransformationPath::Full`]: the path of the rule's [`Link`].
-    pub fn execute_transformations(
-        &self,
-        t: &Transaction<'_>,
-        chain: &[Transformation],
-        input: &[u8],
-        ret: &mut TransformationResults,
-    ) {
-        let multi_match = self.contains_multi_match_action;
-        let mut value = match ret.pop() {
-            Some((mut v, _)) => {
-                v.clear();
-                v.extend_from_slice(input);
-                v
-            }
-            None => input.to_vec(),
-        };
-        ret.clear();
-        let mut nth = 0;
-
-        if multi_match {
-            // keep the original value
-            ret.push((value.clone(), TransformationPath::Step(String::new())));
-        }
-
-        for a in chain {
-            a.transform(&mut value, Some(t));
-            // With multiMatch, every value a transformation produced is
-            // inspected: the ones that differ from the value before it.
-            if multi_match && ret.last().is_some_and(|(before, _)| *before != value) {
-                ret.push((value.clone(), TransformationPath::Step(a.name().to_string())));
-                nth += 1;
-            }
-            crate::ms_dbg!(t, 9, " T ({}) {}: \"{}\"", nth, a.name(), String::from_utf8_lossy(&limit_to(80, &value)));
-        }
-
-        if multi_match {
-            crate::ms_dbg!(t, 9, "multiMatch is enabled. {} values to be tested.", ret.len());
-        } else {
-            ret.push((value, TransformationPath::Full));
-        }
-    }
-
     /// Whether the rule has the tag `name`, as written: a macro in a tag
     /// expands to nothing here (this is asked of a rule set, outside of
     /// any transaction).
@@ -374,35 +293,5 @@ impl Rule {
                 _ => None,
             })
             .collect()
-    }
-
-    /// Saves the message for the audit log and sends it to the server log,
-    /// depending on where the rule is in its evaluation.
-    pub fn perform_logging<'a>(&'a self, t: &mut Transaction<'a>, rm: &mut RuleMessage<'a>, point: LogPoint) {
-        let mut is_it_to_be_logged = rm.save_message;
-        if point != LogPoint::EachMatch {
-            if point == LogPoint::RuleEnd {
-                is_it_to_be_logged = rm.save_message && !self.chained_rule_parent;
-                if is_it_to_be_logged && !self.has_multimatch() {
-                    t.outcome.rules_messages.push(rm.clone());
-                    if !rm.is_disruptive {
-                        t.server_log(rm);
-                    }
-                }
-            } else if (self.has_block_action() && !self.has_multimatch())
-                || (is_it_to_be_logged && !self.has_multimatch() && !rm.message.is_empty())
-            {
-                t.outcome.rules_messages.push(rm.clone());
-                if !rm.is_disruptive {
-                    t.server_log(rm);
-                }
-            }
-        } else if self.has_multimatch() && is_it_to_be_logged {
-            t.outcome.rules_messages.push(rm.clone());
-            if !rm.is_disruptive {
-                t.server_log(rm);
-            }
-            rm.reset(false);
-        }
     }
 }

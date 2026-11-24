@@ -71,7 +71,7 @@ pub(crate) fn run<'a>(rules: &'a RulesSet, phase: Phases, t: &mut Transaction<'a
         } else if t.ctl.removes_rule_by_tag(r, t) {
             crate::ms_dbg!(t, 9, "Skipped rule id '{}'. Skipped due to a ruleRemoveByTag action.", r.reference());
         } else {
-            r.evaluate(chain, t);
+            super::rule::run(r, chain, t);
             crate::ms_dbg!(t, 9, "Matched vars cleaned.");
             t.vars.clear_matches();
 

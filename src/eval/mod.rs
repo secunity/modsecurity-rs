@@ -3,7 +3,10 @@
 //! configuration says, built when it is loaded; this module runs them and
 //! keeps where the run is in the transaction ([`EvalState`]).
 
+mod actions;
 mod phase;
+mod rule;
+mod sec_rule;
 
 use crate::actions::disruptive::allow::AllowType;
 use crate::rule::{Rule, TransformationResults};

@@ -1624,3 +1624,31 @@ and the three questions its callers asked by reading its lists:
 target predicate was written twice in `sec_rule.rs` (for a target and
 for a value); it is written once.
 
+
+## Rule evaluation in `crate::eval`
+
+How rules run was spread over the types they are made of:
+`RulesSet::evaluate` (the phase walk), `Marker::evaluate`, `Rule::evaluate`,
+`evaluate_with_message`, `evaluate_base`, `execute_transformations` and
+`perform_logging`, `SecRule::evaluate`, `sec_action::evaluate`,
+`Script::evaluate`, and the action runners of `rule/actions.rs`, each
+passing the rule, its `Link`, the transaction and the rule message to
+the next. The evaluation state (`EvalState`, `EvalScratch`) was in
+`transaction.rs`.
+
+All of it is in `src/eval/` now:
+
+- `mod.rs`: `EvalState` and `EvalScratch`;
+- `phase.rs`: the walk over a phase (skip, `skipAfter` and markers,
+  `allow`, removed rules, the stop after a disruption);
+- `rule.rs`: `RuleRun`, one rule being evaluated (rule, `Link`, the
+  plan of its chain, transaction, rule message), with the `SecAction`
+  and `SecRuleScript` kinds, the transformations and the logging;
+- `sec_rule.rs`: the `SecRule` kind;
+- `actions.rs`: the actions on a match and on the chain's match.
+
+`rule/` and `rules_set/` hold what the configuration says and the
+queries asked of it at load time; `rule/sec_action.rs` is gone. A
+`SecRuleScript` still keeps the matched values (`capture`) of the rule
+before it, as before: only `SecRule` and `SecAction` clear them.
+

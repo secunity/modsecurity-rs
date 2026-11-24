@@ -101,14 +101,17 @@ Before phase 2 the body is parsed by the processor that the content type
 or a `ctl:` action selects (`src/transaction/body.rs`, using
 `modsecurity-body`); its results become variables.
 
-For a phase, `RulesSet::evaluate` (`src/rules_set/mod.rs`) walks the
+Rules are run by `src/eval/`, apart from the rule set, which is only
+what was loaded. For a phase, `eval::phase::run` walks the
 plan's steps and handles what is not a rule's business: `skip`,
 `skipAfter` and markers, `allow`, removed rules, and stopping after a
 disruptive intervention.
 
 ### One rule
 
-`SecRule::evaluate` (`src/rule/sec_rule.rs`):
+A `RuleRun` (`src/eval/rule.rs`) is one rule being evaluated: the rule,
+its `Link`, the transaction and the rule message. For a `SecRule`
+(`src/eval/sec_rule.rs`) it:
 
 1. Takes the targets from the rule's `Link`, minus what `ctl:` actions
    removed for this transaction.
@@ -122,7 +125,8 @@ disruptive intervention.
    chain matches when every rule of it does.
 7. For a matched chain: runs the actions (default actions of the phase,
    tags, updates, `severity`/`logdata`/`msg`, the others, the disruptive
-   action) and decides whether the message is logged.
+   action; `src/eval/actions.rs`) and decides whether the message is
+   logged.
 
 A disruptive action writes the `Intervention` in the transaction's
 outcome; the caller reads it after the phase.
@@ -176,8 +180,8 @@ outcome; the caller reads it after the phase.
 | A transformation | `crates/modsecurity-transformations/src/<name>.rs` |
 | An action | `src/actions/<name>.rs`; the table of actions is in `src/actions/seclang.rs` |
 | A variable | `src/variables/` (`table.rs` declares the transaction's variables, `mod.rs` maps names to variables) |
-| How rules of a phase are walked | `src/rules_set/mod.rs`, `src/rules_set/plan.rs` |
-| How one rule is evaluated | `src/rule/sec_rule.rs`, `src/rule/actions.rs` |
+| How rules of a phase are walked | `src/eval/phase.rs`, `src/rules_set/plan.rs` |
+| How one rule is evaluated | `src/eval/rule.rs`, `src/eval/sec_rule.rs`, `src/eval/actions.rs` |
 | Body parsing | `crates/modsecurity-body/src/`, `src/transaction/body.rs` |
 | Log output | `src/rule/message/`, `src/audit_log/` |
 | The C API | `crates/modsecurity-capi/src/` |
