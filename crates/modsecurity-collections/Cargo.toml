@@ -9,11 +9,17 @@ publish = false
 [features]
 # The LMDB backend (the engine's feature of the same name).
 lmdb = ["modsecurity-native/lmdb"]
+# The redb backend (the engine's feature of the same name).
+redb = ["dep:redb"]
 
 [dependencies]
 # VariableValue and the key exclusions the collections resolve with.
 modsecurity-types = { path = "../modsecurity-types" }
 # PCRE2 (regex lookups) and LMDB.
 modsecurity-native = { path = "../modsecurity-native" }
+# A pure Rust store whose files several processes can open at once
+# (multi-writer mode, redb 4.5 and later): the shared collections without
+# LMDB's C code.
+redb = { version = "5", optional = true }
 # The libstdc++-ordered multimap of the in-memory and TX collections.
 modsecurity-compat = { path = "../modsecurity-compat" }

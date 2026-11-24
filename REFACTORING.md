@@ -1662,3 +1662,36 @@ name (a pointer there) suggested a rule. They are one `Chain`:
 for the logs (`rev`, `ver`, `accuracy`, `maturity`) is a `Metadata`.
 Renames only.
 
+
+## A redb backend for the persistent collections
+
+`modsecurity-collections` has a third backend, `backend::redb::Redb`,
+behind the opt-in `redb` feature (the engine's feature of the same name).
+It keeps the collections in `./modsec-shared-collections.redb`, opened in
+redb's multi-writer mode (stable since redb 4.5): any number of
+processes read and write it, one write transaction at a time, as nginx's
+workers do with LMDB's file. Records are `CollectionData::serialize`,
+as with LMDB, in one table of byte keys; keys are walked in order, so
+the prefix and regex lookups work as LMDB's. With both features on,
+redb is used. The default stays LMDB until the two have been compared
+in production-like use.
+
+`StorageError` carries a text (`cause`) instead of an LMDB code, so
+that a backend reports what its storage said; LMDB's is `code N`, the
+same debug log line as before.
+
+Measured on 2026-11-24 (WSL2, ext4; 100 keys x 10 rounds of
+`resolve_first` then `store_or_update_first` per process, as
+`setvar:ip.x=+1` does; durability is a sync on every commit in both):
+
+| | LMDB | redb |
+|---|---|---|
+| read, one process | 4.7-8.0 us | 15.3-15.4 us |
+| read, four processes | 4.8-5.8 us | 20.8-23.0 us |
+| write, one process | 1.17-1.58 ms | 1.36-1.41 ms |
+| write, four processes | 3.5-5.3 ms | 6.0-6.5 ms |
+| walk of 500 entries | 70-150 us | 110-230 us |
+
+Writes cost the sync of the commit in both. A test runs four processes
+writing to one file while the test process has it open.
+

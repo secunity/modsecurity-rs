@@ -82,6 +82,10 @@ maxmind = ["modsecurity-operators/maxmind"]
 lmdb = ["modsecurity-native/lmdb", "modsecurity-collections/lmdb"]
 ssdeep = ["modsecurity-native/ssdeep", "modsecurity-operators/ssdeep"]
 curl = ["dep:curl"]
+# Not a C++ option (off by default): the persistent collections in a redb
+# file (`./modsec-shared-collections.redb`) instead of LMDB's; with both
+# features on, redb is used.
+redb = ["modsecurity-collections/redb"]
 # Mirrors the MODSEC_REGEX_DOLLAR_ENDONLY build option.
 regex-dollar-endonly = ["modsecurity-operators/regex-dollar-endonly"]
 # Not a C++ option (off by default): feed `http` crate requests and

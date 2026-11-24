@@ -789,6 +789,7 @@ dependencies = [
  "modsecurity-compat",
  "modsecurity-native",
  "modsecurity-types",
+ "redb",
 ]
 
 [[package]]
@@ -1217,6 +1218,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
+]
+
+[[package]]
+name = "redb"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11175cc688ba1b9d3cec4fe582fd82cb97e2a82e28ccc8101b7b8030a8003280"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

@@ -1,7 +1,8 @@
 # Cargo build output
 /target
 
-# Created in the working directory by the LMDB collection backend
+# Created in the working directory by the LMDB and redb collection backends
 # (e.g. test/ when running the regression suite)
 modsec-shared-collections
 modsec-shared-collections-lock
+modsec-shared-collections.redb

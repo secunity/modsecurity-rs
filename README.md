@@ -21,7 +21,8 @@ This builds `target/release/libmodsecurity.{so,a}` (the C API) and the
 `modsecurity` Rust crate. PCRE2 is required. Optional components are cargo
 features, all on by default: `libxml2`, `lua`, `maxmind`, `lmdb`, `ssdeep`,
 `curl` (`libxml2`, `ssdeep` and `curl` need the system libraries).
-`--no-default-features` builds the core alone.
+`--no-default-features` builds the core alone. The opt-in `redb` feature keeps
+the persistent collections in a pure Rust store instead of LMDB.
 
 ## Use from Rust
 

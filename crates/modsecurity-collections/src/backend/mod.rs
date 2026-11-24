@@ -4,6 +4,7 @@ pub mod collection_data;
 // The backend of the persistent collections in builds without LMDB.
 pub mod in_memory_per_process;
 pub mod lmdb;
+pub mod redb;
 
 /// What every backend does, checked for each of them with the same code.
 #[cfg(test)]
@@ -93,6 +94,13 @@ mod contract {
     #[test]
     fn in_memory() {
         check(&super::in_memory_per_process::InMemoryPerProcess::new("IP"), &run_id());
+    }
+
+    #[cfg(feature = "redb")]
+    #[test]
+    fn redb() {
+        super::redb::tests::database_in_temp_dir();
+        check(&super::redb::Redb::new("IP"), &run_id());
     }
 
     #[cfg(feature = "lmdb")]

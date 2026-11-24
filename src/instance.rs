@@ -64,12 +64,18 @@ impl Default for ModSecurity {
     }
 }
 
+/// A persistent collection, in the backend the build chose: redb, else
+/// LMDB, else the memory of the process.
 fn new_collection(name: &str) -> Box<dyn Collection> {
-    #[cfg(feature = "lmdb")]
+    #[cfg(feature = "redb")]
+    {
+        Box::new(crate::collection::backend::redb::Redb::new(name))
+    }
+    #[cfg(all(feature = "lmdb", not(feature = "redb")))]
     {
         Box::new(crate::collection::backend::lmdb::Lmdb::new(name))
     }
-    #[cfg(not(feature = "lmdb"))]
+    #[cfg(not(any(feature = "lmdb", feature = "redb")))]
     {
         Box::new(crate::collection::backend::in_memory_per_process::InMemoryPerProcess::new(name))
     }
