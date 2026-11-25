@@ -3,7 +3,7 @@
 //! This view borrows only argument state and logging/configuration context,
 //! leaving the transaction's body and parser available for independent borrows.
 
-use super::TransactionVariables;
+use super::{Transaction, TransactionVariables};
 use crate::rules_set::RulesSet;
 use crate::utils::string::ssplit_pair;
 use crate::variables::variable_origin::VariableOrigin;
@@ -117,6 +117,32 @@ impl ArgumentWriter<'_> {
             self.add(origin, &key, &value, offset);
             offset = offset + part.len() + 1;
         }
+    }
+}
+
+/// The transaction's side of the arguments.
+impl Transaction<'_> {
+    fn argument_writer(&mut self) -> ArgumentWriter<'_> {
+        ArgumentWriter {
+            vars: &mut self.vars,
+            combined_size: &mut self.http.args_combined_size,
+            rules: self.rules,
+            id: &self.id,
+            uri: &self.http.uri,
+        }
+    }
+
+    /// Adds the arguments of a query string or URL-encoded form body.
+    pub(crate) fn extract_arguments(&mut self, origin: ArgumentOrigin, buf: &[u8], offset: usize) {
+        self.argument_writer().extract(origin, buf, offset);
+    }
+
+    #[cfg_attr(not(feature = "libxml2"), allow(dead_code))] // Used by the XML body processor.
+    /// Adds one argument to `ARGS` and to `ARGS_GET` or `ARGS_POST`
+    /// according to `origin`. Returns `false` when `SecArgumentsLimit` was
+    /// reached.
+    pub(crate) fn add_argument(&mut self, origin: ArgumentOrigin, key: &[u8], value: &[u8], offset: usize) -> bool {
+        self.argument_writer().add(origin, key, value, offset)
     }
 }
 

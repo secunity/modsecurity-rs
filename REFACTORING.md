@@ -1695,3 +1695,16 @@ Measured on 2026-11-24 (WSL2, ext4; 100 keys x 10 rounds of
 Writes cost the sync of the commit in both. A test runs four processes
 writing to one file while the test process has it open.
 
+
+## `transaction.rs` split by direction
+
+`transaction.rs` had every method a connector calls. The request side
+(connection, URI, headers, body, appending the body or reading it from a
+file) is in `transaction/request.rs`, the response side (status,
+headers, body) in `transaction/response.rs`, and the transaction's
+argument methods joined `ArgumentWriter` in `transaction/arguments.rs`.
+`transaction.rs` keeps the state, the constructors, running a phase,
+the body buffers both directions share, the logging phase and the
+intervention. Each submodule imports what it uses. Moves only: the code
+lines are the same.
+
