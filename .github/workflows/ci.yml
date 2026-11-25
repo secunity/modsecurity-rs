@@ -37,13 +37,13 @@ jobs:
     name: test ${{ matrix.features || '(default features)' }}
     steps:
       - uses: actions/checkout@v4
-      # The system libraries of the optional features: libxml2, ssdeep and
-      # curl. PCRE2 too (pcre2-sys builds its own copy without it). Lua and
-      # LMDB are vendored by their crates.
+      # The system libraries of the optional features: libxml2 and ssdeep.
+      # PCRE2 too (pcre2-sys builds its own copy without it). Lua and LMDB
+      # are vendored by their crates; the HTTPS client is Rust (ureq).
       - run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config libpcre2-dev libxml2-dev libfuzzy-dev libcurl4-openssl-dev
+            pkg-config libpcre2-dev libxml2-dev libfuzzy-dev
       - run: rustup toolchain install stable --profile minimal --component clippy
       - uses: actions/cache@v4
         with:
@@ -68,7 +68,7 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config libpcre2-dev libxml2-dev libfuzzy-dev libcurl4-openssl-dev \
+            pkg-config libpcre2-dev libxml2-dev libfuzzy-dev \
             libssl-dev zlib1g-dev
       - run: rustup toolchain install stable --profile minimal --component clippy
       - uses: actions/cache@v4

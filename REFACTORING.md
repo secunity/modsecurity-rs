@@ -1708,3 +1708,24 @@ the body buffers both directions share, the logging phase and the
 intervention. Each submodule imports what it uses. Moves only: the code
 lines are the same.
 
+
+## The HTTPS client on `ureq`
+
+`utils::https_client` (`SecRemoteRules`, the HTTPS audit log writer, the
+remote `@pmFromFile`/`@ipMatchFromFile` lists) used libcurl through the
+`curl` crate, which needs the system library and its headers. It uses
+`ureq` 3 with rustls now, and checks certificates against the platform's
+trust store (`rustls-platform-verifier`), as libcurl does; a bundled list
+(`webpki-roots`) would not know an organisation's own CA. What libcurl
+was asked for is kept: TLS 1.2 at least (rustls has nothing older), peer
+and host checks, the `ModSec-*` headers and the `ModSecurity3` user agent,
+a failed download on an HTTP error status, POST with the request type (or
+a form's type, as libcurl's default), no `Expect: 100-continue`, a body
+of any size (`ureq` stops at 10 MB unless told otherwise), and a proxy
+from the environment. One difference: `ureq` takes the first of
+`ALL_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY` that is set, whatever the
+scheme, where libcurl picks by scheme.
+
+The cargo feature is `https-client`; `curl` stays as its alias in the
+engine and the C API, so that existing build commands keep working.
+

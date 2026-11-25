@@ -14,7 +14,7 @@ pub const MODSECURITY_MINOR: &str = "0";
 pub const MODSECURITY_PATCHLEVEL: &str = "17";
 pub const MODSECURITY_TAG_NUM: &str = "100";
 pub const MODSECURITY_VERSION: &str = "3.0.17";
-#[cfg_attr(not(feature = "curl"), allow(dead_code))] // Sent by the HTTPS client.
+#[cfg_attr(not(feature = "https-client"), allow(dead_code))] // Sent by the HTTPS client.
 pub const MODSECURITY_VERSION_NUM: u64 = 30170100;
 
 bitflags::bitflags! {

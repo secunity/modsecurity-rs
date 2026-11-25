@@ -15,14 +15,15 @@ crate-type = ["cdylib", "staticlib"]
 
 [features]
 # The engine's features, forwarded (see the engine's Cargo.toml).
-default = ["libxml2", "lua", "maxmind", "lmdb", "ssdeep", "curl"]
+default = ["libxml2", "lua", "maxmind", "lmdb", "ssdeep", "https-client"]
 libxml2 = ["engine/libxml2"]
 lua = ["engine/lua"]
 maxmind = ["engine/maxmind"]
 lmdb = ["engine/lmdb"]
 redb = ["engine/redb"]
 ssdeep = ["engine/ssdeep"]
-curl = ["engine/curl"]
+https-client = ["engine/https-client"]
+curl = ["https-client"]
 regex-dollar-endonly = ["engine/regex-dollar-endonly"]
 
 [dependencies]

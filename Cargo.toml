@@ -73,7 +73,7 @@ name = "suites"
 path = "test/suites.rs"
 
 [features]
-default = ["libxml2", "lua", "maxmind", "lmdb", "ssdeep", "curl"]
+default = ["libxml2", "lua", "maxmind", "lmdb", "ssdeep", "https-client"]
 # Each feature mirrors one of the optional dependencies of the C++ build
 # (WITH_LIBXML2, WITH_LUA, WITH_MAXMIND, WITH_LMDB, WITH_SSDEEP, WITH_CURL).
 libxml2 = ["modsecurity-native/libxml2", "modsecurity-body/libxml2", "modsecurity-operators/libxml2"]
@@ -81,7 +81,10 @@ lua = ["dep:mlua", "modsecurity-native/lua"]
 maxmind = ["modsecurity-operators/maxmind"]
 lmdb = ["modsecurity-native/lmdb", "modsecurity-collections/lmdb"]
 ssdeep = ["modsecurity-native/ssdeep", "modsecurity-operators/ssdeep"]
-curl = ["dep:curl"]
+# The HTTPS client (SecRemoteRules, the HTTPS audit log writer, remote
+# @pmFromFile/@ipMatchFromFile lists); `curl` is its former name.
+https-client = ["dep:ureq"]
+curl = ["https-client"]
 # Not a C++ option (off by default): the persistent collections in a redb
 # file (`./modsec-shared-collections.redb`) instead of LMDB's; with both
 # features on, redb is used.
@@ -109,8 +112,10 @@ modsecurity-transformations = { path = "crates/modsecurity-transformations" }
 md-5 = "0.11"
 sha1 = "0.11"
 mlua = { version = "0.12", features = ["lua54", "vendored"], optional = true }
-# libcurl binding (SecRemoteRules, HTTPS audit log writer, remote pm/ip files).
-curl = { version = "0.4", optional = true }
+# The HTTPS client (SecRemoteRules, HTTPS audit log writer, remote pm/ip
+# files) in Rust, in place of libcurl: rustls, and the platform's trust store
+# (as libcurl uses it) through rustls-platform-verifier.
+ureq = { version = "3.5", default-features = false, features = ["rustls", "platform-verifier"], optional = true }
 # Typed flag sets for the log options of the Rust API (LogProperties,
 # LogParts), instead of i32 constants.
 bitflags = "2.13"

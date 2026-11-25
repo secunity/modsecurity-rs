@@ -128,7 +128,7 @@ Naming: snake_case, `m_` prefixes dropped (`m_ruleId` → `rule_id`,
 | `maxminddb` | libmaxminddb | `@geoLookup` |
 | `lmdb-master-sys` | liblmdb | persistent collections |
 | `redb` (opt-in `redb` feature) | liblmdb | persistent collections in pure Rust: a file that every process (nginx worker) opens in redb's multi-writer mode; a different file (`modsec-shared-collections.redb`), so what LMDB stored is not read |
-| `curl` | libcurl | remote rules, HTTPS audit log |
+| `ureq` (rustls, the platform trust store) | libcurl | remote rules, remote `@pmFromFile`/`@ipMatchFromFile` lists, HTTPS audit log (feature `https-client`, formerly `curl`) |
 | system libxml2, libfuzzy | same | thin `extern "C"` bindings in the modules that use them |
 | `libc`, `bstr` | — | POSIX calls; byte-string helpers |
 | `jiff` | libc `localtime_r`/`strftime` | local time zone and timestamp formatting (C-locale output) |

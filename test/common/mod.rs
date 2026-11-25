@@ -22,7 +22,7 @@ pub fn resources() -> Vec<&'static str> {
         r.push("geoip-or-maxmind");
         r.push("maxmind");
     }
-    if cfg!(feature = "curl") {
+    if cfg!(feature = "https-client") {
         r.push("curl");
     }
     if cfg!(feature = "ssdeep") {
