@@ -39,7 +39,7 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
     /// when it has none.
     pub fn param<'p>(&self, param: &'p Param) -> Cow<'p, [u8]> {
         match self.param {
-            Some(string) if param.contains_macro() => Cow::Owned(string.evaluate(Some(self.t))),
+            Some(string) if param.contains_macro() => Cow::Owned(string.expand(self.t, None).into_owned()),
             _ => Cow::Borrowed(&param.literal),
         }
     }
@@ -202,7 +202,7 @@ impl RuleOperator {
     /// the literal, depending on the operator.
     pub fn message_param(&self, t: &Transaction<'_>) -> Cow<'_, [u8]> {
         match (self.op.param(), &self.param) {
-            (Some(param), Some(string)) if param.is_expanded_in_message() => string.evaluate_cow(Some(t)),
+            (Some(param), Some(string)) if param.is_expanded_in_message() => string.expand(t, None),
             (Some(param), _) => Cow::Borrowed(&param.literal),
             (None, _) => Cow::Borrowed(b""),
         }
@@ -220,7 +220,7 @@ pub fn instantiate(op: &str, param_str: &str, file: &str) -> Option<Result<Opera
 /// Like [`instantiate`] but with an already parsed (possibly macro bearing)
 /// parameter, as built by the configuration parser.
 pub fn instantiate_with_param(op: &str, param: &RunTimeString, file: &str) -> Option<Result<Operator, String>> {
-    let param = Param::new(param.evaluate_static(), param.contains_macro());
+    let param = Param::new(param.text().into_owned(), param.contains_macro());
     Some(match op.to_ascii_lowercase().as_str() {
         "inspectfile" => InspectFile::new(param, file).map(Operator::InspectFile),
         name => modsecurity_operators::instantiate(name, param, file, &EngineResources)?.map(Operator::Matcher),

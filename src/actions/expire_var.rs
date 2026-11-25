@@ -63,7 +63,7 @@ impl Expiry {
 
 impl ExpireVar {
     pub fn with_rts(z: RunTimeString) -> Self {
-        let parsed = (!z.contains_macro()).then(|| Expiry::parse(&z.evaluate_static()));
+        let parsed = (!z.contains_macro()).then(|| Expiry::parse(&z.text()));
         ExpireVar { string: z, parsed }
     }
 }

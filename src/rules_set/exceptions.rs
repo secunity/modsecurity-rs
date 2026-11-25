@@ -172,7 +172,7 @@ mod tests {
                 .for_rule(1)
                 .iter()
                 .filter_map(|a| match &**a {
-                    RuleAction::Tag(tag) => Some(tag.string.evaluate_static_string()),
+                    RuleAction::Tag(tag) => Some(String::from_utf8_lossy(&tag.string.text()).into_owned()),
                     _ => None,
                 })
                 .collect();

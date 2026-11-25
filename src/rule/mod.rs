@@ -264,23 +264,23 @@ impl Rule {
     /// expands to nothing here (this is asked of a rule set, outside of
     /// any transaction).
     pub fn has_tag(&self, name: &str) -> bool {
-        self.actions.tags().any(|tag| *tag.string.evaluate_cow(None) == *name.as_bytes())
+        self.actions.tags().any(|tag| *tag.string.text() == *name.as_bytes())
     }
 
     /// Whether the rule's `msg` is `name`, as written (see
     /// [`Self::has_tag`]).
     pub fn msg_is(&self, name: &str) -> bool {
-        self.actions.msg().is_some_and(|m| *m.string.evaluate_cow(None) == *name.as_bytes())
+        self.actions.msg().is_some_and(|m| *m.string.text() == *name.as_bytes())
     }
 
     /// Whether one of the rule's `tag`s expands to `name`.
     pub fn contains_tag(&self, name: &str, t: &Transaction<'_>) -> bool {
-        self.actions.tags().any(|tag| *tag.string.evaluate_cow(Some(t)) == *name.as_bytes())
+        self.actions.tags().any(|tag| *tag.string.expand(t, None) == *name.as_bytes())
     }
 
     /// Whether the rule's `msg` expands to `name`.
     pub fn contains_msg(&self, name: &str, t: &Transaction<'_>) -> bool {
-        self.actions.msg().is_some_and(|m| *m.string.evaluate_cow(Some(t)) == *name.as_bytes())
+        self.actions.msg().is_some_and(|m| *m.string.expand(t, None) == *name.as_bytes())
     }
 
     /// The `(prefix, href)` of the rule's `xmlns` actions, including the

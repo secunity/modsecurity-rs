@@ -41,14 +41,14 @@ impl Action for SetVar {
         let (t, rule) = cx.engine();
         let resolved_pre = match &self.operation {
             SetVarOperation::Set(s) | SetVarOperation::Add(s) | SetVarOperation::Subtract(s) => {
-                s.evaluate_rule(Some(t), Some(rule))
+                s.expand(t, Some(rule)).into_owned()
             }
             SetVarOperation::SetToOne | SetVarOperation::Unset => Vec::new(),
         };
 
         let target = self.variable.write_target();
         let variable_name_expanded = match &target {
-            Some(target) => target.name().evaluate_rule(Some(t), Some(rule)),
+            Some(target) => target.name().expand(t, Some(rule)).into_owned(),
             None => self.variable.name().as_bytes().to_vec(),
         };
 

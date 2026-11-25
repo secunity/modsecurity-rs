@@ -76,58 +76,50 @@ impl RunTimeString {
         matches!(self.content, Content::Interpolated(_))
     }
 
-    /// Expands the string for the rule `r`: concatenates the literals and
-    /// the first value of each variable. Without a transaction, variables
-    /// expand to nothing.
-    pub fn evaluate_rule(&self, t: Option<&Transaction<'_>>, r: Option<&Rule>) -> Vec<u8> {
+    /// The string in the transaction `t`: the literal text and, for each
+    /// macro, the first value of its variable (nothing when it has none).
+    /// The variables see `rule` only when it is a `SecRule`. A string
+    /// without a macro is borrowed.
+    pub fn expand(&self, t: &Transaction<'_>, rule: Option<&Rule>) -> Cow<'_, [u8]> {
         let elements = match &self.content {
-            Content::Literal(text) => return text.clone(),
+            Content::Literal(text) => return Cow::Borrowed(text),
             Content::Interpolated(elements) => elements,
         };
-        // Only a `SecRule` is passed on to the variables of a macro.
-        let rule = r.filter(|r| r.is_sec_rule());
+        let rule = rule.filter(|r| r.is_sec_rule());
         let mut s = Vec::new();
         for element in elements {
             match element {
                 Element::Text(text) => s.extend_from_slice(text),
                 Element::Variable(variable) => {
-                    if let Some(t) = t {
-                        let mut values = Vec::new();
-                        variable.evaluate(t, rule, &mut values);
-                        if let Some(first) = values.first() {
-                            s.extend_from_slice(first.value());
-                        }
+                    let mut values = Vec::new();
+                    variable.evaluate(t, rule, &mut values);
+                    if let Some(first) = values.first() {
+                        s.extend_from_slice(first.value());
                     }
                 }
             }
         }
-        s
+        Cow::Owned(s)
     }
 
-    /// [`Self::evaluate`] without copying when the string is plain text
-    /// (no macro): for hot comparisons such as
-    /// [`Rule::contains_tag`].
-    pub fn evaluate_cow(&self, t: Option<&Transaction<'_>>) -> Cow<'_, [u8]> {
+    /// The string without a transaction: the literal text, the macros give
+    /// nothing. What a rule set reads of a string by itself (a tag as
+    /// written, a configuration value).
+    pub fn text(&self) -> Cow<'_, [u8]> {
         match &self.content {
             Content::Literal(text) => Cow::Borrowed(text),
-            Content::Interpolated(_) => Cow::Owned(self.evaluate(t)),
+            Content::Interpolated(elements) => Cow::Owned(
+                elements
+                    .iter()
+                    .filter_map(|e| match e {
+                        Element::Text(text) => Some(text.as_slice()),
+                        Element::Variable(_) => None,
+                    })
+                    .flatten()
+                    .copied()
+                    .collect(),
+            ),
         }
-    }
-
-    /// Expands the string (outside of any rule).
-    pub fn evaluate(&self, t: Option<&Transaction<'_>>) -> Vec<u8> {
-        self.evaluate_rule(t, None)
-    }
-
-    /// Expands the string without a transaction: macros expand to nothing.
-    pub fn evaluate_static(&self) -> Vec<u8> {
-        self.evaluate(None)
-    }
-
-    /// [`Self::evaluate_static`] as a (lossy) UTF-8 string, for
-    /// configuration values.
-    pub fn evaluate_static_string(&self) -> String {
-        String::from_utf8_lossy(&self.evaluate_static()).into_owned()
     }
 }
 
@@ -146,14 +138,16 @@ mod tests {
     #[test]
     fn literal_fragments_preserve_bytes_and_can_be_borrowed() {
         let mut string = RunTimeString::new();
-        assert_eq!(string.evaluate_static(), b"");
+        assert_eq!(*string.text(), *b"");
         string.append_text("a");
         string.append_bytes(b"\0\xff");
         string.append_text("");
         string.append_text("z");
         assert!(!string.contains_macro());
-        assert_eq!(string.evaluate_static(), b"a\0\xffz");
-        assert!(matches!(string.evaluate_cow(None), Cow::Borrowed(b"a\0\xffz")));
+        assert!(matches!(string.text(), Cow::Borrowed(b"a\0\xffz")));
+        let (ms, rules) = (ModSecurity::new(), RulesSet::new());
+        let transaction = Transaction::new(&ms, &rules, None);
+        assert!(matches!(string.expand(&transaction, None), Cow::Borrowed(b"a\0\xffz")));
     }
 
     #[test]
@@ -170,14 +164,13 @@ mod tests {
         string.append_text("]");
         string.append_bytes(b"\xff");
         assert!(string.contains_macro());
-        assert_eq!(string.evaluate_static(), b"[]\xff");
-        assert_eq!(string.evaluate(Some(&transaction)), b"[second]\xff");
-        assert_eq!(string.evaluate_cow(Some(&transaction)).as_ref(), b"[second]\xff");
+        assert_eq!(*string.text(), *b"[]\xff");
+        assert_eq!(*string.expand(&transaction, None), *b"[second]\xff");
 
         let mut only_variable = RunTimeString::new();
         only_variable.append_var(variable("ARGS", "missing"));
         assert!(only_variable.contains_macro());
-        assert_eq!(only_variable.evaluate_static(), b"");
+        assert_eq!(*only_variable.text(), *b"");
     }
 
     #[test]
@@ -196,7 +189,7 @@ mod tests {
         let mut string = RunTimeString::new();
         string.append_var(variable("RULE", "id"));
         let phase = rules.rules_set_phases.for_phase(Phases::RequestHeaders);
-        assert_eq!(string.evaluate_rule(Some(&transaction), phase[0].as_rule()), b"");
-        assert_eq!(string.evaluate_rule(Some(&transaction), phase[1].as_rule()), b"20");
+        assert_eq!(*string.expand(&transaction, phase[0].as_rule()), *b"");
+        assert_eq!(*string.expand(&transaction, phase[1].as_rule()), *b"20");
     }
 }

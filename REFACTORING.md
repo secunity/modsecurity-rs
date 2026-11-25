@@ -1783,3 +1783,15 @@ and `only_off`; the directives with logic of their own keep a closure.
 table. Compared with the previous table on 70 directives x 33 values
 (every setting and error message): identical.
 
+
+## `RunTimeString`: `expand` and `text`
+
+A string with macros had five ways to be read: `evaluate_rule(t, rule)`,
+`evaluate(t)`, `evaluate_cow(t)`, `evaluate_static()` and
+`evaluate_static_string()`, the transaction an `Option` throughout. Two
+things are asked of it: the string in a transaction, and the string by
+itself (a tag as written, a configuration value). They are
+`expand(&Transaction, Option<&Rule>)` and `text()`, both a `Cow`, which
+borrows a string without macros. The `SecRule` debug line that shows a
+parameter with macros builds its text once.
+

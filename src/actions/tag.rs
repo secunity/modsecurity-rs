@@ -25,7 +25,7 @@ impl Tag {
 
     /// The tag, with its macros expanded for `t`.
     pub fn tag(&self, t: &Transaction<'_>) -> Vec<u8> {
-        self.string.evaluate(Some(t))
+        self.string.expand(t, None).into_owned()
     }
 }
 

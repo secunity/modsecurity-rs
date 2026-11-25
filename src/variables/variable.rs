@@ -214,7 +214,7 @@ impl Variable {
                     // The key is the name, which is empty for `TX`.
                     CollectionKey::All | CollectionKey::Key => tx.resolve_multi_matches(self.name.as_bytes(), l, ke),
                     CollectionKey::Regex(r) => tx.resolve_regex(r, l, ke),
-                    CollectionKey::Dynamic(string) => tx.resolve_multi_matches(&string.evaluate(Some(t)), l, ke),
+                    CollectionKey::Dynamic(string) => tx.resolve_multi_matches(&string.expand(t, None), l, ke),
                 }
             }
             Source::Persistent(collection, key) => {
@@ -225,7 +225,7 @@ impl Variable {
                         t.stored(binding.resolve(self.name.as_bytes(), app, l, ke))
                     }
                     CollectionKey::Regex(regex) => t.stored(binding.resolve_regex(regex, app, l, ke)),
-                    CollectionKey::Dynamic(string) => t.stored(binding.resolve(&string.evaluate(Some(t)), app, l, ke)),
+                    CollectionKey::Dynamic(string) => t.stored(binding.resolve(&string.expand(t, None), app, l, ke)),
                 }
             }
             Source::Rule(selector) => rule::evaluate(selector, t, rule, l),

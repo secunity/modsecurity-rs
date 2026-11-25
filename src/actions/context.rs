@@ -38,7 +38,7 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
 
     /// `string` with its macros expanded for this transaction.
     pub fn expand(&self, string: &RunTimeString) -> Vec<u8> {
-        string.evaluate(Some(self.t))
+        string.expand(self.t, None).into_owned()
     }
 
     // --- rule message --------------------------------------------------

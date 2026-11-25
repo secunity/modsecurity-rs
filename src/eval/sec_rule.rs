@@ -116,19 +116,13 @@ impl<'a> RuleRun<'_, 'a> {
         let vars_str = || variables_to_string(&sec_rule.variables);
         if let Some(s) = &sec_rule.operator.param {
             if crate::DebugSink::debug_enabled(t, 4) {
-                let mut eparam = s.evaluate(Some(t));
+                // `"expanded"`, and `Was: "as written"` after it for a
+                // parameter with macros.
+                let mut eparam = [&b"\""[..], &s.expand(t, None), b"\""].concat();
                 if s.contains_macro() {
-                    let mut e = b"\"".to_vec();
-                    e.extend_from_slice(&eparam);
-                    e.extend_from_slice(b"\" Was: \"");
-                    e.extend_from_slice(&s.evaluate(None));
-                    e.push(b'"');
-                    eparam = e;
-                } else {
-                    let mut e = b"\"".to_vec();
-                    e.extend_from_slice(&eparam);
-                    e.push(b'"');
-                    eparam = e;
+                    eparam.extend_from_slice(b" Was: \"");
+                    eparam.extend_from_slice(&s.text());
+                    eparam.push(b'"');
                 }
                 crate::ms_dbg!(
                     t,
