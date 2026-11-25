@@ -8,9 +8,6 @@ pub fn isodigit(x: u8) -> bool {
     (b'0'..=b'7').contains(&x)
 }
 
-/// The non-breaking space of ISO 8859-1.
-pub const NBSP: u8 = 160;
-
 /// The value of a hexadecimal digit (either case).
 #[inline]
 pub fn hex_digit(c: u8) -> Option<u8> {

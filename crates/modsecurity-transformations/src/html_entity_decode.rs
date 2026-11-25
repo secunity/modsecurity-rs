@@ -3,7 +3,8 @@
 
 use modsecurity_compat::cnum::strtoll;
 
-use crate::chars::NBSP;
+/// The non-breaking space of ISO 8859-1 (`&nbsp;`).
+const NBSP: u8 = 0xa0;
 
 /// Named-entity table for t:htmlEntityDecode: `(name, character)`.
 ///

@@ -1,15 +1,19 @@
 //! The `t:removeWhitespace` transformation: removes whitespace and the
-//! bytes 0xa0 and 0xc2 (non-breaking space).
+//! bytes of a non-breaking space, in ISO 8859-1 (0xa0) and in UTF-8 (0xc2
+//! 0xa0).
 
 use crate::chars::is_space;
 use crate::remove_nulls::remove_if;
 
 /// Transforms `value` in place.
 pub fn transform(value: &mut Vec<u8>) {
-    const NON_BREAKING_SPACES: u8 = 0xa0;
-    const NON_BREAKING_SPACES2: u8 = 0xc2;
-    // remove whitespaces and non breaking spaces (NBSP)
-    remove_if(value, |c| is_space(c) || c == NON_BREAKING_SPACES || c == NON_BREAKING_SPACES2);
+    /// The non-breaking space of ISO 8859-1, and the second byte of
+    /// U+00A0 in UTF-8.
+    const NBSP: u8 = 0xa0;
+    /// The first byte of U+00A0 in UTF-8. It is removed wherever it is,
+    /// as C++ does, also when it starts another character.
+    const UTF8_NBSP_LEAD: u8 = 0xc2;
+    remove_if(value, |c| is_space(c) || c == NBSP || c == UTF8_NBSP_LEAD);
 }
 
 #[cfg(test)]
