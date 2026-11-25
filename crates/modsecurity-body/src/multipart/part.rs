@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use modsecurity_compat::chars::{chomp, is_space};
+use modsecurity_compat::chars::is_space;
 use modsecurity_types::ms_dbg;
 
 use super::{Context, MULTIPART_BUF_SIZE, Multipart, MultipartPartTmpFile, find};
@@ -471,5 +471,34 @@ impl Multipart {
         mpp.value_offset = offset.wrapping_sub(data.len());
         mpp.grow_file(data.len(), offset);
         true
+    }
+}
+
+/// Removes the trailing `\n` and `\r` characters of a header line. A line
+/// made of only those is left as it is (sic: C++'s `chomp` erases from
+/// `find_last_not_of`, which finds nothing there).
+fn chomp(s: &mut Vec<u8>) {
+    if let Some(pos) = s.iter().rposition(|&c| c != b'\n' && c != b'\r') {
+        s.truncate(pos + 1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chomp;
+
+    #[test]
+    fn chomp_removes_line_ends() {
+        let chomped = |s: &[u8]| {
+            let mut v = s.to_vec();
+            chomp(&mut v);
+            v
+        };
+        assert_eq!(chomped(b"a: b\r\n"), b"a: b");
+        assert_eq!(chomped(b"a\n\r\n\r"), b"a");
+        assert_eq!(chomped(b"a\rb\n"), b"a\rb");
+        assert_eq!(chomped(b"ab"), b"ab");
+        assert_eq!(chomped(b"\r\n"), b"\r\n", "only line ends: unchanged");
+        assert_eq!(chomped(b""), b"");
     }
 }

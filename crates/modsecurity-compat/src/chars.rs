@@ -131,14 +131,6 @@ pub fn split(s: &[u8], delimiter: u8) -> Vec<Vec<u8>> {
     internal
 }
 
-/// Removes the trailing `\n` and `\r` characters of `s` (an input made of
-/// only those is left unchanged).
-pub fn chomp(s: &mut Vec<u8>) {
-    if let Some(pos) = s.iter().rposition(|&c| c != b'\n' && c != b'\r') {
-        s.truncate(pos + 1);
-    }
-}
-
 /// `s` as C code sees it through a `const char *`: up to its first NUL
 /// byte. Used where a value goes to a C function, and where a result the
 /// tests expect was defined by one: what follows a NUL byte is ignored.
