@@ -2,12 +2,10 @@
 //! ([`rule_action::RuleAction`]), what an action may do ([`context`]) and
 //! how the parser builds one by name ([`seclang`]).
 
-pub mod accuracy;
 pub mod action;
 pub mod audit_log;
 pub mod block;
 pub mod capture;
-pub mod chain;
 pub mod context;
 pub mod ctl;
 pub mod data;
@@ -17,15 +15,11 @@ pub mod expire_var;
 pub mod init_col;
 pub mod log;
 pub mod log_data;
-pub mod maturity;
 pub mod msg;
 pub mod multi_match;
 pub mod no_audit_log;
 pub mod no_log;
-pub mod phase;
-pub mod rev;
 pub mod rule_action;
-pub mod rule_id;
 pub mod seclang;
 pub mod set_env;
 pub mod set_rsc;
@@ -37,5 +31,4 @@ pub mod skip;
 pub mod skip_after;
 pub mod tag;
 pub mod transformation;
-pub mod ver;
 pub mod xmlns;

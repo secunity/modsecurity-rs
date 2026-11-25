@@ -11,14 +11,15 @@
 mod actions;
 pub mod id;
 pub mod message;
+pub mod property;
 pub mod sec_rule;
 pub mod sec_rule_script;
 
 pub use actions::Actions;
 pub(crate) use actions::{Stage, stage};
 pub use id::Id;
+pub use property::{Property, RuleProperty};
 
-use crate::actions::action::{Action, Kind};
 use crate::actions::rule_action::RuleAction;
 use crate::actions::transformation::Transformation;
 use crate::phases::Phases;
@@ -120,11 +121,11 @@ pub struct Rule {
 }
 
 impl Rule {
-    /// Builds a rule from its parsed actions and transformations and its
-    /// kind specific part. Configuration actions (`id`, `phase`, ...)
-    /// are applied to the rule here and dropped; the run time actions are
-    /// its `Actions`.
+    /// Builds a rule from its properties (`id`, `phase`, ...), its actions
+    /// and transformations, and its kind specific part. The run time
+    /// actions are its `Actions`.
     pub fn new(
+        properties: Vec<RuleProperty>,
         actions: Option<Vec<RuleAction>>,
         transformations: Option<Vec<Transformation>>,
         file_name: &str,
@@ -145,29 +146,20 @@ impl Rule {
             contains_static_block_action: false,
             kind,
         };
+        for p in &properties {
+            p.apply(&mut r);
+        }
         for a in actions.into_iter().flatten() {
             match a {
-                RuleAction::Phase(p) => {
-                    p.configure(&mut r);
-                }
                 RuleAction::Capture(_) => r.contains_capture_action = true,
                 RuleAction::MultiMatch(_) => r.contains_multi_match_action = true,
                 RuleAction::Block(_) => {
                     r.contains_static_block_action = true;
                     r.actions.add(a);
                 }
-                a => match a.kind() {
-                    Kind::Configuration => {
-                        a.configure(&mut r);
-                    }
-                    Kind::RunTimeOnlyIfMatch => r.actions.add(a),
-                    // A transformation given with the actions.
-                    Kind::RunTimeBeforeMatchAttempt => {
-                        if let RuleAction::Transformation(t) = a {
-                            r.transformations.push(t);
-                        }
-                    }
-                },
+                // A transformation given with the actions.
+                RuleAction::Transformation(t) => r.transformations.push(t),
+                a => r.actions.add(a),
             }
         }
         r

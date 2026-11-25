@@ -1729,3 +1729,21 @@ scheme, where libcurl picks by scheme.
 The cargo feature is `https-client`; `curl` stays as its alias in the
 engine and the C API, so that existing build commands keep working.
 
+
+## Rule properties are not actions
+
+`id`, `phase`, `rev`, `ver`, `accuracy`, `maturity` and `chain` were
+seven action types of `Kind::Configuration`: they never ran, and
+`Rule::new` called their `configure(&mut Rule)` to set a field. They
+are one `rule::Property` now (with the name as written, `RuleProperty`),
+which the parser builds in their place and `Rule::new` applies. With
+them gone, an action was either a transformation or ran on a match, so
+`Kind`, `Action::kind` and `Action::configure` are gone too:
+`RuleAction::is_transformation` tells the two apart.
+`SecDefaultAction` takes the `phase` property and refuses the others,
+and `SecRuleUpdateActionById` refuses all of them, with the messages as
+before (the parser checks them now, where the update list was checked).
+`capture` and `multiMatch` stay actions: the two directives accept them
+(they have no effect there), and making them properties would refuse
+configurations that load today.
+

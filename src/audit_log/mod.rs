@@ -546,7 +546,8 @@ mod tests {
         run(&rules, "not-relevant", |_| {});
         assert_eq!(std::fs::read_to_string(&log).unwrap(), "");
         // A rule message without noauditlog forces the entry.
-        let rule: &'static Rule = Box::leak(Box::new(Rule::new(None, None, "file", 1, RuleKind::SecAction)));
+        let rule: &'static Rule =
+            Box::leak(Box::new(Rule::new(Vec::new(), None, None, "file", 1, RuleKind::SecAction)));
         run(&rules, "forced", |t| t.outcome.rules_messages.push(RuleMessage::new(rule)));
         assert!(std::fs::read_to_string(&log).unwrap().contains(" forced 1.2.3.4 "));
         // ... unless it is marked noauditlog.

@@ -28,7 +28,7 @@ mod tests {
             .unwrap();
             acts.push(RuleAction::from(x));
         }
-        let rule = Rule::new(Some(acts), None, "f", 1, RuleKind::SecAction);
+        let rule = Rule::new(Vec::new(), Some(acts), None, "f", 1, RuleKind::SecAction);
         let v = new_variable("XML", VariableSelector::DictElement(expr.to_string())).unwrap();
         let mut l: Vec<VariableValue> = Vec::new();
         v.evaluate(t, Some(&rule), &mut l);

@@ -49,9 +49,9 @@ pub(crate) mod test_support {
         logs(t).iter().any(|l| l == msg)
     }
 
-    /// A `SecAction` with these actions (configuration actions applied).
+    /// A `SecAction` with these actions.
     pub fn rule(actions: Vec<RuleAction>) -> Rule {
-        Rule::new(Some(actions), None, "test.conf", 1, RuleKind::SecAction)
+        Rule::new(Vec::new(), Some(actions), None, "test.conf", 1, RuleKind::SecAction)
     }
 
     pub fn rts(s: &str) -> RunTimeString {

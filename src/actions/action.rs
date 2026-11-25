@@ -5,20 +5,6 @@
 //! rule) and whatever it parsed from its payload.
 
 use crate::actions::context::ActionContext;
-use crate::rule::Rule;
-
-/// When an action runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
-    /// Applied once to the rule while the configuration is loaded. For
-    /// instance the rule id or the rule phase.
-    Configuration,
-    /// Executed before the operator is called: the transformations.
-    RunTimeBeforeMatchAttempt,
-    /// Executed after the operator matched. For instance the disruptive
-    /// actions.
-    RunTimeOnlyIfMatch,
-}
 
 /// Splits the text of an action into its name and payload
 /// (`name:payload`; a `t:` prefix is part of the name), stripping single
@@ -46,9 +32,11 @@ pub fn name_and_payload(data: &str) -> (&str, &str) {
 /// A SecLang action (`phase:2`, `deny`, `setvar:...`, `t:lowercase`, ...).
 ///
 /// Actions are built from their rule text by constructors that parse and
-/// validate the payload; an action is either applied to its rule once
-/// ([`Action::configure`]) or evaluated when the rule matches
-/// ([`Action::evaluate`]), depending on its [`Kind`].
+/// validate the payload. A transformation rewrites a target value before
+/// the operator runs; every other action is evaluated when the rule matches
+/// ([`Action::evaluate`]). (What an action says about its rule, `id`,
+/// `phase` and the like, is a [`RuleProperty`](crate::rule::RuleProperty),
+/// not an action.)
 ///
 /// Every action type is also a variant of
 /// [`RuleAction`](crate::actions::rule_action::RuleAction), the closed set
@@ -57,17 +45,9 @@ pub trait Action: Send + Sync + std::fmt::Debug {
     /// The action name, as written in the rule.
     fn name(&self) -> &str;
 
-    fn kind(&self) -> Kind {
-        Kind::RunTimeOnlyIfMatch
-    }
-
     fn is_disruptive(&self) -> bool {
         false
     }
-
-    /// [`Kind::Configuration`] actions are applied once, while the rule is
-    /// being built.
-    fn configure(&self, _rule: &mut Rule) {}
 
     /// Run time evaluation: what the action does to the transaction, the
     /// rule message and the intervention, through `cx`.

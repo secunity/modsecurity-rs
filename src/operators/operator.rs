@@ -313,7 +313,7 @@ pub(crate) mod test_support {
 
     /// `op` applied to `input` in `t`, for a rule without actions.
     pub fn eval_in(op: &Operator, t: &mut Transaction<'_>, input: &[u8]) -> bool {
-        let rule = Rule::new(None, None, "", 0, RuleKind::SecAction);
+        let rule = Rule::new(Vec::new(), None, None, "", 0, RuleKind::SecAction);
         let mut rm = RuleMessage::new(&rule);
         op.evaluate(&mut super::MatchContext::new(t, &rule, &mut rm), input)
     }

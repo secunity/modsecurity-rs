@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
-use crate::actions::action::Kind;
 use crate::actions::rule_action::RuleAction;
 use crate::rule::Id;
 use crate::variables::variable::Variable;
@@ -64,26 +63,16 @@ impl RulesExceptions {
         Self::default()
     }
 
-    /// `SecRuleUpdateActionById`: adds the run time actions to the rule
-    /// `id`, to run before or after the match according to their kind.
-    /// Refuses the actions that make a rule what it is (`id`, `phase`,
-    /// `chain`, `rev`, ...): a loaded rule cannot be given another.
-    pub fn load_update_action_by_id(&mut self, id: Id, actions: Vec<RuleAction>) -> Result<(), String> {
-        if let Some(a) = actions.iter().find(|a| a.kind() == Kind::Configuration) {
-            return Err(format!("the action `{}' of a rule cannot be updated", a.name()));
-        }
+    /// `SecRuleUpdateActionById`: adds the actions to the rule `id`: the
+    /// transformations to run before the operator, the others on a match.
+    pub fn load_update_action_by_id(&mut self, id: Id, actions: Vec<RuleAction>) {
         for a in actions {
-            match a.kind() {
-                Kind::Configuration => {}
-                Kind::RunTimeBeforeMatchAttempt => {
-                    self.action_pre_update_target_by_id.emplace(id, Arc::new(a));
-                }
-                Kind::RunTimeOnlyIfMatch => {
-                    self.action_pos_update_target_by_id.emplace(id, Arc::new(a));
-                }
+            if a.is_transformation() {
+                self.action_pre_update_target_by_id.emplace(id, Arc::new(a));
+            } else {
+                self.action_pos_update_target_by_id.emplace(id, Arc::new(a));
             }
         }
-        Ok(())
     }
 
     /// `SecRuleRemoveByMsg`: removes the rules whose `msg` is `msg`.

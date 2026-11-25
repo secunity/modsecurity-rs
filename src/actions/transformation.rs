@@ -4,7 +4,7 @@
 use modsecurity_transformations::Context;
 pub use modsecurity_transformations::Transformation as TransformationKind;
 
-use crate::actions::action::{Action, Kind};
+use crate::actions::action::Action;
 use crate::transaction::Transaction;
 
 /// A transformation (`t:xxx`): an action of kind
@@ -50,10 +50,6 @@ impl Transformation {
 impl Action for Transformation {
     fn name(&self) -> &str {
         &self.name
-    }
-
-    fn kind(&self) -> Kind {
-        Kind::RunTimeBeforeMatchAttempt
     }
 }
 

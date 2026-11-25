@@ -3,13 +3,12 @@
 //! Every action the parser can build is one variant, holding the action's
 //! own type. Code that needs to know which action it has (a transformation,
 //! an `xmlns`, `block`) matches on the variant; the operations every
-//! action has ([`Action`]: name, kind, configure, evaluate) are dispatched
+//! action has ([`Action`]: name, evaluate) are dispatched
 //! by a `match` as well, so no action is behind a trait object.
 
-use crate::actions::action::{Action, Kind};
+use crate::actions::action::Action;
 use crate::actions::context::ActionContext;
 use crate::actions::{self, ctl, data, disruptive};
-use crate::rule::Rule;
 
 /// Declares [`RuleAction`] with one variant per action type, the
 /// `From` conversions, and the dispatch of the [`Action`] operations.
@@ -35,18 +34,8 @@ macro_rules! rule_actions {
                 match self { $(RuleAction::$variant(a) => a.name(),)* }
             }
 
-            /// When the action runs.
-            pub fn kind(&self) -> Kind {
-                match self { $(RuleAction::$variant(a) => a.kind(),)* }
-            }
-
             pub fn is_disruptive(&self) -> bool {
                 match self { $(RuleAction::$variant(a) => a.is_disruptive(),)* }
-            }
-
-            /// Applies a configuration action (`Kind::Configuration`) to its rule.
-            pub fn configure(&self, rule: &mut Rule) {
-                match self { $(RuleAction::$variant(a) => a.configure(rule),)* }
             }
 
             /// Runs the action.
@@ -65,12 +54,10 @@ macro_rules! rule_actions {
 }
 
 rule_actions! {
-    Accuracy(actions::accuracy::Accuracy),
     Allow(disruptive::allow::Allow),
     AuditLog(actions::audit_log::AuditLog),
     Block(actions::block::Block),
     Capture(actions::capture::Capture),
-    Chain(actions::chain::Chain),
     CtlAuditEngine(ctl::audit_engine::AuditEngine),
     CtlAuditLogParts(ctl::audit_log_parts::AuditLogParts),
     CtlParseXmlIntoArgs(ctl::parse_xml_into_args::ParseXmlIntoArgs),
@@ -91,16 +78,12 @@ rule_actions! {
     InitCol(actions::init_col::InitCol),
     Log(actions::log::Log),
     LogData(actions::log_data::LogData),
-    Maturity(actions::maturity::Maturity),
     Msg(actions::msg::Msg),
     MultiMatch(actions::multi_match::MultiMatch),
     NoAuditLog(actions::no_audit_log::NoAuditLog),
     NoLog(actions::no_log::NoLog),
     Pass(disruptive::pass::Pass),
-    Phase(actions::phase::Phase),
     Redirect(disruptive::redirect::Redirect),
-    Rev(actions::rev::Rev),
-    RuleId(actions::rule_id::RuleId),
     SetEnv(actions::set_env::SetENV),
     SetRsc(actions::set_rsc::SetRSC),
     SetSid(actions::set_sid::SetSID),
@@ -112,7 +95,6 @@ rule_actions! {
     Status(data::status::Status),
     Tag(actions::tag::Tag),
     Transformation(actions::transformation::Transformation),
-    Ver(actions::ver::Ver),
     XmlNs(actions::xmlns::XmlNS),
 }
 
@@ -123,6 +105,12 @@ impl RuleAction {
             RuleAction::Transformation(t) => Some(t),
             _ => None,
         }
+    }
+
+    /// Whether this is a transformation: it rewrites a target value before
+    /// the operator runs, where every other action runs on a match.
+    pub fn is_transformation(&self) -> bool {
+        matches!(self, RuleAction::Transformation(_))
     }
 
     /// Whether this is `t:none`.

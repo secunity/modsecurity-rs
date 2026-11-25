@@ -45,9 +45,7 @@ The crate split ended on 2026-11-16. Later redesigns (see
 - **Actions in a crate.** The actions that use only `ActionContext` could move to a crate, as the
   operators did. What it would take: the macro strings of 11 actions
   (`RunTimeString`, which resolves engine variables) behind an opaque type
-  the context expands; the parser applying the configuration actions (`id`,
-  `phase`, `rev`, ...) itself instead of `configure(&mut RuleWithActions)`;
-  and the engine enums they use (`Phases`, `Persistent`, `RequestBodyType`,
+  the context expands, and the engine enums they use (`Phases`, `Persistent`, `RequestBodyType`,
   `AuditLogStatus`, ...) in `modsecurity-types`. `setvar`, `exec` and
   `block` stay in the engine regardless. Most actions are a few lines, so
   the gain is small next to the work.

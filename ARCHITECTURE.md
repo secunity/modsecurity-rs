@@ -62,7 +62,9 @@ for operators, for instance). That is what lets them be tested alone.
 
 A rule (`src/rule/`) is a `Rule` with a `RuleKind`: `SecRule` (targets
 and an operator), `SecAction`, or `SecRuleScript` (Lua, `src/lua.rs`). A
-chained rule owns its child. Its run time actions are a `rule::Actions`
+chained rule owns its child. What its actions say about the rule (`id`,
+`phase`, `rev`, `ver`, `accuracy`, `maturity`, `chain`) is set when it is
+built (`src/rule/property.rs`); its run time actions are a `rule::Actions`
 (`src/rule/actions.rs`), kept in the order they run.
 
 ## A request

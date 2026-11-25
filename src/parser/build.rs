@@ -10,7 +10,6 @@
 //! the table of each family; the directives that are a keyword and a value
 //! are in `settings.rs`.
 
-use crate::actions::action::Kind;
 use crate::actions::rule_action::RuleAction;
 use crate::actions::seclang::{ParsedAction, other, split_actions};
 use crate::actions::{self};
@@ -24,7 +23,7 @@ use crate::parser::syntax::{
 use crate::phases::Phases;
 use crate::rule::sec_rule::SecRule;
 use crate::rule::sec_rule_script::Script;
-use crate::rule::{Rule, RuleKind};
+use crate::rule::{Property, Rule, RuleKind, RuleProperty};
 use crate::run_time_string::RunTimeString;
 use crate::variables::variable::Variable;
 use crate::variables::{VariableError, VariableSelector, new_variable};
@@ -152,24 +151,25 @@ impl Builder<'_, '_> {
                     Err(e) => return self.fail(&e.to_string()),
                 };
                 let op = self.operator(&operator)?;
-                let (a, t) = match actions {
+                let (p, a, t) = match actions {
                     Some(list) => {
-                        let (a, t) = split_actions(self.actions(&list)?);
-                        (Some(a), Some(t))
+                        let parsed = split_actions(self.actions(&list)?);
+                        (parsed.properties, Some(parsed.actions), Some(parsed.transformations))
                     }
-                    None => (None, None),
+                    None => (Vec::new(), None, None),
                 };
                 let file = self.file_name();
                 let kind = RuleKind::SecRule(SecRule::new(op, vars));
-                let rule = Rule::new(a, t, &file, line, kind);
+                let rule = Rule::new(p, a, t, &file, line, kind);
                 if !self.driver.add_sec_rule(rule) {
                     return self.failed();
                 }
             }
             Directive::Action(list) => {
-                let (a, t) = split_actions(self.actions(&list)?);
+                let parsed = split_actions(self.actions(&list)?);
                 let file = self.file_name();
-                let rule = Rule::new(Some(a), Some(t), &file, line, RuleKind::SecAction);
+                let (p, a, t) = (parsed.properties, Some(parsed.actions), Some(parsed.transformations));
+                let rule = Rule::new(p, a, t, &file, line, RuleKind::SecAction);
                 self.driver.add_sec_action(rule);
             }
             Directive::Script { path, actions } => {
@@ -180,10 +180,11 @@ impl Builder<'_, '_> {
                     return self.fail("SecRuleScript needs actions.");
                 };
                 let script = string(path.text);
-                let (a, t) = split_actions(self.actions(&list)?);
+                let parsed = split_actions(self.actions(&list)?);
                 let file = self.file_name();
                 let kind = RuleKind::SecRuleScript(Script::new(&script));
-                let mut r = Rule::new(Some(a), Some(t), &file, line, kind);
+                let (p, a, t) = (parsed.properties, Some(parsed.actions), Some(parsed.transformations));
+                let mut r = Rule::new(p, a, t, &file, line, kind);
                 if let Some(s) = r.as_rule_script_mut()
                     && let Err(err) = s.init()
                 {
@@ -223,10 +224,22 @@ impl Builder<'_, '_> {
                         v
                     ));
                 };
-                let acts = self.actions(&actions)?.into_iter().map(ParsedAction::into_action).collect();
-                if let Err(error) = self.driver.properties.exceptions.load_update_action_by_id(rule_id, acts) {
-                    return self.fail(&format!("SecRuleUpdateActionById: {error}. "));
+                // The properties make a rule what it is (`id`, `phase`,
+                // `chain`, `rev`, ...): a loaded rule cannot be given another.
+                let mut acts = Vec::new();
+                for parsed in self.actions(&actions)? {
+                    match parsed {
+                        ParsedAction::Property(p) => {
+                            return self.fail(&format!(
+                                "SecRuleUpdateActionById: the action `{}' of a rule cannot be updated. ",
+                                p.name
+                            ));
+                        }
+                        ParsedAction::Action(a) => acts.push(a),
+                        ParsedAction::Transformation(t) => acts.push(RuleAction::Transformation(t)),
+                    }
                 }
+                self.driver.properties.exceptions.load_update_action_by_id(rule_id, acts);
             }
             Directive::Setting { keyword, rest } => self.setting(keyword, rest)?,
         }
@@ -432,22 +445,27 @@ impl Builder<'_, '_> {
         let mut has_disruptive = false;
         let mut checked_actions: Vec<RuleAction> = Vec::new();
         let mut phase = Phases::RequestHeaders;
-        for pa in list {
-            let a = pa.into_action();
+        for parsed in list {
+            let a = match parsed {
+                // The phase it is for; no other property of a rule.
+                ParsedAction::Property(RuleProperty { property: Property::Phase(defined), .. }) => {
+                    phase = defined;
+                    continue;
+                }
+                ParsedAction::Property(p) => {
+                    let msg = format!("The action '{}' is not suitable to be part of the SecDefaultActions", p.name);
+                    return self.fail(&msg);
+                }
+                ParsedAction::Action(a) => a,
+                ParsedAction::Transformation(t) => RuleAction::Transformation(t),
+            };
             if a.is_disruptive() && !matches!(a, RuleAction::Block(_)) {
                 has_disruptive = true;
             }
-            if let RuleAction::Phase(defined) = &a {
-                phase = defined.phase;
-            } else if matches!(a.kind(), Kind::RunTimeOnlyIfMatch | Kind::RunTimeBeforeMatchAttempt) {
-                if a.is_transformation_none() {
-                    return self.fail("The transformation none is not suitable to be part of the SecDefaultActions");
-                }
-                checked_actions.push(a);
-            } else {
-                let msg = format!("The action '{}' is not suitable to be part of the SecDefaultActions", a.name());
-                return self.fail(&msg);
+            if a.is_transformation_none() {
+                return self.fail("The transformation none is not suitable to be part of the SecDefaultActions");
             }
+            checked_actions.push(a);
         }
         if !has_disruptive {
             return self.fail("SecDefaultAction must specify a disruptive action.");

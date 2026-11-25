@@ -501,11 +501,12 @@ mod tests {
     fn rule_variable_walks_the_chain() {
         let ms = ModSecurity::new();
         let rules = RulesSet::new();
-        let mut parent = Rule::new(None, None, "f", 1, RuleKind::SecAction);
+        let mut parent = Rule::new(Vec::new(), None, None, "f", 1, RuleKind::SecAction);
         parent.rule_id = Some(10);
         parent.metadata.rev = "3".to_string();
         let sev = crate::actions::severity::Severity::new("severity", "2").unwrap();
         let mut child = Rule::new(
+            Vec::new(),
             Some(vec![crate::actions::rule_action::RuleAction::Severity(sev)]),
             None,
             "f",

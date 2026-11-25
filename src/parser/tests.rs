@@ -1053,3 +1053,33 @@ fn dump_outcomes() {
     let _ = std::fs::remove_dir_all(&tmp);
     println!("{} generated lines", lines.len());
 }
+
+/// The properties of a rule (`id`, `phase`, `rev`, `ver`, `accuracy`,
+/// `maturity`, `chain`): `SecRuleUpdateActionById` cannot change them, and
+/// `SecDefaultAction` takes only `phase`. The messages name them as written.
+#[test]
+fn rule_properties_outside_of_a_rule() {
+    let properties = ["ID:2", "phase:2", "Rev:'1'", "ver:'v'", "accuracy:3", "maturity:4", "chain"];
+    for p in properties {
+        let name = p.split(':').next().unwrap();
+        let (n, err) = load(&format!("SecAction \"id:1,phase:1,pass\"\nSecRuleUpdateActionById 1 \"{p}\"\n"), "t");
+        assert_eq!(n, -1, "{p}");
+        assert!(
+            err.contains(&format!("SecRuleUpdateActionById: the action `{name}' of a rule cannot be updated.")),
+            "{err}"
+        );
+    }
+    for p in properties.iter().filter(|p| !p.starts_with("phase")) {
+        let name = p.split(':').next().unwrap();
+        let (n, err) = load(&format!("SecDefaultAction \"phase:2,log,deny,status:403,{p}\"\n"), "t");
+        assert_eq!(n, -1, "{p}");
+        assert!(
+            err.contains(&format!("The action '{name}' is not suitable to be part of the SecDefaultActions")),
+            "{err}"
+        );
+    }
+    // `phase` says which phase the default actions are for.
+    let mut d = Driver::new();
+    assert!(d.parse("SecDefaultAction \"phase:3,log,deny,status:403\"\n", "t"), "{}", d.properties.parser_error);
+    assert_eq!(d.properties.default_actions[crate::phases::Phases::ResponseHeaders.index()].len(), 3);
+}

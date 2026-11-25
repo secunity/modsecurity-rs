@@ -399,7 +399,7 @@ mod regression_dump {
                     acts.push(crate::actions::rule_action::RuleAction::from(x));
                 }
             }
-            let rule = Rule::new(Some(acts), None, "x", 1, RuleKind::SecAction);
+            let rule = Rule::new(Vec::new(), Some(acts), None, "x", 1, RuleKind::SecAction);
             if target != "XML" {
                 let v = crate::variables::new_variable(
                     "XML",

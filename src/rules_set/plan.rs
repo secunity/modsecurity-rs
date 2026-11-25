@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use crate::actions::action::{Action, Kind};
+use crate::actions::action::Action;
 use crate::actions::rule_action::RuleAction;
 use crate::actions::transformation::Transformation;
 use crate::phases::{NUMBER_OF_PHASES, Phases};
@@ -147,7 +147,7 @@ impl Link {
         let targets = (0..own.len()).filter(|&i| !excluded(&own[i])).collect();
 
         let defaults = &rules.properties.default_actions[rule.phase().index()];
-        let on_match = defaults.iter().filter(|a| a.kind() == Kind::RunTimeOnlyIfMatch);
+        let on_match = defaults.iter().filter(|a| !a.is_transformation());
         let (block_actions, default_actions) = on_match.cloned().partition(|a| a.is_disruptive());
         let update_actions = ex.action_pos_update_target_by_id.for_rule(rule.rule_id).to_vec();
 
@@ -170,13 +170,7 @@ impl Link {
         // The ones of SecDefaultAction, unless the rule has a `t:none`.
         if !own.iter().any(Transformation::is_none) {
             let defaults = &rules.properties.default_actions[rule.phase().index()];
-            list.extend(
-                defaults
-                    .iter()
-                    .filter(|a| a.kind() == Kind::RunTimeBeforeMatchAttempt)
-                    .filter_map(|a| a.as_transformation())
-                    .cloned(),
-            );
+            list.extend(defaults.iter().filter_map(|a| a.as_transformation()).cloned());
         }
 
         // The rule's own, then the ones of SecRuleUpdateActionById: of

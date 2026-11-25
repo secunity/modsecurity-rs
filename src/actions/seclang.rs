@@ -11,22 +11,27 @@ use crate::actions::transformation::{Transformation, TransformationKind};
 use crate::actions::{self, ctl, data, disruptive};
 use crate::audit_log::AuditLogStatus;
 use crate::parser::syntax::value::is_audit_part;
+use crate::rule::RuleProperty;
 use crate::rules_set::properties::{ParseXmlIntoArgs, RuleEngine};
 use crate::run_time_string::RunTimeString;
 
-/// An action of a rule as the parser builds it: a transformation, or any
-/// other action.
+/// An action of a rule as the parser builds it: a property of the rule
+/// (`id`, `phase`, ...), a transformation, or any other action.
 #[derive(Debug)]
 pub(crate) enum ParsedAction {
+    Property(RuleProperty),
     Action(RuleAction),
     Transformation(Transformation),
 }
 
+#[cfg(test)]
 impl ParsedAction {
-    pub(crate) fn into_action(self) -> RuleAction {
+    /// The name, as written in the rule.
+    pub(crate) fn name(&self) -> &str {
         match self {
-            ParsedAction::Action(a) => a,
-            ParsedAction::Transformation(t) => RuleAction::Transformation(t),
+            ParsedAction::Property(p) => &p.name,
+            ParsedAction::Action(a) => a.name(),
+            ParsedAction::Transformation(t) => crate::actions::action::Action::name(t),
         }
     }
 }
@@ -36,20 +41,26 @@ pub(crate) fn other(a: impl Into<RuleAction>) -> ParsedAction {
     ParsedAction::Action(a.into())
 }
 
-/// The actions and the transformations of a rule.
-pub(crate) type RuleActions = (Vec<RuleAction>, Vec<Transformation>);
+/// The actions of a rule, sorted: its properties, its run time actions
+/// and its transformations.
+#[derive(Debug, Default)]
+pub(crate) struct RuleActions {
+    pub(crate) properties: Vec<RuleProperty>,
+    pub(crate) actions: Vec<RuleAction>,
+    pub(crate) transformations: Vec<Transformation>,
+}
 
-/// Splits the actions of a rule into actions and transformations.
+/// Sorts the actions of a rule.
 pub(crate) fn split_actions(list: Vec<ParsedAction>) -> RuleActions {
-    let mut a = Vec::new();
-    let mut t = Vec::new();
+    let mut out = RuleActions::default();
     for i in list {
         match i {
-            ParsedAction::Action(x) => a.push(x),
-            ParsedAction::Transformation(x) => t.push(x),
+            ParsedAction::Property(p) => out.properties.push(p),
+            ParsedAction::Action(a) => out.actions.push(a),
+            ParsedAction::Transformation(t) => out.transformations.push(t),
         }
     }
-    (a, t)
+    out
 }
 
 /// The action `name` whose value is the string with macros `z` (`msg`,
@@ -142,7 +153,7 @@ fn unsupported(name: &'static str) -> Result<ParsedAction, String> {
 /// The actions with a plain value: the name (lower case), the values it
 /// takes and how it is built.
 const PLAIN: &[(&str, Accepts, Build)] = &[
-    ("accuracy", text, |n, p| actions::accuracy::Accuracy::new(n, p).map(other)),
+    ("accuracy", text, |n, p| RuleProperty::accuracy(n, p).map(ParsedAction::Property)),
     (
         "allow",
         |v| v.is_none_or(|v| v.eq_ignore_ascii_case("request") || v.eq_ignore_ascii_case("phase")),
@@ -152,14 +163,14 @@ const PLAIN: &[(&str, Accepts, Build)] = &[
     ("auditlog", bare, |n, _| Ok(other(actions::audit_log::AuditLog::new(n)))),
     ("block", bare, |n, _| Ok(other(actions::block::Block::new(n)))),
     ("capture", bare, |n, _| Ok(other(actions::capture::Capture::new(n)))),
-    ("chain", bare, |n, _| Ok(other(actions::chain::Chain::new(n)))),
+    ("chain", bare, |n, _| Ok(ParsedAction::Property(RuleProperty::chain(n)))),
     ("deny", bare, |n, _| Ok(other(disruptive::deny::Deny::new(n)))),
     ("deprecatevar", bare, |_, _| unsupported("DeprecateVar")),
     ("drop", bare, |n, _| Ok(other(disruptive::drop::Drop::new(n)))),
     ("exec", |v| quoted_text(v) || word(v), |n, p| actions::exec::Exec::new(n, p).map(other)),
-    ("id", number_or_quoted, |n, p| actions::rule_id::RuleId::new(n, p).map(other)),
+    ("id", number_or_quoted, |n, p| RuleProperty::id(n, p).map(ParsedAction::Property)),
     ("log", bare, |n, _| Ok(other(actions::log::Log::new(n)))),
-    ("maturity", text, |n, p| actions::maturity::Maturity::new(n, p).map(other)),
+    ("maturity", text, |n, p| RuleProperty::maturity(n, p).map(ParsedAction::Property)),
     ("multimatch", bare, |n, _| Ok(other(actions::multi_match::MultiMatch::new(n)))),
     ("noauditlog", bare, |n, _| Ok(other(actions::no_audit_log::NoAuditLog::new(n)))),
     ("nolog", bare, |n, _| Ok(other(actions::no_log::NoLog::new(n)))),
@@ -168,14 +179,14 @@ const PLAIN: &[(&str, Accepts, Build)] = &[
     (
         "phase",
         |v| number_or_name(v, &["request", "response", "logging"]),
-        |n, p| actions::phase::Phase::new(n, p).map(other),
+        |n, p| RuleProperty::phase(n, p).map(ParsedAction::Property),
     ),
     ("prepend", bare, |_, _| unsupported("Prepend")),
     ("proxy", bare, |_, _| unsupported("Proxy")),
     (
         "rev",
         |v| text(v) && !v.is_some_and(|v| unquoted(v).contains([',', '\''])),
-        |n, p| Ok(other(actions::rev::Rev::new(n, p))),
+        |n, p| Ok(ParsedAction::Property(RuleProperty::rev(n, p))),
     ),
     ("sanitisearg", bare, |_, _| unsupported("SanitiseArg")),
     ("sanitisematched", bare, |_, _| unsupported("SanitiseMatched")),
@@ -190,7 +201,7 @@ const PLAIN: &[(&str, Accepts, Build)] = &[
     ("skip", number, |n, p| actions::skip::Skip::new(n, p).map(other)),
     ("skipafter", word, |n, p| Ok(other(actions::skip_after::SkipAfter::new(n, p)))),
     ("status", number, |n, p| data::status::Status::new(n, p).map(other)),
-    ("ver", quoted_text, |n, p| Ok(other(actions::ver::Ver::new(n, p)))),
+    ("ver", quoted_text, |n, p| Ok(ParsedAction::Property(RuleProperty::ver(n, p)))),
     ("xmlns", word, |n, p| actions::xmlns::XmlNS::new(n, p).map(other)),
 ];
 
@@ -311,7 +322,7 @@ mod tests {
 
     #[test]
     fn values_an_action_takes() {
-        let built = |name: &str, text: &str| plain(name, text).map(|a| a.into_action().name().to_string());
+        let built = |name: &str, text: &str| plain(name, text).map(|a| a.name().to_string());
         let invalid = |text: &str| Err(format!("Expecting an action, got: {text}"));
         assert_eq!(built("deny", "deny"), Ok("deny".to_string()));
         assert_eq!(built("DENY", "DENY"), Ok("DENY".to_string()));
