@@ -111,10 +111,7 @@ impl InspectFile {
         let Some(res) = self.run_program(input, &t.variable_envs) else {
             return false;
         };
-        if res.len() > 1 && res[0] != b'1' {
-            return true;
-        }
-        false
+        res.len() > 1 && res[0] != b'1'
     }
 }
 
