@@ -606,7 +606,7 @@ mod tests {
                  \"User-Agent\":\"UA\"}}}},\"response\":{{\"http_code\":200,\"headers\":{{\"Content-Type\":\
                  \"text/plain\"}}}},\"producer\":{{\"modsecurity\":\"ModSecurity v3.0.17 (Linux)\",\
                  \"connector\":\"\",\"secrules_engine\":\"Enabled\",\"components\":[]}},\"messages\":[]}}}}\n",
-                crate::unique_id::UniqueId::unique_id()
+                crate::server_id::server_id()
             )
         );
     }

@@ -6,7 +6,6 @@ use crate::audit_log::Parts;
 use crate::rule::message::LogParts;
 use crate::rules_set::properties::rule_engine_state_string;
 use crate::transaction::Transaction;
-use crate::unique_id::UniqueId;
 use crate::utils::string::{dash_if_empty, to_hex_if_needed};
 use crate::utils::system::strftime_local;
 use modsecurity_compat::json::JsonGen;
@@ -166,7 +165,7 @@ pub(crate) fn native(t: &Transaction<'_>, parts: Parts, trailer: &str, prefix: &
 /// The audit log entry in the JSON format, with the given parts.
 pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
     let ts = strftime_local(t.time_stamp, "%c");
-    let unique_id = UniqueId::unique_id();
+    let server_id = crate::server_id::server_id();
     let mut g = JsonGen::new();
 
     g.map_open();
@@ -176,7 +175,7 @@ pub(crate) fn json(t: &Transaction<'_>, parts: Parts) -> Vec<u8> {
     // Part: A (header mandatory)
     g.add("client_ip", t.http.client_ip_address.as_bytes());
     g.add("time_stamp", ts.as_bytes());
-    g.add("server_id", unique_id.as_bytes());
+    g.add("server_id", server_id.as_bytes());
     g.add_num("client_port", t.http.client_port.into());
     g.add("host_ip", t.http.server_ip_address.as_bytes());
     g.add_num("host_port", t.http.server_port.into());

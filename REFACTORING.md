@@ -1795,3 +1795,12 @@ itself (a tag as written, a configuration value). They are
 borrows a string without macros. The `SecRule` debug line that shows a
 parameter with macros builds its text once.
 
+
+## The server id is `server_id()`
+
+`unique_id.rs` had a unit struct, `UniqueId`, used as a namespace for
+`UniqueId::unique_id()` (a C++ singleton's shape). Its value is the
+machine's identifier, the `server_id` of the JSON audit log, easily
+taken for the `UNIQUE_ID` of a transaction. It is `server_id::server_id()`
+now, with its two helpers private.
+

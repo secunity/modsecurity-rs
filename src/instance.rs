@@ -83,7 +83,7 @@ fn new_collection(name: &str) -> Box<dyn Collection> {
 
 impl ModSecurity {
     pub fn new() -> Self {
-        crate::unique_id::UniqueId::unique_id();
+        crate::server_id::server_id();
         // (libc `rand()` is not seeded here: the audit log boundaries come
         // from the `rand` crate, see `audit_log::writer::generate_boundary`.)
         // libxml2 is set up once per process (nothing to do without it).

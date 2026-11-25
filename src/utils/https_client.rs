@@ -63,10 +63,10 @@ impl HttpsClient {
             .build()
             .new_agent();
 
-        let unique_id = crate::unique_id::UniqueId::unique_id();
+        let server_id = crate::server_id::server_id();
         let status = crate::instance::MODSECURITY_VERSION_NUM.to_string();
         let mut response = if self.request_body.is_empty() {
-            let mut request = agent.get(uri).header("ModSec-unique-id", unique_id).header("ModSec-status", &status);
+            let mut request = agent.get(uri).header("ModSec-unique-id", server_id).header("ModSec-status", &status);
             if !self.request_type.is_empty() {
                 request = request.header("Content-Type", &self.request_type);
             }
@@ -80,7 +80,7 @@ impl HttpsClient {
                 if self.request_type.is_empty() { "application/x-www-form-urlencoded" } else { &self.request_type };
             let mut request = agent
                 .post(uri)
-                .header("ModSec-unique-id", unique_id)
+                .header("ModSec-unique-id", server_id)
                 .header("ModSec-status", &status)
                 .header("Content-Type", content_type);
             if !self.key.is_empty() {
