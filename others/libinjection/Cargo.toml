@@ -12,3 +12,12 @@ testdata = []
 
 [dev-dependencies]
 libinjection = { path = ".", features = ["testdata"] }
+# Another Rust libinjection, compared with this one by the eval example
+# (detections on the corpora) and the detect bench (throughput).
+libinjectionrs = "0.1"
+# The detect bench.
+criterion = "0.8"
+
+[[bench]]
+name = "detect"
+harness = false
