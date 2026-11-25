@@ -1758,3 +1758,13 @@ only parsing needs (the file names, the last rule for `chain`, the
 phases that have a `SecDefaultAction` already), and a successful load is
 merged with `RulesSet::merge`: one way to merge.
 
+
+## `lua.rs` is a module
+
+`src/lua.rs` (909 lines) is `src/lua/`: `engine.rs` compiles a script
+once and runs it in a fresh Lua state; `api.rs` has the `m.*` functions;
+`lauxlib.rs` reproduces what Lua's C API does for them (the argument
+checks and their messages, `lua_tostring`, `lua_type`); `disabled.rs` is
+the engine of a build without the `lua` feature; the tests are in
+`tests.rs`. Moves only.
+
