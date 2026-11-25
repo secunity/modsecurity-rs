@@ -49,12 +49,16 @@ impl ModSecurityIntervention {
     }
 
     /// Releases the strings and resets the struct to a cleaned intervention.
-    pub(crate) fn free_and_clean(&mut self) {
+    ///
+    /// # Safety
+    /// `url` and `log` are null or `malloc`ed strings not released yet, as
+    /// [`Self::fill_from`] and [`strdup`] make them: the C caller sets these
+    /// fields, so only the C API contract makes them so.
+    pub(crate) unsafe fn free_and_clean(&mut self) {
         for p in [&mut self.url, &mut self.log] {
             if !p.is_null() {
-                // SAFETY: non-null `url`/`log` were allocated with malloc by
-                // `strdup` (C API contract: the caller hands back what
-                // `msc_intervention` filled).
+                // SAFETY: a `malloc`ed string not released yet (the
+                // function's contract).
                 unsafe { libc::free(p.cast()) };
             }
         }
@@ -100,7 +104,8 @@ mod tests {
         assert_eq!(unsafe { CStr::from_ptr(c.url) }.to_bytes(), b"/\xff");
         // SAFETY: as above.
         assert_eq!(unsafe { CStr::from_ptr(c.log) }.to_bytes(), b"denied");
-        c.free_and_clean();
+        // SAFETY: the strings were made by `fill_from`.
+        unsafe { c.free_and_clean() };
         assert!(c.url.is_null() && c.log.is_null());
         assert_eq!((c.status, c.disruptive), (200, 0));
     }
@@ -112,6 +117,7 @@ mod tests {
         c.fill_from(&Intervention { status: 403, url: None, log: "denied".into() });
         // SAFETY: allocated above.
         assert_eq!(unsafe { CStr::from_ptr(c.url) }.to_bytes(), b"caller");
-        c.free_and_clean();
+        // SAFETY: the URL was made by `strdup`, the log is null.
+        unsafe { c.free_and_clean() };
     }
 }

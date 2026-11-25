@@ -366,7 +366,9 @@ pub unsafe extern "C" fn msc_intervention_cleanup(it: *mut ModSecurityInterventi
     catch_panic((), || {
         // SAFETY: null or a valid intervention struct (caller contract).
         if let Some(it) = unsafe { it.as_mut() } {
-            it.free_and_clean();
+            // SAFETY: filled by `msc_intervention`, its strings not released
+            // yet (caller contract).
+            unsafe { it.free_and_clean() };
         }
     })
 }

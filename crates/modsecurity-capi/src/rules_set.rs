@@ -4,22 +4,33 @@ use crate::catch_panic;
 use engine::{LoadError, RulesSet};
 use std::ffi::{CStr, CString, c_char, c_int};
 
-fn set_error(error: *mut *const c_char, msg: String) {
-    if !error.is_null() {
+/// Where the C caller wants the message of a failed load: `*error`, when
+/// `error` is not null. Made from the raw pointer once, at the entry point.
+type ErrorOut<'a> = Option<&'a mut *const c_char>;
+
+/// Hands `msg` to the caller through `error` (released with
+/// `msc_rules_error_cleanup`).
+fn set_error(error: &mut ErrorOut<'_>, msg: &str) {
+    if let Some(error) = error {
         let c = CString::new(msg.replace('\0', "")).unwrap_or_default();
-        // SAFETY: the caller passes a valid out-pointer; ownership of the
-        // string goes to the caller (free with msc_rules_error_cleanup).
-        unsafe { *error = c.into_raw() };
+        **error = c.into_raw();
     }
 }
 
-/// The C API result of a load or merge: the number of rules, or -1 with
-/// the parser errors handed to the caller through `error`.
-fn c_result(result: Result<usize, LoadError>, error: *mut *const c_char) -> c_int {
-    match result {
-        Ok(n) => c_int::try_from(n).unwrap_or(c_int::MAX),
-        Err(e) => {
-            set_error(error, e.message().to_string());
+/// The C API result of a load or merge, `load` (`None` when there is no
+/// rule set to load into): the number of rules, or -1, with the parser
+/// errors handed to the caller through `error` when there are some. A
+/// panic gives -1 and a message too.
+fn load(mut error: ErrorOut<'_>, load: impl FnOnce() -> Option<Result<usize, LoadError>>) -> c_int {
+    match catch_panic(None, || Some(load())) {
+        Some(Some(Ok(n))) => c_int::try_from(n).unwrap_or(c_int::MAX),
+        Some(Some(Err(e))) => {
+            set_error(&mut error, e.message());
+            -1
+        }
+        Some(None) => -1,
+        None => {
+            set_error(&mut error, "ModSecurity: internal error while loading the rules\n");
             -1
         }
     }
@@ -27,21 +38,15 @@ fn c_result(result: Result<usize, LoadError>, error: *mut *const c_char) -> c_in
 
 /// The bytes of a C string (empty for NULL). Rules are bytes: they need not
 /// be UTF-8.
+///
+/// # Safety
+/// `p` is null or a NUL terminated string that outlives `'a`.
 unsafe fn cbytes<'a>(p: *const c_char) -> &'a [u8] {
     if p.is_null() {
         return b"";
     }
     // SAFETY: the C API contract: NUL terminated strings.
     unsafe { CStr::from_ptr(p) }.to_bytes()
-}
-
-/// [`catch_panic`] for the functions that load or merge rules: a panic
-/// gives -1, with an error message for the caller (who may print it).
-fn catch_load_panic(error: *mut *const c_char, f: impl FnOnce() -> c_int) -> c_int {
-    catch_panic(None, || Some(f())).unwrap_or_else(|| {
-        set_error(error, "ModSecurity: internal error while loading the rules\n".to_string());
-        -1
-    })
 }
 
 /// A file name as the C caller gave it: any bytes but NUL on unix.
@@ -85,17 +90,19 @@ pub unsafe extern "C" fn msc_rules_merge(
     rules_from: *mut RulesSet,
     error: *mut *const c_char,
 ) -> c_int {
-    catch_load_panic(error, || {
+    // SAFETY: `error` is null or a valid out-pointer (caller contract).
+    let error = unsafe { error.as_mut() };
+    load(error, || {
         if rules_dst == rules_from && !rules_dst.is_null() {
-            return 0;
+            return Some(Ok(0));
         }
         // SAFETY: both are null or come from `msc_create_rules_set`
         // (caller contract), and they are not the same rule set, so the two
         // mutable references do not alias.
         let (Some(dst), Some(from)) = (unsafe { (rules_dst.as_mut(), rules_from.as_mut()) }) else {
-            return -1;
+            return None;
         };
-        c_result(dst.merge(from), error)
+        Some(dst.merge(from))
     })
 }
 
@@ -108,15 +115,15 @@ pub unsafe extern "C" fn msc_rules_add_remote(
     uri: *const c_char,
     error: *mut *const c_char,
 ) -> c_int {
-    catch_load_panic(error, || {
+    // SAFETY: `error` is null or a valid out-pointer (caller contract).
+    let error = unsafe { error.as_mut() };
+    load(error, || {
         // SAFETY: `rules` is null or comes from `msc_create_rules_set`, the
         // strings are C strings or null (caller contract).
         let (rules, key, uri) = unsafe { (rules.as_mut(), cbytes(key), cbytes(uri)) };
-        let Some(r) = rules else {
-            return -1;
-        };
+        let r = rules?;
         // The key and the URL are text; the rules downloaded are bytes.
-        c_result(r.load_remote(&String::from_utf8_lossy(key), &String::from_utf8_lossy(uri)), error)
+        Some(r.load_remote(&String::from_utf8_lossy(key), &String::from_utf8_lossy(uri)))
     })
 }
 
@@ -128,14 +135,14 @@ pub unsafe extern "C" fn msc_rules_add_file(
     file: *const c_char,
     error: *mut *const c_char,
 ) -> c_int {
-    catch_load_panic(error, || {
+    // SAFETY: `error` is null or a valid out-pointer (caller contract).
+    let error = unsafe { error.as_mut() };
+    load(error, || {
         // SAFETY: `rules` is null or comes from `msc_create_rules_set`,
         // `file` is a C string or null (caller contract).
         let (rules, file) = unsafe { (rules.as_mut(), cbytes(file)) };
-        let Some(r) = rules else {
-            return -1;
-        };
-        c_result(r.load_file(&path(file)), error)
+        let r = rules?;
+        Some(r.load_file(&path(file)))
     })
 }
 
@@ -148,14 +155,14 @@ pub unsafe extern "C" fn msc_rules_add(
     plain_rules: *const c_char,
     error: *mut *const c_char,
 ) -> c_int {
-    catch_load_panic(error, || {
+    // SAFETY: `error` is null or a valid out-pointer (caller contract).
+    let error = unsafe { error.as_mut() };
+    load(error, || {
         // SAFETY: `rules` is null or comes from `msc_create_rules_set`,
         // `plain_rules` is a C string or null (caller contract).
         let (rules, plain_rules) = unsafe { (rules.as_mut(), cbytes(plain_rules)) };
-        let Some(r) = rules else {
-            return -1;
-        };
-        c_result(r.load_bytes(plain_rules, ""), error)
+        let r = rules?;
+        Some(r.load_bytes(plain_rules, ""))
     })
 }
 
@@ -307,5 +314,24 @@ mod tests {
             msc_rules_cleanup(a);
             msc_rules_cleanup(b);
         }
+    }
+
+    /// A null `error` gets no message; a null rule set is -1 without one.
+    #[test]
+    fn null_pointers() {
+        let rules = msc_create_rules_set();
+        let bogus = CString::new("SecRuleEngine Bogus").unwrap();
+        let fine = CString::new("SecAction \"id:1,phase:1,pass\"").unwrap();
+        let mut error: *const c_char = std::ptr::null();
+        // SAFETY: a valid rule set and strings; a null out-pointer.
+        assert_eq!(unsafe { msc_rules_add(rules, bogus.as_ptr(), std::ptr::null_mut()) }, -1);
+        // SAFETY: a null rule set, a valid string and out-pointer.
+        assert_eq!(unsafe { msc_rules_add(std::ptr::null_mut(), fine.as_ptr(), &mut error) }, -1);
+        assert!(error.is_null());
+        // SAFETY: as above.
+        assert_eq!(unsafe { msc_rules_merge(std::ptr::null_mut(), rules, &mut error) }, -1);
+        assert!(error.is_null());
+        // SAFETY: created above.
+        unsafe { msc_rules_cleanup(rules) };
     }
 }
