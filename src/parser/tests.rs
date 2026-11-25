@@ -21,9 +21,9 @@ enum Outcome {
 }
 
 fn dump(d: &Driver) -> String {
-    let p = &d.properties;
+    let p = &d.rules.properties;
     let mut s = String::new();
-    let _ = writeln!(s, "rules: {:#?}", d.rules_set_phases);
+    let _ = writeln!(s, "rules: {:#?}", d.rules.rules_set_phases);
     let _ = writeln!(s, "audit_log: {:#?}", p.audit_log);
     let _ = writeln!(
         s,
@@ -95,7 +95,7 @@ fn run(data: &[u8], reference: &str, whole_file: bool) -> Outcome {
     if ok {
         Outcome::Accepted(without_addresses(&dump(&d)))
     } else {
-        Outcome::Rejected(d.properties.parser_error.clone())
+        Outcome::Rejected(d.rules.properties.parser_error.clone())
     }
 }
 
@@ -236,7 +236,7 @@ fn whole_file_and_statement_reads_are_identical() {
         let incremental = if ok {
             Outcome::Accepted(without_addresses(&dump(&d)))
         } else {
-            Outcome::Rejected(d.properties.parser_error.clone())
+            Outcome::Rejected(d.rules.properties.parser_error.clone())
         };
         let whole = run(&c.data, &c.reference, true);
         if incremental != whole {
@@ -328,15 +328,16 @@ fn values_without_what_surrounds_them() {
         "SecDebugLogLevel  3\n",
     );
     let mut d = Driver::new();
-    assert!(d.parse(conf, "t"), "{}", d.properties.parser_error);
+    assert!(d.parse(conf, "t"), "{}", d.rules.properties.parser_error);
     let markers: Vec<&str> = d
+        .rules
         .rules_set_phases
         .for_phase(Phases::RequestHeaders)
         .iter()
         .filter_map(|e| e.as_marker().map(|m| m.name.as_str()))
         .collect();
     assert_eq!(markers, ["END", "QUOTED", "SINGLE", "BOTH", "SPACED"]);
-    let p = &d.properties;
+    let p = &d.rules.properties;
     let removed: Vec<u64> = (0..10).filter(|&id| p.exceptions.contains(id)).collect();
     assert_eq!(removed, [1, 2, 4, 5, 7, 8]);
     assert_eq!(p.exceptions.remove_rule_by_tag, ["a b"]);
@@ -369,14 +370,14 @@ fn load(rules: &str, reference: &str) -> (i32, String) {
 #[test]
 fn file_modes() {
     let mut d = Driver::new();
-    assert!(d.parse("SecAuditLogFileMode 0640\nSecAuditLogDirMode 0750\n", "t"), "{}", d.properties.parser_error);
-    let dump = format!("{:?}", d.properties.audit_log);
+    assert!(d.parse("SecAuditLogFileMode 0640\nSecAuditLogDirMode 0750\n", "t"), "{}", d.rules.properties.parser_error);
+    let dump = format!("{:?}", d.rules.properties.audit_log);
     assert!(dump.contains(&format!("file_permission: Some({})", 0o640)), "{dump}");
     assert!(dump.contains(&format!("directory_permission: Some({})", 0o750)), "{dump}");
     let mut d = Driver::new();
     assert!(!d.parse("SecAuditLogFileMode 0789\n", "t"));
     let expected = "Failed to parse SecAuditLogFileMode: Invalid octal number";
-    assert!(d.properties.parser_error.contains(expected), "{}", d.properties.parser_error);
+    assert!(d.rules.properties.parser_error.contains(expected), "{}", d.rules.properties.parser_error);
 }
 
 #[test]
@@ -391,8 +392,8 @@ fn chains_and_duplicates() {
     use crate::phases::Phases;
     let rules = "SecRule ARGS \"@rx a\" \"id:1,phase:2,chain,deny\"\nSecRule ARGS \"@rx b\" \"chain\"\nSecRule ARGS \"@rx c\" \"t:none\"\nSecRule ARGS \"@rx d\" \"id:2,phase:2,pass\"\n";
     let mut d = Driver::new();
-    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
-    let phase = d.rules_set_phases.for_phase(Phases::RequestBody);
+    assert!(d.parse(rules, "t"), "{}", d.rules.properties.parser_error);
+    let phase = d.rules.rules_set_phases.for_phase(Phases::RequestBody);
     assert_eq!(phase.len(), 2);
     let r = phase[0].as_rule().unwrap();
     let child = r.chain.next.as_ref().unwrap();
@@ -407,10 +408,10 @@ fn chains_and_duplicates() {
 /// The line numbers of the rules of `rules` (sorted by id).
 fn rule_lines(rules: &str) -> Vec<(u64, usize)> {
     let mut d = Driver::new();
-    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
+    assert!(d.parse(rules, "t"), "{}", d.rules.properties.parser_error);
     let mut out: Vec<(u64, usize)> = crate::phases::Phases::ALL
         .iter()
-        .flat_map(|&p| d.rules_set_phases.for_phase(p).iter())
+        .flat_map(|&p| d.rules.rules_set_phases.for_phase(p).iter())
         .filter_map(|r| r.as_rule().map(|r| (r.logged_id(), r.line_number)))
         .collect();
     out.sort();
@@ -471,8 +472,8 @@ fn directive_after_rule_without_actions() {
 fn whole_collection_followed_by_text() {
     let mut d = Driver::new();
     let rules = "SecRule TX \"foo\" \"id:1,phase:2,pass,msg:'%{tx}x'\"\n";
-    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
-    let dump = format!("{:#?}", d.rules_set_phases);
+    assert!(d.parse(rules, "t"), "{}", d.rules.properties.parser_error);
+    let dump = format!("{:#?}", d.rules.rules_set_phases);
     assert!(dump.contains("Rx {"), "{dump}");
     assert!(!dump.contains("dynamic"), "{dump}");
     assert_eq!(dump.matches("full_name: \"TX\"").count(), 2, "{dump}");
@@ -486,9 +487,9 @@ fn percent_is_text() {
     let mut d = Driver::new();
     let rules = "SecRule ARGS \"@contains 5%\" \"id:1,phase:2,pass,msg:'100%',tag:a%,setvar:tx.a=5%\"\n\
                  SecRule ARGS @contains b% \"id:2,phase:2,pass,msg:'%{tx.a}%'\"\n";
-    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
+    assert!(d.parse(rules, "t"), "{}", d.rules.properties.parser_error);
     // Literals are printed as byte lists.
-    let dump = format!("{:?}", d.rules_set_phases);
+    let dump = format!("{:?}", d.rules.rules_set_phases);
     let bytes = |s: &str| format!("{:?}", s.as_bytes().to_vec());
     for literal in ["5%", "100%", "a%", "b%"] {
         assert!(dump.contains(&bytes(literal)), "{literal} in {dump}");
@@ -507,8 +508,8 @@ SecRule ARGS "@streq a\\\"b" "id:2,phase:2,pass"
 SecRule ARGS "@streq c\\d" "id:3,phase:2,pass"
 SecRule ARGS @streq e\"f "id:4,phase:2,pass"
 "#;
-    assert!(d.parse(rules, "t"), "{}", d.properties.parser_error);
-    let dump = format!("{:?}", d.rules_set_phases);
+    assert!(d.parse(rules, "t"), "{}", d.rules.properties.parser_error);
+    let dump = format!("{:?}", d.rules.rules_set_phases);
     let bytes = |s: &str| format!("{:?}", s.as_bytes().to_vec());
     for param in [r#"test()"quote""#, r#"a\\"b"#, r#"c\\d"#, r#"e\"f"#] {
         assert!(dump.contains(&bytes(param)), "{param} in {dump}");
@@ -547,8 +548,8 @@ fn unknown_operators() {
 fn quoted_phase_name() {
     use crate::phases::Phases;
     let mut d = Driver::new();
-    assert!(d.parse("SecAction \"id:1,phase:'request',pass\"\n", "t"), "{}", d.properties.parser_error);
-    let rule = d.rules_set_phases.for_phase(Phases::RequestBody)[0].as_rule().unwrap();
+    assert!(d.parse("SecAction \"id:1,phase:'request',pass\"\n", "t"), "{}", d.rules.properties.parser_error);
+    let rule = d.rules.rules_set_phases.for_phase(Phases::RequestBody)[0].as_rule().unwrap();
     assert_eq!(rule.phase(), Phases::RequestBody);
     assert!(!format!("{rule:?}").contains("Allow"), "{rule:?}");
     assert_eq!(load("SecAction \"id:1,phase:'phase',pass\"\n", "t").0, -1);
@@ -590,13 +591,13 @@ fn numbers_beyond_the_int_range() {
     for (rule, error) in rejected {
         let mut d = Driver::new();
         assert!(!d.parse(&format!("{rule}\n"), "t"), "accepted: {rule}");
-        assert!(d.properties.parser_error.contains(error), "{rule}: {}", d.properties.parser_error);
+        assert!(d.rules.properties.parser_error.contains(error), "{rule}: {}", d.rules.properties.parser_error);
     }
 
     // Beyond `int` but within 64 bits: an id like another for
     // `SecRuleRemoveById`.
     let mut d = Driver::new();
-    assert!(d.parse("SecRuleRemoveById 3000000000 1-3000000000\n", "t"), "{}", d.properties.parser_error);
+    assert!(d.parse("SecRuleRemoveById 3000000000 1-3000000000\n", "t"), "{}", d.rules.properties.parser_error);
 
     // A limit too large for its directive is an error, as for every
     // numeric directive. (These two used to read it as the largest limit.)
@@ -610,7 +611,7 @@ fn numbers_beyond_the_int_range() {
         let mut d = Driver::new();
         assert!(!d.parse(&format!("{directive} {TWO_64_PLUS_1}\n"), "t"), "{directive}");
         let expected = format!("Failed to parse {directive}: Value is too big.");
-        assert!(d.properties.parser_error.contains(&expected), "{}", d.properties.parser_error);
+        assert!(d.rules.properties.parser_error.contains(&expected), "{}", d.rules.properties.parser_error);
     }
 }
 
@@ -1080,6 +1081,6 @@ fn rule_properties_outside_of_a_rule() {
     }
     // `phase` says which phase the default actions are for.
     let mut d = Driver::new();
-    assert!(d.parse("SecDefaultAction \"phase:3,log,deny,status:403\"\n", "t"), "{}", d.properties.parser_error);
-    assert_eq!(d.properties.default_actions[crate::phases::Phases::ResponseHeaders.index()].len(), 3);
+    assert!(d.parse("SecDefaultAction \"phase:3,log,deny,status:403\"\n", "t"), "{}", d.rules.properties.parser_error);
+    assert_eq!(d.rules.properties.default_actions[crate::phases::Phases::ResponseHeaders.index()].len(), 3);
 }

@@ -42,10 +42,12 @@ for operators, for instance). That is what lets them be tested alone.
    objects: variables (`src/variables/`), an operator
    (`src/operators/`), actions (`src/actions/seclang.rs`).
    `src/parser/settings.rs` holds one entry per configuration directive
-   and what it sets. The result of one load is a `Driver`
-   (`src/parser/driver.rs`): the rules of each phase and the properties.
-3. **The rule set.** `RulesSet` (`src/rules_set/`) merges what each load
-   produced. Its parts:
+   and what it sets. One load is a `Driver` (`src/parser/driver.rs`): it
+   builds a `RulesSet` of its own (the rules of each phase and the
+   properties) and keeps what only parsing needs (the file names, the rule
+   a `chain` continues).
+3. **The rule set.** `RulesSet` (`src/rules_set/`) merges the rule set of
+   each load that succeeded (`RulesSet::merge`). Its parts:
    - `phases.rs`: the rules, one list per phase. An entry is a rule or a
      `SecMarker`.
    - `properties.rs`: every setting (`SecRuleEngine`, body limits, audit

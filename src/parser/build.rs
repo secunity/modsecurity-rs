@@ -29,7 +29,7 @@ use crate::variables::variable::Variable;
 use crate::variables::{VariableError, VariableSelector, new_variable};
 use modsecurity_operators::seclang_operator;
 
-/// The load stopped: the error is in `driver.properties.parser_error`.
+/// The load stopped: the error is in `driver.rules.properties.parser_error`.
 #[derive(Debug)]
 pub(crate) struct Failed;
 
@@ -201,7 +201,7 @@ impl Builder<'_, '_> {
             Directive::UpdateTarget { by, selector, variables } => {
                 let v = string(selector.text);
                 let vars = self.targets(&variables)?;
-                let ex = &mut self.driver.properties.exceptions;
+                let ex = &mut self.driver.rules.properties.exceptions;
                 match by {
                     UpdateBy::Tag => ex.load_update_target_by_tag(&v, vars),
                     UpdateBy::Msg => ex.load_update_target_by_msg(&v, vars),
@@ -239,7 +239,7 @@ impl Builder<'_, '_> {
                         ParsedAction::Transformation(t) => acts.push(RuleAction::Transformation(t)),
                     }
                 }
-                self.driver.properties.exceptions.load_update_action_by_id(rule_id, acts);
+                self.driver.rules.properties.exceptions.load_update_action_by_id(rule_id, acts);
             }
             Directive::Setting { keyword, rest } => self.setting(keyword, rest)?,
         }
@@ -388,7 +388,7 @@ impl Builder<'_, '_> {
                     if let Ok(ParsedAction::Action(RuleAction::CtlAuditEngine(a))) = &built
                         && a.status() != AuditLogStatus::Off
                     {
-                        self.driver.properties.audit_log.set_ctl_audit_engine_active();
+                        self.driver.rules.properties.audit_log.set_ctl_audit_engine_active();
                     }
                     built
                 }
@@ -478,7 +478,8 @@ impl Builder<'_, '_> {
             );
             return self.fail(&msg);
         }
-        self.driver.properties.default_actions[index].extend(checked_actions.into_iter().map(std::sync::Arc::new));
+        self.driver.rules.properties.default_actions[index]
+            .extend(checked_actions.into_iter().map(std::sync::Arc::new));
         Ok(())
     }
 }

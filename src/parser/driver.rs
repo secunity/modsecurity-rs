@@ -1,14 +1,13 @@
-//! The driver loads SecLang configurations (`build.rs`) and collects what
-//! they produce: the configuration properties and the rules of every phase.
+//! The driver loads SecLang configurations (`build.rs`) into a rule set of
+//! their own: the configuration properties and the rules of every phase.
 
 use std::sync::Arc;
 
 use crate::phases::{NUMBER_OF_PHASES, Phases};
 use crate::rule::Rule;
+use crate::rules_set::RulesSet;
 use crate::rules_set::entry::Entry;
 use crate::rules_set::marker::Marker;
-use crate::rules_set::phases::RulesSetPhases;
-use crate::rules_set::properties::RulesSetProperties;
 use crate::utils::system::is_file;
 
 /// A position in a configuration file, for error messages: the file (an
@@ -29,9 +28,12 @@ struct LastRule {
     depth: usize,
 }
 
+/// One load of a configuration: the rule set it builds, and what only the
+/// parsing needs.
 pub struct Driver {
-    pub properties: RulesSetProperties,
-    pub rules_set_phases: RulesSetPhases,
+    /// The rules and the properties the configuration gives, merged into
+    /// the rule set loading them once the whole load succeeded.
+    pub(crate) rules: RulesSet,
 
     /// The file names referenced by the locations.
     filenames: Vec<String>,
@@ -54,8 +56,7 @@ impl Default for Driver {
 impl Driver {
     pub fn new() -> Self {
         Driver {
-            properties: RulesSetProperties::new(),
-            rules_set_phases: RulesSetPhases::default(),
+            rules: RulesSet::new(),
             filenames: Vec::new(),
             last_rule: None,
             default_actions_taken: [false; NUMBER_OF_PHASES],
@@ -65,7 +66,7 @@ impl Driver {
     /// Whether a `SecDefaultAction` is set for the phase with the index
     /// `phase`, by this load or by the rule set it loads into.
     pub(crate) fn has_default_actions(&self, phase: usize) -> bool {
-        self.default_actions_taken[phase] || !self.properties.default_actions[phase].is_empty()
+        self.default_actions_taken[phase] || !self.rules.properties.default_actions[phase].is_empty()
     }
 
     /// Records a file name and returns its index.
@@ -83,26 +84,26 @@ impl Driver {
         for phase in Phases::ALL {
             let mut rule = Marker::new(marker, file_name, line_number);
             rule.phase = phase;
-            self.rules_set_phases.insert(Arc::new(Entry::Marker(rule)));
+            self.rules.rules_set_phases.insert(Arc::new(Entry::Marker(rule)));
         }
     }
 
     /// Adds a `SecAction` rule.
     pub fn add_sec_action(&mut self, rule: Rule) -> bool {
-        self.rules_set_phases.insert(Arc::new(Entry::Rule(rule)));
+        self.rules.rules_set_phases.insert(Arc::new(Entry::Rule(rule)));
         true
     }
 
     /// Adds a `SecRuleScript` rule.
     pub fn add_sec_rule_script(&mut self, rule: Rule) -> bool {
-        self.rules_set_phases.insert(Arc::new(Entry::Rule(rule)));
+        self.rules.rules_set_phases.insert(Arc::new(Entry::Rule(rule)));
         true
     }
 
     /// The rule `last_rule` points to.
     fn last_rule_mut(&mut self) -> Option<&mut Rule> {
         let lr = self.last_rule?;
-        let arc = self.rules_set_phases.for_phase_mut(lr.phase).get_mut(lr.index)?;
+        let arc = self.rules.rules_set_phases.for_phase_mut(lr.phase).get_mut(lr.index)?;
         // While parsing, the driver holds the only reference to its rules.
         let mut r = Arc::get_mut(arc)?.as_rule_mut()?;
         for _ in 0..lr.depth {
@@ -120,7 +121,8 @@ impl Driver {
         {
             r.set_phase(last.phase());
             if r.has_disruptive_action() {
-                self.properties
+                self.rules
+                    .properties
                     .parser_error
                     .push_str("Disruptive actions can only be specified by chain starter rules.");
                 return false;
@@ -135,25 +137,26 @@ impl Driver {
 
         // The rule must have an id (0 is one), used by no other rule.
         let Some(id) = r.rule_id else {
-            self.properties
+            self.rules
+                .properties
                 .parser_error
                 .push_str(&format!("Rules must have an ID. File: {} at line: {}\n", r.file_name, r.line_number));
             return false;
         };
 
         for phase in Phases::ALL {
-            let rules = self.rules_set_phases.for_phase(phase);
+            let rules = self.rules.rules_set_phases.for_phase(phase);
             for lr in rules {
                 if lr.sec_rule_id() == Some(id) {
-                    self.properties.parser_error.push_str(&format!("Rule id: {} is duplicated\n", id));
+                    self.rules.properties.parser_error.push_str(&format!("Rule id: {} is duplicated\n", id));
                     return false;
                 }
             }
         }
 
         let phase = r.phase();
-        self.rules_set_phases.insert(Arc::new(Entry::Rule(r)));
-        let index = self.rules_set_phases.for_phase(phase).len() - 1;
+        self.rules.rules_set_phases.insert(Arc::new(Entry::Rule(r)));
+        let index = self.rules.rules_set_phases.for_phase(phase).len() - 1;
         self.last_rule = Some(LastRule { phase, index, depth: 0 });
         true
     }
@@ -189,7 +192,7 @@ impl Driver {
     pub fn parse_file(&mut self, f: &str) -> bool {
         let content = if is_file(f) { std::fs::read(f).ok() } else { None };
         let Some(content) = content else {
-            self.properties.parser_error.push_str(&format!("Failed to open the file: {}\n", f));
+            self.rules.properties.parser_error.push_str(&format!("Failed to open the file: {}\n", f));
             return false;
         };
         self.parse_bytes(&content, f)
@@ -198,17 +201,17 @@ impl Driver {
     /// Appends the error message `m` and its context `c` to the parser
     /// errors; the first error also writes the position header.
     pub(crate) fn error(&mut self, at: Position, m: &str, c: &str) {
-        if self.properties.parser_error.is_empty() {
+        if self.rules.properties.parser_error.is_empty() {
             let header =
                 format!("Rules error. File: {}. Line: {}. Column: {}. ", self.filename(at.file), at.line, at.column);
-            self.properties.parser_error.push_str(&header);
+            self.rules.properties.parser_error.push_str(&header);
         }
         if !m.is_empty() {
-            self.properties.parser_error.push_str(m);
-            self.properties.parser_error.push(' ');
+            self.rules.properties.parser_error.push_str(m);
+            self.rules.properties.parser_error.push(' ');
         }
         if !c.is_empty() {
-            self.properties.parser_error.push_str(c);
+            self.rules.properties.parser_error.push_str(c);
         }
     }
 }

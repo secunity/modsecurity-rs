@@ -69,8 +69,8 @@ mod tests {
 
     fn parse(text: &str) -> RulesSetPhases {
         let mut driver = Driver::new();
-        assert!(driver.parse(text, "merge-test"), "{}", driver.properties.parser_error);
-        driver.rules_set_phases
+        assert!(driver.parse(text, "merge-test"), "{}", driver.rules.properties.parser_error);
+        driver.rules.rules_set_phases
     }
 
     fn ids(phases: &RulesSetPhases, phase: Phases) -> Vec<u64> {

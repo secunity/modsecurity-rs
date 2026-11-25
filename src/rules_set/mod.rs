@@ -90,10 +90,10 @@ impl RulesSet {
     pub fn load_from_uri(&mut self, uri: &str) -> Result<usize, LoadError> {
         let mut driver = self.driver();
         if !driver.parse_file(uri) {
-            self.properties.parser_error.push_str(&driver.properties.parser_error);
+            self.properties.parser_error.push_str(&driver.rules.properties.parser_error);
             return self.failed();
         }
-        self.merge_driver(&mut driver)
+        self.merge(&mut driver.rules)
     }
 
     /// Loads the rules of the file at `path`, which need not be UTF-8 (the
@@ -125,12 +125,12 @@ impl RulesSet {
     pub fn load_bytes(&mut self, rules: &[u8], reference: &str) -> Result<usize, LoadError> {
         let mut driver = self.driver();
         if !driver.parse_bytes(rules, reference) {
-            self.properties.parser_error.push_str(&driver.properties.parser_error);
+            self.properties.parser_error.push_str(&driver.rules.properties.parser_error);
             return self.failed();
         }
-        self.merge_driver(&mut driver).or_else(|_| {
+        self.merge(&mut driver.rules).or_else(|_| {
             // The parser errors of the driver are added to the merge error.
-            self.properties.parser_error.push_str(&driver.properties.parser_error);
+            self.properties.parser_error.push_str(&driver.rules.properties.parser_error);
             self.failed()
         })
     }
@@ -163,34 +163,18 @@ impl RulesSet {
         self.plan.get_or_init(|| Plan::compile(self))
     }
 
-    /// Appends the rules parsed by `from` and merges its properties.
-    /// Returns the number of rules appended.
-    pub(crate) fn merge_driver(&mut self, from: &mut Driver) -> Result<usize, LoadError> {
-        self.merge_parts(&from.rules_set_phases, &mut from.properties)
-    }
-
     /// Appends the rules of `from` and merges its properties. Returns the
-    /// number of rules appended.
+    /// number of rules appended. The properties are merged even when the
+    /// rules could not be (a duplicated id), and a failure to merge them is
+    /// only recorded in the parser errors.
     pub fn merge(&mut self, from: &mut RulesSet) -> Result<usize, LoadError> {
-        self.merge_parts(&from.rules_set_phases, &mut from.properties)
-    }
-
-    /// The body of [`Self::merge`] and [`Self::merge_driver`]. The
-    /// properties are merged even when the rules could not be (duplicated
-    /// id), and a failure to merge them is only recorded in the parser
-    /// errors.
-    fn merge_parts(
-        &mut self,
-        phases: &RulesSetPhases,
-        properties: &mut RulesSetProperties,
-    ) -> Result<usize, LoadError> {
         // The rules change: so does the plan.
         self.plan = OnceLock::new();
-        let appended = self.rules_set_phases.append(phases);
+        let appended = self.rules_set_phases.append(&from.rules_set_phases);
         if let Err(e) = &appended {
             self.properties.parser_error.push_str(e);
         }
-        if let Err(e) = RulesSetProperties::merge_properties(properties, &mut self.properties) {
+        if let Err(e) = RulesSetProperties::merge_properties(&mut from.properties, &mut self.properties) {
             self.properties.parser_error.push_str(&e);
         }
         appended.or_else(|_| self.failed())

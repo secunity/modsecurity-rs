@@ -1747,3 +1747,14 @@ before (the parser checks them now, where the update list was checked).
 (they have no effect there), and making them properties would refuse
 configurations that load today.
 
+
+## One load builds a `RulesSet`
+
+The parser's `Driver` held the same two parts as `RulesSet`
+(`RulesSetProperties` and `RulesSetPhases`), and a rule set merged a
+driver through `merge_driver`, a rule set through `merge`, both through
+`merge_parts`. A `Driver` holds a `RulesSet` now (`rules`), next to what
+only parsing needs (the file names, the last rule for `chain`, the
+phases that have a `SecDefaultAction` already), and a successful load is
+merged with `RulesSet::merge`: one way to merge.
+

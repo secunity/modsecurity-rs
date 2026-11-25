@@ -102,7 +102,7 @@ fn directive(keyword: &str) -> Option<Directive> {
     match keyword.to_ascii_lowercase().as_str() {
         // --- Audit log ---------------------------------------------------
         "secauditengine" => word(&["RelevantOnly", "Off", "On"], |b, v| {
-            b.driver.properties.audit_log.set_status(if v.is("relevantonly") {
+            b.driver.rules.properties.audit_log.set_status(if v.is("relevantonly") {
                 AuditLogStatus::RelevantOnly
             } else if v.is("off") {
                 AuditLogStatus::Off
@@ -112,17 +112,17 @@ fn directive(keyword: &str) -> Option<Directive> {
             Ok(())
         }),
         "secauditlog" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| {
-            b.driver.properties.audit_log.set_file_path1(&v.text);
+            b.driver.rules.properties.audit_log.set_file_path1(&v.text);
             Ok(())
         }),
         "secauditlog2" => value(&[(Sep(Path), Double)], |b, v| {
-            b.driver.properties.audit_log.set_file_path2(&v.text);
+            b.driver.rules.properties.audit_log.set_file_path2(&v.text);
             Ok(())
         }),
         "secauditlogdirmode" => {
             value(&[(Sep(Number), Double), (SepQuoted(Number), Double)], |b, v| match parse_octal_mode(&v.text) {
                 Ok(mode) => {
-                    b.driver.properties.audit_log.set_storage_dir_mode(mode);
+                    b.driver.rules.properties.audit_log.set_storage_dir_mode(mode);
                     Ok(())
                 }
                 Err(e) => b.fail(&format!("Failed to parse SecAuditLogDirMode: {}", e)),
@@ -130,36 +130,36 @@ fn directive(keyword: &str) -> Option<Directive> {
         }
         "secauditlogfilemode" => value(NUMBER, |b, v| match parse_octal_mode(&v.text) {
             Ok(mode) => {
-                b.driver.properties.audit_log.set_file_mode(mode);
+                b.driver.rules.properties.audit_log.set_file_mode(mode);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecAuditLogFileMode: {}", e)),
         }),
         "secauditlogformat" => word(&["JSON", "Native"], |b, v| {
             let format = if v.is("json") { AuditLogFormat::Json } else { AuditLogFormat::Native };
-            b.driver.properties.audit_log.set_format(format);
+            b.driver.rules.properties.audit_log.set_format(format);
             Ok(())
         }),
         "secauditlogparts" => value(&[(Sep(AuditParts), Double), (SepQuoted(AuditParts), Double)], |b, v| {
-            b.driver.properties.audit_log.set_parts(&v.text);
+            b.driver.rules.properties.audit_log.set_parts(&v.text);
             Ok(())
         }),
         "secauditlogprefix" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
-            b.driver.properties.audit_log.set_prefix(&v.text);
+            b.driver.rules.properties.audit_log.set_prefix(&v.text);
             Ok(())
         }),
         "secauditlogrelevantstatus" => {
             value(&[(Sep(FreeTextNewLine), DoubleAndSingle), (SepQuoted(Word), DoubleAndSingle)], |b, v| {
-                let set = b.driver.properties.audit_log.set_relevant_status(&v.text);
+                let set = b.driver.rules.properties.audit_log.set_relevant_status(&v.text);
                 set.or_else(|error| b.fail(&error))
             })
         }
         "secauditlogstoragedir" => value(PATH, |b, v| {
-            b.driver.properties.audit_log.set_storage_dir(&v.text);
+            b.driver.rules.properties.audit_log.set_storage_dir(&v.text);
             Ok(())
         }),
         "secauditlogtype" => word(&["Serial", "Parallel", "Concurrent", "https"], |b, v| {
-            b.driver.properties.audit_log.set_type(if v.is("serial") {
+            b.driver.rules.properties.audit_log.set_type(if v.is("serial") {
                 AuditLogType::Serial
             } else if v.is("https") {
                 AuditLogType::Https
@@ -171,20 +171,20 @@ fn directive(keyword: &str) -> Option<Directive> {
 
         // --- Debug log ---------------------------------------------------
         "secdebuglog" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| {
-            match b.driver.properties.debug_log.set_file(&v.text) {
+            match b.driver.rules.properties.debug_log.set_file(&v.text) {
                 Ok(()) => Ok(()),
                 Err(error) => b.fail(&format!("Failed to start DebugLog: {}", error)),
             }
         }),
         "secdebugloglevel" => value(NUMBER, |b, v| {
             // A number too large for a level asks for everything.
-            b.driver.properties.debug_log.set_level(parse_digits(&v.text).unwrap_or(u8::MAX));
+            b.driver.rules.properties.debug_log.set_level(parse_digits(&v.text).unwrap_or(u8::MAX));
             Ok(())
         }),
 
         // --- The engine and what it inspects -------------------------------
         "secruleengine" => word(&["Off", "On", "DetectionOnly"], |b, v| {
-            b.driver.properties.settings.sec_rule_engine = Some(if v.is("off") {
+            b.driver.rules.properties.settings.sec_rule_engine = Some(if v.is("off") {
                 RuleEngine::Disabled
             } else if v.is("on") {
                 RuleEngine::Enabled
@@ -194,16 +194,16 @@ fn directive(keyword: &str) -> Option<Directive> {
             Ok(())
         }),
         "secrequestbodyaccess" => word(ON_OFF, |b, v| {
-            b.driver.properties.settings.sec_request_body_access = Some(v.is("on"));
+            b.driver.rules.properties.settings.sec_request_body_access = Some(v.is("on"));
             Ok(())
         }),
         "secresponsebodyaccess" => word(ON_OFF, |b, v| {
-            b.driver.properties.settings.sec_response_body_access = Some(v.is("on"));
+            b.driver.rules.properties.settings.sec_response_body_access = Some(v.is("on"));
             Ok(())
         }),
         "secresponsebodymimetype" => value(FREE_TEXT_LINE, |b, v| {
             let tokens: std::collections::BTreeSet<&str> = v.text.split_ascii_whitespace().collect();
-            let t = &mut b.driver.properties.response_body_type_to_be_inspected;
+            let t = &mut b.driver.rules.properties.response_body_type_to_be_inspected;
             t.set = true;
             for it in tokens {
                 t.value.insert(it.to_ascii_lowercase());
@@ -211,18 +211,18 @@ fn directive(keyword: &str) -> Option<Directive> {
             Ok(())
         }),
         "secresponsebodymimetypesclear" => word(&[], |b, _| {
-            let t = &mut b.driver.properties.response_body_type_to_be_inspected;
+            let t = &mut b.driver.rules.properties.response_body_type_to_be_inspected;
             t.set = true;
             t.clear = true;
             t.value.clear();
             Ok(())
         }),
         "secxmlexternalentity" => word(ON_OFF, |b, v| {
-            b.driver.properties.settings.sec_xml_external_entity = Some(v.is("on"));
+            b.driver.rules.properties.settings.sec_xml_external_entity = Some(v.is("on"));
             Ok(())
         }),
         "secparsexmlintoargs" => word(&["OnlyArgs", "Off", "On"], |b, v| {
-            b.driver.properties.settings.sec_xml_parse_xml_into_args = Some(if v.is("onlyargs") {
+            b.driver.rules.properties.settings.sec_xml_parse_xml_into_args = Some(if v.is("onlyargs") {
                 ParseXmlIntoArgs::OnlyArgs
             } else if v.is("off") {
                 ParseXmlIntoArgs::Off
@@ -243,7 +243,7 @@ fn directive(keyword: &str) -> Option<Directive> {
                 if v.text.len() != 1 {
                     return b.fail("Argument separator should be set to a single character.");
                 }
-                b.driver.properties.settings.sec_argument_separator = Some(v.text.clone());
+                b.driver.rules.properties.settings.sec_argument_separator = Some(v.text.clone());
                 Ok(())
             },
         ),
@@ -253,87 +253,87 @@ fn directive(keyword: &str) -> Option<Directive> {
         "secunicodemapfile" => value(&[(UnicodeMap, Double)], |b, v| b.unicode_map_file(&v.text)),
         "secgeolookupdb" => value(FREE_TEXT_LINE, |b, v| b.geo_lookup_db(&v.text)),
         "sechttpblkey" => value(FREE_TEXT_LINE, |b, v| {
-            b.driver.properties.settings.httpbl_key = Some(v.text.clone());
+            b.driver.rules.properties.settings.httpbl_key = Some(v.text.clone());
             Ok(())
         }),
         "secwebappid" => {
             value(&[(SepQuoted(FreeText), DoubleAndSingle), (Sep(FreeTextNewLine), DoubleAndSingle)], |b, v| {
-                b.driver.properties.settings.sec_web_app_id = Some(v.text.clone());
+                b.driver.rules.properties.settings.sec_web_app_id = Some(v.text.clone());
                 Ok(())
             })
         }
         "seccomponentsignature" => value(QUOTED_TEXT, |b, v| {
-            b.driver.properties.components.push(v.text.clone());
+            b.driver.rules.properties.components.push(v.text.clone());
             Ok(())
         }),
 
         // --- Limits ------------------------------------------------------
         "secargumentslimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
             Ok(n) => {
-                b.driver.properties.settings.arguments_limit = Some(n);
+                b.driver.rules.properties.settings.arguments_limit = Some(n);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecArgumentsLimit: {}", e)),
         }),
         "secrequestbodyjsondepthlimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
             Ok(n) => {
-                b.driver.properties.settings.request_body_json_depth_limit = Some(n);
+                b.driver.rules.properties.settings.request_body_json_depth_limit = Some(n);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecRequestBodyJsonDepthLimit: {}", e)),
         }),
         "secrequestbodylimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
             Ok(n) => {
-                b.driver.properties.settings.request_body_limit = Some(n);
+                b.driver.rules.properties.settings.request_body_limit = Some(n);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecRequestBodyLimit: {}", e)),
         }),
         "secrequestbodynofileslimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
             Ok(n) => {
-                b.driver.properties.settings.request_body_no_files_limit = Some(n);
+                b.driver.rules.properties.settings.request_body_no_files_limit = Some(n);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecRequestsBodyNoFilesLimit: {}", e)),
         }),
         "secresponsebodylimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
             Ok(n) => {
-                b.driver.properties.settings.response_body_limit = Some(n);
+                b.driver.rules.properties.settings.response_body_limit = Some(n);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecResponseBodyLimit: {}", e)),
         }),
         "secpcrematchlimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
             Ok(n) => {
-                b.driver.properties.settings.pcre_match_limit = Some(n);
+                b.driver.rules.properties.settings.pcre_match_limit = Some(n);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecPcreMatchLimit: {}", e)),
         }),
         "secrequestbodylimitaction" => word(&["ProcessPartial", "Reject"], |b, v| {
-            b.driver.properties.settings.request_body_limit_action = Some(body_limit_action(v));
+            b.driver.rules.properties.settings.request_body_limit_action = Some(body_limit_action(v));
             Ok(())
         }),
         "secresponsebodylimitaction" => word(&["ProcessPartial", "Reject"], |b, v| {
-            b.driver.properties.settings.response_body_limit_action = Some(body_limit_action(v));
+            b.driver.rules.properties.settings.response_body_limit_action = Some(body_limit_action(v));
             Ok(())
         }),
 
         // --- Uploads -----------------------------------------------------
         "secuploaddir" => value(PATH, |b, v| {
-            b.driver.properties.settings.upload_directory = Some(v.text.clone());
+            b.driver.rules.properties.settings.upload_directory = Some(v.text.clone());
             Ok(())
         }),
         "secuploadfilelimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
             Ok(n) => {
-                b.driver.properties.settings.upload_file_limit = Some(n);
+                b.driver.rules.properties.settings.upload_file_limit = Some(n);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecUploadFileLimit: {}", e)),
         }),
         "secuploadfilemode" => value(NUMBER, |b, v| match parse_octal_mode(&v.text) {
             Ok(n) => {
-                b.driver.properties.settings.upload_file_mode = Some(n);
+                b.driver.rules.properties.settings.upload_file_mode = Some(n);
                 Ok(())
             }
             Err(e) => b.fail(&format!("Failed to parse SecUploadFileMode: {}", e)),
@@ -343,11 +343,11 @@ fn directive(keyword: &str) -> Option<Directive> {
                 return b
                     .fail("SecUploadKeepFiles RelevantOnly is not currently supported. Accepted values are On or Off");
             }
-            b.driver.properties.settings.upload_keep_files = Some(v.is("on"));
+            b.driver.rules.properties.settings.upload_keep_files = Some(v.is("on"));
             Ok(())
         }),
         "sectmpsaveuploadedfiles" => word(ON_OFF, |b, v| {
-            b.driver.properties.settings.tmp_save_uploaded_files = Some(v.is("on"));
+            b.driver.rules.properties.settings.tmp_save_uploaded_files = Some(v.is("on"));
             Ok(())
         }),
 
@@ -358,23 +358,23 @@ fn directive(keyword: &str) -> Option<Directive> {
             Ok(())
         }),
         "secruleremovebyid" => value(&[(Sep(FreeTextNewLine), DoubleAndSingle)], |b, v| {
-            match b.driver.properties.exceptions.load(&v.text) {
+            match b.driver.rules.properties.exceptions.load(&v.text) {
                 Ok(()) => Ok(()),
                 Err(error) => b.fail(&format!("SecRuleRemoveById: failed to load:{}. {}", v.text, error)),
             }
         }),
         "secruleremovebymsg" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
-            b.driver.properties.exceptions.load_remove_rule_by_msg(&v.text);
+            b.driver.rules.properties.exceptions.load_remove_rule_by_msg(&v.text);
             Ok(())
         }),
         "secruleremovebytag" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
-            b.driver.properties.exceptions.load_remove_rule_by_tag(&v.text);
+            b.driver.rules.properties.exceptions.load_remove_rule_by_tag(&v.text);
             Ok(())
         }),
         "include" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| b.include(&v.text)),
         "secremoterules" => value(&[(Remote, Double)], |b, v| b.remote_rules(&v.text)),
         "secremoterulesfailaction" => word(&["Abort", "Warn"], |b, v| {
-            b.driver.properties.remote_rules_action_on_failed =
+            b.driver.rules.properties.remote_rules_action_on_failed =
                 Some(if v.is("abort") { OnFailedRemoteRulesAction::Abort } else { OnFailedRemoteRulesAction::Warn });
             Ok(())
         }),
@@ -463,9 +463,9 @@ impl Builder<'_, '_> {
             return self.fail(&format!("Failed to load locate the GeoDB file from: {} {}", v, lookup.looked_at));
         };
         match modsecurity_operators::geo_lookup::GeoDb::open(&file) {
-            Ok(db) => self.driver.properties.settings.geo_db = Some(std::sync::Arc::new(db)),
+            Ok(db) => self.driver.rules.properties.settings.geo_db = Some(std::sync::Arc::new(db)),
             // A database opened before stays in use.
-            Err(_) if self.driver.properties.settings.geo_db.is_some() => {}
+            Err(_) if self.driver.rules.properties.settings.geo_db.is_some() => {}
             Err(err) => return self.fail(&format!("Failed to load the GeoDB from: {}. {}", file, err)),
         }
         Ok(())
@@ -488,7 +488,7 @@ impl Builder<'_, '_> {
         let Some(file) = lookup.path else {
             return self.fail(&format!("Failed to locate the unicode map file from: {} {}", f, lookup.looked_at));
         };
-        if let Err(error) = ConfigUnicodeMap::load_config(&file, num, &mut self.driver.properties) {
+        if let Err(error) = ConfigUnicodeMap::load_config(&file, num, &mut self.driver.rules.properties) {
             return self.fail(&error);
         }
         Ok(())
@@ -525,7 +525,7 @@ impl Builder<'_, '_> {
         let mut c = HttpsClient::new();
         c.set_key(key);
         if !c.download(url) {
-            match self.driver.properties.remote_rules_action_on_failed {
+            match self.driver.rules.properties.remote_rules_action_on_failed {
                 Some(OnFailedRemoteRulesAction::Abort) => {
                     return self.fail(&format!("{} - Failed to download: {}", url, c.error));
                 }
