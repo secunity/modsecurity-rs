@@ -94,30 +94,55 @@ impl DebugLog for DefaultDebugLog {
 /// An in-memory debug log for unit tests.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     use super::DebugLog;
+    use crate::rules_set::RulesSet;
 
-    /// Keeps every message (level 9).
+    /// A debug log for tests: keeps every message (level 9) with its level.
     #[derive(Debug, Default)]
     pub struct CaptureLog {
-        pub lines: Mutex<Vec<String>>,
+        lines: Captured,
+    }
+
+    /// The messages of a [`CaptureLog`], readable after the log is given
+    /// to a rule set.
+    #[derive(Debug, Default, Clone)]
+    pub struct Captured(Arc<Mutex<Vec<(u8, String)>>>);
+
+    impl Captured {
+        /// The messages so far.
+        pub fn messages(&self) -> Vec<String> {
+            self.0.lock().unwrap().iter().map(|(_, m)| m.clone()).collect()
+        }
+
+        /// The messages so far, one `[level] message` line each.
+        pub fn text(&self) -> String {
+            self.0.lock().unwrap().iter().map(|(level, m)| format!("[{level}] {m}\n")).collect()
+        }
     }
 
     impl CaptureLog {
-        /// The capture log installed in `log`, with the messages so far.
+        /// The messages so far of the capture log installed in `log`.
         pub fn lines_of(log: &dyn DebugLog) -> Vec<String> {
             let any: &dyn std::any::Any = log;
-            any.downcast_ref::<CaptureLog>().expect("a CaptureLog").lines.lock().unwrap().clone()
+            any.downcast_ref::<CaptureLog>().expect("a CaptureLog").lines.messages()
         }
     }
 
+    /// A rule set with a capture log, and the messages of that log.
+    pub fn rules_with_log() -> (RulesSet, Captured) {
+        let log = CaptureLog::default();
+        let captured = log.lines.clone();
+        (RulesSet::with_debug_log(Box::new(log)), captured)
+    }
+
     impl DebugLog for CaptureLog {
-        fn write(&self, _level: u8, msg: &str) {
-            self.lines.lock().unwrap().push(msg.to_string());
+        fn write(&self, level: u8, msg: &str) {
+            self.lines.0.lock().unwrap().push((level, msg.to_string()));
         }
-        fn write_ctx(&self, _level: u8, _id: &str, _uri: &str, msg: &str) {
-            self.lines.lock().unwrap().push(msg.to_string());
+        fn write_ctx(&self, level: u8, _id: &str, _uri: &str, msg: &str) {
+            self.write(level, msg);
         }
         fn level(&self) -> Option<u8> {
             Some(9)

@@ -43,7 +43,7 @@ impl CollectionData {
         self.expiry.is_some_and(|expiry| now >= expiry)
     }
 
-    #[cfg_attr(not(feature = "lmdb"), allow(dead_code))] // The record format of LMDB and redb.
+    #[cfg_attr(not(any(feature = "lmdb", feature = "redb")), allow(dead_code))] // The record format of LMDB and redb.
     pub fn serialize(&self) -> Vec<u8> {
         let mut s = b"{".to_vec();
         if let Some(expiry) = self.expiry {
@@ -64,14 +64,14 @@ impl CollectionData {
         s
     }
 
-    #[cfg_attr(not(feature = "lmdb"), allow(dead_code))] // The record format of LMDB and redb.
+    #[cfg_attr(not(any(feature = "lmdb", feature = "redb")), allow(dead_code))] // The record format of LMDB and redb.
     /// Decodes a serialized record, falling back to the entire input as a
     /// plain value on any format mismatch (including `{}`).
     pub fn from_bytes(data: &[u8]) -> Self {
         Self::decode_record(data).unwrap_or_else(|| Self::with_value(data))
     }
 
-    #[cfg_attr(not(feature = "lmdb"), allow(dead_code))] // The record format of LMDB and redb.
+    #[cfg_attr(not(any(feature = "lmdb", feature = "redb")), allow(dead_code))] // The record format of LMDB and redb.
     fn decode_record(data: &[u8]) -> Option<Self> {
         let mut rest = data.strip_prefix(b"{")?.strip_suffix(b"}")?;
         let mut expiry = None;

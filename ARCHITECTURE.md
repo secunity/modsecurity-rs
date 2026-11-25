@@ -14,7 +14,7 @@ from the C++ library, `MIGRATION.md`; for the rules of working on it,
 | `modsecurity-operators` | `crates/modsecurity-operators` | The operators that only match (`@rx`, `@pm`, `@ipMatch`, `@detectSQLi`, ...), written against a small `Context` trait. |
 | `modsecurity-transformations` | `crates/modsecurity-transformations` | The `t:` transformations, as functions on bytes. |
 | `modsecurity-body` | `crates/modsecurity-body` | The request body processors: multipart, JSON, XML. Each is written against its own `Context` trait. |
-| `modsecurity-collections` | `crates/modsecurity-collections` | The persistent collections (`IP`, `SESSION`, `USER`, `GLOBAL`, `RESOURCE`) with an in-memory and an LMDB backend, and a transaction's `TX` variables. |
+| `modsecurity-collections` | `crates/modsecurity-collections` | The persistent collections (`IP`, `SESSION`, `USER`, `GLOBAL`, `RESOURCE`) with an in-memory, an LMDB and a redb backend, and a transaction's `TX` variables. |
 | `modsecurity-types` | `crates/modsecurity-types` | What the crates above share with the engine: `VariableValue`, `VariableOrigin`, key exclusions, the debug log interface (`DebugSink`, `ms_dbg!`). |
 | `modsecurity-compat` | `crates/modsecurity-compat` | Code that reproduces a C or C++ library on purpose, because tests of the original ModSecurity depend on the result: a multimap that iterates like libstdc++'s, a JSON writer and parser that behave like yajl, C number parsing. |
 | `modsecurity-native` | `crates/modsecurity-native` | Safe wrappers of the C libraries: PCRE2, libxml2, LMDB, ssdeep, Lua helpers, libc. With `modsecurity-capi` and the nginx connector, the only places with `unsafe`. |

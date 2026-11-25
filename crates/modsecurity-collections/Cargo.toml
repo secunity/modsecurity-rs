@@ -2,7 +2,7 @@
 name = "modsecurity-collections"
 version.workspace = true
 edition.workspace = true
-description = "The ModSecurity collections: the persistent ones (IP, SESSION, USER, GLOBAL, RESOURCE) with their in-memory and LMDB backends, and a transaction's TX variables"
+description = "The ModSecurity collections: the persistent ones (IP, SESSION, USER, GLOBAL, RESOURCE) with their in-memory, LMDB and redb backends, and a transaction's TX variables"
 license.workspace = true
 publish = false
 

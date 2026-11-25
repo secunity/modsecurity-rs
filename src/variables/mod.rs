@@ -166,52 +166,11 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Result<Variable, 
     }
 }
 
-/// Helpers shared by the unit tests of the variables and of the Lua engine.
-#[cfg(test)]
-pub(crate) mod test_support {
-    use std::sync::{Arc, Mutex};
-
-    use crate::debug_log::DebugLog;
-    use crate::rules_set::RulesSet;
-
-    /// A debug log that keeps the messages in memory.
-    #[derive(Debug, Default)]
-    pub struct CaptureLog {
-        pub log: Arc<Mutex<String>>,
-    }
-
-    impl DebugLog for CaptureLog {
-        fn write(&self, level: u8, msg: &str) {
-            self.log.lock().unwrap().push_str(&format!("[{}] {}\n", level, msg));
-        }
-        fn write_ctx(&self, level: u8, _id: &str, _uri: &str, msg: &str) {
-            self.write(level, msg);
-        }
-        fn level(&self) -> Option<u8> {
-            Some(9)
-        }
-        fn set_level(&mut self, _level: u8) {}
-        fn file(&self) -> Option<&str> {
-            None
-        }
-        fn set_file(&mut self, _file_name: &str) -> Result<(), String> {
-            Ok(())
-        }
-    }
-
-    /// A rule set logging everything (level 9) to the returned buffer.
-    pub fn rules_with_log() -> (RulesSet, Arc<Mutex<String>>) {
-        let log = Arc::new(Mutex::new(String::new()));
-        let rules = RulesSet::with_debug_log(Box::new(CaptureLog { log: log.clone() }));
-        (rules, log)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::test_support::rules_with_log;
     use super::variable::{KeyExclusion, Variable};
     use super::*;
+    use crate::debug_log::test_support::rules_with_log;
     use crate::instance::ModSecurity;
     use crate::rule::{Rule, RuleKind};
     use crate::rules_set::RulesSet;

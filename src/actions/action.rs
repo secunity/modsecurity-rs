@@ -23,7 +23,7 @@ pub enum Kind {
 /// Splits the text of an action into its name and payload
 /// (`name:payload`; a `t:` prefix is part of the name), stripping single
 /// quotes around the payload. The name keeps the spelling of the rule: it
-/// is what the debug log prints and what `block`/`setvar` are recognised by.
+/// is what the debug log prints.
 pub fn name_and_payload(data: &str) -> (&str, &str) {
     let pos = match data.strip_prefix("t:") {
         Some(rest) => rest.find(':').map(|p| p + 2),

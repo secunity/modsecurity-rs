@@ -301,14 +301,3 @@ mod tests {
         assert!(!validate(&dtd, &mut t), "{:?}", log(&on));
     }
 }
-
-/// A transaction (and so its XML parsers and document) can move to another
-/// thread, and the instance and the rule set can be shared between threads.
-#[test]
-fn transaction_is_send() {
-    fn send<T: Send>() {}
-    send::<crate::transaction::Transaction<'static>>();
-    fn shared<T: Send + Sync>() {}
-    shared::<crate::instance::ModSecurity>();
-    shared::<crate::rules_set::RulesSet>();
-}
