@@ -1,7 +1,12 @@
 //! The `t:urlEncode` transformation: URL-encodes the value (a space
 //! becomes `+`).
 
-use crate::chars::c2x;
+/// Appends the two lowercase hex digits of `c`.
+fn push_hex(c: u8, out: &mut Vec<u8>) {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    out.push(DIGITS[usize::from(c >> 4)]);
+    out.push(DIGITS[usize::from(c & 0x0f)]);
+}
 
 fn url_enc(value: &mut Vec<u8>) {
     let mut ret = Vec::with_capacity(value.len() * 3 + 1);
@@ -14,7 +19,7 @@ fn url_enc(value: &mut Vec<u8>) {
             ret.push(c);
         } else {
             ret.push(b'%');
-            c2x(u32::from(c), &mut ret);
+            push_hex(c, &mut ret);
         }
     }
 

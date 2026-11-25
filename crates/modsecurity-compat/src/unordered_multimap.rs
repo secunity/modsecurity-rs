@@ -12,10 +12,11 @@
 //! keys (a new element is placed in front of its equivalents, a new bucket at
 //! the front of the list).
 //!
-//! [`my_hash`] sums `c.to_ascii_lowercase()` over the key's `char`s and [`my_equal`]
-//! compares with `tolower`. Because `char` is signed on some targets (x86_64)
-//! and unsigned on others (aarch64 Linux), the hash of non-ASCII keys follows
-//! the target's `c_char`, as it does in a C++ program built for that target.
+//! The hash (`my_hash`) sums `c.to_ascii_lowercase()` over the key's
+//! `char`s and the equality (`my_equal`) compares with `tolower`. Because
+//! `char` is signed on some targets (x86_64) and unsigned on others (aarch64
+//! Linux), the hash of non-ASCII keys follows the target's `c_char`, as it
+//! does in a C++ program built for that target.
 
 use std::os::raw::c_char;
 
@@ -395,7 +396,7 @@ struct Node<V> {
 
 /// The hash of a key: the sum of its lowercased `char`s (see the module
 /// documentation).
-pub fn my_hash(key: &[u8]) -> usize {
+fn my_hash(key: &[u8]) -> usize {
     let mut h: usize = 0;
     for &b in key {
         let c = b as c_char;
@@ -409,7 +410,7 @@ pub fn my_hash(key: &[u8]) -> usize {
 
 /// Whether two keys are equal, ignoring ASCII case.
 #[inline]
-pub fn my_equal(a: &[u8], b: &[u8]) -> bool {
+fn my_equal(a: &[u8], b: &[u8]) -> bool {
     a.eq_ignore_ascii_case(b)
 }
 

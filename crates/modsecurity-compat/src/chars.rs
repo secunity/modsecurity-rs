@@ -29,15 +29,6 @@ pub fn hex_pair(s: &[u8]) -> Option<u8> {
     }
 }
 
-/// Appends the two lowercase hex digits of `what`.
-#[inline]
-pub fn c2x(what: u32, out: &mut Vec<u8>) {
-    const TABLE: &[u8; 16] = b"0123456789abcdef";
-    let what = what & 0xff;
-    out.push(TABLE[(what >> 4) as usize]);
-    out.push(TABLE[(what & 0x0f) as usize]);
-}
-
 /// The lowercase hexadecimal form of `input`, two digits per byte.
 pub fn string_to_hex(input: &[u8]) -> String {
     const LUT: &[u8; 16] = b"0123456789abcdef";

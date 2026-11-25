@@ -116,7 +116,7 @@ impl JsonGen {
 }
 
 /// yajl's string escaping (`yajl_string_encode` without solidus escaping).
-pub fn escape_into(out: &mut Vec<u8>, s: &[u8]) {
+fn escape_into(out: &mut Vec<u8>, s: &[u8]) {
     for &c in s {
         match c {
             b'\r' => out.extend_from_slice(b"\\r"),
