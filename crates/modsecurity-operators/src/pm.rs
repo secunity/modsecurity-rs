@@ -81,7 +81,6 @@ pub(crate) struct Matcher {
 impl Matcher {
     /// The matcher of `phrases`.
     pub(crate) fn new<'a>(phrases: impl IntoIterator<Item = &'a [u8]>) -> Self {
-        // Empty phrases are ignored.
         let patterns: Vec<Vec<u8>> = phrases.into_iter().filter(|p| !p.is_empty()).map(<[u8]>::to_vec).collect();
         let ac = aho_corasick::AhoCorasick::builder()
             .ascii_case_insensitive(true)
@@ -118,8 +117,8 @@ impl Pm {
         Pm { name, param, p }
     }
 
-    /// Searches `input` for the first phrase; a match is logged with its
-    /// offset, added to the matched values and, with `capture`, stored in
+    /// Searches `input` for the first phrase; a match is recorded with its
+    /// position, added to the matched values and, with `capture`, stored in
     /// `TX.0`. Shared by the `@pm` family.
     pub(crate) fn evaluate_pm(&self, cx: &mut dyn Context, input: &[u8]) -> bool {
         let rc = self.p.find(input);

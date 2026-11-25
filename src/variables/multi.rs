@@ -105,8 +105,8 @@ impl MultiVariable {
         self.insert(key, var);
     }
 
-    /// Adds every value to `l`. The values are inserted at the
-    /// front of `l`, so they come out in reverse container order.
+    /// Adds every value to `l`. The values are inserted at the front of
+    /// `l`, so they come out in reverse container order.
     pub fn resolve(&self, l: &mut Vec<VariableValue>) {
         self.resolve_pick(Pick::Value, l)
     }
@@ -156,8 +156,8 @@ impl MultiVariable {
         self.map.find(key).map(|(_, e)| e.value.value().to_vec())
     }
 
-    /// [`Self::resolve`] restricted to the keys that match `r`, skipping the keys excluded
-    /// by `ke`.
+    /// [`Self::resolve`] restricted to the keys that match `r`, skipping the
+    /// keys excluded by `ke`.
     pub fn resolve_regular_expression_with_exclusions(
         &self,
         r: &Regex,

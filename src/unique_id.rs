@@ -34,7 +34,8 @@ impl UniqueId {
     pub fn machine_name() -> String {
         let uname = rustix::system::uname();
         let name = uname.nodename().to_bytes();
-        // snprintf(machine_name, MAX_MACHINE_NAME_SIZE - 1, "%s", ...)
+        // At most `MAX_MACHINE_NAME_SIZE - 2` bytes, as C++'s
+        // `snprintf(machine_name, MAX_MACHINE_NAME_SIZE - 1, "%s", ...)` keeps.
         let max = MAX_MACHINE_NAME_SIZE - 2;
         String::from_utf8_lossy(&name[..name.len().min(max)]).into_owned()
     }

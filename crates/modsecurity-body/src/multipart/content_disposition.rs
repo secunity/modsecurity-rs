@@ -53,8 +53,6 @@ impl Multipart {
     /// Sets `MULTIPART_INVALID_QUOTING` when `data`, a value not enclosed in
     /// double quotes, contains a single quote.
     fn validate_quotes(&mut self, cx: &dyn Context, data: &[u8], quote: u8) {
-        // if the value was enclosed in double quotes, then we don't care
-        // about a single quote character within the name.
         if quote == b'"' {
             return;
         }
@@ -73,7 +71,7 @@ impl Multipart {
     }
 
     /// Parses the Content-Disposition header of the part `mpp`: `c_d_value`
-    /// is the header value (a C string), `offset` where it starts.
+    /// is the header value, `offset` where it starts.
     pub(super) fn parse_content_disposition(
         &mut self,
         cx: &mut dyn Context,
@@ -92,7 +90,7 @@ impl Multipart {
         let mut c = Cursor { s: cd, p: 9 };
         c.skip_blanks();
         if c.at_end() {
-            return Ok(()); // this is OK
+            return Ok(());
         }
         if c.at() != Some(b';') {
             return Err(-2);
@@ -323,8 +321,7 @@ impl Multipart {
                 mpp.name_offset = value_offset;
             }
             b"filename" => {
-                // here we set up the 'filename' only if it's not set up
-                // already (and not the filename_star)
+                // A second `filename` is refused (`filename*` is counted apart).
                 if !mpp.filename.is_empty() {
                     self.flags.duplicate_part_header = true;
                     ms_dbg!(
@@ -341,8 +338,7 @@ impl Multipart {
                 mpp.filename_offset = value_offset;
             }
             b"filename*" => {
-                // here we set up the 'filename_star' only if it's not set up
-                // already (and not the filename)
+                // A second `filename*` is refused (`filename` is counted apart).
                 if !mpp.filename_star.is_empty() {
                     self.flags.duplicate_part_header = true;
                     ms_dbg!(

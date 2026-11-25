@@ -1,5 +1,6 @@
-//! `multiMatch` — a marker: `Rule` records its presence and then
-//! runs the operator against every intermediate transformation result.
+//! `multiMatch` — a marker: `Rule` records its presence, and the
+//! evaluation then runs the operator on the original value and on every
+//! value a transformation changed.
 
 use crate::actions::action::Action;
 

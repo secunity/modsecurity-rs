@@ -98,7 +98,7 @@ impl<'r, 'a> RuleRun<'r, 'a> {
         let mut nth = 0;
 
         if multi_match {
-            // keep the original value
+            // The original value is inspected too.
             ret.push((value.clone(), TransformationPath::Step(String::new())));
         }
 

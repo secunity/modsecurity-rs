@@ -205,7 +205,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Ok(None) at end of input.
+    /// `Ok(None)` at the end of the input.
     fn next(&mut self) -> Result<Option<Tok>, String> {
         self.skip_ws();
         let Some(&c) = self.s.get(self.pos) else {

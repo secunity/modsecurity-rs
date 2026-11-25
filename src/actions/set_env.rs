@@ -1,4 +1,4 @@
-//! `setenv:name=value` — sets an environment variable.
+//! `setenv:name=value` — sets a variable of the transaction's `ENV`.
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;

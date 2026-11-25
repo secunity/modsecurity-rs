@@ -32,7 +32,8 @@ pub fn compartment_key(key: &[u8], compartment: &[u8], compartment2: Option<&[u8
 }
 
 /// The storage behind a persistent collection failed: the operation that
-/// did, and what the storage said (for LMDB, `code N`).
+/// did, and what the storage said (for LMDB, `code N`; for redb, its error
+/// message).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorageError {
     pub operation: &'static str,

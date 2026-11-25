@@ -224,7 +224,7 @@ fn describe(a: &Outcome, b: &Outcome) -> String {
     }
 }
 
-/// The two ways the new front end reads a file (at once, or statement by
+/// The two ways the front end reads a file (at once, or statement by
 /// statement after a syntax error) build the same.
 #[test]
 fn whole_file_and_statement_reads_are_identical() {
@@ -554,10 +554,11 @@ fn quoted_phase_name() {
     assert_eq!(load("SecAction \"id:1,phase:'phase',pass\"\n", "t").0, -1);
 }
 
-/// Numbers beyond the `int` range are what C and C++ make of them:
-/// `std::stoi` throws (the directive is an error), `atoi` saturates. They
-/// used to wrap around, so `skip:18446744073709551617` was `skip:1` and
-/// `SecArgumentsLimit 18446744073709551617` a limit of one argument.
+/// A number too large for its action or directive is an error. (C++ reads
+/// some with `std::stoi`, which throws, so the directive is an error, and
+/// some with `atoi`, which saturates. They used to wrap around here, so
+/// `skip:18446744073709551617` was `skip:1` and
+/// `SecArgumentsLimit 18446744073709551617` a limit of one argument.)
 #[test]
 fn numbers_beyond_the_int_range() {
     const TWO_64_PLUS_1: &str = "18446744073709551617";

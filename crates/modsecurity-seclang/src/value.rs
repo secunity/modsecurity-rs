@@ -2,13 +2,13 @@
 //! `SecAuditLog /var/log/audit.log`, `SecMarker "END"`).
 //!
 //! The grammar gives a setting as its keyword and the rest of its line.
-//! How that rest is read depends on the directive: each has one or more
-//! forms, a [`Pattern`] (how the value is written, which says where the
+//! How that rest is read depends on the directive, which has one or more
+//! forms: each is a [`Pattern`] (how the value is written, and where the
 //! value is in it) and the [`Quotes`] around the value that are not part
-//! of it. The longest match is read
-//! (the first form among those of the same length). A caller that knows
-//! the directives names the forms of each, and [`read`] or [`word`] gives
-//! the value, a piece of the line, or says what is wrong with the text.
+//! of it. The form with the longest match is read (the first one among
+//! those of the same length). A caller that knows the directives names the
+//! forms of each; [`read`] or [`word`] then gives the value, a piece of the
+//! line, or says what is wrong with the text.
 
 /// Whether `c` is the letter of an audit log part.
 pub fn is_audit_part(c: u8) -> bool {

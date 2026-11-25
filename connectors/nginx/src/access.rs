@@ -49,18 +49,11 @@ fn request_read(request: &Request<'_>) {
 /// context is created). Returns `Some(status)` when the handler must
 /// return immediately.
 fn process_request_line_and_headers(request: &Request<'_>, ctx: &mut Ctx) -> Option<ngx_int_t> {
-    // FIXME (C): We may want to use struct sockaddr instead of addr_text.
-    //
-    // FIXME (C): Check if it is possible to hook on nginx on a earlier
-    // phase. At this point we are doing an late connection process. Maybe
-    // we have to hook into NGX_HTTP_FIND_CONFIG_PHASE, it seems to be the
-    // erliest phase that nginx allow us to attach those kind of hooks.
     let client_port = request.client_port();
     let server_port = request.server_port();
     let client_addr = String::from_utf8_lossy(&request.client_addr()).into_owned();
 
     if let Some(hostname) = request.host_name() {
-        // set the hostname in the transaction (ModSecurity >= 3.0.13)
         ctx.modsec_transaction.set_request_host_name(&String::from_utf8_lossy(&hostname));
     }
 
@@ -71,10 +64,6 @@ fn process_request_line_and_headers(request: &Request<'_>, ctx: &mut Ctx) -> Opt
 
     ctx.modsec_transaction.process_connection(&client_addr, client_port, &server_addr, server_port);
 
-    // FIXME (C): Check how we can finalize a request without crash nginx.
-    // I don't think nginx is expecting to finalize a request at that point
-    // as it seems that it clean the ngx_http_request_t information and try
-    // to use it later.
     let ret = process_intervention(ctx, request, true);
     if ret > 0 {
         ctx.intervention_triggered = true;
@@ -95,12 +84,8 @@ fn process_request_line_and_headers(request: &Request<'_>, ctx: &mut Ctx) -> Opt
         return Some(ret);
     }
 
-    // Since incoming request headers are already in place, lets send it to
-    // ModSecurity.
     request.for_each_header_in(|name, value| ctx.modsec_transaction.add_request_header(name, value));
 
-    // Since ModSecurity already knew about all headers, i guess it is safe
-    // to process this information.
     ctx.modsec_transaction.process_request_headers();
     let ret = process_intervention(ctx, request, true);
     if request.error_page() {
@@ -124,7 +109,6 @@ enum Next {
 
 fn next_step(ctx: &mut Ctx) -> Next {
     if ctx.request_body_processed {
-        // should we use r->internal or r->filter_finalize?
         return Next::Return(NGX_DECLINED as ngx_int_t);
     }
     if ctx.intervention_triggered {
@@ -144,15 +128,14 @@ fn next_step(ctx: &mut Ctx) -> Next {
 fn inspect_body(request: &Request<'_>, ctx: &mut Ctx) -> ngx_int_t {
     request.run_phases_on_write();
 
-    // TODO (C): Speed up the analysis by sending chunk while they arrive.
-    // Notice that we are waiting for the full request body to start to
-    // process it.
+    // TODO: ModSecurity gets the body only once nginx has read all of it;
+    // it could be given each part as it arrives.
     if let Some(file_name) = request.body_file() {
-        // Request body was saved to a file, probably we don't have a copy
-        // of it in memory.
+        // nginx saved the body to a file, and may have no copy of it in
+        // memory.
         //
-        // The C module ignores the result too; libmodsecurity logs a file
-        // it cannot read.
+        // The C module ignores the result too; when the engine cannot read
+        // the file, it says so in the debug log.
         let _ = ctx.modsec_transaction.request_body_from_file(&String::from_utf8_lossy(&file_name));
     } else {
         for buffer in request.body_buffers() {
@@ -161,11 +144,8 @@ fn inspect_body(request: &Request<'_>, ctx: &mut Ctx) -> ngx_int_t {
                 break;
             }
 
-            // XXX (C): chains are processed one-by-one, maybe worth to pass
-            // all chains and then call intervention() ?
-            //
-            // ModSecurity may perform stream inspection on this buffer, it
-            // may ask for a intervention in consequence of that.
+            // ModSecurity may inspect this buffer as it arrives and ask for
+            // an intervention.
             let ret = process_intervention(ctx, request, false);
             if ret > 0 {
                 return ret;
@@ -173,10 +153,6 @@ fn inspect_body(request: &Request<'_>, ctx: &mut Ctx) -> ngx_int_t {
         }
     }
 
-    // At this point, all the request body was sent to ModSecurity and we
-    // want to make sure that all the request body inspection happened;
-    // consequently we have to check if ModSecurity have returned any kind
-    // of intervention.
     ctx.modsec_transaction.process_request_body();
     ctx.request_body_processed = true;
 
@@ -190,7 +166,7 @@ fn inspect_body(request: &Request<'_>, ctx: &mut Ctx) -> ngx_int_t {
     NGX_DECLINED as ngx_int_t
 }
 
-/// `ngx_http_modsecurity_access_handler`
+/// The access phase handler.
 ///
 /// # Safety
 /// Called by nginx (access phase) with a valid request.

@@ -1,5 +1,5 @@
 //! Applying a SecLang configuration: what the directives of the syntax tree
-//! (`syntax.rs`) mean.
+//! (`modsecurity-seclang`, as `parser::syntax`) mean.
 //!
 //! Each statement is applied as soon as it is read, so that an `Include`d
 //! file is loaded in place and the first error stops the load, with the
@@ -133,7 +133,7 @@ impl Builder<'_, '_> {
         Err(Failed)
     }
 
-    /// Fails with an error already recorded (by `Driver::add_sec_rule`).
+    /// Fails with an error the driver already recorded (`Driver::add_sec_rule`).
     fn failed<T>(&self) -> Res<T> {
         Err(Failed)
     }
@@ -466,9 +466,7 @@ impl Builder<'_, '_> {
 }
 
 // ---------------------------------------------------------------------------
-// Actions as built
-// ---------------------------------------------------------------------------
-// Names
+// Helpers
 // ---------------------------------------------------------------------------
 
 /// `\"` -> `"`, reading the backslashes as the grammar does: `\\` is two

@@ -1,5 +1,5 @@
-//! The `@ipMatch` operator: matches when the input is an IP address in one
-//! of the listed addresses or networks.
+//! The `@ipMatch` operator: matches when the input is one of the listed IP
+//! addresses or in one of the listed networks.
 
 use crate::ip_set::IpSet;
 use crate::{Context, Operator, Param};

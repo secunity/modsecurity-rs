@@ -60,8 +60,8 @@ impl Operator for DetectSQLi {
                     crate::ms_dbg!(cx, 7, "Added DetectSQLi error input TX.0: {}", String::from_utf8_lossy(input));
                 }
 
-                // Keep `matched` untouched for parser-error paths to avoid
-                // introducing synthetic fingerprints for non-TRUE results.
+                // A parser error has no fingerprint: nothing is recorded as
+                // matched.
             }
             Detection::Clean => {
                 crate::ms_dbg!(cx, 9, "libinjection was not able to find any SQLi in: {}", loggable_input(input));

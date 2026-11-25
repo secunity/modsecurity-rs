@@ -15,9 +15,8 @@ use crate::transaction::{RequestBodyProcessor, RequestBodyType, Transaction};
 /// rule evaluation, change `ctl:` settings, and set collection keys and
 /// identifiers. Actions see the transaction only through this.
 ///
-/// (`setvar`, `exec` and `block` are part of the engine: they resolve
-/// variables, run Lua or re-run the phase's default actions, and reach the
-/// transaction with [`ActionContext::engine`].)
+/// (`setvar` and `exec` are part of the engine: they resolve variables or
+/// run Lua, and reach the transaction with [`ActionContext::engine`].)
 pub struct ActionContext<'c, 't, 'm> {
     t: &'c mut Transaction<'t>,
     rule: &'c Rule,
@@ -30,7 +29,7 @@ impl<'c, 't, 'm> ActionContext<'c, 't, 'm> {
     }
 
     /// The transaction and the rule, for the actions that are part of the
-    /// engine (`setvar`, `exec`, `block`).
+    /// engine (`setvar`, `exec`).
     pub fn engine(&mut self) -> (&mut Transaction<'t>, &'c Rule) {
         (self.t, self.rule)
     }

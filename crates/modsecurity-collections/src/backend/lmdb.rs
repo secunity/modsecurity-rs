@@ -25,7 +25,7 @@ const SHARED_COLLECTIONS_PATH: &CStr = c"./modsec-shared-collections";
 /// The code of a failure to open the environment.
 const NO_ENVIRONMENT: Code = -1;
 
-/// A collection stored in the shared LMDB database (`WITH_LMDB`).
+/// A collection stored in the shared LMDB database.
 pub struct Lmdb {
     name: String,
 }
@@ -36,15 +36,17 @@ impl Lmdb {
     }
 
     /// Begins an LMDB transaction, opening the shared environment on first
-    /// use; [`NO_ENVIRONMENT`] when it could not be opened.
+    /// use; fails with the code [`NO_ENVIRONMENT`] when it could not be
+    /// opened.
     fn txn_begin(&self, read_only: bool) -> Result<Txn<'static>, StorageError> {
         let environment = Environment::shared(SHARED_COLLECTIONS_PATH).ok_or(failed("open")(NO_ENVIRONMENT))?;
         environment.begin(read_only).map_err(failed("begin"))
     }
 
     /// Writes `key` with the value computed from its previous data (if any)
-    /// in one write transaction: the shared body of `store_or_update_first`
-    /// and `set_expiry`. A failure of LMDB leaves the key as it was.
+    /// in one write transaction: the shared body of `store_or_update_first`,
+    /// `update_first` and `set_expiry`. A failure of LMDB leaves the key as
+    /// it was.
     fn replace(&self, key: &[u8], build: impl FnOnce(CollectionData) -> CollectionData) -> Result<(), StorageError> {
         let mut txn = self.txn_begin(false)?;
         let mut previous_data = CollectionData::default();

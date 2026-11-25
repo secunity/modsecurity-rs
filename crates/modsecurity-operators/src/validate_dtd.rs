@@ -10,9 +10,9 @@ pub struct ValidateDTD {
     param: Param,
     #[cfg(feature = "libxml2")]
     resource: String,
-    /// The DTD, parsed by the first evaluation that could load it, and
-    /// validated with under this lock (validating builds the content
-    /// models of its element declarations).
+    /// The DTD, parsed by the first evaluation that could load it. Each
+    /// validation holds this lock: validating changes the DTD (it builds
+    /// the content models of its element declarations).
     #[cfg(feature = "libxml2")]
     dtd: std::sync::Mutex<Option<modsecurity_native::libxml2::Dtd>>,
 }

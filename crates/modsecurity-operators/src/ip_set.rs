@@ -1,7 +1,7 @@
 //! The addresses and networks of an `@ipMatch` list ([`IpSet`]), used by
 //! `@ipMatch`, `@ipMatchFromFile` and `@ipMatchF`.
 //!
-//! An entry of a list is an address or `address/length` ([`parse_entry`]),
+//! An entry of a list is an address or `address/length` (`parse_entry`),
 //! with the address syntax of `inet_pton`. The networks are kept in prefix
 //! tries (the `prefix-trie` and `ipnet` crates), and an address matches
 //! whenever a listed network contains it.
@@ -386,8 +386,6 @@ mod tests {
         assert!(set("1.2. 3.4").is_none());
     }
 
-    /// A NUL byte is not the end of the text: an entry with one is not an
-    /// entry, and a value with one is not an address.
     /// A file that can be opened and not read (a directory, here) is an
     /// error, not an empty list. (Its content up to the failure used to be
     /// taken as the list.)
@@ -398,6 +396,8 @@ mod tests {
         assert!(error.starts_with("Failed to open file: "), "{error}");
     }
 
+    /// A NUL byte is not the end of the text: an entry with one is not an
+    /// entry, and a value with one is not an address.
     #[test]
     fn nul_bytes() {
         assert!(set("1.2.3.4\0").is_none());

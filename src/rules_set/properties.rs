@@ -1,8 +1,9 @@
 //! The configuration of a rule set: the values set by the SecLang
 //! directives.
 //!
-//! The configuration state shared by the parser `Driver` and `RulesSet`
-//! (both embed a [`RulesSetProperties`]).
+//! The parser's `Driver` and the [`RulesSet`](super::RulesSet) each hold a
+//! [`RulesSetProperties`]; [`RulesSetProperties::merge_properties`] merges
+//! one into the other.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -63,8 +64,10 @@ impl ConfigUnicodeMap {
         self.unicode_map_table = from.unicode_map_table.clone();
     }
 
-    /// Loads the mapping for `code_page` from a `unicode.mapping` file
-    /// into `driver`.
+    /// Loads the map of the code page `config_code_page` from the file `f`
+    /// (`unicode.mapping`) into `driver`. A file that cannot be read or is
+    /// empty is an error, and leaves a map with only the full stops of RFC
+    /// 3490.
     pub fn load_config(f: &str, config_code_page: u32, driver: &mut RulesSetProperties) -> Result<(), String> {
         driver.unicode_map_table.set = true;
         driver.unicode_map_table.unicode_code_page = config_code_page;
@@ -128,27 +131,28 @@ pub enum ParseXmlIntoArgs {
 /// The state of the rule engine (`SecRuleEngine`, `ctl:ruleEngine`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleEngine {
-    /// Rules won't be evaluated if Rule Engine is set to Disabled
+    /// `Off`: rules are not evaluated.
     Disabled,
-    /// Rules will be evaluated and disturb actions will take place if needed.
+    /// `On`: rules are evaluated and their disruptive actions take effect.
     Enabled,
-    /// Rules will be evaluated but it won't generate any disruptive action.
+    /// `DetectionOnly`: rules are evaluated, but no disruptive action takes
+    /// effect.
     DetectionOnly,
 }
 
-/// Defines what actions should be taken in case the body (response or
-/// request) is bigger than the expected size.
+/// What to do with a request or response body over its limit
+/// (`SecRequestBodyLimitAction`, `SecResponseBodyLimitAction`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyLimitAction {
-    /// Process partial
+    /// Keep and inspect the body up to the limit.
     ProcessPartial,
-    /// Reject the request
+    /// Interrupt the transaction with a 403 when the rule engine is `On`.
     Reject,
 }
 
-/// Defines what actions should be taken in case the remote rules failed to
-/// be downloaded (independent of the circumstances). When not configured
-/// the failure is ignored.
+/// What to do when `SecRemoteRules` cannot download its rules
+/// (`SecRemoteRulesFailAction`): `Abort` refuses the configuration; `Warn`,
+/// like no setting, goes on without those rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnFailedRemoteRulesAction {
     Abort,

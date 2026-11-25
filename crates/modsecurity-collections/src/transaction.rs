@@ -25,8 +25,8 @@ impl TransactionVariables {
         self.values.find(key).map(|(_, value)| value.as_slice())
     }
 
-    /// Case-insensitive replacement retains the original key spelling and
-    /// position. The value transfers into TX; there is only one per key.
+    /// Sets the value of `key`, the only one it has. A key that is there
+    /// already, in any case, keeps its spelling and its position.
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) {
         if let Some(stored) = self.values.find_mut(key) {
             *stored = value;

@@ -5,7 +5,7 @@ use crate::phases::Phases;
 use crate::rule::Rule;
 use crate::rules_set::marker::Marker;
 
-// Rules always live behind an `Arc`, so the size difference between the
+// Entries always live behind an `Arc`, so the size difference between the
 // variants does not matter.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
@@ -23,7 +23,7 @@ impl Entry {
         }
     }
 
-    /// How the logs refer to the rule: its id for a `SecRule`,
+    /// How the logs refer to the entry: its id for a `SecRule`,
     /// `file:line` otherwise.
     pub fn reference(&self) -> String {
         match self {

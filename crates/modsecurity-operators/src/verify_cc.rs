@@ -17,19 +17,20 @@ impl VerifyCC {
         Ok(VerifyCC { param, re })
     }
 
-    /// Luhn Mod-10 Method (ISO 2894/ANSI 4.13). Only the
-    /// digits of `ccnumber` are considered.
+    /// The Luhn (mod 10) check. Only the digits of `ccnumber` are
+    /// considered.
     pub fn luhn_verify(ccnumber: &[u8]) -> bool {
         let mut sum = [0i32; 2];
         let mut odd = 0usize;
         let mut digits = 0;
 
-        // Weighted lookup table which is just a precalculated (i = index):
-        //   i*2 + (( (i*2) > 9 ) ? -9 : 0)
+        // A doubled digit: `2 * d`, minus 9 when that is over 9.
         const WTABLE: [i32; 10] = [0, 2, 4, 6, 8, 1, 3, 5, 7, 9];
 
-        // Add up only digits (weighted digits via lookup table) for both
-        // odd and even CC numbers to avoid 2 passes.
+        // `sum[0]` doubles the 1st, 3rd, ... digit and `sum[1]` the 2nd,
+        // 4th, ...: which one is the Luhn sum depends on whether the number
+        // of digits is even, known only at the end, so both are kept to
+        // read the input once.
         for &c in ccnumber {
             if c.is_ascii_digit() {
                 let d = usize::from(c - b'0');
@@ -40,12 +41,12 @@ impl VerifyCC {
             }
         }
 
-        // No digits extracted
         if digits == 0 {
             return false;
         }
 
-        // Do a mod 10 on the sum; if the result is zero the card is valid.
+        // `sum[odd]` is the sum that does not double the last digit; the
+        // number is valid when it is a multiple of 10.
         sum[odd] % 10 == 0
     }
 }

@@ -63,8 +63,8 @@ impl Redb {
     }
 
     /// Writes `key` with the value computed from its previous data (if any)
-    /// in one write transaction: the shared body of `store_or_update_first`
-    /// and `set_expiry`.
+    /// in one write transaction: the shared body of `store_or_update_first`,
+    /// `update_first` and `set_expiry`.
     fn replace(&self, key: &[u8], build: impl FnOnce(CollectionData) -> CollectionData) -> Result<(), StorageError> {
         self.write(|txn| {
             let mut table = txn.open_table(TABLE).map_err(failed("open table"))?;

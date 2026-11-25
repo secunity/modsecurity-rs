@@ -114,7 +114,7 @@ impl Driver {
     /// Adds a `SecRule`, or chains it to the previous one
     /// when that one has the `chain` action.
     pub fn add_sec_rule(&mut self, mut r: Rule) -> bool {
-        // is it a chained rule?
+        // A rule after one with the `chain` action continues that chain.
         if let Some(last) = self.last_rule_mut()
             && last.chain.continued
         {

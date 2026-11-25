@@ -32,8 +32,8 @@ pub(crate) enum Computed {
 impl Computed {
     pub(crate) fn evaluate(self, var: &Variable, t: &Transaction<'_>, l: &mut Vec<VariableValue>) {
         let local = |fmt: &str| strftime_local(now(), fmt);
-        // The value is named with a constant, whatever the
-        // spelling of the variable in the rule.
+        // The value is named with a constant, whatever the spelling of the
+        // variable in the rule.
         let (key, value): (&str, String) = match self {
             // Seconds with six decimals.
             Computed::Duration => ("DURATION", format!("{:.6}", cpu_seconds() - t.creation_time_stamp)),

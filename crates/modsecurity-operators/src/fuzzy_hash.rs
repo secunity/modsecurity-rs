@@ -12,7 +12,7 @@ pub struct FuzzyHash {
     param: Param,
     #[cfg(feature = "ssdeep")]
     threshold: i32,
-    /// The hashes of the file (`fuzzy_hash_chunk` list), one per line.
+    /// The hashes of the file, one per line.
     #[cfg(feature = "ssdeep")]
     chunks: Vec<std::ffi::CString>,
 }
@@ -86,13 +86,12 @@ impl Operator for FuzzyHash {
             }
         }
 
-        // No match.
         false
     }
 
+    /// Never called: without ssdeep the operator cannot be built.
     #[cfg(not(feature = "ssdeep"))]
     fn evaluate(&self, _cx: &mut dyn Context, _input: &[u8]) -> bool {
-        // No match.
         false
     }
 }

@@ -1,7 +1,10 @@
-//! Argument insertion shared by URI, form and structured-body parsing.
+//! The request arguments (`ARGS`, `ARGS_GET`, `ARGS_POST`), as the query
+//! string, a URL-encoded form body and the JSON and XML body processors add
+//! them.
 //!
-//! This view borrows only argument state and logging/configuration context,
-//! leaving the transaction's body and parser available for independent borrows.
+//! [`ArgumentWriter`] borrows only the argument variables and the rule set
+//! (the limit, the debug log), so that a body processor can add arguments
+//! while the transaction's body and processor state are borrowed too.
 
 use super::{Transaction, TransactionVariables};
 use crate::rules_set::RulesSet;
@@ -101,9 +104,9 @@ impl ArgumentWriter<'_> {
             .as_ref()
             .and_then(|s| s.as_bytes().first().copied())
             .unwrap_or(b'&');
-        // An empty input or a trailing separator produces
-        // no extra argument. Borrow each segment instead of copying the
-        // whole input into a vector of parts before decoding it.
+        // An empty input or a trailing separator produces no extra
+        // argument. Each part is borrowed from the input; only its name and
+        // value are copied, to be decoded.
         for part in body.split_inclusive(|&byte| byte == separator) {
             let part = part.strip_suffix(&[separator]).unwrap_or(part);
             let (mut key, mut value) = ssplit_pair(part, b'=');

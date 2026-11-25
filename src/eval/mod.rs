@@ -35,8 +35,8 @@ pub(crate) struct EvalState<'a> {
     pub(crate) scratch: EvalScratch<'a>,
 }
 
-/// Buffers of `SecRule::evaluate`, kept in the transaction so
-/// that evaluating a rule does not allocate them again.
+/// Buffers of the evaluation of a `SecRule` (`RuleRun::sec_rule`), kept in
+/// the transaction so that evaluating a rule does not allocate them again.
 #[derive(Default)]
 pub struct EvalScratch<'a> {
     /// The rule's final list of variables.

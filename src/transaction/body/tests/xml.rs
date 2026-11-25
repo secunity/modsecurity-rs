@@ -303,7 +303,7 @@ mod tests {
 }
 
 /// A transaction (and so its XML parsers and document) can move to another
-/// thread, as before libxml2 was put behind `modsecurity_native::libxml2`.
+/// thread, and the instance and the rule set can be shared between threads.
 #[test]
 fn transaction_is_send() {
     fn send<T: Send>() {}

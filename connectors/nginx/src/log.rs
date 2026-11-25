@@ -6,12 +6,13 @@ use crate::context::Ctx;
 use crate::nginx::{Request, catch_panic};
 
 /// The logging step shared by the log phase handler and early logging on
-/// interventions (`msc_process_logging`).
+/// interventions.
 pub fn process_logging(ctx: &mut Ctx) {
     ctx.modsec_transaction.process_logging();
 }
 
-/// `ngx_http_modsecurity_log_handler`
+/// The log phase handler: logs the transaction, unless an intervention
+/// already did.
 ///
 /// # Safety
 /// Called by nginx (log phase) with a valid request.

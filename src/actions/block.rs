@@ -1,7 +1,7 @@
 //! `block`: does what the `SecDefaultAction` of the rule's phase says to
 //! do with a request (`deny`, `pass`, ...). What that is belongs to the
-//! rule set, so the action has no behavior of its own: the rule runs the
-//! `block_actions` of its plan (`Rule::execute_action`).
+//! rule set, so the action has no behavior of its own: the evaluation runs
+//! the `block_actions` of the rule's `Link` (`crate::eval`).
 
 use crate::actions::action::Action;
 

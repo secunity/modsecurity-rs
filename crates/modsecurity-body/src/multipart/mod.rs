@@ -1,8 +1,8 @@
 //! The `multipart/form-data` request body processor. The parser is a line
 //! oriented state machine working on an internal buffer of
-//! `MULTIPART_BUF_SIZE` (4096) bytes: the data is accumulated until a line feed
-//! (or a full buffer) and every buffer is then examined as a possible
-//! boundary, part header or part data. A NUL byte is a byte like another
+//! `MULTIPART_BUF_SIZE` (4096) bytes: the data is accumulated until a line
+//! feed (or a full buffer) and every buffer is then examined as a possible
+//! boundary, part header or part data. A NUL byte is a byte like any other
 //! in a line; in a part header it is an error.
 //!
 //! The parts of the parser: the boundary from the Content-Type header
@@ -34,7 +34,7 @@ pub use tmp_file::MultipartPartTmpFile;
 const MULTIPART_BUF_SIZE: usize = 4096;
 
 // ---------------------------------------------------------------------------
-// C string helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
 /// Whether `s` has `needle` at `from` (never past its end, except for an
@@ -523,10 +523,8 @@ impl Multipart {
     /// Handles a boundary line: finishes the part being built, and starts a
     /// new one unless this is the last boundary.
     fn process_boundary(&mut self, cx: &mut dyn Context, last_part: bool) {
-        // if there was a part being built finish it
         if let Some(mpp) = self.mpp.take() {
-            // record all the part header lines from the part into the
-            // transaction collection
+            // The header lines of the part go to `MULTIPART_PART_HEADERS`.
             for (off, line) in &mpp.header_lines {
                 cx.add(Entries::MultipartPartHeaders, &mpp.name, line, *off);
                 ms_dbg!(cx, 9, "Multipart: Added part header line:{}", String::from_utf8_lossy(line));
@@ -535,7 +533,6 @@ impl Multipart {
             if let PartKind::File(file) = &mpp.kind
                 && let Some(f) = &file.tmp_file
             {
-                // close the temp file
                 f.close();
             }
 
@@ -549,7 +546,6 @@ impl Multipart {
                     mpp.length
                 );
             } else {
-                // add the part to the list of parts
                 if mpp.file().is_some() {
                     // filename* takes precedence over filename
                     let fname = if !mpp.filename_star.is_empty() { &mpp.filename_star } else { &mpp.filename };
@@ -577,7 +573,6 @@ impl Multipart {
         }
 
         if !last_part {
-            // start building a new part
             self.mpp = Some(MultipartPart::new());
             self.part_state = PartState::Headers;
             self.part_data_read = false;
@@ -648,8 +643,8 @@ impl Multipart {
         report(cx, Flag::MultipartInvalidPart, flags.invalid_part, "invalid part parsing.");
         report(cx, Flag::MultipartInvalidHeaderFolding, flags.invalid_header_folding, "invalid header folding used.");
 
-        // Known limitation: MULTIPART_FILE_LIMIT_EXCEEDED is never set
-        // here; the condition is only reflected in MULTIPART_STRICT_ERROR.
+        // Known limitation: `MULTIPART_FILE_LIMIT_EXCEEDED` is never set
+        // here; the condition only shows in `MULTIPART_STRICT_ERROR`.
         let strict = flags.error
             || flags.boundary_quoted
             || flags.boundary_whitespace

@@ -33,7 +33,6 @@ impl VerifySSN {
             }
         }
 
-        // Not a valid number
         if digits != 9 {
             return false;
         }
@@ -49,7 +48,7 @@ impl VerifySSN {
             }
         }
 
-        // We are blocking when all numbers were sequential or repeated
+        // Nine digits in sequence or all the same are not an SSN.
         if sequencial == 8 || repetitions == 8 {
             return false;
         }
@@ -58,12 +57,11 @@ impl VerifySSN {
         let grp = num[3] * 10 + num[4];
         let serial = num[5] * 1000 + num[6] * 100 + num[7] * 10 + num[8];
 
-        // Cannot have zeroed fields
+        // No part is all zeros.
         if area == 0 || serial == 0 || grp == 0 {
             return false;
         }
 
-        // More tests
         if area >= 740 || area == 666 {
             return false;
         }

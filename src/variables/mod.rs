@@ -2,11 +2,10 @@
 //!
 //! [`variable::Variable`] is a target; [`new_variable`] builds it from its
 //! name in the rule. The variables that only read a value of the
-//! transaction are declared in [`table`], which
-//! [`new_variable`] looks up first.
-//! The variables with logic of their own have a module:
-//! the collections ([`persistent`], and `TX` in [`variable`]), [`rule`],
-//! [`env`], [`xml`] and the [`computed`] ones (`TIME*`, `DURATION`, ...).
+//! transaction are declared in [`table`], which [`new_variable`] looks up
+//! first. The variables with logic of their own have a module: the
+//! collections ([`persistent`], and `TX` in [`variable`]), [`rule`],
+//! [`env`](mod@env), [`xml`] and the [`computed`] ones (`TIME*`, `DURATION`, ...).
 
 pub(crate) mod computed;
 pub mod env;
@@ -62,19 +61,17 @@ pub(crate) fn selector_regex(pattern: &str) -> Result<Regex, VariableError> {
     Regex::compile(pattern.as_bytes(), true, true).map_err(|_| VariableError::InvalidRegex(pattern.to_string()))
 }
 
-/// Creates the variable named `name` with the given
-/// selector. Fails with [`VariableError::Unknown`] for unknown names and
-/// for selectors a variable does not accept (e.g.
-/// `REQUEST_METHOD:foo`, `ARGS:%{...}`) and for `WEBSERVER_ERROR_LOG`,
-/// and with [`VariableError::InvalidRegex`] for a regex selector that does
-/// not compile; the parser reports these as
+/// Creates the variable named `name` with the given selector. Fails with
+/// [`VariableError::Unknown`] for unknown names, for selectors a variable
+/// does not accept (e.g. `REQUEST_METHOD:foo`, `ARGS:%{...}`) and for
+/// `WEBSERVER_ERROR_LOG`, and with [`VariableError::InvalidRegex`] for a
+/// regex selector that does not compile; the parser reports these as
 /// errors. The `!` / `&` modifiers are applied by the caller.
 ///
-/// `name` is matched case insensitively.
-/// The computed variables (`DURATION`, `MODSEC_BUILD`,
-/// `HIGHEST_SEVERITY`, `REMOTE_USER`, `TIME*`) are named
-/// with the text as written in the rule, so `name` is
-/// used verbatim for those.
+/// `name` is matched case insensitively. The computed variables
+/// (`DURATION`, `MODSEC_BUILD`, `HIGHEST_SEVERITY`, `REMOTE_USER`, `TIME*`)
+/// are named with the text as written in the rule, so `name` is used
+/// verbatim for those.
 ///
 /// | token(s) | `None` | `DictElement(e)` | `Regexp(r)` | `Dynamic(m)` |
 /// |---|---|---|---|---|
@@ -91,8 +88,7 @@ pub fn new_variable(name: &str, selector: VariableSelector) -> Result<Variable, 
     use computed::Computed as C;
     use persistent::Persistent;
 
-    // A computed variable, named after the text as written in the
-    // rule.
+    // A computed variable, named after the text as written in the rule.
     let computed = |selector: VariableSelector, c: C| match selector {
         S::None => Ok(Variable::new(name, Source::Computed(c))),
         _ => Err(VariableError::Unknown),
@@ -452,7 +448,7 @@ mod tests {
         args.exclude(KeyExclusion::string("a"));
         assert_eq!(eval(&args, &t, None), vec![("ARGS:b".into(), "2".into())]);
 
-        // The *_NAMES proxies.
+        // The `*_NAMES` variables.
         let mut n = eval(&var("ARGS_NAMES", sel_none()), &t, None);
         n.sort();
         assert_eq!(

@@ -30,8 +30,8 @@ bitflags::bitflags! {
     /// values are fixed (a test checks them).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct LogParts: u8 {
-        /// Ends the line with the error log tail (the server name, the URI
-        /// and the unique id).
+        /// Ends the line with the error log tail (the server address, the
+        /// URI and the unique id).
         const ERROR_LOG_TAIL = 2;
         /// Starts the line with `[client <address>]`.
         const CLIENT = 4;

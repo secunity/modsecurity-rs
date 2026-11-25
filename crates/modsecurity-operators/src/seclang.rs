@@ -2,9 +2,10 @@
 //! table the configuration parser consults.
 //!
 //! It differs from [`instantiate`](crate::instantiate), which looks an
-//! operator up by its own name: here `@pmf` is `@pmFromFile`
-//! (not the `PmF` operator), `@noMatch` is not a SecLang operator, and
-//! `@validateHash`, `@gsbLookup` and `@rsub` are recognised but rejected.
+//! operator up by its own name: here `@pmf` is `@pmFromFile` (which
+//! `instantiate` builds for `pmf` too, but named `PmFromF` in messages),
+//! `@noMatch` is not a SecLang operator, and `@validateHash`, `@gsbLookup`
+//! and `@rsub` are recognised but rejected.
 //! It also names the operator the engine implements (`@inspectFile`).
 
 /// An operator of the SecLang grammar.

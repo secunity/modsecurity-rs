@@ -11,7 +11,8 @@ pub struct RequestBodyAccess {
 }
 
 impl RequestBodyAccess {
-    /// `action` is the `ctl:requestBodyAccess=` text of the rule.
+    /// `name` is the action name as written; `request_body_access` is
+    /// whether the value is `On`.
     pub fn new(name: &str, request_body_access: bool) -> Self {
         RequestBodyAccess { name: name.to_string(), request_body_access }
     }

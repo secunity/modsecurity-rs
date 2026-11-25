@@ -5,8 +5,8 @@ use crate::chars::{hex_digit, is_space};
 /// Decode a string that contains CSS-escaped characters.
 ///
 /// References:
-///     http://www.w3.org/TR/REC-CSS2/syndata.html#q4
-///     http://www.unicode.org/roadmaps/
+/// - <http://www.w3.org/TR/REC-CSS2/syndata.html#q4>
+/// - <http://www.unicode.org/roadmaps/>
 fn css_decode_inplace(input: &mut Vec<u8>) {
     let input_len = input.len();
     let mut d = 0usize;

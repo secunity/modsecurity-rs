@@ -92,7 +92,6 @@ pub(super) fn write(
     create_dir(&format!("{}{}", log_path, paths.day), dir_mode).map_err(Option::unwrap_or_default)?;
     create_dir(&format!("{}{}", log_path, paths.minute), dir_mode).map_err(Option::unwrap_or_default)?;
 
-    // open(fileName, O_CREAT | O_WRONLY | O_APPEND, filePermission)
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)

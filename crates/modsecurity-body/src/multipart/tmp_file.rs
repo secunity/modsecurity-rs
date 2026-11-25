@@ -11,8 +11,8 @@ use super::Context;
 
 /// A temporary file holding the content of an uploaded file part. It is
 /// shared between the part being built and the transaction
-/// (`Transaction::multipart_part_tmp_files`), which keeps it (and the file
-/// on disk) alive until the transaction is done.
+/// ([`Context::keep_tmp_file`]), which keeps it (and the file on disk)
+/// alive until the transaction is done.
 #[derive(Debug)]
 pub struct MultipartPartTmpFile {
     tmp_file_name: String,
@@ -94,11 +94,10 @@ impl MultipartPartTmpFile {
         }
     }
 
-    /// Deletes the file unless it is to be kept,
-    /// logging the outcome to the transaction's debug log. The
-    /// transaction may call this when it is done with its temporary files;
-    /// otherwise the deletion happens (without the debug messages) when the
-    /// last reference is dropped.
+    /// Deletes the file unless it is to be kept, logging the outcome to the
+    /// transaction's debug log. The transaction may call this when it is
+    /// done with its temporary files; otherwise the deletion happens
+    /// (without the debug messages) when the last reference is dropped.
     pub fn release(&self, cx: Option<&dyn Context>) {
         if self.released.swap(true, Ordering::Relaxed) {
             return;

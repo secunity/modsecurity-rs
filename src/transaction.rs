@@ -3,8 +3,8 @@
 //!
 //! A `Transaction` borrows its `ModSecurity` instance and `RulesSet` for its
 //! whole life (`'a`): whoever creates the transaction keeps both alive
-//! for as long as it exists. The rule
-//! messages it accumulates borrow the rules for the same lifetime.
+//! for as long as it exists. The rule messages it accumulates borrow the
+//! rules for the same lifetime.
 //!
 //! Its state is grouped by what it is for:
 //!
@@ -330,7 +330,6 @@ impl<'a> Transaction<'a> {
 
         self.evaluate_phase(Phases::Logging);
 
-        // If relevant, save this transaction information at the audit_logs
         let audit = &self.rules.properties.audit_log;
         let mut parts = audit.parts();
         crate::ms_dbg!(self, 8, "Checking if this request is suitable to be saved as an audit log.");
@@ -349,9 +348,9 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    /// The pending disruptive intervention, if any, its log with the
-    /// status code. Handing it out clears it: a later intervention has only
-    /// what its own actions set.
+    /// The pending disruptive intervention, if any, with the status code
+    /// written into its log. Handing it out clears it: a later intervention
+    /// has only what its own actions set.
     pub fn intervention(&mut self) -> Option<Intervention> {
         let it = self.outcome.intervention.take()?;
         self.outcome.is_interrupted = true;
@@ -383,8 +382,8 @@ impl<'a> Transaction<'a> {
 impl Drop for Transaction<'_> {
     fn drop(&mut self) {
         // Releasing a multipart temp file writes to the debug log, so the
-        // files are released here, while the transaction
-        // (and its debug log) is still alive.
+        // files are released here, while the transaction (and its debug
+        // log) is still alive.
         let me: &Transaction<'_> = self;
         for f in &me.body.multipart_part_tmp_files {
             f.release(Some(me));

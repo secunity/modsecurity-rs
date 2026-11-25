@@ -1,10 +1,10 @@
 //! The debug log (`SecDebugLog`, `SecDebugLogLevel`).
 //!
-//! The interface is the [`DebugLog`] trait, which connectors (and the
-//! test utilities) can implement to take the messages themselves;
-//! the stock implementation is [`DefaultDebugLog`].
-//! Writing happens through `&self` because one `RulesSet` (and therefore
-//! one debug log) is shared by concurrent transactions.
+//! The interface is the [`DebugLog`] trait, which connectors (and the test
+//! utilities) can implement to take the messages themselves; the stock
+//! implementation is [`DefaultDebugLog`]. Writing happens through `&self`
+//! because one `RulesSet` (and therefore one debug log) is shared by
+//! concurrent transactions.
 
 use std::sync::Arc;
 

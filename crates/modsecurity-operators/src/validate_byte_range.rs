@@ -24,8 +24,7 @@ impl ValidateByteRange {
     fn add_range(table: &mut [u8; 32], range_representation: &[u8]) -> Result<(), String> {
         let mut set = |b: u8| table[usize::from(b >> 3)] |= 1 << (b & 0x7);
         // A number in decimal digits, with white space around it allowed
-        // (`37-102, 127-255`); what it is too large for is said by the
-        // caller.
+        // (`37-102, 127-255`); `byte` checks that it fits a byte.
         let number = |text: &[u8]| {
             let trimmed = std::str::from_utf8(text.trim_ascii()).ok();
             let digits = trimmed.filter(|t| !t.is_empty() && t.bytes().all(|c| c.is_ascii_digit()));

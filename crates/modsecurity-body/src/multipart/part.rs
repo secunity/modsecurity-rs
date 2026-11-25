@@ -21,8 +21,9 @@ pub(super) enum PartKind {
 pub(super) struct FilePart {
     /// The temporary file holding the data, when the data is saved.
     pub(super) tmp_file: Option<Arc<MultipartPartTmpFile>>,
-    /// The size of the file, and where it starts (0 until the first data).
+    /// The size of the file data read so far.
     pub(super) size: usize,
+    /// Where the file data starts in the body (0 until the first data).
     pub(super) offset: usize,
 }
 
@@ -46,17 +47,17 @@ pub(super) struct MultipartPart {
 
     /// The value of a form field, or the content of a file that is saved.
     pub(super) value: Vec<u8>,
-    /// Where the value starts: for a form field, the offset of the first
-    /// of its buffers that has a non-zero one; for a file, of the data
-    /// written last.
+    /// Where the value starts: for a form field, the offset of its first
+    /// buffer (the first one whose offset is not 0, since 0 means not set);
+    /// for a file, the offset of the data written last.
     pub(super) value_offset: usize,
 
     /// The file name as supplied by the browser. The headers are read
     /// before the part is known to be a file: a file name is what makes it
     /// one.
     pub(super) filename: Vec<u8>,
-    // Note: Every consumer reading the filename must evaluate filename_star
-    // first to respect RFC precedence rules before falling back to filename.
+    /// The file name of the `filename*` parameter, percent-decoded. Where
+    /// it is set, it takes precedence over [`Self::filename`] (RFC 6266).
     pub(super) filename_star: Vec<u8>,
     pub(super) filename_offset: usize,
     pub(super) filename_star_offset: usize,
@@ -157,7 +158,7 @@ impl Multipart {
             return self.fail(cx, 1, "Multipart: Nul byte in part headers.");
         }
 
-        // The line is data so increase the data length counter.
+        // Header lines count in the length of the body without files.
         self.reqbody_no_files_length += line.len();
 
         if line.ends_with(b"\r\n") {
@@ -203,10 +204,8 @@ impl Multipart {
         if !mpp.filename.is_empty() || !mpp.filename_star.is_empty() {
             // Some parsers use crude methods to extract the name and
             // filename values from the C-D header. We need to check for
-            // the case where they didn't understand C-D but we did.
-            //
-            // also we need to check if any of the filename or filename*
-            // is present
+            // the case where they didn't understand C-D but we did: the
+            // header must have `filename=` or `filename*=` as written.
             let hv = &header_value;
             if find(hv, b"filename=").is_none() && find(hv, b"filename*=").is_none() {
                 return self.fail(cx, 1, "Multipart: Invalid Content-Disposition header (filename).");
@@ -227,9 +226,8 @@ impl Multipart {
     fn folded_header_line(&mut self, cx: &mut dyn Context, mpp: &mut MultipartPart, line: &[u8]) {
         self.flags.header_folding = true;
 
-        // RFC-2557 states header folding is SP / HTAB, but PHP and perhaps
-        // others will take any whitespace.  So, we accept, but with a flag
-        // set.
+        // Header folding is SP or HTAB (RFC 5322), but PHP and perhaps
+        // others take any whitespace: it is accepted, with a flag set.
         if line[0] != b'\t' && line[0] != b' ' {
             self.flags.invalid_header_folding = true;
         }
@@ -242,8 +240,8 @@ impl Multipart {
         // locate the beginning of data
         let mut data = 0;
         while line.get(data).is_some_and(|&c| is_space(c)) {
-            // Flag invalid header folding if an invalid RFC-2557 character
-            // is used anywhere in the folding prefix.
+            // Any other whitespace in the folding prefix is invalid header
+            // folding too.
             if line[data] != b'\t' && line[data] != b' ' {
                 self.flags.invalid_header_folding = true;
             }
@@ -305,7 +303,7 @@ impl Multipart {
         let mut value = line[data..].to_vec();
         chomp(&mut value);
 
-        // error if the name already exists
+        // A repeated header is flagged and ignored.
         if mpp.header(name).is_some() {
             self.flags.duplicate_part_header = true;
             ms_dbg!(cx, 1, "Multipart: Duplicate part header: {}.", String::from_utf8_lossy(name));
@@ -418,10 +416,10 @@ impl Multipart {
             extract = false;
         }
 
-        // only store individual files on disk if we are going to keep them
-        // or if we need to have them approved later
+        // Files go to disk only when they are kept (`SecUploadKeepFiles`)
+        // or saved to be inspected (`SecTmpSaveUploadedFiles`); otherwise
+        // only their size is counted.
         if !extract {
-            // just keep track of the file size
             mpp.grow_file(data.len() + self.reserve.len(), offset);
             return true;
         }

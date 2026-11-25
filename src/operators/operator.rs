@@ -122,7 +122,7 @@ impl<'c, 't, 'm> MatchContext<'c, 't, 'm> {
 }
 
 /// A SecRule operator (`@rx`, `@pm`, ...): one of the matchers of the
-/// `modsecurity-operators` crate, which see the [`MatchContext`] through
+/// `modsecurity-operators` crate, which see the `MatchContext` through
 /// that crate's `Context`, or `@inspectFile`, which needs the transaction
 /// itself.
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-//! String helpers: hex conversions, splitting, trimming and number parsing.
+//! String helpers: hex conversions, splitting, truncation and number parsing.
 //!
 //! Request data and rule values are byte strings, so the helpers here operate
 //! on `&[u8]`/`Vec<u8>`. Helpers that only ever see configuration text also

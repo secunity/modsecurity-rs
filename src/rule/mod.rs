@@ -110,7 +110,8 @@ pub struct Rule {
     actions: Actions,
     transformations: Vec<Transformation>,
 
-    // Actions that are not kept, only recorded.
+    // Whether the rule has `capture`, `multiMatch` and `block` (the first
+    // two are not kept with its actions).
     contains_capture_action: bool,
     contains_multi_match_action: bool,
     contains_static_block_action: bool,
@@ -122,7 +123,7 @@ impl Rule {
     /// Builds a rule from its parsed actions and transformations and its
     /// kind specific part. Configuration actions (`id`, `phase`, ...)
     /// are applied to the rule here and dropped; the run time actions are
-    /// its [`Actions`].
+    /// its `Actions`.
     pub fn new(
         actions: Option<Vec<RuleAction>>,
         transformations: Option<Vec<Transformation>>,
@@ -146,7 +147,6 @@ impl Rule {
         };
         for a in actions.into_iter().flatten() {
             match a {
-                // The only configuration action with a type of its own.
                 RuleAction::Phase(p) => {
                     p.configure(&mut r);
                 }

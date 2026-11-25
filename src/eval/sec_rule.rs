@@ -103,7 +103,8 @@ impl<'a> RuleRun<'_, 'a> {
         }
 
         self.run_actions_on_chain_match();
-        // last rule in the chain.
+        // The chain matched from this rule on. Only its first rule logs the
+        // message (see `log`).
         self.log(LogPoint::RuleEnd);
         true
     }

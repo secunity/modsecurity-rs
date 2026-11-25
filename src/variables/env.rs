@@ -13,9 +13,9 @@ use crate::variables::variable_value::VariableValue;
 /// what `setenv` set in the transaction.
 pub(crate) fn evaluate(var: &Variable, t: &Transaction<'_>, l: &mut Vec<VariableValue>) {
     // The process environment is merged into the variables set by
-    // `setenv`, which win over an entry of the same name, and the
-    // result is walked in key order. The transaction is shared
-    // here, so the merge is done on a copy.
+    // `setenv`, which win over an entry of the same name, and the result is
+    // walked in key order. The transaction is shared here, so the merge is
+    // done on a copy.
     // (`std::env::vars_os` splits each entry at the first `=` after the
     // first character, so the name of an entry starting with `=` keeps
     // that `=`.)

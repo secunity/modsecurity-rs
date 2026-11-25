@@ -40,7 +40,7 @@ pub fn c_str(s: &[u8]) -> &[u8] {
     }
 }
 
-/// The bytes of an `ngx_str_t` (none for an empty or null one).
+/// The bytes of an `ngx_str_t` (empty for a null one).
 fn bytes(s: &ngx_str_t) -> Vec<u8> {
     if s.len == 0 || s.data.is_null() { Vec::new() } else { s.as_bytes().to_vec() }
 }
@@ -50,7 +50,7 @@ fn bytes(s: &ngx_str_t) -> Vec<u8> {
 pub struct Log(*mut ngx_log_t);
 
 // SAFETY: the pointer is only dereferenced on the worker thread that owns
-// the request (libmodsecurity calls the log callback synchronously from the
+// the request (the engine calls the log callback synchronously from the
 // transaction methods the connector invokes); `Send` is only needed because
 // the transaction's callback data must be `Send`.
 unsafe impl Send for Log {}
@@ -383,23 +383,21 @@ impl<'r> Request<'r> {
 
     // --- The request body ------------------------------------------------
 
-    /// Asks nginx for the whole request body (kept in a file that outlives
-    /// the request when it does not fit in memory), and has `handler`
-    /// called once it is read: `ngx_http_read_client_request_body`, whose
-    /// result this is.
+    /// Asks nginx for the whole request body, and has `handler` called once
+    /// it is read: `ngx_http_read_client_request_body`, whose result this
+    /// is. A body that does not fit in memory goes to a file that keeps its
+    /// name until the request ends, so that ModSecurity can read it.
     pub fn read_body(&self, handler: ngx_http_client_body_handler_pt) -> ngx_int_t {
         // SAFETY: a valid request, in a phase where its body can be read.
         unsafe {
             let r = self.as_ptr();
-            // TODO (C): Check if there is any benefit to use
-            // request_body_in_single_buf set to 1.
             (*r).set_request_body_in_single_buf(1);
             (*r).set_request_body_in_persistent_file(1);
             if (*r).request_body_in_file_only() == 0 {
-                // If the above condition fails, then the flag below will
-                // have been set correctly elsewhere. We need to set the flag
-                // here for other conditions (client_body_in_file_only not
-                // used but client_body_buffer_size is).
+                // With `client_body_in_file_only`, nginx has already set
+                // whether the file is removed. Otherwise the body goes to a
+                // file only when it exceeds `client_body_buffer_size`, and
+                // that file is removed when the request ends.
                 (*r).set_request_body_in_clean_file(1);
             }
             ngx_http_read_client_request_body(r, handler)
@@ -460,20 +458,16 @@ impl<'r> Request<'r> {
     }
 
     /// Makes `url` the `Location` header of the response, replacing the
-    /// one it has; `false` when nginx is out of memory. Gives the header
-    /// as nginx keeps it.
+    /// one it has, and gives the header as nginx keeps it; `None` when
+    /// nginx is out of memory.
     pub fn set_location(&self, url: &[u8]) -> Option<(&[u8], &[u8])> {
         // SAFETY: a valid request; the header is allocated from its pool,
         // which outlives `self`.
         unsafe {
             let r = self.as_ptr();
-            // Not sure if it sane to do this indepent of the phase but,
-            // here we go... This code cames from
-            // http/ngx_http_special_response.c (ngx_http_send_error_page);
-            // src/http/ngx_http_core_module.c shows that location->hash
-            // should be set to 1.
-            //
-            // ngx_http_clear_location(r)
+            // As `ngx_http_send_error_page` (`ngx_http_special_response.c`)
+            // does: `ngx_http_clear_location(r)`, then a new header whose
+            // `hash` is 1 (see `ngx_http_core_module.c`).
             if !(*r).headers_out.location.is_null() {
                 (*(*r).headers_out.location).hash = 0;
                 (*r).headers_out.location = ptr::null_mut();

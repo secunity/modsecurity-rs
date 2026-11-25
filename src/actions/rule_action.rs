@@ -44,7 +44,7 @@ macro_rules! rule_actions {
                 match self { $(RuleAction::$variant(a) => a.is_disruptive(),)* }
             }
 
-            /// Applies a [`Kind::Configuration`] action to its rule.
+            /// Applies a configuration action (`Kind::Configuration`) to its rule.
             pub fn configure(&self, rule: &mut Rule) {
                 match self { $(RuleAction::$variant(a) => a.configure(rule),)* }
             }

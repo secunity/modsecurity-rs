@@ -44,7 +44,6 @@ impl HttpsClient {
         match self.perform(uri) {
             Ok(()) => true,
             Err(e) => {
-                // curl_easy_strerror(res)
                 self.error = e.description().to_string();
                 false
             }
@@ -76,26 +75,24 @@ impl HttpsClient {
         // Make it TLS 1.2 at least.
         curl.ssl_version(SslVersion::Tlsv12)?;
 
-        // those are the default options, but lets make sure
+        // The defaults, set explicitly.
         curl.ssl_verify_peer(true)?;
         curl.ssl_verify_host(true)?;
 
         curl.useragent("ModSecurity3")?;
 
-        // We want Curl to return error in case there is an HTTP error code
+        // An HTTP error status fails the download.
         curl.fail_on_error(true)?;
 
         if !self.request_body.is_empty() {
             curl.post_fields_copy(&self.request_body)?;
-            // Disable Expect: 100-continue
+            // No `Expect: 100-continue`.
             headers_chunk.append("Expect:")?;
         }
 
-        // set HTTP headers for request
         curl.http_headers(headers_chunk)?;
 
         let mut transfer = curl.transfer();
-        // send all data to this function
         transfer.write_function(|data| Ok(self.handle_impl(data)))?;
         transfer.perform()
     }

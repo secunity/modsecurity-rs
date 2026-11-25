@@ -25,9 +25,9 @@ impl CTransaction {
     }
 }
 
-/// Runs `f` on the transaction. `none` when there is none (NULL) or a call
-/// on it panicked before; a panic in `f` gives `none` and fails the
-/// transaction.
+/// Runs `f` on the transaction and returns its result, or `none` when there
+/// is no transaction (NULL) or a call on it panicked before. A panic in `f`
+/// gives `none` and fails the transaction.
 fn run<R>(t: Option<&mut CTransaction>, none: R, f: impl FnOnce(&mut Transaction<'static>) -> R) -> R {
     let Some(ct) = t else { return none };
     if ct.failed {
@@ -47,7 +47,7 @@ fn read<R: Copy>(t: Option<&CTransaction>, none: R, f: impl FnOnce(&Transaction<
     }
 }
 
-/// The bytes of a C string (none for NULL).
+/// The bytes of a C string (empty for NULL).
 ///
 /// # Safety
 /// `p` must be null or a NUL terminated string that outlives `'a`.
@@ -59,7 +59,7 @@ unsafe fn bytes<'a>(p: *const c_char) -> &'a [u8] {
     unsafe { CStr::from_ptr(p) }.to_bytes()
 }
 
-/// The `len` bytes at `p` (none for NULL).
+/// The `len` bytes at `p` (empty for NULL).
 ///
 /// # Safety
 /// `p` must be null or point to `len` readable bytes that outlive `'a`.
@@ -82,9 +82,10 @@ unsafe fn instance(ms: *mut ModSecurity, rules: *mut RulesSet) -> Option<(&'stat
     unsafe { Some((ms.as_ref()?, rules.as_ref()?)) }
 }
 
+/// Returns NULL when `ms` or `rules` is NULL.
+///
 /// # Safety
-/// `ms` and `rules` must be valid and outlive the transaction. NULL when
-/// one of them is NULL.
+/// `ms` and `rules` must be valid and outlive the transaction.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_new_transaction(
     ms: *mut ModSecurity,
@@ -370,8 +371,11 @@ pub unsafe extern "C" fn msc_intervention_cleanup(it: *mut ModSecurityInterventi
     })
 }
 
+/// The response body as a `malloc`ed C string, which the caller releases
+/// with `free(3)`.
+///
 /// # Safety
-/// `t` as above. The returned string is `malloc`ed (free with `free`).
+/// `t` as above.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_get_response_body(t: *const CTransaction) -> *const c_char {
     // SAFETY: the C API contract: null or a live transaction pointer.

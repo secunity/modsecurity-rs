@@ -126,8 +126,8 @@ pub mod internal {
 }
 
 /// Connectors share one `ModSecurity` and one `RulesSet` between worker
-/// threads and may move transactions between threads;
-/// keep those guarantees checked at compile time.
+/// threads and may move transactions between threads; this keeps those
+/// guarantees checked at compile time.
 #[cfg(test)]
 #[test]
 fn thread_safety() {

@@ -68,8 +68,8 @@ impl<'a> RuleRun<'_, 'a> {
     }
 
     /// Runs one action. A disruptive action (or `block`) runs only when
-    /// the rule engine is `On`, and a `block` of `SecDefaultAction`
-    /// (`default_context`) only when the rule has one too.
+    /// the rule engine is `On`, and one of `SecDefaultAction`
+    /// (`default_context`) only when the rule has `block`.
     fn run_action(&mut self, a: &RuleAction, default_context: bool) {
         let t = &*self.t;
         if !a.is_disruptive() && !matches!(a, RuleAction::Block(_)) {

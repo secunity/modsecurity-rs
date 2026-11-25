@@ -7,7 +7,7 @@
 //! `severity`, `logdata`, `msg`, the remaining actions as written, and
 //! last the disruptive action. [`Actions`] keeps them in that order; what
 //! the rule set adds (`SecDefaultAction`, `SecRuleUpdateActionById`) comes
-//! from the rule's [`Link`].
+//! from the rule's [`Link`](crate::rules_set::plan::Link).
 
 use crate::actions::log_data::LogData;
 use crate::actions::msg::Msg;

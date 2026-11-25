@@ -47,8 +47,8 @@ impl Transaction<'_> {
         self.http.uri = uri.to_vec();
         let mut uri_s: &[u8] = uri;
 
-        // any uri-fragment that was received should only be retained in
-        // `http.uri`, REQUEST_URI_RAW and REQUEST_LINE.
+        // A URI fragment is kept only in `http.uri`, `REQUEST_URI_RAW` and
+        // `REQUEST_LINE`.
         if let Some(pos) = uri_s.iter().position(|&c| c == b'#') {
             uri_s = &uri_s[..pos];
         }
@@ -94,7 +94,7 @@ impl Transaction<'_> {
         self.vars.offset = self.vars.request_line.value().len();
 
         // REQUEST_URI: the decoded URI without its scheme and host, when it
-        // has them. The more popular case is without domain.
+        // has them (most URIs start with the path).
         let d = &self.http.uri_decoded;
         let mut path_start = 0;
         if !d.is_empty() && d[0] != b'/' {
@@ -160,13 +160,13 @@ impl Transaction<'_> {
             let mut local_offset = off;
             let mut cookies = ssplit(value, b';');
             if let Some(final_cookie_pair) = cookies.last_mut() {
-                // Get rid of any optional whitespace after the cookie-string
+                // Whitespace after the last cookie is dropped.
                 while final_cookie_pair.last().is_some_and(|&c| is_space(c)) {
                     final_cookie_pair.pop();
                 }
             }
             for c in &cookies {
-                // skip empty substring, eg "Cookie: ;;foo=bar"
+                // An empty pair, as in `Cookie: ;;foo=bar`, is skipped.
                 if c.is_empty() {
                     local_offset += 1;
                     continue;
@@ -175,7 +175,8 @@ impl Transaction<'_> {
                     None => (c.clone(), Vec::new()),
                     Some(p) => (c[..p].to_vec(), c[p + 1..].to_vec()),
                 };
-                // ltrim the key - following the modsec v2 way
+                // Leading whitespace is trimmed from the key, as ModSecurity v2
+                // does.
                 while !ckey.is_empty() && is_space(ckey[0]) {
                     ckey.remove(0);
                     local_offset += 1;

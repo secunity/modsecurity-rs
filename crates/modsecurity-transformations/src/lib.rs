@@ -229,12 +229,11 @@ impl Transformation {
         NAMES.iter().find(|(n, _)| *n == name).map(|&(_, t)| t)
     }
 
-    /// The lookup by prefix, which the engine uses
-    /// where it is not the SecLang parser that names the transformation
-    /// (Lua's `m.getvar`, the unit tests): the first name of its list that
-    /// `text` starts with, case sensitively (so `trimLeftX` is `trimLeft`,
-    /// and `LOWERCASE` is unknown); [`Transformation::Identity`] for an
-    /// unknown name.
+    /// The lookup by prefix, which the engine uses where the name does not
+    /// come from the SecLang parser (Lua's `m.getvar`, the unit tests): the
+    /// first name of its list that `text` starts with, case sensitively (so
+    /// `trimLeftX` is `trimLeft`, and `LOWERCASE` is unknown);
+    /// [`Transformation::Identity`] for an unknown name.
     pub fn from_name_prefix(text: &[u8]) -> Transformation {
         PREFIX_NAMES.iter().find(|(name, _)| text.starts_with(name.as_bytes())).map_or(T::Identity, |&(_, t)| t)
     }

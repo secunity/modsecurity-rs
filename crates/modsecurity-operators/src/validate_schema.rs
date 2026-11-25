@@ -1,6 +1,7 @@
 //! The `@validateSchema` operator: validates the XML document parsed by
 //! the XML request body processor against an XML Schema. Matches (returns
-//! true) when the document is missing, not well formed or not valid.
+//! true) when the schema cannot be loaded or the document is missing, not
+//! well formed or not valid.
 
 use crate::{Context, Operator, Param, Resources};
 
@@ -9,9 +10,9 @@ pub struct ValidateSchema {
     param: Param,
     #[cfg(feature = "libxml2")]
     resource: String,
-    /// The schema, parsed by the first evaluation that could load it, and
-    /// validated with under this lock (libxml2 does not say that a schema
-    /// can be used by several validations at once).
+    /// The schema, parsed by the first evaluation that could load it. Each
+    /// validation holds this lock: libxml2 does not say that a schema can
+    /// be used by several validations at once.
     #[cfg(feature = "libxml2")]
     schema: std::sync::Mutex<Option<LoadedSchema>>,
 }
@@ -157,7 +158,7 @@ impl Operator for ValidateSchema {
             }
             Some(false) => {
                 crate::ms_dbg!(cx, 4, "XML: Schema validation failed.");
-                true // No match.
+                true
             }
             Some(true) => {
                 crate::ms_dbg!(cx, 4, "XML: Successfully validated payload against Schema: {}", self.resource);

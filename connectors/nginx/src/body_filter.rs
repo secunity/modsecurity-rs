@@ -14,9 +14,7 @@ use crate::nginx::{Buffers, Request, catch_panic};
 
 static mut NGX_HTTP_NEXT_BODY_FILTER: ngx_http_output_body_filter_pt = None;
 
-/// `ngx_http_modsecurity_body_filter_init`
-///
-/// XXX (C): check behaviour on few body filters installed
+/// Puts this module's body filter at the top of nginx's chain.
 ///
 /// # Safety
 /// Called once from postconfiguration.
@@ -68,14 +66,14 @@ fn inspect_body(request: &Request<'_>, ctx: &mut Ctx, buffers: Buffers<'_>) -> O
             return Outcome::Finalize(ret);
         }
 
-        // XXX (C): chain->buf->last_buf || chain->buf->last_in_chain
+        // Only `last_buf` ends the body: `last_in_chain` ends the output of
+        // a subrequest, which this filter passes on untouched.
         if buffer.last {
             ctx.modsec_transaction.process_response_body();
 
-            // XXX (C): I don't get how body from modsec being transferred
-            // to nginx's buffer. If so - after adjusting of nginx's body we
-            // can proceed to adjust body size (content-length). see
-            // xslt_body_filter() for example
+            // The body is passed on as nginx produced it: it is not replaced
+            // with ModSecurity's copy (nor its length adjusted, as
+            // `xslt_body_filter()` would do).
             let ret = process_intervention(ctx, request, false);
             if ret > 0 {
                 return Outcome::Return(ret);
@@ -87,7 +85,7 @@ fn inspect_body(request: &Request<'_>, ctx: &mut Ctx, buffers: Buffers<'_>) -> O
     Outcome::Pass
 }
 
-/// `ngx_http_modsecurity_body_filter`
+/// The body filter.
 ///
 /// # Safety
 /// Called by nginx with a valid request and output chain.
@@ -142,7 +140,6 @@ unsafe fn body_filter(request: &Request<'_>, input: *mut ngx_chain_t) -> ngx_int
     // SAFETY: nginx's chain, unchanged until it is passed on below.
     let buffers = unsafe { Buffers::new(input) };
     match inspect_body(request, ctx, buffers) {
-        // XXX (C): xflt_filter() -- return NGX_OK here
         Outcome::Pass => next(),
         Outcome::Return(rc) => rc,
         // SAFETY: this filter belongs to this module.

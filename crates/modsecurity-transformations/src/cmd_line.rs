@@ -10,9 +10,9 @@ pub fn transform(value: &mut Vec<u8>) {
     for s in 0..old_len {
         let a = value[s];
         match a {
-            // remove some characters
+            // Dropped.
             b'"' | b'\'' | b'\\' | b'^' => {}
-            // replace some characters to space (only one)
+            // Separators: a run of them becomes one space.
             b' ' | b',' | b';' | b'\t' | b'\r' | b'\n' => {
                 if !space {
                     value[d] = b' ';
@@ -20,7 +20,7 @@ pub fn transform(value: &mut Vec<u8>) {
                     space = true;
                 }
             }
-            // remove space before / or (
+            // No space before `/` or `(`.
             b'/' | b'(' => {
                 if space {
                     d -= 1;
@@ -29,7 +29,7 @@ pub fn transform(value: &mut Vec<u8>) {
                 value[d] = a;
                 d += 1;
             }
-            // copy normal characters
+            // Anything else is copied, lowercased.
             _ => {
                 value[d] = a.to_ascii_lowercase();
                 d += 1;

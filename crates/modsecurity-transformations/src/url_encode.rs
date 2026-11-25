@@ -11,7 +11,9 @@ fn push_hex(c: u8, out: &mut Vec<u8>) {
 fn url_enc(value: &mut Vec<u8>) {
     let mut ret = Vec::with_capacity(value.len() * 3 + 1);
 
-    // ENH Only encode the characters that really need to be encoded.
+    // Letters, digits and `*` are kept, a space becomes `+`, and every other
+    // byte is encoded, including the unreserved `-`, `.`, `_` and `~` of
+    // RFC 3986.
     for &c in value.iter() {
         if c == b' ' {
             ret.push(b'+');

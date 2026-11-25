@@ -43,7 +43,7 @@ fn forgiving_digit(c: u8) -> Option<u8> {
 fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
     let slen = src.len();
     let mut equals = 0usize;
-    let mut n = 0usize; // number of digits or trailing = in source
+    let mut n = 0usize; // the number of digits and trailing `=` in `src`
 
     // First pass: check for validity and get output length.
     let mut i = 0usize;
@@ -95,9 +95,9 @@ fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
         i += 1;
     }
 
-    // In valid base64, the number of digits (n-equals) is always of the form
-    // 4*k, 4*k+2 or *4k+3. Also, the number n of digits plus the number of
-    // equal signs at the end is always a multiple of 4.
+    // In valid base64, the number of digits (n - equals) is always of the
+    // form 4*k, 4*k+2 or 4*k+3, and n (the digits and the equal signs at
+    // the end) is a multiple of 4.
     if (n - equals) % 4 == 1 {
         return None;
     }

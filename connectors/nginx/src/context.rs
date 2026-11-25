@@ -12,15 +12,9 @@ use nginx_sys::{ngx_flag_t, ngx_http_complex_value_t, ngx_pool_t, ngx_uint_t};
 use crate::module::ngx_http_modsecurity_module;
 use crate::nginx::Request;
 
-/// TAG_NUM:
-///
-/// Alpha  - 001
-/// Beta   - 002
-/// Dev    - 010
-/// Rc1    - 051
-/// Rc2    - 052
-/// ...    - ...
-/// Release- 100
+// The version of the C module this connector stands in for. TAG_NUM is the
+// release stage: 001 alpha, 002 beta, 010 dev, 051 rc1, 052 rc2, ..., 100
+// release.
 pub const MODSECURITY_NGINX_MAJOR: &str = "1";
 pub const MODSECURITY_NGINX_MINOR: &str = "0";
 pub const MODSECURITY_NGINX_PATCHLEVEL: &str = "4";
@@ -45,12 +39,9 @@ pub struct Header {
 /// cleanup drops it (see [`Ctx::create`]).
 pub struct Ctx {
     pub modsec_transaction: Transaction<'static>,
-    /// Should be filled with the headers that were sent to ModSecurity.
-    ///
-    /// The idea is to compare this set of headers with the headers that were
-    /// sent to the client. This check was placed because we don't have
-    /// control over other modules, thus, we may partially inspect the
-    /// headers.
+    /// The response headers sent to ModSecurity, to compare with the headers
+    /// sent to the client: other modules can change the headers after this
+    /// one read them, so ModSecurity may have inspected only part of them.
     #[cfg(feature = "sanity-checks")]
     pub sanity_headers_out: Vec<Header>,
     pub waiting_more_body: bool,
@@ -180,9 +171,9 @@ impl Ctx {
         if !ctx.is_null() || request.is_subrequest() {
             return ctx;
         }
-        // refer <nginx>/src/http/modules/ngx_http_realip_module.c: if module
-        // context was reset, the original address can still be found in the
-        // cleanup handler.
+        // nginx clears the module contexts on an internal redirect; the
+        // context is then found through its pool cleanup, as
+        // `ngx_http_realip_module.c` finds its own.
         request.cleanup_data(CLEANUP_HANDLER).map_or(ptr::null_mut(), |data| data as *mut Ctx)
     }
 }

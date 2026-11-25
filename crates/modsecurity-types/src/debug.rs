@@ -33,9 +33,9 @@ impl<T: DebugSink + ?Sized> DebugSink for &mut T {
     }
 }
 
-/// Writes to the debug log of a [`DebugSink`](crate::DebugSink) (given by
-/// value or by reference): the message is only formatted when the debug
-/// level is high enough.
+/// Writes to the debug log of a [`DebugSink`] (given by value or by
+/// reference): the message is only formatted when the debug level is high
+/// enough.
 #[macro_export]
 macro_rules! ms_dbg {
     ($sink:expr, $lvl:expr, $($arg:tt)*) => {{

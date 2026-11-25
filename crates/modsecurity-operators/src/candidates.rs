@@ -35,7 +35,8 @@ pub(crate) fn first_verified<'a>(
 }
 
 /// The first candidate that `verify` accepts when every suffix of `input`
-/// is searched as a value of its own, with where it starts in `input`.
+/// longer than one byte is searched as a value of its own, with where it
+/// starts in `input`.
 /// The candidates of a suffix are the groups of its successive matches,
 /// last first.
 ///

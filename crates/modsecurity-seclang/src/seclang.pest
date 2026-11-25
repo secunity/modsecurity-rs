@@ -1,12 +1,15 @@
 // SecLang, the ModSecurity configuration language.
 //
-// The configuration is parsed one `statement` at a time (see `syntax.rs`), so
-// that each directive is applied before the next one is read: `Include`
-// files are read in place and the first error stops the load.
+// A configuration is read whole (`file`). After a syntax error, it is read
+// again one `statement` at a time (`parse_statement` in `lib.rs`), and the
+// engine applies each directive before it reads the next one: the
+// directives before the error are applied (an `Include`d file is loaded in
+// place) and may fail first.
 //
 // The grammar describes the shape of directives, variables, operators and
 // actions. What a name means (which directive, action or operator, and the
-// values it accepts) is decided when the directive is applied (`build.rs`).
+// values it accepts) is decided when the engine applies the directive
+// (`src/parser/build.rs`).
 //
 // There is no implicit whitespace: every rule says where separators go.
 
@@ -82,8 +85,8 @@ update_target    = { ^"SecRuleUpdateTargetBy" ~ update_by ~ update_sep ~ update_
 update_by        = { ^"Id" ~ &ws | ^"Tag" ~ &ws | ^"Msg" ~ &ws }
 // SecRuleUpdateActionById 942100 "t:none,pass"
 update_action    = { ^"SecRuleUpdateActionById" ~ update_sep ~ update_value ~ gap ~ actions }
-// (A rule with a name: pest reports a syntax error where the furthest
-// named rule failed.)
+// (Not a silent rule: pest reports a syntax error where the furthest named
+// rule failed.)
 update_sep       = { ws+ }
 update_value     = { quoted | single_quoted_word | update_word }
 update_word      = @{ (!update_end ~ ANY)+ }
@@ -144,8 +147,10 @@ regex_text_q = @{ (!("/'") ~ !(ws | "=" | "\"" | nl) ~ ANY)+ }
 // ---------------------------------------------------------------------------
 
 operator        = { "\"" ~ negated? ~ op_raw_q ~ "\"" | negated? ~ op_raw_s }
-// The operator text, also read as a parameter: an unknown `@name` is not an
-// operator but the start of a regular expression.
+// The operator as written (`Operator::raw`). An `@word` that is not followed
+// by white space, a double quote or the end of the line is not an operator
+// name: it starts a bare parameter (a regular expression), which the engine
+// rejects as an unknown operator.
 op_raw_q        = ${ operator_quoted }
 op_raw_s        = ${ operator_bare }
 operator_quoted = _{ op_name ~ (" " ~ param_q | " "*) ~ &"\"" | param_q }
@@ -207,6 +212,7 @@ macro_var   = ${ var_name ~ (("." | ":") ~ (macro_regex | macro_key))? }
 macro_regex = ${ "/" ~ macro_regex_text ~ "/" ~ &"}" }
 macro_regex_text = @{ (!("/" ~ "}") ~ !(ws | "=" | "|" | "\"" | nl) ~ ANY)+ }
 macro_key = @{ (!("}" | "\"" | "|" | "," | ws | nl) ~ ("\\\"" | ANY))+ }
+
 // ---------------------------------------------------------------------------
 // Actions: "id:1,phase:2,t:lowercase,msg:'%{MATCHED_VAR}',setvar:tx.a=+1"
 // ---------------------------------------------------------------------------

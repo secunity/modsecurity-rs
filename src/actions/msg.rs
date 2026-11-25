@@ -1,19 +1,13 @@
 //! `msg:'...'` — the message (with macro expansion) logged with the rule
 //! match.
 //!
-//! Description: Assigns a custom message to the rule or chain in which it
-//! appears. The message will be logged along with every alert.
+//! The message of a rule or a chain goes to the error and audit logs; it
+//! is never sent to the client. A rule may have several `msg` actions: the
+//! last one counts. For instance:
 //!
-//! Action Group: Meta-data
-//!
-//! Example:
-//! `SecRule &REQUEST_HEADERS:Host "@eq 0" "log,id:60008,severity:2,msg:'Request Missing a Host Header'"`
-//!
-//! Note  : The msg information appears in the error and/or audit log files
-//!         and is not sent back to the client in response headers.
-//!
-//! Note 2: The msg action can appear multiple times in the SecRule, however
-//!         just the last one will be take into consideration.
+//! ```text
+//! SecRule &REQUEST_HEADERS:Host "@eq 0" "id:60008,log,msg:'Request Missing a Host Header'"
+//! ```
 
 use crate::actions::action::Action;
 use crate::actions::context::ActionContext;

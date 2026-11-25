@@ -1,9 +1,8 @@
 //! The phases of a transaction ([`Phases`]), in which rules run.
 
-/// The Phases enumerator consists in mapping the different stages of a given
-/// request. ModSecurity is expected to inspect data based on those "phases".
-/// It is mandatory to call all the phases, even if you don't have this
-/// phases segmented in your end.
+/// The stages of an HTTP exchange at which the rules inspect what is known
+/// so far. A connector must go through every phase, even when its server
+/// does not tell some of them apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Phases {
     /// The very first information that ModSecurity can inspect, right
@@ -54,5 +53,5 @@ impl Phases {
     }
 }
 
-/// Just a marking for the expected number of phases.
+/// The number of [`Phases`].
 pub const NUMBER_OF_PHASES: usize = 7;

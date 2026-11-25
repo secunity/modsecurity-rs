@@ -21,9 +21,8 @@ pub(crate) fn evaluate_xpath(_var: &Variable, _t: &Transaction<'_>, _rule: Optio
 pub(crate) fn evaluate_xpath(var: &Variable, t: &Transaction<'_>, rule: Option<&Rule>, l: &mut Vec<VariableValue>) {
     use modsecurity_native::libxml2::XPathError;
 
-    // Is there an XML document tree at all?
+    // Without a document tree there is nothing to resolve.
     let Some(doc) = t.body.xml.as_ref().and_then(|x| x.document()) else {
-        // Sorry, we've got nothing to give!
         return;
     };
 

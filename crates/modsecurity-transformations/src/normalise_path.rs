@@ -2,8 +2,8 @@
 //! self references, back references and repeated slashes from a path.
 
 /// Normalises a path in place (removes self references, back references
-/// and repeated slashes).
-/// With `win`, backslashes are converted to forward slashes first.
+/// and repeated slashes). With `win`, backslashes are converted to forward
+/// slashes first.
 ///
 /// The positions are signed indices into `val` (`input` is index 0,
 /// `end` the index of the last byte) because `dst` may briefly go below
@@ -12,7 +12,7 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
     let mut hitroot = false;
     let mut done = false;
 
-    // Need at least one byte to normalize
+    // Need at least one byte to normalize.
     if val.is_empty() {
         return;
     }
@@ -20,8 +20,8 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
     let input_len = val.len();
     let input: isize = 0;
 
-    // ENH: Deal with UNC and drive letters?
-
+    // UNC paths (`\\server\share`) and drive letters (`C:`) get no special
+    // treatment.
     let mut src: isize = input;
     let mut dst: isize = input;
     let end: isize = (input_len - 1) as isize;
@@ -51,74 +51,67 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
         if src == end {
             done = true;
         } else if at(val, src + 1) != b'/' {
-            // Skip normalization if this is NOT the
-            // end of the path segment.
+            // Skip normalization if this is not the end of the path
+            // segment.
             normalize = false;
         }
 
         if normalize {
-            // *** Normalize the path segment. ***
+            // Normalize the path segment.
 
             // Could it be an empty path segment?
             if src != end && at(val, src) == b'/' {
-                // Ignore
-                // Copy will take care of this.
+                // Nothing to do: the copy below collapses repeated
+                // slashes.
             } else if at(val, src) == b'.' {
                 // Could it be a back or self reference?
 
                 // Back-reference?
                 if dst > input && at(val, dst - 1) == b'.' {
-                    // If a relative path and either our normalization has
-                    // already hit the rootdir, or this is a backref with no
-                    // previous path segment, then mark that the rootdir was
-                    // hit and just copy the backref as no normilization is
-                    // possible.
+                    // In a relative path, when the normalization has
+                    // already hit the root, or this back reference has no
+                    // previous segment, mark that the root was hit and copy
+                    // the back reference: there is nothing to remove.
                     if relative && (hitroot || (dst - 2) <= input) {
                         hitroot = true;
-                        // Skip normalization.
+                        // Copied as it is.
                     } else {
-                        // Remove backreference and the previous path segment.
+                        // Remove the back reference and the previous segment.
                         dst -= 3;
                         while dst > input && at(val, dst) != b'/' {
                             dst -= 1;
                         }
 
-                        // But do not allow going above rootdir.
+                        // But do not go above the root.
                         if dst <= input {
                             hitroot = true;
                             dst = input;
 
-                            // Need to leave the root slash if this
-                            // is not a relative path and the end was reached
-                            // on a backreference.
+                            // Leave the root slash if this is not a
+                            // relative path and the end was reached on a
+                            // back reference.
                             if !relative && src == end {
                                 dst += 1;
                             }
                         }
 
                         if done {
-                            skip_copy = true; // Skip the copy.
+                            skip_copy = true;
                         } else {
                             src += 1;
                         }
                     }
                 } else if dst == input {
-                    // Relative Self-reference?
-
-                    // Ignore.
-
+                    // A self reference at the start of the output: dropped.
                     if done {
-                        skip_copy = true; // Skip the copy.
+                        skip_copy = true;
                     } else {
                         src += 1;
                     }
                 } else if at(val, dst - 1) == b'/' {
-                    // Self-reference?
-
-                    // Ignore.
-
+                    // A self reference after a slash: dropped.
                     if done {
-                        skip_copy = true; // Skip the copy.
+                        skip_copy = true;
                     } else {
                         dst -= 1;
                         src += 1;
@@ -134,21 +127,18 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
             continue;
         }
 
-        // copy:
-        // *** Copy the byte if required. ***
-
+        // Copy the byte.
         // Skip to the last forward slash when multiple are used.
         if at(val, src) == b'/' {
             while src < end && (at(val, src + 1) == b'/' || (win && at(val, src + 1) == b'\\')) {
                 src += 1;
             }
 
-            // Do not copy the forward slash to the root
-            // if it is not a relative path.  Instead
-            // move over the slash to the next segment.
+            // A relative path does not start with a slash in its
+            // normalized form: move over the slash to the next segment.
             if relative && dst == input {
                 src += 1;
-                continue; // Skip the copy
+                continue;
             }
         }
 
@@ -157,8 +147,8 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
         src += 1;
     }
 
-    // Make sure that there is not a trailing slash in the
-    // normalized form if there was not one in the original form.
+    // No trailing slash in the normalized form unless the original has
+    // one.
     if !trailing && dst > input && at(val, dst - 1) == b'/' {
         dst -= 1;
     }

@@ -177,8 +177,8 @@ pub enum SetVarOp {
     Subtract,
 }
 
-/// A directive read by [`parse_statement`]: the offset of its keyword and
-/// what it is.
+/// A directive read by [`parse_file`] or [`parse_statement`]: the offset
+/// of its keyword and what it is.
 #[derive(Debug)]
 pub struct Statement<'a> {
     pub offset: usize,

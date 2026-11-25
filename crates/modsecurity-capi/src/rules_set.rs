@@ -25,7 +25,7 @@ fn c_result(result: Result<usize, LoadError>, error: *mut *const c_char) -> c_in
     }
 }
 
-/// The bytes of a C string (none for NULL). Rules are bytes: they need not
+/// The bytes of a C string (empty for NULL). Rules are bytes: they need not
 /// be UTF-8.
 unsafe fn cbytes<'a>(p: *const c_char) -> &'a [u8] {
     if p.is_null() {
@@ -75,10 +75,10 @@ pub unsafe extern "C" fn msc_rules_dump(rules: *const RulesSet) {
     })
 }
 
+/// Merging a rule set into itself merges nothing and returns 0.
+///
 /// # Safety
 /// Both pointers must come from `msc_create_rules_set`.
-///
-/// Merging a rule set into itself merges nothing and returns 0.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_rules_merge(
     rules_dst: *mut RulesSet,
@@ -172,9 +172,10 @@ pub unsafe extern "C" fn msc_rules_error_cleanup(error: *const c_char) {
     })
 }
 
+/// Returns 1, or 0 when releasing the rules failed.
+///
 /// # Safety
 /// `rules` must come from `msc_create_rules_set` and not be used after.
-/// Returns 1, or 0 when releasing the rules failed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn msc_rules_cleanup(rules: *mut RulesSet) -> c_int {
     catch_panic(0, || {

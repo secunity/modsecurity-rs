@@ -6,7 +6,8 @@ use crate::rule::Rule;
 use crate::transaction::Transaction;
 use crate::variables::variable::Variable;
 
-/// Interpolated strings keep variables boxed so literal fragments stay small.
+/// A piece of an interpolated string. The variable is boxed so that an
+/// element stays small.
 #[derive(Debug)]
 enum Element {
     Text(Vec<u8>),
@@ -16,7 +17,7 @@ enum Element {
 #[derive(Debug)]
 enum Content {
     Literal(Vec<u8>),
-    // Constructed only by append_var, so always contains a variable.
+    // Made only by `append_var`, so it always has a variable.
     Interpolated(Vec<Element>),
 }
 
@@ -36,7 +37,7 @@ impl RunTimeString {
         Self::default()
     }
 
-    /// Convenience: a string made of a single literal.
+    /// A string made of a single literal.
     pub fn from_text(text: &str) -> Self {
         let mut r = Self::new();
         r.append_text(text);

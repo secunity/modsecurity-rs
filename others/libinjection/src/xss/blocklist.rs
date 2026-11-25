@@ -161,8 +161,9 @@ pub fn is_cross_origin(value: &[u8]) -> bool {
 }
 
 /// The code points of `value` as a URL parser sees them: references
-/// decoded, control characters dropped, leading whitespace stripped. Old
-/// browsers also ignored nulls inside references, so those go first.
+/// decoded, control characters dropped, leading spaces and non-ASCII
+/// characters stripped. Old browsers also ignored nulls inside references,
+/// so those go first.
 fn url_chars(value: &[u8]) -> impl Iterator<Item = u32> + '_ {
     let without_nulls: std::borrow::Cow<'_, [u8]> =
         if value.contains(&0) { value.iter().copied().filter(|&b| b != 0).collect() } else { value.into() };

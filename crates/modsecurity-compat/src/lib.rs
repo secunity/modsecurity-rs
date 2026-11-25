@@ -9,8 +9,10 @@
 //!   libstdc++'s `std::unordered_multimap` (the order of `ARGS` & co.);
 //! - [`json`]: a JSON reader and writer that accept and produce what yajl
 //!   does;
-//! - [`chars`]: the byte classes and string helpers the others share;
-//! - [`cnum`]: the integer a text starts with, as C's `strtoll` and `atoll` read it.
+//! - [`chars`]: byte classes and string helpers with the corner cases of
+//!   their C and C++ counterparts, shared by the engine and its crates;
+//! - [`cnum`]: the integer a text starts with, as C's `strtoll` and `atoll` read it;
+//! - [`errno`]: the text of an error number, as C's `strerror` gives it.
 
 #![forbid(unsafe_code)]
 

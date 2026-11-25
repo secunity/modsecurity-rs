@@ -7,7 +7,8 @@ use crate::rules_set::entry::Entry;
 
 #[derive(Debug, Default, Clone)]
 pub struct RulesSetPhases {
-    /// One list per phase, plus an eighth that `dump` prints as well.
+    /// One list per phase, plus an eighth that stays empty (`dump` prints
+    /// it too).
     rules_at_phase: [Vec<Arc<Entry>>; NUMBER_OF_PHASES + 1],
 }
 

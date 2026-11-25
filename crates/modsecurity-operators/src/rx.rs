@@ -5,9 +5,10 @@
 use crate::{Context, Operator, Param};
 use modsecurity_native::regex::{MatchError, Regex, SMatchCapture};
 
-/// Whether patterns are multi-line: `$` only matches at the very end of
-/// the subject when built with `MODSEC_REGEX_DOLLAR_ENDONLY` (cargo feature
-/// `regex-dollar-endonly`), otherwise the pattern is multi-line.
+/// Whether patterns are multi-line (`^` and `$` also match at line
+/// breaks). With the cargo feature `regex-dollar-endonly` (C++:
+/// `MODSEC_REGEX_DOLLAR_ENDONLY`) they are not, and `$` only matches at the
+/// very end of the subject.
 const MULTI_LINE: bool = !cfg!(feature = "regex-dollar-endonly");
 
 /// The regular expression of the parameter.
@@ -73,7 +74,6 @@ impl Rx {
             }
         };
 
-        // (`modsecurity_native::regex` guards against dangling empty-slice pointers.)
         let subject: &[u8] = input;
         let mut captures: Vec<SMatchCapture> = Vec::new();
         let match_limit = cx.pcre_match_limit();

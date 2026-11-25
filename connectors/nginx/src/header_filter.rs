@@ -66,7 +66,7 @@ fn add_headers_nginx_generates(request: &Request<'_>, ctx: &mut Ctx) {
     }
 }
 
-/// `ngx_http_modsecurity_header_filter_init`
+/// Puts this module's header filter at the top of nginx's chain.
 ///
 /// # Safety
 /// Called once from postconfiguration.
@@ -93,26 +93,20 @@ fn next_header_filter(request: &Request<'_>) -> ngx_int_t {
 /// Gives the response headers and status to ModSecurity and runs its
 /// response headers phase. `Some(status)`: the request ends with it.
 fn inspect_headers(request: &Request<'_>, ctx: &mut Ctx) -> Option<ngx_int_t> {
-    // Lets ask nginx to keep the response body in memory.
-    //
-    // FIXME (C): I don't see a reason to keep it `1' when SecResponseBody
-    // is disabled.
+    // TODO: this could be skipped when `SecResponseBodyAccess` is off; the
+    // C module asks for it in every case.
     request.keep_response_in_memory();
     ctx.processed = true;
 
-    // Assuming ModSecurity module is running immediately before the
-    // ngx_http_header_filter, we will be able to populate ModSecurity with
-    // headers from the headers_out structure. As ngx_http_header_filter
-    // place a direct call to the ngx_http_write_filter_module, we cannot
-    // hook between those two. In order to enumerate all headers, we first
-    // look at the headers_out structure, and later we look into the
-    // ngx_list_part_t. The ngx_list_part_t must be checked. Other module(s)
-    // in the chain may added some content to it.
+    // Not every header is in the list of response headers: nginx keeps some
+    // as fields of `headers_out`, and `ngx_http_header_filter`, which writes
+    // the response head straight to the write filter, generates others.
+    // Those are worked out as nginx will send them; then the list is read,
+    // which other modules in the chain may have added to.
     add_headers_nginx_generates(request, ctx);
     request.for_each_header_out(|name, value| add_header(request, ctx, name, value));
 
-    // NGINX always sends HTTP response with HTTP/1.1, except cases when
-    // HTTP V2 module is enabled, and request has been posted with HTTP/2.0.
+    // nginx answers with HTTP/1.1, unless the request came over HTTP/2.
     let version = if request.is_http2() { "HTTP 2.0" } else { "HTTP 1.1" };
 
     ctx.modsec_transaction.process_response_headers(u16::try_from(request.response_status()).unwrap_or(0), version);
@@ -123,7 +117,7 @@ fn inspect_headers(request: &Request<'_>, ctx: &mut Ctx) -> Option<ngx_int_t> {
     (ret > 0).then_some(ret)
 }
 
-/// `ngx_http_modsecurity_header_filter`
+/// The header filter.
 ///
 /// # Safety
 /// Called by nginx with a valid request.
@@ -152,15 +146,9 @@ fn header_filter(request: &Request<'_>) -> ngx_int_t {
     if request.is_subrequest() {
         return next_header_filter(request);
     }
-    // XXX (C): if NOT_MODIFIED, do we need to process it at all? see
-    // xslt_header_filter()
-    //
     // SAFETY: the context lives until the request pool is destroyed, and
     // nothing else uses it while this filter inspects the headers.
     let ctx = unsafe { Ctx::find(request).as_mut() };
-    // XXX (C): can it happen ? already processed i mean
-    //
-    // FIXME (C): verify if this request is already processed.
     let ctx = match ctx {
         Some(ctx) if !ctx.intervention_triggered && !ctx.processed => ctx,
         _ => return next_header_filter(request),
@@ -171,9 +159,9 @@ fn header_filter(request: &Request<'_>) -> ngx_int_t {
         return unsafe { request.finalize_from_filter(ptr::addr_of_mut!(ngx_http_modsecurity_module), status) };
     }
 
-    // Proxies will not like this... but it is necessary to unset the
-    // content length in order to manipulate the content of response body
-    // in ModSecurity. (The C code keeps this commented out to make the
-    // spdy test work: `r->headers_out.content_length_n = -1;`)
+    // The content length is left as it is, so the response body cannot be
+    // changed in size. (The C module has the line that would unset it,
+    // `r->headers_out.content_length_n = -1;`, commented out for its spdy
+    // test.)
     next_header_filter(request)
 }

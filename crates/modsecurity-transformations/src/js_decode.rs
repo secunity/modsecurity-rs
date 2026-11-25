@@ -51,7 +51,8 @@ fn inplace(input: &mut Vec<u8>) {
                 }
 
                 if j > 0 {
-                    // Do not use 3 characters if we will be > 1 byte
+                    // Three digits only when their value fits a byte
+                    // (up to `\377`).
                     if j == 3 && buf[0] > b'3' {
                         j = 2;
                     }
@@ -71,8 +72,8 @@ fn inplace(input: &mut Vec<u8>) {
                     b'r' => b'\r',
                     b't' => b'\t',
                     b'v' => 0x0b,
-                    // The remaining (\?,\\,\',\") are just a removal
-                    // of the escape char which is default.
+                    // Any other character (`\?`, `\\`, `\'`, `\"`, ...)
+                    // is kept, without its backslash.
                     other => other,
                 };
 
@@ -80,7 +81,7 @@ fn inplace(input: &mut Vec<u8>) {
                 d += 1;
                 i += 2;
             } else {
-                // Not enough bytes
+                // A backslash at the end is kept.
                 while i < input_len {
                     input[d] = input[i];
                     d += 1;

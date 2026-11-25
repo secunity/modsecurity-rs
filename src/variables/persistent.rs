@@ -5,9 +5,9 @@
 //! `initcol`/`setsid`/`setuid` and the `SecWebAppId`.
 //!
 //! The collection is a value ([`Persistent`]) and the variables of all
-//! five are built by [`variable`].
-//! The RESOURCE regex naming quirk is retained; the SESSION deletion quirk
-//! is handled by the writable target in `variable.rs`.
+//! five are built by [`variable`]. The `RESOURCE` regex naming quirk is
+//! kept (`regex_name`). C++'s `SESSION` deletion quirk is not: a value is
+//! removed where it was stored (`MIGRATION.md`).
 
 use crate::variables::variable::{CollectionKey, Source, Variable};
 use crate::variables::{VariableError, VariableSelector, selector_regex};

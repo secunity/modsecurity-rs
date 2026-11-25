@@ -9,9 +9,10 @@ use modsecurity_native::regex::Regex;
 use modsecurity_types::KeyExclusions;
 use modsecurity_types::variable_value::VariableValue;
 
-/// A shared backend and the record selected by initcol/setsid/setuid/setrsc.
-/// Keeping them together prevents callers from accidentally mixing collections
-/// and keys. The web application compartment is supplied by the rule set.
+/// A shared backend and the record selected by `initcol`, `setsid`, `setuid`
+/// or `setrsc`. Keeping them together prevents callers from accidentally
+/// mixing collections and keys. The web application compartment is supplied
+/// by the rule set.
 pub struct CollectionBinding<'a> {
     backend: &'a dyn Collection,
     pub key: Vec<u8>,

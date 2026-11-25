@@ -1,7 +1,7 @@
 //! The storage backends of the persistent collections.
 
 pub mod collection_data;
-// The backend of the persistent collections in builds without LMDB.
+// The backend of the persistent collections in builds without LMDB or redb.
 pub mod in_memory_per_process;
 pub mod lmdb;
 pub mod redb;
@@ -142,7 +142,7 @@ mod contract {
 
     /// Run by [`processes_share`] in a process of its own: a writer writes
     /// its keys and adds 1 to the shared counter as many times; the
-    /// checker (`check`) then finds every key and the whole count.
+    /// checker (`me == "check"`) then finds every key and the whole count.
     #[cfg(any(feature = "lmdb", feature = "redb"))]
     #[test]
     #[ignore = "a worker process of the multi-process tests"]

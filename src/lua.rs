@@ -76,9 +76,10 @@ mod with_lua {
     use crate::utils::string::to_hex_if_needed;
     use crate::variables::variable::{string_match_resolve, string_match_resolve_multi};
 
-    // Lua callbacks share a temporary borrow of the transaction. Borrow only
-    // for native reads/writes, never across a Lua API call: allocations can run
-    // finalizers which call m.* again. Native engine code still uses &mut.
+    // The `m.*` callbacks share the transaction (the `&mut` the engine
+    // passed in) through a `RefCell`. Borrow it only for the engine's reads
+    // and writes, never across a Lua API call: an allocation can run a
+    // finalizer that calls `m.*` again.
     type ScriptTransaction<'scope, 'rules> = RefCell<&'scope mut Transaction<'rules>>;
 
     /// Wraps the Rust implementation of an `m.*` function (which returns
@@ -284,7 +285,6 @@ end
                 err.push('.');
                 err
             })?;
-            // The dump is appended to the blob.
             self.blob.extend_from_slice(&compiled.dump(false));
             Ok(())
         }
@@ -392,7 +392,6 @@ end
 
                 crate::ms_dbg!(&**t.borrow(), 9, "{}", lossy(s));
 
-                // Put the parameter on the stack.
                 let mut args = MultiValue::new();
                 args.push_back(main);
                 if !s.is_empty() {
@@ -436,7 +435,8 @@ end
         let mut data = Vec::new();
         f.read_to_end(&mut data).map_err(|e| errfile("read", e))?;
 
-        // skipcomment()
+        // A UTF-8 BOM and a first line starting with `#` are skipped, as
+        // `skipcomment` of Lua's `lauxlib.c` does.
         let mut start = if data.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
         let mut skipped = false;
         if data.get(start) == Some(&b'#') {
@@ -452,7 +452,8 @@ end
         } else {
             let mut code = Vec::with_capacity(data.len() - start + 1);
             if skipped {
-                // Add newline to correct line numbers.
+                // A newline in place of the skipped line keeps the line
+                // numbers right.
                 code.push(b'\n');
             }
             code.extend_from_slice(&data[start..]);
@@ -468,11 +469,9 @@ end
 
     /// `m.log(level, text)`: writes `text` to the debug log at `level`.
     fn log(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<()> {
-        // Retrieve parameters.
-        // A level out of range is the nearest one.
+        // A level out of the range of a `u8` is the nearest bound.
         let level = check_number(lua, args.front(), 1)? as u8;
         let text = check_string(lua, args.get(1), 2)?;
-        // Log message.
         crate::ms_dbg!(&**t.borrow(), level, "{}", lossy(&text));
         Ok(())
     }
@@ -480,7 +479,6 @@ end
     /// `m.getvar(name [, transformations])`: the first value of a
     /// variable, transformed.
     fn getvar(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<MultiValue> {
-        // Retrieve parameters.
         let varname = check_string(lua, args.front(), 1)?;
 
         let mut var = match string_match_resolve(&t.borrow(), &lossy(&varname)) {
@@ -507,7 +505,6 @@ end
 
     /// `m.getvars(name)`: a list of `{ name = ..., value = ... }`.
     fn getvars(lua: &mlua::Lua, t: &ScriptTransaction<'_, '_>, args: MultiValue) -> mlua::Result<Table> {
-        // Retrieve parameters.
         let varname = check_string(lua, args.front(), 1)?;
 
         let mut l = Vec::new();
@@ -573,7 +570,8 @@ end
         var: &mut Vec<u8>,
     ) -> mlua::Result<()> {
         match idx {
-            // lua_isuserdata (mlua errors are userdata too) or lua_isnoneornil.
+            // No argument, nil or a userdata (`lua_isnoneornil`,
+            // `lua_isuserdata`; mlua errors are userdata too): nothing to do.
             None | Some(Value::Nil | Value::LightUserData(_) | Value::UserData(_) | Value::Error(_)) => Ok(()),
             Some(Value::Table(tbl)) => {
                 let n = tbl.raw_len();

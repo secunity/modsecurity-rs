@@ -36,7 +36,7 @@ const NGX_CONF_OK: *mut c_char = ptr::null_mut();
 const NGX_CONF_ERROR: *mut c_char = usize::MAX as *mut c_char;
 
 // ---------------------------------------------------------------------------
-// Configuration access helpers (the ngx_http_get_module_*_conf macros)
+// Helpers for the configuration callbacks
 // ---------------------------------------------------------------------------
 
 /// `ngx_http_conf_get_module_main_conf(cf, module)`
@@ -357,10 +357,6 @@ unsafe fn init(cf: *mut ngx_conf_t) -> ngx_int_t {
         }
         *h_access = Some(ngx_http_modsecurity_access_handler);
 
-        // Process the log phase.
-        //
-        // TODO (C): check if the log phase happens like it happens on
-        // Apache. check if last phase will not hold the request.
         let h_log = ngx_array_push(&mut (*cmcf).phases[ngx_http_phases_NGX_HTTP_LOG_PHASE as usize].handlers)
             as *mut ngx_http_handler_pt;
         if h_log.is_null() {
@@ -377,8 +373,7 @@ unsafe fn init(cf: *mut ngx_conf_t) -> ngx_int_t {
 }
 
 /// `ngx_http_modsecurity_create_main_conf`: creates the ModSecurity
-/// instance. It is released with the configuration pool (C:
-/// `ngx_http_modsecurity_cleanup_instance`).
+/// instance, which is released with the configuration pool.
 unsafe extern "C" fn ngx_http_modsecurity_create_main_conf(cf: *mut ngx_conf_t) -> *mut c_void {
     // SAFETY: called by nginx with a valid configuration.
     unsafe { conf_catch_panic(cf, "create_main_conf", ptr::null_mut(), || create_main_conf(cf)) }
@@ -392,7 +387,6 @@ unsafe fn create_main_conf(cf: *mut ngx_conf_t) -> *mut c_void {
     // SAFETY: called by nginx with a valid configuration.
     let pool = unsafe { (*cf).pool };
     let mut modsec = ModSecurity::new();
-    // Provide our connector information to LibModSecurity
     modsec.set_connector_information(MODSECURITY_NGINX_WHOAMI);
     modsec.set_server_log_cb(Box::new(|data, entry| {
         // The rule message goes to the error log of the request being
@@ -407,7 +401,8 @@ unsafe fn create_main_conf(cf: *mut ngx_conf_t) -> *mut c_void {
     unsafe { pool_move(pool, conf) as *mut c_void }
 }
 
-/// `ngx_http_modsecurity_init_main_conf`
+/// `ngx_http_modsecurity_init_main_conf`: logs the versions and how many
+/// rules were loaded.
 unsafe extern "C" fn ngx_http_modsecurity_init_main_conf(cf: *mut ngx_conf_t, conf: *mut c_void) -> *mut c_char {
     let mmcf = conf as *mut MainConf;
     // SAFETY: called by nginx with our main conf.
@@ -442,8 +437,7 @@ unsafe fn init_main_conf(cf: *mut ngx_conf_t, mmcf: *mut MainConf) -> *mut c_cha
 }
 
 /// `ngx_http_modsecurity_create_conf`: per-location configuration with its
-/// own rule set (released with the pool; C:
-/// `ngx_http_modsecurity_cleanup_rules`).
+/// own rule set, which is released with the configuration pool.
 unsafe extern "C" fn ngx_http_modsecurity_create_conf(cf: *mut ngx_conf_t) -> *mut c_void {
     // SAFETY: called by nginx with a valid configuration.
     unsafe { conf_catch_panic(cf, "create_loc_conf", ptr::null_mut(), || create_conf(cf)) }
@@ -475,7 +469,7 @@ fn merge_value(conf: &mut ngx_flag_t, prev: ngx_flag_t, default: ngx_flag_t) {
 }
 
 /// `ngx_http_modsecurity_merge_conf`: inherits the flags and appends the
-/// parent's rules to the child's (`msc_rules_merge(child, parent)`).
+/// parent's rules to the child's ([`RulesSet::merge`]).
 unsafe extern "C" fn ngx_http_modsecurity_merge_conf(
     cf: *mut ngx_conf_t,
     parent: *mut c_void,

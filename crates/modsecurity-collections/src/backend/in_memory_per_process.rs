@@ -5,7 +5,7 @@
 //! `initcol:ip=%{REMOTE_ADDR}` with `expirevar`) are deleted by a sweep
 //! of the whole map, which a write that adds an entry runs once the map
 //! has grown to twice what the last sweep left (and at least
-//! [`FIRST_SWEEP`] entries): its cost is spread over the writes that
+//! `FIRST_SWEEP` entries): its cost is spread over the writes that
 //! filled the map, a constant per write.
 
 use std::sync::RwLock;

@@ -2,11 +2,11 @@
 //! service (the `tower` feature).
 //!
 //! [`ModSecurityLayer`] wraps a service of the Rust HTTP ecosystem (hyper,
-//! axum, tonic, ...) and runs a [`Transaction`] around each request, in
-//! the order the nginx connector does: the connection and the request head
-//! (phases 0 and 1), the request body (phase 2), the inner service, the
-//! response head (phase 3), the response body (phase 4) and the logging
-//! (phase 5). When the rules intervene, the middleware answers with
+//! axum, tonic, ...) and runs a [`Transaction`](crate::Transaction) around
+//! each request, in the order the nginx connector does: the connection and
+//! the request head (phases 0 and 1), the request body (phase 2), the inner
+//! service, the response head (phase 3), the response body (phase 4) and
+//! the logging (phase 5). When the rules intervene, the middleware answers with
 //! [`Intervention::to_response`](crate::Intervention::to_response)
 //! instead of calling the inner service (or instead of its response).
 //!
@@ -189,7 +189,8 @@ where
 /// intervention's (the logging phase runs as `blocked` is dropped).
 fn intercepted<B>(blocked: Blocked<'_>) -> Response<ResponseBody<B>> {
     let response = blocked.intervention().to_response::<Full<Bytes>>();
-    // An intervention always has something to send (see `Blocked`).
+    // A `Blocked` always has something to send: `inspection` lets an
+    // intervention with status 200 and no redirect go on.
     response.unwrap_or_default().map(Either::Left)
 }
 

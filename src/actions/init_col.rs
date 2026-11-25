@@ -14,7 +14,8 @@ pub struct InitCol {
 }
 
 impl InitCol {
-    /// `action` is `initcol:<collection>=`; `z` is the value.
+    /// `payload` is `<collection>=<value>`; `z` is the value, the key to
+    /// select.
     pub fn with_rts(name: &str, payload: &str, z: RunTimeString) -> Result<Self, String> {
         if payload.len() < 2 {
             return Err("Something wrong with initcol format: too small".to_string());

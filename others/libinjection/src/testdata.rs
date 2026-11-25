@@ -1,6 +1,6 @@
-//! Loader for the corpora under `testdata/`, shared by the tests and the
-//! eval example. Lines follow libinjection's convention: blank lines and
-//! lines starting with `#` are skipped, everything else is URL-decoded.
+//! Loader for the corpora under `testdata/`, used by the tests. Lines follow
+//! libinjection's convention: blank lines and lines starting with `#` are
+//! skipped, everything else is URL-decoded.
 
 use std::fs;
 use std::path::{Path, PathBuf};

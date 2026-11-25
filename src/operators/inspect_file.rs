@@ -73,7 +73,8 @@ impl InspectFile {
             .output()
             .ok()?;
 
-        // WIFEXITED(wstatus) == 0 || WEXITSTATUS(wstatus) != 0
+        // A program killed by a signal, or that exits with another status,
+        // does not match.
         if output.status.code() != Some(0) {
             return None;
         }
@@ -111,10 +112,8 @@ impl InspectFile {
             return false;
         };
         if res.len() > 1 && res[0] != b'1' {
-            return true; // match
+            return true;
         }
-
-        // no match
         false
     }
 }

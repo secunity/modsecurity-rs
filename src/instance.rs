@@ -86,7 +86,7 @@ impl ModSecurity {
         crate::unique_id::UniqueId::unique_id();
         // (libc `rand()` is not seeded here: the audit log boundaries come
         // from the `rand` crate, see `audit_log::writer::generate_boundary`.)
-        // (A no-op without libxml2.)
+        // libxml2 is set up once per process (nothing to do without it).
         modsecurity_body::xml::init_parser();
         ModSecurity {
             global_collection: new_collection("GLOBAL"),

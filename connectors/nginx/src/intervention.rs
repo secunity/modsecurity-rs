@@ -12,8 +12,8 @@ use crate::nginx::Request;
 /// response headers were already sent.
 ///
 /// With `early_log`, the transaction is logged right away when the
-/// intervention has a status and no redirection: nginx may not reach the
-/// log phase for it.
+/// intervention has a status other than 200 and no redirection: nginx may
+/// not reach the log phase for it.
 pub fn process_intervention(ctx: &mut Ctx, request: &Request<'_>, early_log: bool) -> ngx_int_t {
     let Some(it) = ctx.modsec_transaction.intervention() else {
         return 0;
@@ -23,8 +23,8 @@ pub fn process_intervention(ctx: &mut Ctx, request: &Request<'_>, early_log: boo
         return NGX_HTTP_INTERNAL_SERVER_ERROR as ngx_int_t;
     };
 
-    // logging to nginx error log can be disable by setting
-    // `modsecurity_use_error_log` to off
+    // `modsecurity_use_error_log off` keeps the intervention out of the
+    // nginx error log.
     if conf.use_error_log != 0 {
         let log = it.log.as_bytes();
         request.log().error(NGX_LOG_ERR as ngx_uint_t, log);
@@ -47,9 +47,9 @@ pub fn process_intervention(ctx: &mut Ctx, request: &Request<'_>, early_log: boo
     }
 
     if status != 200 {
-        // FIXME (C): this will bring proper response code to audit log in
-        // case when e.g. error_page redirect was triggered, but there still
-        // won't be another required pieces like response headers etc.
+        // Records the status for the audit log, which would otherwise lack
+        // it when, for example, an `error_page` redirect follows. The rest of
+        // that response, such as its headers, still does not reach it.
         ctx.modsec_transaction.update_status_code(status);
 
         if early_log {

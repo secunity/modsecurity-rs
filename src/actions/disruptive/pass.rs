@@ -25,7 +25,7 @@ impl Action for Pass {
     }
 
     fn evaluate(&self, cx: &mut ActionContext<'_, '_, '_>) {
-        // intervention::free + reset: drops the url and log too.
+        // The status, the URL and the log set so far go too.
         cx.reset_intervention();
         crate::ms_dbg!(cx, 8, "Running action pass");
     }

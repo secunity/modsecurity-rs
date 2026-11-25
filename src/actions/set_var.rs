@@ -8,8 +8,8 @@ use crate::run_time_string::RunTimeString;
 use crate::variables::variable::{Variable, WriteTarget};
 use modsecurity_compat::cnum::atoll;
 
-/// Each operation owns exactly the operand it needs. Bare assignment and
-/// removal cannot accidentally carry an ignored predicate.
+/// What a `setvar` does to its variable, with the operand it needs:
+/// `=value`, `=+N`, `=-N`, the name alone (sets 1), and `!` (removes).
 #[derive(Debug)]
 pub enum SetVarOperation {
     Set(RunTimeString),

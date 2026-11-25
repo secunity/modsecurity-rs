@@ -1,5 +1,5 @@
-//! Helpers of the engine: digests, random numbers, files, the HTTPS client
-//! and the GeoIP database.
+//! Helpers of the engine: digests, strings, shared log files, operating
+//! system calls and the HTTPS client.
 
 pub mod hash;
 pub mod https_client;

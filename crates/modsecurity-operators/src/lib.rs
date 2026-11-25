@@ -167,7 +167,8 @@ pub struct ResourceLookup {
 }
 
 /// How operators get the files and URLs their parameters name
-/// (`@pmFromFile`, `@ipMatchFromFile`, `@fuzzyHash`).
+/// (`@pmFromFile`, `@ipMatchFromFile`, `@fuzzyHash`, `@validateDTD`,
+/// `@validateSchema`).
 pub trait Resources {
     /// Looks for `resource` as given and relative to the configuration
     /// file `config`.

@@ -2,8 +2,7 @@
 //!
 //! [`Variable`] is a SecRule target (`ARGS`, `TX:foo`, `&ARGS`,
 //! `!ARGS:id`, ...). Every target is the same struct: its name, its key
-//! exclusions and a [`Source`]
-//! saying where the values come from.
+//! exclusions and a [`Source`] saying where the values come from.
 
 use crate::rule::Rule;
 use crate::run_time_string::RunTimeString;
@@ -33,9 +32,10 @@ pub(crate) enum Selector {
     Regex(Regex),
 }
 
-/// Which entries of a collection (`TX`, `IP`, ...) are selected. `Key` is
-/// the variable's name; `Dynamic` is a key built from macros
-/// (`TX:%{...}`), which is also what `setvar` & co. write to.
+/// Which entries of a collection (`TX`, `IP`, ...) are selected. With
+/// `Key`, the key is the variable's name (`foo` of `TX:foo`); `Dynamic` is
+/// a key built from macros (`TX:%{...}`), which is also what `setvar` & co.
+/// write to.
 #[derive(Debug)]
 pub(crate) enum CollectionKey {
     All,
@@ -52,7 +52,8 @@ pub(crate) enum Source {
     Single(fn(&Vars) -> &SingleVariable),
     /// A multi valued variable of the transaction (`ARGS`).
     Multi(fn(&Vars) -> &MultiVariable, Selector),
-    /// The names of a multi valued variable (`ARGS_NAMES`): the variable.
+    /// The names of a multi valued variable (`ARGS_NAMES`); the function
+    /// gives the variable (`ARGS`).
     Names(fn(&Vars) -> &MultiVariable, Selector),
     /// The `TX` collection.
     Tx(CollectionKey),
@@ -74,8 +75,8 @@ pub(crate) enum Source {
     Count(Box<Variable>),
 }
 
-/// The writable portion of a variable, selected once rather than checked
-/// again through separate dynamic-name/store/delete hooks.
+/// Where `setvar` (and the other actions that write to a collection) store
+/// and remove values: the collection, and the macro text of the key.
 pub(crate) enum WriteTarget<'v> {
     Transaction(&'v RunTimeString),
     Persistent { collection: Persistent, name: &'v RunTimeString },
@@ -261,8 +262,9 @@ impl Variable {
         }
     }
 
-    /// A writable collection target exists only for dynamic-key selectors.
-    /// Ordinary rule targets (including literal TX selectors) remain read-only.
+    /// Where values can be written through this variable: only a collection
+    /// with a dynamic key (`TX:%{...}`) has a [`WriteTarget`]. Other targets,
+    /// a literal `TX:foo` included, are read only.
     pub(crate) fn write_target(&self) -> Option<WriteTarget<'_>> {
         match &self.source {
             Source::Tx(CollectionKey::Dynamic(name)) => Some(WriteTarget::Transaction(name)),
@@ -281,8 +283,8 @@ impl Variable {
         a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_ascii_uppercase() == *y)
     }
 
-    /// If `v` is an exclusion (`!ARGS:foo`), records its
-    /// key (or regex) as excluded from this variable.
+    /// If `v` is an exclusion (`!ARGS:foo`), records its key (or regex) as
+    /// excluded from this variable.
     pub fn adds_key_exclusion(&mut self, v: &Variable) -> Result<(), VariableError> {
         let Some(base) = v.exclusion_base() else {
             return Ok(());
@@ -358,7 +360,7 @@ pub fn comp(a: &str, b: &str) -> bool {
 #[cfg(feature = "lua")]
 /// The multi valued variable `col` of the shared table, as Lua looks it
 /// up: `whole` is the name as given, key included (see
-/// [`table::Multi::lua_whole_name`](crate::variables::table::Multi)).
+/// [`table::Multi::lua_whole_name`](crate::variables::table::Multi::lua_whole_name)).
 fn lua_set(col: &str, whole: &str) -> Option<&'static crate::variables::table::Multi> {
     crate::variables::table::MULTI.iter().find(|v| comp(if v.lua_whole_name { whole } else { col }, v.token))
 }

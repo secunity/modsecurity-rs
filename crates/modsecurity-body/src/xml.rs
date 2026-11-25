@@ -1,9 +1,9 @@
-//! The XML request body processor (feature `libxml2`).
-//! The body is parsed with libxml2's push parser into a
-//! document, which the `XML` variable (XPath) and the `@validateDTD` /
-//! `@validateSchema` operators work on. With `SecParseXmlIntoArgs` set to
-//! `On` or `OnlyArgs` a second, SAX based, parser turns the leaf elements of
-//! the document into `ARGS` named after their path (`xml.root.child`).
+//! The XML request body processor (feature `libxml2`). The body is parsed
+//! with libxml2's push parser into a document, which the `XML` variable
+//! (XPath) and the `@validateDTD` / `@validateSchema` operators work on.
+//! With `SecParseXmlIntoArgs` set to `On` or `OnlyArgs` a second, SAX
+//! based, parser turns the leaf elements of the document into `ARGS` named
+//! after their path (`xml.root.child`).
 //!
 //! libxml2 itself is behind the safe API of `modsecurity_native::libxml2`.
 
@@ -68,8 +68,7 @@ mod with_libxml2 {
         has_child: bool,
     }
 
-    /// The state of the SAX parser that turns the XML into
-    /// `ARGS`.
+    /// The state of the SAX parser that turns the XML into `ARGS`.
     #[derive(Debug)]
     struct XmlNodes {
         /// The open elements (libxml2 limits how deep they go).
@@ -109,9 +108,8 @@ mod with_libxml2 {
                 self.nodes[n - 2].has_child = true;
             }
             self.currpath.extend_from_slice(name);
-            // set the current value empty
-            // this is necessary because if there is any text between the
-            // tags (new line, etc) it will be added to the current value
+            // The text between the tags before it (line breaks, ...) is not
+            // part of its value.
             self.currval.clear();
         }
 
@@ -139,9 +137,8 @@ mod with_libxml2 {
 
         /// Appends text to the value of the current element.
         fn on_characters(&mut self, content: &[u8]) {
-            // libxml2 SAX parser will call this function multiple times
-            // during the parsing of a single node, if the value has
-            // multibyte characters, so we need to concatenate the values
+            // libxml2 may give the text of one element in several pieces
+            // (around multibyte characters, for instance).
             self.currval.extend_from_slice(content);
         }
     }
@@ -174,11 +171,13 @@ mod with_libxml2 {
     /// resulting document.
     #[derive(Debug, Default)]
     pub struct Xml {
+        /// The parser building the document (none with `OnlyArgs`).
         parsing_ctx: Option<PushParser>,
-        /// additional parser for arguments
+        /// The parser turning the leaf elements into `ARGS` (with `On` and
+        /// `OnlyArgs`).
         parsing_ctx_arg: Option<SaxParser>,
         doc: Option<Document>,
-        /// parser state for SAX parser
+        /// The state of `parsing_ctx_arg`.
         xml_parser_state: Option<XmlNodes>,
 
         well_formed: bool,
@@ -225,7 +224,6 @@ mod with_libxml2 {
 
             if Self::parse_into_args(cx) {
                 ms_dbg!(cx, 9, "XML: SecParseXmlIntoArgs is set to {}", cx.args_mode().as_str());
-                // set the parser state struct
                 self.xml_parser_state = Some(XmlNodes::new());
             }
 
@@ -250,16 +248,14 @@ mod with_libxml2 {
                 state.names.add_body(buf.len());
             }
 
-            // We want to initialise our parsing context here, to enable us
-            // to pass it the first chunk of data so that it can attempt to
-            // auto-detect the encoding.
+            // The parsers are made with the first chunk, from which libxml2
+            // detects the encoding.
             if self.parsing_ctx.is_none() && self.parsing_ctx_arg.is_none() {
-                // First invocation.
-
                 ms_dbg!(cx, 4, "XML: Initialising parser.");
 
-                // NOTE When Sax interface is used libxml will not create the
-                // document object, but we need it.
+                // The SAX parser builds no document, and the document is
+                // needed (`XML`, `@validateDTD`, `@validateSchema`): unless
+                // only `ARGS` are wanted, a push parser builds it.
 
                 if !Self::only_args(cx) {
                     let Some(parser) = PushParser::new(buf) else {
@@ -308,12 +304,12 @@ mod with_libxml2 {
 
         /// Ends the body: finishes the parsers and keeps the document.
         pub fn complete(&mut self, cx: &mut dyn Context) -> Result<(), String> {
-            // Only the parsers that were made, meaning some work was done.
+            // Only the parsers that were made (a chunk was given).
             if !Self::only_args(cx)
                 && let Some(parser) = self.parsing_ctx.take()
             {
-                // This is how we signal the end of parsing to libxml; the
-                // document is owned by `self` from now on.
+                // The end of the input; the document is owned by `self` from
+                // now on.
                 let (well_formed, doc) = parser.finish();
                 self.well_formed = well_formed;
                 self.doc = doc;
@@ -327,7 +323,6 @@ mod with_libxml2 {
             if Self::parse_into_args(cx)
                 && let Some(parser) = self.parsing_ctx_arg.take()
             {
-                // This is how we signal the end of parsing to libxml.
                 let rc = Self::with_handler(&mut self.xml_parser_state, cx, |h| parser.finish(h));
                 if let Some(error) = self.names_error(cx) {
                     return Err(error);

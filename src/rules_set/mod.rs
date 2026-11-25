@@ -284,9 +284,8 @@ mod tests {
         t.intervention().map(|it| it.status)
     }
 
-    /// A merged rule set keeps the `SecDefaultAction` of the configuration
-    /// it is merged into for a phase that has one, and takes the other's
-    /// for the other phases.
+    /// A `skipAfter` whose marker is not found skips the rest of its phase
+    /// only.
     #[test]
     fn a_skip_after_without_its_marker_ends_with_the_phase() {
         let mut rules = RulesSet::new();
@@ -318,6 +317,9 @@ mod tests {
         assert_eq!(status_of(&rules), None);
     }
 
+    /// A merged rule set keeps the `SecDefaultAction` of the configuration
+    /// it is merged into for a phase that has one, and takes the other's
+    /// for the other phases.
     #[test]
     fn merged_default_actions_come_from_one_configuration() {
         let rule = "SecRuleEngine On\nSecRule ARGS \"@rx x\" \"id:1,phase:2,block\"\n";

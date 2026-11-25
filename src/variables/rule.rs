@@ -1,9 +1,9 @@
 //! The `RULE` variable (`RULE:id`, `RULE:rev`, `RULE:severity`,
 //! `RULE:logdata` and `RULE:msg`): properties of the rule being evaluated.
 //! Inside a chain, a property the rule does not set is looked up in its
-//! chain parents. A rule has no pointer to its parent:
-//! the ancestors of the rule being evaluated
-//! are in the transaction (`eval.chained_rule_parents`).
+//! chain parents. A rule has no pointer to its parent: the ancestors of
+//! the rule being evaluated are in the transaction
+//! (`eval.chained_rule_parents`).
 
 use crate::rule::Rule;
 use crate::transaction::Transaction;

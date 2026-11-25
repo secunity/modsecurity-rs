@@ -134,7 +134,8 @@ pub fn fingerprint(tokenizer: &mut Tokenizer<'_>, tokens: &mut Vec<Token>) -> Fi
     Fingerprint::new(tokens)
 }
 
-/// Known-attack fingerprints that are too short to be sure about, judged
+/// Whether a known-attack fingerprint is benign after all. Fingerprints of
+/// two or three tokens are too short to be sure about and are judged again
 /// on the tokens themselves.
 fn whitelisted(input: &[u8], tokens: &[Token], fp: Fingerprint, total_tokens: usize) -> bool {
     let fp = fp.as_bytes();

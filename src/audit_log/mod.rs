@@ -116,45 +116,34 @@ bitflags::bitflags! {
     /// number.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Parts: i32 {
-        /// Audit log header (mandatory).
+        /// The entry header (always written).
         const A = 2;
         /// Request headers.
         const B = 4;
-        /// Request body (present only if the request body exists and ModSecurity
-        /// is configured to intercept it).
+        /// Request body.
         const C = 8;
-        /// Reserved for intermediary response headers; not implemented yet.
+        /// Intermediary response headers. Not implemented: the native
+        /// format writes an empty section.
         const D = 16;
-        /// Intermediary response body (present only if ModSecurity is configured
-        /// to intercept response bodies, and if the audit log engine is
-        /// configured to record it). Intermediary response body is the same as
-        /// the actual response body unless ModSecurity intercepts the
-        /// intermediary response body, in which case the actual response body
-        /// will contain the error message (either the Apache default error
-        /// message, or the ErrorDocument page).
+        /// Response body.
         const E = 32;
-        /// Final response headers (excluding the Date and Server headers, which
-        /// are always added by Apache in the late stage of content delivery).
+        /// Response headers.
         const F = 64;
-        /// Reserved for the actual response body; not implemented yet.
+        /// Actual response body. Not implemented: the native format writes
+        /// an empty section.
         const G = 128;
-        /// Audit log trailer.
+        /// The trailer: the rule messages (and, in JSON, the producer).
         const H = 256;
-        /// This part is a replacement for part C. It will log the same data as C
-        /// in all cases except when multipart/form-data encoding in used. In this
-        /// case, it will log a fake application/x-www-form-urlencoded body that
-        /// contains the information about parameters but not about the files.
-        /// This is handy if you don't want to have (often large) files stored in
-        /// your audit logs.
+        /// The request body without the files of a multipart body, in place
+        /// of C. Not implemented: the native format writes an empty section.
         const I = 512;
-        /// This part contains information about the files uploaded using
-        /// multipart/form-data encoding.
+        /// The files of a multipart body. Not implemented: the native format
+        /// writes an empty section.
         const J = 1024;
-        /// This part contains a full list of every rule that matched (one per
-        /// line) in the order they were matched. The rules are fully qualified
-        /// and will thus show inherited actions and default operators.
+        /// Every rule that matched. Not implemented: the native format
+        /// writes an empty section.
         const K = 2048;
-        /// Final boundary, signifies the end of the entry (mandatory).
+        /// The end of the entry (always written).
         const Z = 4096;
     }
 }
@@ -355,7 +344,7 @@ impl AuditLog {
     /// Overrides this configuration with the values set in `from`, then
     /// re-initialises the writer.
     pub fn merge(&mut self, from: &AuditLog) -> Result<(), SetupError> {
-        // AL_MERGE_STRING_CONF
+        // A string set in `from` (not empty) replaces this one.
         fn merge_string(from: &str, to: &mut String) {
             if !from.is_empty() {
                 *to = from.to_string();

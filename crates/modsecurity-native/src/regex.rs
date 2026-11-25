@@ -24,7 +24,7 @@ pub enum MatchError {
 /// A pattern PCRE2 does not compile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileError {
-    /// The pattern, as text (up to its first NUL byte, as compiled).
+    /// The pattern, as text (invalid UTF-8 replaced).
     pub pattern: String,
 }
 
@@ -63,7 +63,7 @@ impl SMatchCapture {
     }
 }
 
-/// Helper telling whether the PCRE2 build treats CRLF as a newline sequence.
+/// Whether the PCRE2 build treats CRLF as a newline sequence.
 pub fn crlf_is_newline() -> bool {
     let mut newline: u32 = 0;
     // SAFETY: PCRE2_CONFIG_NEWLINE writes a single uint32_t into `where`.
@@ -87,7 +87,7 @@ const PAGE: usize = 4096;
 /// dangling (non-null, unreadable) pointer.
 static EMPTY: [u8; READ_AHEAD] = [0; READ_AHEAD];
 
-/// A subject PCRE2 can read up to [`READ_AHEAD`] bytes past: the bytes
+/// A subject PCRE2 can read up to `READ_AHEAD` bytes past: the bytes
 /// themselves when that much of their page follows them (reads within a
 /// mapped page cannot fault), a padded copy otherwise (about one subject
 /// in 64). Build it once for all the matches against the same bytes.
@@ -140,8 +140,9 @@ impl MatchData {
 
 impl Drop for MatchData {
     fn drop(&mut self) {
-        // SAFETY: allocated by pcre2_match_data_create_from_pattern_8 and
-        // freed exactly once.
+        // SAFETY: allocated by pcre2_match_data_create_8 or
+        // pcre2_match_data_create_from_pattern_8 (or null, which
+        // pcre2_match_data_free_8 ignores) and freed exactly once.
         unsafe { pcre2_match_data_free_8(self.0) }
     }
 }
@@ -168,7 +169,8 @@ impl MatchContext {
 
 impl Drop for MatchContext {
     fn drop(&mut self) {
-        // SAFETY: allocated above and freed once.
+        // SAFETY: allocated by pcre2_match_context_create_8 (or null, which
+        // pcre2_match_context_free_8 ignores) and freed once.
         unsafe { pcre2_match_context_free_8(self.0) }
     }
 }

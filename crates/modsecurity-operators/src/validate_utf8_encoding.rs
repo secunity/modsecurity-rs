@@ -58,7 +58,6 @@ impl ValidateUtf8Encoding {
                 return Err(InvalidEncoding);
             } else {
                 unicode_len = 2;
-                // compute the character number
                 d = ((c32 & 0x1F) << 6) | (at(1) & 0x3F);
             }
         } else if (c & 0xF0) == 0xE0 {
@@ -93,14 +92,14 @@ impl ValidateUtf8Encoding {
             return Err(InvalidEncoding);
         }
 
-        // invalid UTF-8 character number range (RFC 3629)
+        // Surrogates are not characters (RFC 3629).
         if (0xD800..=0xDFFF).contains(&d) {
             return Err(RestrictedCharacter);
         }
 
         // check for overlong
         if (unicode_len == 4 && d < 0x010000) || (unicode_len == 3 && d < 0x0800) || (unicode_len == 2 && d < 0x80) {
-            // could be represented with less bytes
+            // It could be written with fewer bytes.
             return Err(OverlongCharacter);
         }
 

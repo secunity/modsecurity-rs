@@ -2,10 +2,10 @@
 //! `ARGS` entry (origin "JSON") named after its path, e.g. `json.a.b` for
 //! `{"a":{"b":1}}` and `json.a.array_0` for `{"a":[1]}`.
 //!
-//! The parser borrows the complete body and emits arguments through a
-//! callback. It does not own request bytes or borrow a transaction. Returning
-//! false from the callback stops parsing at the argument limit, preserving
-//! partial results and yajl-compatible errors.
+//! The parser reads the whole body and gives each argument to a callback.
+//! The callback returns `false` to stop parsing (at the argument limit):
+//! the arguments given so far stay, and the error is the one yajl reports
+//! for a cancelled parse.
 //!
 //! The names of the arguments of one body have a limit on their total size
 //! (`crate::names`); past it, parsing stops with an error.
@@ -66,10 +66,9 @@ impl Json {
         self.max_depth = d;
     }
 
-    /// Parse a borrowed body, retaining path/error state across calls as the
-    /// transaction's previous processor did. The sink sees arguments in
-    /// document order and can cancel parsing without buffering later values.
-    /// Parsing stops with an error when the names of the arguments of
+    /// Parses `body`, giving each argument (name, value) to `on_argument`
+    /// in document order; `on_argument` returns `false` to stop parsing.
+    /// Parsing also stops with an error when the names of the arguments of
     /// `body` exceed their allowance.
     pub fn parse(&mut self, body: &[u8], on_argument: impl FnMut(&[u8], &[u8]) -> bool) -> Result<(), String> {
         let mut parser =
@@ -115,7 +114,8 @@ impl Json {
         }
     }
 
-    /// The `yajl_start_map` / `yajl_start_array` callbacks.
+    /// Opens an object or an array, named after the current key; `false`
+    /// past the depth limit.
     fn start_container(&mut self, array: bool) -> bool {
         let name = self.current_key();
         self.containers.push(if array {
@@ -130,7 +130,7 @@ impl Json {
         true
     }
 
-    /// The `yajl_end_map` / `yajl_end_array` callbacks.
+    /// Closes the innermost object or array.
     fn end_container(&mut self) -> bool {
         self.containers.pop();
         self.count_array_element();
@@ -138,8 +138,7 @@ impl Json {
     }
 }
 
-/// Path state plus a caller-owned argument sink; no transaction lifetime or
-/// intermediate argument list is needed.
+/// A parse in progress: the processor's state and the caller's callback.
 struct JsonParser<'j, F> {
     json: &'j mut Json,
     on_argument: F,
@@ -179,51 +178,43 @@ impl<F: FnMut(&[u8], &[u8]) -> bool> JsonParser<'_, F> {
             return false;
         }
 
-        // cancel parsing by returning false
         (self.on_argument)(&path, value)
     }
 }
 
 impl<F: FnMut(&[u8], &[u8]) -> bool> JsonHandler for JsonParser<'_, F> {
-    /// Callback for null values
+    /// `null`: an argument with an empty value.
     fn null(&mut self) -> bool {
         self.add_argument(b"")
     }
 
-    /// Callback for boolean values
     fn boolean(&mut self, v: bool) -> bool {
         self.add_argument(if v { b"true" } else { b"false" })
     }
 
-    /// Callback for numbers; yajl can use separate callbacks for
-    /// integers/longs and float/double values, but since we are not
-    /// interested in using the numeric values here, we use a generic handler
-    /// which uses numeric strings.
+    /// A number, as written in the document.
     fn number(&mut self, raw: &[u8]) -> bool {
         self.add_argument(raw)
     }
 
-    /// Callback for string values
     fn string(&mut self, s: &[u8]) -> bool {
         self.add_argument(s)
     }
 
-    /// Callback for a new hash, which indicates a new subtree, labeled as
-    /// the current argument name, is being created.
+    /// An object starts, named after the current key.
     fn start_map(&mut self) -> bool {
         self.json.start_container(false)
     }
 
-    /// Callback for hash key values; we use those to define the variable
-    /// names under ARGS. Whenever we reach a new key, we update the current
-    /// key value.
+    /// A key of an object: the last part of the name of the value that
+    /// follows.
     fn map_key(&mut self, key: &[u8]) -> bool {
         self.json.current_key = key.to_vec();
         true
     }
 
-    /// Callback for end hash, meaning the current subtree is being closed,
-    /// and that we should go back to the parent variable label.
+    /// An object ends: the names go back to those of the container
+    /// around it.
     fn end_map(&mut self) -> bool {
         self.json.end_container()
     }

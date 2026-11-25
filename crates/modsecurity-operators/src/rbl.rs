@@ -51,8 +51,9 @@ impl Rbl {
         Rbl { param, service, demands_password, provider }
     }
 
-    /// The DNS name to query for `ip_str` (empty when the
-    /// lookup cannot be done).
+    /// The DNS name to query for `ip_str`: the reversed address before the
+    /// list's name, or the value itself when it is not exactly an IPv4
+    /// address; empty when the list needs `SecHttpBlKey` and it is not set.
     pub fn map_ip_to_address(&self, ip_str: &[u8], cx: &dyn Context) -> Vec<u8> {
         let key: Vec<u8> = cx.httpbl_key().to_vec();
 

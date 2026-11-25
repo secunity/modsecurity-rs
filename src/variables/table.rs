@@ -264,9 +264,9 @@ fn names_are_unique() {
     assert_eq!(names.len(), count);
 }
 
-/// Where the two lookups differ (an old-against-new comparison
-/// of both lookups on every name, spelling and selector was run when the
-/// tables replaced their three hand-written chains).
+/// Where the two lookups differ. (When this table replaced the three
+/// hand-written lookups, the old and the new ones were compared on every
+/// name, spelling and selector.)
 #[cfg(all(test, feature = "lua"))]
 mod tests {
     use crate::instance::ModSecurity;

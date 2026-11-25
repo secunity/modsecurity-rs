@@ -30,7 +30,7 @@ impl Transaction<'_> {
         self.vars.response_headers_names.set(key, key, off);
         self.vars.response_headers.set(key, value, off);
         if key.eq_ignore_ascii_case(b"content-type") {
-            // Removes the charset=...
+            // The media type, without its parameters (`; charset=...`).
             let val = split(value, b';');
             if let Some(v) = val.first() {
                 self.vars.response_content_type.set(v, 0);

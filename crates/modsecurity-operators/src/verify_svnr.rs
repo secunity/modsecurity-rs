@@ -56,8 +56,9 @@ impl VerifySVNR {
             return false;
         }
 
-        // Laufnummer mit 3, 7, 9
-        // Geburtsdatum mit 5, 8, 4, 2, 1, 6
+        // The weights: 3, 7, 9 for the serial number (the first three
+        // digits) and 5, 8, 4, 2, 1, 6 for the date of birth (the last six);
+        // the fourth digit is the check digit.
         let mut sum = svnr[0] * 3
             + svnr[1] * 7
             + svnr[2] * 9
