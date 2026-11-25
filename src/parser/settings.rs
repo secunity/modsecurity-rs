@@ -11,8 +11,8 @@ use crate::parser::build::{Builder, Failed, Res, load};
 use crate::parser::syntax;
 use crate::parser::syntax::value::{self, Class::*, Pattern, Pattern::*, Quotes, Quotes::*, Refused};
 use crate::rules_set::properties::{
-    BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, parse_config_number,
-    parse_octal_mode,
+    BodyLimitAction, ConfigUnicodeMap, OnFailedRemoteRulesAction, ParseXmlIntoArgs, RuleEngine, RulesSetProperties,
+    parse_config_number, parse_octal_mode,
 };
 use crate::utils::https_client::HttpsClient;
 use crate::utils::string::{parse_digits, ssplit};
@@ -39,10 +39,10 @@ enum Form {
     Value(&'static [(Pattern, Quotes)]),
     /// One of these words (case-insensitive); none for a directive without
     /// a value.
-    Word(&'static [&'static str]),
+    Word(Vec<&'static str>),
 }
 
-type Apply = fn(&mut Builder<'_, '_>, &Given) -> Res<()>;
+type Apply = Box<dyn Fn(&mut Builder<'_, '_>, &Given) -> Res<()>>;
 
 /// What a directive does with its value.
 enum Effect {
@@ -68,16 +68,84 @@ const FREE_TEXT_LINE_UNQUOTED: &[(Pattern, Quotes)] =
 const DIRECT: &[(Pattern, Quotes)] = &[(Direct(FreeTextNewLine), Double)];
 const QUOTED_TEXT: &[(Pattern, Quotes)] = &[(SepQuoted(FreeText), DoubleAndSingle)];
 /// A directive that takes no value.
-const NOTHING: Form = Form::Word(&[]);
+const NOTHING: Form = Form::Word(Vec::new());
 
 /// A directive with a value.
-fn value(forms: &'static [(Pattern, Quotes)], apply: Apply) -> Option<Directive> {
-    Some(Directive { form: Form::Value(forms), effect: Effect::Apply(apply) })
+fn value(
+    forms: &'static [(Pattern, Quotes)],
+    apply: impl Fn(&mut Builder<'_, '_>, &Given) -> Res<()> + 'static,
+) -> Option<Directive> {
+    Some(Directive { form: Form::Value(forms), effect: Effect::Apply(Box::new(apply)) })
 }
 
 /// A directive with a choice of words.
-fn word(words: &'static [&'static str], apply: Apply) -> Option<Directive> {
-    Some(Directive { form: Form::Word(words), effect: Effect::Apply(apply) })
+fn word(
+    words: &'static [&'static str],
+    apply: impl Fn(&mut Builder<'_, '_>, &Given) -> Res<()> + 'static,
+) -> Option<Directive> {
+    Some(Directive { form: Form::Word(words.to_vec()), effect: Effect::Apply(Box::new(apply)) })
+}
+
+/// A choice of words, each with the value it stands for: `set` stores the
+/// value of the word given.
+fn choice<T: Copy + 'static>(
+    choices: &'static [(&'static str, T)],
+    set: fn(&mut RulesSetProperties, T),
+) -> Option<Directive> {
+    let apply = move |b: &mut Builder<'_, '_>, v: &Given| {
+        let (_, value) = choices.iter().find(|(w, _)| v.is(w)).expect("the word given is one of the choices");
+        set(&mut b.driver.rules.properties, *value);
+        Ok(())
+    };
+    Some(Directive {
+        form: Form::Word(choices.iter().map(|&(w, _)| w).collect()),
+        effect: Effect::Apply(Box::new(apply)),
+    })
+}
+
+/// `On` or `Off`.
+fn on_off(set: fn(&mut RulesSetProperties, bool)) -> Option<Directive> {
+    choice(&[("On", true), ("Off", false)], set)
+}
+
+/// A switch that can only be off: `On` is refused with `message`.
+fn only_off(message: &'static str) -> Option<Directive> {
+    word(ON_OFF, move |b, v| if v.is("on") { b.fail(message) } else { Ok(()) })
+}
+
+/// A value whose text `set` stores.
+fn text(forms: &'static [(Pattern, Quotes)], set: fn(&mut RulesSetProperties, String)) -> Option<Directive> {
+    value(forms, move |b, v| {
+        set(&mut b.driver.rules.properties, v.text.clone());
+        Ok(())
+    })
+}
+
+/// A number, at most the largest `T`; `name` is the directive's name in the
+/// error message.
+fn limit<T: std::str::FromStr + 'static>(name: &'static str, set: fn(&mut RulesSetProperties, T)) -> Option<Directive> {
+    value(NUMBER, move |b, v| match parse_config_number(&v.text) {
+        Ok(n) => {
+            set(&mut b.driver.rules.properties, n);
+            Ok(())
+        }
+        Err(e) => b.fail(&format!("Failed to parse {}: {}", name, e)),
+    })
+}
+
+/// An octal file mode; `name` is the directive's name in the error message.
+fn mode(
+    forms: &'static [(Pattern, Quotes)],
+    name: &'static str,
+    set: fn(&mut RulesSetProperties, u32),
+) -> Option<Directive> {
+    value(forms, move |b, v| match parse_octal_mode(&v.text) {
+        Ok(mode) => {
+            set(&mut b.driver.rules.properties, mode);
+            Ok(())
+        }
+        Err(e) => b.fail(&format!("Failed to parse {}: {}", name, e)),
+    })
 }
 
 fn ignored(forms: &'static [(Pattern, Quotes)]) -> Option<Directive> {
@@ -88,86 +156,48 @@ fn unsupported(form: Form, message: &'static str) -> Option<Directive> {
     Some(Directive { form, effect: Effect::Unsupported(message) })
 }
 
-/// A switch that can only be off: `On` is rejected with `message`.
-fn only_off(b: &mut Builder<'_, '_>, v: &Given, message: &str) -> Res<()> {
-    if v.is("on") { b.fail(message) } else { Ok(()) }
-}
-
-fn body_limit_action(v: &Given) -> BodyLimitAction {
-    if v.is("processpartial") { BodyLimitAction::ProcessPartial } else { BodyLimitAction::Reject }
-}
+const BODY_LIMIT_ACTIONS: &[(&str, BodyLimitAction)] =
+    &[("ProcessPartial", BodyLimitAction::ProcessPartial), ("Reject", BodyLimitAction::Reject)];
 
 /// The directive `keyword` (in any case).
 fn directive(keyword: &str) -> Option<Directive> {
     match keyword.to_ascii_lowercase().as_str() {
         // --- Audit log ---------------------------------------------------
-        "secauditengine" => word(&["RelevantOnly", "Off", "On"], |b, v| {
-            b.driver.rules.properties.audit_log.set_status(if v.is("relevantonly") {
-                AuditLogStatus::RelevantOnly
-            } else if v.is("off") {
-                AuditLogStatus::Off
-            } else {
-                AuditLogStatus::On
-            });
-            Ok(())
-        }),
-        "secauditlog" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| {
-            b.driver.rules.properties.audit_log.set_file_path1(&v.text);
-            Ok(())
-        }),
-        "secauditlog2" => value(&[(Sep(Path), Double)], |b, v| {
-            b.driver.rules.properties.audit_log.set_file_path2(&v.text);
-            Ok(())
-        }),
+        "secauditengine" => choice(
+            &[("RelevantOnly", AuditLogStatus::RelevantOnly), ("Off", AuditLogStatus::Off), ("On", AuditLogStatus::On)],
+            |p, s| p.audit_log.set_status(s),
+        ),
+        "secauditlog" => text(PATH, |p, path| p.audit_log.set_file_path1(&path)),
+        "secauditlog2" => text(&[(Sep(Path), Double)], |p, path| p.audit_log.set_file_path2(&path)),
         "secauditlogdirmode" => {
-            value(&[(Sep(Number), Double), (SepQuoted(Number), Double)], |b, v| match parse_octal_mode(&v.text) {
-                Ok(mode) => {
-                    b.driver.rules.properties.audit_log.set_storage_dir_mode(mode);
-                    Ok(())
-                }
-                Err(e) => b.fail(&format!("Failed to parse SecAuditLogDirMode: {}", e)),
+            mode(&[(Sep(Number), Double), (SepQuoted(Number), Double)], "SecAuditLogDirMode", |p, m| {
+                p.audit_log.set_storage_dir_mode(m)
             })
         }
-        "secauditlogfilemode" => value(NUMBER, |b, v| match parse_octal_mode(&v.text) {
-            Ok(mode) => {
-                b.driver.rules.properties.audit_log.set_file_mode(mode);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecAuditLogFileMode: {}", e)),
+        "secauditlogfilemode" => mode(NUMBER, "SecAuditLogFileMode", |p, m| p.audit_log.set_file_mode(m)),
+        "secauditlogformat" => choice(&[("JSON", AuditLogFormat::Json), ("Native", AuditLogFormat::Native)], |p, f| {
+            p.audit_log.set_format(f)
         }),
-        "secauditlogformat" => word(&["JSON", "Native"], |b, v| {
-            let format = if v.is("json") { AuditLogFormat::Json } else { AuditLogFormat::Native };
-            b.driver.rules.properties.audit_log.set_format(format);
-            Ok(())
+        "secauditlogparts" => text(&[(Sep(AuditParts), Double), (SepQuoted(AuditParts), Double)], |p, parts| {
+            p.audit_log.set_parts(&parts)
         }),
-        "secauditlogparts" => value(&[(Sep(AuditParts), Double), (SepQuoted(AuditParts), Double)], |b, v| {
-            b.driver.rules.properties.audit_log.set_parts(&v.text);
-            Ok(())
-        }),
-        "secauditlogprefix" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
-            b.driver.rules.properties.audit_log.set_prefix(&v.text);
-            Ok(())
-        }),
+        "secauditlogprefix" => text(FREE_TEXT_LINE_UNQUOTED, |p, prefix| p.audit_log.set_prefix(&prefix)),
         "secauditlogrelevantstatus" => {
             value(&[(Sep(FreeTextNewLine), DoubleAndSingle), (SepQuoted(Word), DoubleAndSingle)], |b, v| {
                 let set = b.driver.rules.properties.audit_log.set_relevant_status(&v.text);
                 set.or_else(|error| b.fail(&error))
             })
         }
-        "secauditlogstoragedir" => value(PATH, |b, v| {
-            b.driver.rules.properties.audit_log.set_storage_dir(&v.text);
-            Ok(())
-        }),
-        "secauditlogtype" => word(&["Serial", "Parallel", "Concurrent", "https"], |b, v| {
-            b.driver.rules.properties.audit_log.set_type(if v.is("serial") {
-                AuditLogType::Serial
-            } else if v.is("https") {
-                AuditLogType::Https
-            } else {
-                AuditLogType::Parallel
-            });
-            Ok(())
-        }),
+        "secauditlogstoragedir" => text(PATH, |p, dir| p.audit_log.set_storage_dir(&dir)),
+        "secauditlogtype" => choice(
+            &[
+                ("Serial", AuditLogType::Serial),
+                ("Parallel", AuditLogType::Parallel),
+                ("Concurrent", AuditLogType::Parallel),
+                ("https", AuditLogType::Https),
+            ],
+            |p, t| p.audit_log.set_type(t),
+        ),
 
         // --- Debug log ---------------------------------------------------
         "secdebuglog" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| {
@@ -183,24 +213,12 @@ fn directive(keyword: &str) -> Option<Directive> {
         }),
 
         // --- The engine and what it inspects -------------------------------
-        "secruleengine" => word(&["Off", "On", "DetectionOnly"], |b, v| {
-            b.driver.rules.properties.settings.sec_rule_engine = Some(if v.is("off") {
-                RuleEngine::Disabled
-            } else if v.is("on") {
-                RuleEngine::Enabled
-            } else {
-                RuleEngine::DetectionOnly
-            });
-            Ok(())
-        }),
-        "secrequestbodyaccess" => word(ON_OFF, |b, v| {
-            b.driver.rules.properties.settings.sec_request_body_access = Some(v.is("on"));
-            Ok(())
-        }),
-        "secresponsebodyaccess" => word(ON_OFF, |b, v| {
-            b.driver.rules.properties.settings.sec_response_body_access = Some(v.is("on"));
-            Ok(())
-        }),
+        "secruleengine" => choice(
+            &[("Off", RuleEngine::Disabled), ("On", RuleEngine::Enabled), ("DetectionOnly", RuleEngine::DetectionOnly)],
+            |p, e| p.settings.sec_rule_engine = Some(e),
+        ),
+        "secrequestbodyaccess" => on_off(|p, on| p.settings.sec_request_body_access = Some(on)),
+        "secresponsebodyaccess" => on_off(|p, on| p.settings.sec_response_body_access = Some(on)),
         "secresponsebodymimetype" => value(FREE_TEXT_LINE, |b, v| {
             let tokens: std::collections::BTreeSet<&str> = v.text.split_ascii_whitespace().collect();
             let t = &mut b.driver.rules.properties.response_body_type_to_be_inspected;
@@ -217,20 +235,11 @@ fn directive(keyword: &str) -> Option<Directive> {
             t.value.clear();
             Ok(())
         }),
-        "secxmlexternalentity" => word(ON_OFF, |b, v| {
-            b.driver.rules.properties.settings.sec_xml_external_entity = Some(v.is("on"));
-            Ok(())
-        }),
-        "secparsexmlintoargs" => word(&["OnlyArgs", "Off", "On"], |b, v| {
-            b.driver.rules.properties.settings.sec_xml_parse_xml_into_args = Some(if v.is("onlyargs") {
-                ParseXmlIntoArgs::OnlyArgs
-            } else if v.is("off") {
-                ParseXmlIntoArgs::Off
-            } else {
-                ParseXmlIntoArgs::On
-            });
-            Ok(())
-        }),
+        "secxmlexternalentity" => on_off(|p, on| p.settings.sec_xml_external_entity = Some(on)),
+        "secparsexmlintoargs" => choice(
+            &[("OnlyArgs", ParseXmlIntoArgs::OnlyArgs), ("Off", ParseXmlIntoArgs::Off), ("On", ParseXmlIntoArgs::On)],
+            |p, x| p.settings.sec_xml_parse_xml_into_args = Some(x),
+        ),
         // The third form (free text up to the end of the line), which is
         // accepted and ignored, wins when it is longer: with more text
         // after the separator (`& ;`).
@@ -252,92 +261,36 @@ fn directive(keyword: &str) -> Option<Directive> {
         }),
         "secunicodemapfile" => value(&[(UnicodeMap, Double)], |b, v| b.unicode_map_file(&v.text)),
         "secgeolookupdb" => value(FREE_TEXT_LINE, |b, v| b.geo_lookup_db(&v.text)),
-        "sechttpblkey" => value(FREE_TEXT_LINE, |b, v| {
-            b.driver.rules.properties.settings.httpbl_key = Some(v.text.clone());
-            Ok(())
-        }),
+        "sechttpblkey" => text(FREE_TEXT_LINE, |p, key| p.settings.httpbl_key = Some(key)),
         "secwebappid" => {
-            value(&[(SepQuoted(FreeText), DoubleAndSingle), (Sep(FreeTextNewLine), DoubleAndSingle)], |b, v| {
-                b.driver.rules.properties.settings.sec_web_app_id = Some(v.text.clone());
-                Ok(())
+            text(&[(SepQuoted(FreeText), DoubleAndSingle), (Sep(FreeTextNewLine), DoubleAndSingle)], |p, id| {
+                p.settings.sec_web_app_id = Some(id)
             })
         }
-        "seccomponentsignature" => value(QUOTED_TEXT, |b, v| {
-            b.driver.rules.properties.components.push(v.text.clone());
-            Ok(())
-        }),
+        "seccomponentsignature" => text(QUOTED_TEXT, |p, signature| p.components.push(signature)),
 
         // --- Limits ------------------------------------------------------
-        "secargumentslimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
-            Ok(n) => {
-                b.driver.rules.properties.settings.arguments_limit = Some(n);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecArgumentsLimit: {}", e)),
-        }),
-        "secrequestbodyjsondepthlimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
-            Ok(n) => {
-                b.driver.rules.properties.settings.request_body_json_depth_limit = Some(n);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecRequestBodyJsonDepthLimit: {}", e)),
-        }),
-        "secrequestbodylimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
-            Ok(n) => {
-                b.driver.rules.properties.settings.request_body_limit = Some(n);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecRequestBodyLimit: {}", e)),
-        }),
-        "secrequestbodynofileslimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
-            Ok(n) => {
-                b.driver.rules.properties.settings.request_body_no_files_limit = Some(n);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecRequestsBodyNoFilesLimit: {}", e)),
-        }),
-        "secresponsebodylimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
-            Ok(n) => {
-                b.driver.rules.properties.settings.response_body_limit = Some(n);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecResponseBodyLimit: {}", e)),
-        }),
-        "secpcrematchlimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
-            Ok(n) => {
-                b.driver.rules.properties.settings.pcre_match_limit = Some(n);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecPcreMatchLimit: {}", e)),
-        }),
-        "secrequestbodylimitaction" => word(&["ProcessPartial", "Reject"], |b, v| {
-            b.driver.rules.properties.settings.request_body_limit_action = Some(body_limit_action(v));
-            Ok(())
-        }),
-        "secresponsebodylimitaction" => word(&["ProcessPartial", "Reject"], |b, v| {
-            b.driver.rules.properties.settings.response_body_limit_action = Some(body_limit_action(v));
-            Ok(())
-        }),
+        "secargumentslimit" => limit("SecArgumentsLimit", |p, n| p.settings.arguments_limit = Some(n)),
+        "secrequestbodyjsondepthlimit" => {
+            limit("SecRequestBodyJsonDepthLimit", |p, n| p.settings.request_body_json_depth_limit = Some(n))
+        }
+        "secrequestbodylimit" => limit("SecRequestBodyLimit", |p, n| p.settings.request_body_limit = Some(n)),
+        "secrequestbodynofileslimit" => {
+            limit("SecRequestsBodyNoFilesLimit", |p, n| p.settings.request_body_no_files_limit = Some(n))
+        }
+        "secresponsebodylimit" => limit("SecResponseBodyLimit", |p, n| p.settings.response_body_limit = Some(n)),
+        "secpcrematchlimit" => limit("SecPcreMatchLimit", |p, n| p.settings.pcre_match_limit = Some(n)),
+        "secrequestbodylimitaction" => {
+            choice(BODY_LIMIT_ACTIONS, |p, a| p.settings.request_body_limit_action = Some(a))
+        }
+        "secresponsebodylimitaction" => {
+            choice(BODY_LIMIT_ACTIONS, |p, a| p.settings.response_body_limit_action = Some(a))
+        }
 
         // --- Uploads -----------------------------------------------------
-        "secuploaddir" => value(PATH, |b, v| {
-            b.driver.rules.properties.settings.upload_directory = Some(v.text.clone());
-            Ok(())
-        }),
-        "secuploadfilelimit" => value(NUMBER, |b, v| match parse_config_number(&v.text) {
-            Ok(n) => {
-                b.driver.rules.properties.settings.upload_file_limit = Some(n);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecUploadFileLimit: {}", e)),
-        }),
-        "secuploadfilemode" => value(NUMBER, |b, v| match parse_octal_mode(&v.text) {
-            Ok(n) => {
-                b.driver.rules.properties.settings.upload_file_mode = Some(n);
-                Ok(())
-            }
-            Err(e) => b.fail(&format!("Failed to parse SecUploadFileMode: {}", e)),
-        }),
+        "secuploaddir" => text(PATH, |p, dir| p.settings.upload_directory = Some(dir)),
+        "secuploadfilelimit" => limit("SecUploadFileLimit", |p, n| p.settings.upload_file_limit = Some(n)),
+        "secuploadfilemode" => mode(NUMBER, "SecUploadFileMode", |p, m| p.settings.upload_file_mode = Some(m)),
         "secuploadkeepfiles" => word(&["On", "Off", "RelevantOnly"], |b, v| {
             if v.is("relevantonly") {
                 return b
@@ -346,10 +299,7 @@ fn directive(keyword: &str) -> Option<Directive> {
             b.driver.rules.properties.settings.upload_keep_files = Some(v.is("on"));
             Ok(())
         }),
-        "sectmpsaveuploadedfiles" => word(ON_OFF, |b, v| {
-            b.driver.rules.properties.settings.tmp_save_uploaded_files = Some(v.is("on"));
-            Ok(())
-        }),
+        "sectmpsaveuploadedfiles" => on_off(|p, on| p.settings.tmp_save_uploaded_files = Some(on)),
 
         // --- Rules -------------------------------------------------------
         "secmarker" => value(&[(SepQuoted(Word), DoubleAndSingle), (Sep(Word), DoubleAndSingle)], |b, v| {
@@ -363,21 +313,15 @@ fn directive(keyword: &str) -> Option<Directive> {
                 Err(error) => b.fail(&format!("SecRuleRemoveById: failed to load:{}. {}", v.text, error)),
             }
         }),
-        "secruleremovebymsg" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
-            b.driver.rules.properties.exceptions.load_remove_rule_by_msg(&v.text);
-            Ok(())
-        }),
-        "secruleremovebytag" => value(FREE_TEXT_LINE_UNQUOTED, |b, v| {
-            b.driver.rules.properties.exceptions.load_remove_rule_by_tag(&v.text);
-            Ok(())
-        }),
+        "secruleremovebymsg" => text(FREE_TEXT_LINE_UNQUOTED, |p, msg| p.exceptions.load_remove_rule_by_msg(&msg)),
+        "secruleremovebytag" => text(FREE_TEXT_LINE_UNQUOTED, |p, tag| p.exceptions.load_remove_rule_by_tag(&tag)),
         "include" => value(&[(Sep(Path), Double), (SepQuoted(Path), Double)], |b, v| b.include(&v.text)),
         "secremoterules" => value(&[(Remote, Double)], |b, v| b.remote_rules(&v.text)),
-        "secremoterulesfailaction" => word(&["Abort", "Warn"], |b, v| {
-            b.driver.rules.properties.remote_rules_action_on_failed =
-                Some(if v.is("abort") { OnFailedRemoteRulesAction::Abort } else { OnFailedRemoteRulesAction::Warn });
-            Ok(())
-        }),
+        "secremoterulesfailaction" => {
+            choice(&[("Abort", OnFailedRemoteRulesAction::Abort), ("Warn", OnFailedRemoteRulesAction::Warn)], |p, a| {
+                p.remote_rules_action_on_failed = Some(a)
+            })
+        }
 
         // --- Accepted without effect -------------------------------------
         // (`SecPcreMatchLimitRecursion` so that modsecurity.conf-recommended
@@ -387,14 +331,12 @@ fn directive(keyword: &str) -> Option<Directive> {
         "secstatusengine" => ignored(FREE_TEXT_LINE),
 
         // --- Switches that can only be off -------------------------------
-        "secconnengine" => word(ON_OFF, |b, v| only_off(b, v, "SecConnEngine is not yet supported.")),
-        "seccontentinjection" => word(ON_OFF, |b, v| only_off(b, v, "SecContentInjection is not yet supported.")),
-        "secdisablebackendcompression" => {
-            word(ON_OFF, |b, v| only_off(b, v, "SecDisableBackendCompression is not supported."))
-        }
-        "sechashengine" => word(ON_OFF, |b, v| only_off(b, v, "SecHashEngine is not yet supported.")),
-        "secinterceptonerror" => word(ON_OFF, |b, v| only_off(b, v, "SecInterceptOnError is not yet supported.")),
-        "secruleinheritance" => word(ON_OFF, |b, v| only_off(b, v, "SecRuleInheritance is not yet supported.")),
+        "secconnengine" => only_off("SecConnEngine is not yet supported."),
+        "seccontentinjection" => only_off("SecContentInjection is not yet supported."),
+        "secdisablebackendcompression" => only_off("SecDisableBackendCompression is not supported."),
+        "sechashengine" => only_off("SecHashEngine is not yet supported."),
+        "secinterceptonerror" => only_off("SecInterceptOnError is not yet supported."),
+        "secruleinheritance" => only_off("SecRuleInheritance is not yet supported."),
 
         // --- Not supported -----------------------------------------------
         "seccachetransformations" => unsupported(Form::Value(DIRECT), "SecCacheTransformations is not supported."),
@@ -437,7 +379,7 @@ impl Builder<'_, '_> {
             Form::Value(forms) => {
                 value::read(&rest, forms).map(|v| Given { text: lossy(v.text).into_owned(), form: v.form })
             }
-            Form::Word(words) => value::word(&rest, words).map(|w| Given { text: w.to_string(), form: 0 }),
+            Form::Word(words) => value::word(&rest, &words).map(|w| Given { text: w.to_string(), form: 0 }),
         };
         let given = match given {
             Ok(given) => given,

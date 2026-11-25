@@ -1768,3 +1768,18 @@ checks and their messages, `lua_tostring`, `lua_type`); `disabled.rs` is
 the engine of a build without the `lua` feature; the tests are in
 `tests.rs`. Moves only.
 
+
+## Settings declared with typed helpers
+
+The table of setting directives (`parser/settings.rs`, `directive`) was
+one closure per directive, 324 lines. A choice of words was written
+twice: the words accepted, then an `if`/`else if` chain mapping them to
+values whose last branch took everything else, so the two lists could
+drift apart unnoticed. It is declared with helpers now: `choice` (each
+word with the value it stands for), `on_off`, `limit` (a number, with
+the directive's name in its error), `mode` (an octal file mode), `text`
+and `only_off`; the directives with logic of their own keep a closure.
+`Effect::Apply` is a boxed closure, so that a helper can carry its
+table. Compared with the previous table on 70 directives x 33 values
+(every setting and error message): identical.
+

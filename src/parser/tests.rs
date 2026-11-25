@@ -1084,3 +1084,43 @@ fn rule_properties_outside_of_a_rule() {
     assert!(d.parse("SecDefaultAction \"phase:3,log,deny,status:403\"\n", "t"), "{}", d.rules.properties.parser_error);
     assert_eq!(d.rules.properties.default_actions[crate::phases::Phases::ResponseHeaders.index()].len(), 3);
 }
+
+/// The settings declared with a choice of words, `On`/`Off`, a limit or a
+/// switch that can only be off.
+#[test]
+fn setting_helpers() {
+    use crate::audit_log::AuditLogType;
+    use crate::rules_set::properties::RuleEngine;
+    let parsed = |text: &str| {
+        let mut d = Driver::new();
+        let ok = d.parse(text, "t");
+        (ok, d)
+    };
+    // A word in any case gives its value; two words can give the same one.
+    let (ok, d) = parsed("SecRuleEngine detectiononly\nSecRequestBodyAccess ON\n");
+    assert!(ok, "{}", d.rules.properties.parser_error);
+    assert_eq!(d.rules.properties.settings.sec_rule_engine, Some(RuleEngine::DetectionOnly));
+    assert_eq!(d.rules.properties.settings.sec_request_body_access, Some(true));
+    for (word, expected) in [("Serial", AuditLogType::Serial), ("Concurrent", AuditLogType::Parallel)] {
+        let (ok, d) = parsed(&format!("SecAuditLogType {word}\n"));
+        assert!(ok);
+        assert!(format!("{:?}", d.rules.properties.audit_log).contains(&format!("audit_type: Some({expected:?})")));
+    }
+    // A word that is not a choice is refused.
+    let (ok, d) = parsed("SecRuleEngine Maybe\n");
+    assert!(!ok);
+    assert!(
+        d.rules.properties.parser_error.contains("Invalid value for SecRuleEngine: Maybe"),
+        "{}",
+        d.rules.properties.parser_error
+    );
+    // A limit names its directive in its error.
+    let (ok, d) = parsed("SecArgumentsLimit 99999999999999999999\n");
+    assert!(!ok);
+    assert!(d.rules.properties.parser_error.contains("Failed to parse SecArgumentsLimit: "));
+    // A switch that can only be off.
+    assert!(parsed("SecHashEngine Off\n").0);
+    let (ok, d) = parsed("SecHashEngine On\n");
+    assert!(!ok);
+    assert!(d.rules.properties.parser_error.contains("SecHashEngine is not yet supported."));
+}
