@@ -1804,3 +1804,13 @@ machine's identifier, the `server_id` of the JSON audit log, easily
 taken for the `UNIQUE_ID` of a transaction. It is `server_id::server_id()`
 now, with its two helpers private.
 
+
+## One name per variable
+
+A `Variable` kept three strings: the name (`foo`), the collection
+(`ARGS`) and the full name (`ARGS:foo`), the third made of the other
+two, all three copied again by `!` and `&`. It keeps the full name and
+the length of its collection part; `name()` and `collection_name()` are
+slices of it. Compared with the previous split on 200,000 generated
+names (`:`, `.`, case, multi-byte characters): identical.
+

@@ -114,10 +114,10 @@ impl WriteTarget<'_> {
 /// values come from.
 #[derive(Debug)]
 pub struct Variable {
-    /// The part after the `:` (`foo` of `ARGS:foo`); empty without one.
-    name: String,
-    collection_name: String,
+    /// `COLLECTION:name` (`ARGS:foo`), or the collection alone (`ARGS`).
     full_name: String,
+    /// The length of the collection part of `full_name`.
+    collection_len: usize,
     key_exclusion: KeyExclusions,
     source: Source,
 }
@@ -126,16 +126,12 @@ impl Variable {
     /// A variable called `name`: `COLLECTION:name` (or `COLLECTION.name`)
     /// is split, anything else is a collection without a name.
     pub(crate) fn new(name: &str, source: Source) -> Self {
-        let (collection_name, short, full_name) = match name.find(':').or_else(|| name.find('.')) {
-            Some(a) => {
-                let collection = name[..a].to_ascii_uppercase();
-                let short = &name[a + 1..];
-                let full = format!("{}:{}", collection, short);
-                (collection, short.to_string(), full)
-            }
-            None => (name.to_string(), String::new(), name.to_string()),
+        let (full_name, collection_len) = match name.find(':').or_else(|| name.find('.')) {
+            // The collection in upper case, and `:` as the separator.
+            Some(a) => (format!("{}:{}", name[..a].to_ascii_uppercase(), &name[a + 1..]), a),
+            None => (name.to_string(), name.len()),
         };
-        Variable { name: short, collection_name, full_name, key_exclusion: KeyExclusions::new(), source }
+        Variable { full_name, collection_len, key_exclusion: KeyExclusions::new(), source }
     }
 
     /// The multi valued variable `name` (`ARGS`), narrowed by `selector`.
@@ -162,20 +158,21 @@ impl Variable {
     /// A variable named like `var` (without its key exclusions).
     fn wrapping(var: Variable, source: fn(Box<Variable>) -> Source) -> Self {
         Variable {
-            name: var.name.clone(),
-            collection_name: var.collection_name.clone(),
             full_name: var.full_name.clone(),
+            collection_len: var.collection_len,
             key_exclusion: KeyExclusions::new(),
             source: source(Box::new(var)),
         }
     }
 
+    /// The part after the `:` (`foo` of `ARGS:foo`); empty without one.
     pub fn name(&self) -> &str {
-        &self.name
+        self.full_name.get(self.collection_len + 1..).unwrap_or("")
     }
 
+    /// The collection (`ARGS` of `ARGS:foo`).
     pub fn collection_name(&self) -> &str {
-        &self.collection_name
+        &self.full_name[..self.collection_len]
     }
 
     pub fn full_name(&self) -> &str {
@@ -212,7 +209,7 @@ impl Variable {
                 let tx = &t.collections.tx;
                 match key {
                     // The key is the name, which is empty for `TX`.
-                    CollectionKey::All | CollectionKey::Key => tx.resolve_multi_matches(self.name.as_bytes(), l, ke),
+                    CollectionKey::All | CollectionKey::Key => tx.resolve_multi_matches(self.name().as_bytes(), l, ke),
                     CollectionKey::Regex(r) => tx.resolve_regex(r, l, ke),
                     CollectionKey::Dynamic(string) => tx.resolve_multi_matches(&string.expand(t, None), l, ke),
                 }
@@ -222,7 +219,7 @@ impl Variable {
                 let app = t.rules.properties.web_app_id();
                 match key {
                     CollectionKey::All | CollectionKey::Key => {
-                        t.stored(binding.resolve(self.name.as_bytes(), app, l, ke))
+                        t.stored(binding.resolve(self.name().as_bytes(), app, l, ke))
                     }
                     CollectionKey::Regex(regex) => t.stored(binding.resolve_regex(regex, app, l, ke)),
                     CollectionKey::Dynamic(string) => t.stored(binding.resolve(&string.expand(t, None), app, l, ke)),
@@ -231,7 +228,7 @@ impl Variable {
             Source::Rule(selector) => rule::evaluate(selector, t, rule, l),
             Source::Env => env::evaluate(self, t, l),
             // The key is the variable's (empty) name.
-            Source::XmlDocument => l.push(VariableValue::new(self.name.as_bytes(), b"[XML document tree]")),
+            Source::XmlDocument => l.push(VariableValue::new(self.name().as_bytes(), b"[XML document tree]")),
             Source::XmlPath => xml::evaluate_xpath(self, t, rule, l),
             Source::Computed(c) => c.evaluate(self, t, l),
             Source::Exclusion(var) => var.evaluate(t, rule, l),
@@ -278,8 +275,8 @@ impl Variable {
     /// Whether `var` is in the same collection: this variable's collection
     /// name, upper-cased, equals the one of `var`.
     pub fn belongs_to_collection(&self, var: &Variable) -> bool {
-        let a = self.collection_name.as_bytes();
-        let b = var.collection_name.as_bytes();
+        let a = self.collection_name().as_bytes();
+        let b = var.collection_name().as_bytes();
         a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_ascii_uppercase() == *y)
     }
 
@@ -297,10 +294,9 @@ impl Variable {
         Ok(())
     }
 
-    /// Whether `b` is the same target: same collection, name and full
-    /// name.
+    /// Whether `b` is the same target: the same collection and name.
     pub fn same_as(&self, b: &Variable) -> bool {
-        self.collection_name == b.collection_name && self.name == b.name && self.full_name == b.full_name
+        self.full_name == b.full_name && self.collection_len == b.collection_len
     }
 
     /// Excludes `key` from this variable (test helper).
