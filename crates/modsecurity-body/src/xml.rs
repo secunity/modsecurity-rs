@@ -7,8 +7,9 @@
 //!
 //! libxml2 itself is behind the safe API of `modsecurity_native::libxml2`.
 
-/// Initialises libxml2 (`xmlInitParser()`), done once by the `ModSecurity`
-/// constructor.
+/// Initialises libxml2, once per process (see
+/// `modsecurity_native::libxml2::init_parser`); the `ModSecurity`
+/// constructor calls it.
 pub fn init_parser() {
     #[cfg(feature = "libxml2")]
     modsecurity_native::libxml2::init_parser();

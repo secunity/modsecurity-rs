@@ -177,6 +177,7 @@ mod ffi {
         pub static xmlFree: Option<xmlFreeFunc>;
 
         pub fn xmlInitParser();
+        pub fn xmlSchemaInitTypes() -> c_int;
 
         // Push parser
         pub fn xmlCreatePushParserCtxt(
@@ -271,11 +272,23 @@ mod ffi {
 // Safe API
 // ---------------------------------------------------------------------------
 
-/// `xmlInitParser()`: done once by the `ModSecurity` constructor.
+/// Initialises libxml2, once per process (later calls do nothing):
+/// `xmlInitParser()` and the built-in types of XML schemas.
+///
+/// libxml2 sets those types up on the first schema it parses, and that is
+/// not thread safe: two threads parsing their first schemas at once fail
+/// to load them ("the given type is not a built-in type") or free memory
+/// twice (libxml2 2.14). Set up here before any schema is parsed, they are
+/// only read afterwards. [`Schema::load`] calls this, so that no caller
+/// has to.
 pub fn init_parser() {
-    // SAFETY: xmlInitParser takes no arguments and may be called any number
-    // of times (and from any thread).
-    unsafe { ffi::xmlInitParser() }
+    static INIT: std::sync::Once = std::sync::Once::new();
+    // SAFETY: both take no arguments; `Once` runs them on one thread, once,
+    // before any other call of this function returns.
+    INIT.call_once(|| unsafe {
+        ffi::xmlInitParser();
+        ffi::xmlSchemaInitTypes();
+    });
 }
 
 thread_local! {
@@ -714,6 +727,7 @@ impl Schema {
     /// Parses the schema in `file`; the messages of loading it go to
     /// `load_log`.
     pub fn load(file: &str, load_log: &mut dyn FnMut(Message<'_>)) -> Result<Schema, SchemaError> {
+        init_parser();
         let file = c_string(file.as_bytes());
         // SAFETY: the file name is NUL terminated.
         let parser = unsafe { ffi::xmlSchemaNewParserCtxt(file.as_ptr()) };

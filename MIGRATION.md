@@ -976,6 +976,22 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   `backend::contract::lmdb_processes_share`,
   `backend::contract::redb_processes_share`.
 
+- **XML schemas load when threads load their first ones at once.**
+  *C++:* `xmlInitParser()` alone is called at start; libxml2 sets up the
+  built-in types of XML schemas on the first schema it parses, and that
+  is not thread safe. Two threads whose `@validateSchema` loads the first
+  schemas of the process at the same moment could fail the load ("the
+  given type is not a built-in type"; the operator then matches, as for a
+  missing schema) or free memory twice (libxml2 2.14: a failed load in 30
+  to 40% of processes with 8 threads, double frees in some). *Here:*
+  `modsecurity_native::libxml2::init_parser` sets the types up, once per
+  process, before any schema is parsed; `Schema::load` calls it too.
+  nginx workers are single threaded and were not affected; multi-threaded
+  embeddings (the tower middleware, the Rust API) were. *Why:* a crash
+  and spurious matches. Regression test:
+  `crates/modsecurity-native/tests/schema_threads.rs` (fails every run
+  without the change).
+
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
 semantics).
