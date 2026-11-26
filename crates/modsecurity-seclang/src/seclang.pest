@@ -194,9 +194,13 @@ run_space   = @{ !(" " | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!(" " | "\n" | "\r
 // Up to a comma, a quote or the end of the line: `msg:abc`.
 text_unquoted = @{ ("\\\"" | lit | run_unquoted) ~ ("\\\"" | "\\%{" | lit | run_unquoted)* }
 run_unquoted  = @{ !("," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
-// Up to `=`, a comma, a quote or the end of the line: a `setvar` key.
+// Up to `=`, a comma, a double quote or the end of the line: a `setvar`
+// key (`tx.a'b` is the key `a'b`, as in C++).
 key_text    = @{ (lit | run_key) ~ ("\\=" | "\\%{" | lit | run_key)* }
-run_key     = @{ !("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+run_key     = @{ !("=" | "," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
+// The same up to a single quote too: the key of `setvar:'...'`.
+key_text_q  = @{ (lit | run_key_q) ~ ("\\=" | "\\%{" | lit | run_key_q)* }
+run_key_q   = @{ !("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY ~ (!("=" | "," | "\"" | "'" | "\n" | "\r\n" | "%" | "\\") ~ ANY)* }
 // Up to `=`, a comma, a double quote or the end of the line: a `setvar`
 // value.
 text_setvar = @{ (lit | run_setvar) ~ ("\\=" | "\\%{" | lit | run_setvar)* }
@@ -226,11 +230,13 @@ action = _{ setvar | initcol | macro_action | plain_action }
 // setvar:tx.score=+%{tx.critical}, setvar:'!tx.a', setvar:ip.x=1
 setvar        = ${ ^"setvar:" ~ ("'" ~ setvar_body_q ~ "'" | setvar_body) }
 setvar_body   = ${ unset ~ setvar_target | setvar_target ~ (setvar_op ~ rts_setvar)? }
-setvar_body_q = ${ unset ~ setvar_target | setvar_target ~ (setvar_op ~ rts_setvar_q)? }
+setvar_body_q = ${ unset ~ setvar_target_q | setvar_target_q ~ (setvar_op ~ rts_setvar_q)? }
 unset         = { "!" }
 setvar_op     = { "=+" | "=-" | "=" }
 setvar_target = ${ var_name ~ ("." | ":") ~ setvar_key }
 setvar_key    = { (macro_ref | key_text)+ }
+setvar_target_q = ${ var_name ~ ("." | ":") ~ setvar_key_q }
+setvar_key_q    = { (macro_ref | key_text_q)+ }
 // initcol:ip=%{REMOTE_ADDR}
 initcol    = ${ initcol_kw ~ col_name ~ "=" ~ macro_value }
 initcol_kw = @{ ^"initcol:" }

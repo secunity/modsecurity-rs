@@ -1132,3 +1132,32 @@ fn setting_helpers() {
     assert!(!ok);
     assert!(d.rules.properties.parser_error.contains("SecHashEngine is not yet supported."));
 }
+
+/// The status a GET of `uri` (with a `User-Agent: curl` header) gets under
+/// `rules`, in phase 1; `None` when nothing intervened.
+fn status_of(rules: &str, uri: &str) -> Option<u16> {
+    let ms = crate::instance::ModSecurity::new();
+    let mut set = crate::rules_set::RulesSet::new();
+    set.load(&format!("SecRuleEngine On\n{rules}\n")).unwrap_or_else(|e| panic!("{rules}: {e}"));
+    let mut t = crate::transaction::Transaction::new(&ms, &set, None);
+    t.process_uri(uri.as_bytes(), b"GET", b"1.1");
+    t.add_request_header(b"User-Agent", b"curl");
+    t.process_request_headers();
+    t.intervention().map(|i| i.status)
+}
+
+#[test]
+fn a_setvar_key_may_hold_a_single_quote() {
+    // As in C++: the key is `a'b`.
+    let rules = "SecAction \"id:1,phase:1,pass,nolog,setvar:tx.a'b=1\"\n\
+                 SecRule TX:a'b \"@eq 1\" \"id:2,phase:1,deny,status:403\"";
+    assert_eq!(status_of(rules, "/"), Some(403));
+    // In `setvar:'...'` the quote still ends the action.
+    let rules = "SecAction \"id:1,phase:1,pass,nolog,setvar:'tx.a=1'\"\n\
+                 SecRule TX:a \"@eq 1\" \"id:2,phase:1,deny,status:403\"";
+    assert_eq!(status_of(rules, "/"), Some(403));
+    let rules = "SecAction \"id:1,phase:1,pass,nolog,setvar:tx.a=1\"\n\
+                 SecAction \"id:2,phase:1,pass,nolog,setvar:'!tx.a'\"\n\
+                 SecRule &TX:a \"@eq 0\" \"id:3,phase:1,deny,status:403\"";
+    assert_eq!(status_of(rules, "/"), Some(403));
+}
