@@ -1835,3 +1835,11 @@ outputs are identical.
   is (`entity`, `escape`). 113 million inputs for HTML (entities,
   numbers, names), 42 million for JavaScript, and every byte after each
   escape prefix.
+- `normalise_path.rs` (`t:normalisePath`, `t:normalisePathWin`): signed
+  indices (the write position went below 0) and `done`, `normalize` and
+  `skip_copy` flags. It uses `usize` positions and plain control flow,
+  and its documentation names the cases it decides as it does (a
+  segment `a..` is a back reference; in a run of three backslashes the
+  last one stays; `/a/..` becomes empty). Every path over `/`, `\`, `.`
+  and a letter up to 12 bytes, in both modes, plus random ones: 25
+  million inputs per mode.

@@ -11,18 +11,7 @@ When a step here is done, move its record to `REFACTORING.md` (or
 
 ## Next
 
-- **The C-style decoders, rewritten.** Four transformations still walk
-  their input with C-style indices and flags:
-  - `normalise_path.rs` (`t:normalisePath`, `t:normalisePathWin`): signed
-    indices into the buffer;
-  - `base64.rs` (`mbedtls_decode`, used by `t:base64Decode`);
-  - `html_entity_decode.rs` (`t:htmlEntityDecode`);
-  - `js_decode.rs` (`t:jsDecode`).
-
-  All four are in `crates/modsecurity-transformations/src/`. Each is its
-  own step: keep the old function in the step's tests, compare old and
-  new on generated inputs, run the fuzz targets, and benchmark (they are
-  on the request path).
+Nothing is planned; the open questions below come first.
 
 ## Open questions
 
@@ -44,6 +33,14 @@ then a commit of its own with a test and an entry in `MIGRATION.md`.
   `\r` and `\n` of a header line, except when the line has nothing else
   (as C++'s `chomp` does). So a header `Name:\r\n` keeps the `\r\n` in
   its value.
+- **`t:normalisePathWin` keeps a backslash in a run of three or more.**
+  Only the byte being read and the next one are converted to `/`, and
+  of a run of separators the last one is copied: `a\\\b` gives `a\b`.
+  That backslash no longer separates segments: `\a\\\b\..\c` gives `/c`
+  (`a\b` is removed as one segment), `..\\\..\\\windows` gives
+  `..\..\windows`
+  (`crates/modsecurity-transformations/src/normalise_path.rs`).
+  Converting every backslash first would normalise these paths fully.
 
 ## On hold
 

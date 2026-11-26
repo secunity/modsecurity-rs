@@ -2,158 +2,114 @@
 //! self references, back references and repeated slashes from a path.
 
 /// Normalises a path in place (removes self references, back references
-/// and repeated slashes). With `win`, backslashes are converted to forward
-/// slashes first.
+/// and repeated slashes). With `win`, backslashes are separators too, and
+/// become forward slashes.
 ///
-/// The positions are signed indices into `val` (`input` is index 0,
-/// `end` the index of the last byte) because `dst` may briefly go below
-/// 0 when removing a back reference.
+/// The path is rewritten byte by byte: `val[..dst]` is the normalised path
+/// so far, `val[src..]` what is left of the input (`dst <= src`). A segment
+/// is handled when its last byte is read. That is what decides these
+/// cases, kept as they are:
+/// - A segment that ends in `..` is a back reference, `a..` too: `/xa../b`
+///   becomes `/b`. A segment `.` is a self reference.
+/// - Only the byte being read and the next one are converted from `\` to
+///   `/`. In a run of three or more backslashes the copy keeps the last
+///   one, which was not converted: `a\\\b` becomes `a\b`.
+/// - An absolute path that ends in a back reference to its root keeps the
+///   root slash, but then loses it as a trailing slash: `/a/..` becomes an
+///   empty path, `/a/../` becomes `/`.
 pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
-    let mut hitroot = false;
-    let mut done = false;
-
-    // Need at least one byte to normalize.
-    if val.is_empty() {
+    let Some(&last) = val.last() else {
         return;
-    }
+    };
+    let is_separator = |c: u8| c == b'/' || (win && c == b'\\');
+    let end = val.len() - 1;
+    let relative = !is_separator(val[0]);
+    let trailing = is_separator(last);
+    // Whether the back references reached the start of the path: in a
+    // relative path, more of them are then kept as they are.
+    let mut hit_root = false;
+    let mut src = 0;
+    let mut dst = 0;
 
-    let input_len = val.len();
-    let input: isize = 0;
-
-    // UNC paths (`\\server\share`) and drive letters (`C:`) get no special
-    // treatment.
-    let mut src: isize = input;
-    let mut dst: isize = input;
-    let end: isize = (input_len - 1) as isize;
-
-    let at = |v: &[u8], p: isize| v[p as usize];
-
-    let relative = !(val[0] == b'/' || (win && val[0] == b'\\'));
-    let trailing = at(val, end) == b'/' || (win && at(val, end) == b'\\');
-
-    while !done && src <= end && dst <= end {
-        // Convert backslash to forward slash on Windows only.
+    while src <= end {
         if win {
-            if at(val, src) == b'\\' {
-                val[src as usize] = b'/';
-            }
-            if src < end && at(val, src + 1) == b'\\' {
-                val[(src + 1) as usize] = b'/';
-            }
-        }
-
-        // Whether this step normalizes the segment, and whether it then
-        // skips the copy.
-        let mut normalize = true;
-        let mut skip_copy = false;
-
-        // Always normalize at the end of the input.
-        if src == end {
-            done = true;
-        } else if at(val, src + 1) != b'/' {
-            // Skip normalization if this is not the end of the path
-            // segment.
-            normalize = false;
-        }
-
-        if normalize {
-            // Normalize the path segment.
-
-            // Could it be an empty path segment?
-            if src != end && at(val, src) == b'/' {
-                // Nothing to do: the copy below collapses repeated
-                // slashes.
-            } else if at(val, src) == b'.' {
-                // Could it be a back or self reference?
-
-                // Back-reference?
-                if dst > input && at(val, dst - 1) == b'.' {
-                    // In a relative path, when the normalization has
-                    // already hit the root, or this back reference has no
-                    // previous segment, mark that the root was hit and copy
-                    // the back reference: there is nothing to remove.
-                    if relative && (hitroot || (dst - 2) <= input) {
-                        hitroot = true;
-                        // Copied as it is.
-                    } else {
-                        // Remove the back reference and the previous segment.
-                        dst -= 3;
-                        while dst > input && at(val, dst) != b'/' {
-                            dst -= 1;
-                        }
-
-                        // But do not go above the root.
-                        if dst <= input {
-                            hitroot = true;
-                            dst = input;
-
-                            // Leave the root slash if this is not a
-                            // relative path and the end was reached on a
-                            // back reference.
-                            if !relative && src == end {
-                                dst += 1;
-                            }
-                        }
-
-                        if done {
-                            skip_copy = true;
-                        } else {
-                            src += 1;
-                        }
-                    }
-                } else if dst == input {
-                    // A self reference at the start of the output: dropped.
-                    if done {
-                        skip_copy = true;
-                    } else {
-                        src += 1;
-                    }
-                } else if at(val, dst - 1) == b'/' {
-                    // A self reference after a slash: dropped.
-                    if done {
-                        skip_copy = true;
-                    } else {
-                        dst -= 1;
-                        src += 1;
-                    }
+            for c in &mut val[src..(src + 2).min(end + 1)] {
+                if *c == b'\\' {
+                    *c = b'/';
                 }
-            } else if dst > input {
-                // Found a regular path segment.
-                hitroot = false;
+            }
+        }
+        let at_end = src == end;
+
+        // The last byte of a segment.
+        if at_end || val[src + 1] == b'/' {
+            let c = val[src];
+            if c == b'/' && !at_end {
+                // An empty segment: the copy below collapses the slashes.
+            } else if c == b'.' && dst > 0 && val[dst - 1] == b'.' {
+                // A back reference.
+                if relative && (hit_root || dst <= 2) {
+                    // Nothing to remove: copied as it is.
+                    hit_root = true;
+                } else {
+                    // Remove it and the previous segment, but not above
+                    // the root.
+                    dst = dst.saturating_sub(3);
+                    while dst > 0 && val[dst] != b'/' {
+                        dst -= 1;
+                    }
+                    if dst == 0 {
+                        hit_root = true;
+                        // An absolute path that ends here keeps its root.
+                        if !relative && at_end {
+                            dst = 1;
+                        }
+                    }
+                    if at_end {
+                        break;
+                    }
+                    src += 1;
+                }
+            } else if c == b'.' && dst == 0 {
+                // A self reference at the start: dropped.
+                if at_end {
+                    break;
+                }
+                src += 1;
+            } else if c == b'.' && val[dst - 1] == b'/' {
+                // A self reference after a slash: dropped with the slash.
+                if at_end {
+                    break;
+                }
+                dst -= 1;
+                src += 1;
+            } else if c != b'.' && dst > 0 {
+                // A regular segment.
+                hit_root = false;
             }
         }
 
-        if skip_copy {
-            continue;
-        }
-
-        // Copy the byte.
-        // Skip to the last forward slash when multiple are used.
-        if at(val, src) == b'/' {
-            while src < end && (at(val, src + 1) == b'/' || (win && at(val, src + 1) == b'\\')) {
+        if val[src] == b'/' {
+            // Repeated slashes: only the last one is copied.
+            while src < end && is_separator(val[src + 1]) {
                 src += 1;
             }
-
-            // A relative path does not start with a slash in its
-            // normalized form: move over the slash to the next segment.
-            if relative && dst == input {
+            // A relative path does not start with a slash.
+            if relative && dst == 0 {
                 src += 1;
                 continue;
             }
         }
-
-        val[dst as usize] = val[src as usize];
+        val[dst] = val[src];
         dst += 1;
         src += 1;
     }
 
-    // No trailing slash in the normalized form unless the original has
-    // one.
-    if !trailing && dst > input && at(val, dst - 1) == b'/' {
+    // No trailing slash unless the input has one.
+    if !trailing && dst > 0 && val[dst - 1] == b'/' {
         dst -= 1;
     }
-
-    val.truncate(dst as usize);
+    val.truncate(dst);
 }
 
 #[cfg(test)]
@@ -197,6 +153,18 @@ mod tests {
         assert_eq!(run(b"/a/b/", false), b"/a/b/");
         assert_eq!(run(b"/a//", false), b"/a/");
         assert_eq!(run(b"/a/b", false), b"/a/b");
+    }
+
+    #[test]
+    fn segments_ending_in_dots_are_references() {
+        assert_eq!(run(b"/xa../b", false), b"/b");
+        assert_eq!(run(b"/a/b./c", false), b"/a/b./c");
+    }
+
+    #[test]
+    fn a_run_of_backslashes_keeps_its_last_one() {
+        assert_eq!(run(b"a\\\\b", true), b"a/b");
+        assert_eq!(run(b"a\\\\\\b", true), b"a\\b");
     }
 
     #[test]
