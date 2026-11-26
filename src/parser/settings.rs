@@ -276,7 +276,7 @@ fn directive(keyword: &str) -> Option<Directive> {
         }
         "secrequestbodylimit" => limit("SecRequestBodyLimit", |p, n| p.settings.request_body_limit = Some(n)),
         "secrequestbodynofileslimit" => {
-            limit("SecRequestsBodyNoFilesLimit", |p, n| p.settings.request_body_no_files_limit = Some(n))
+            limit("SecRequestBodyNoFilesLimit", |p, n| p.settings.request_body_no_files_limit = Some(n))
         }
         "secresponsebodylimit" => limit("SecResponseBodyLimit", |p, n| p.settings.response_body_limit = Some(n)),
         "secpcrematchlimit" => limit("SecPcreMatchLimit", |p, n| p.settings.pcre_match_limit = Some(n)),

@@ -992,6 +992,13 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   `crates/modsecurity-native/tests/schema_threads.rs` (fails every run
   without the change).
 
+- **The `SecRequestBodyNoFilesLimit` error names the directive.** *C++:*
+  a value that does not parse gave "Failed to parse
+  SecRequestsBodyNoFilesLimit: ..." (an extra `s`). *Here:* "Failed to
+  parse SecRequestBodyNoFilesLimit: ...". *Why:* the message names a
+  directive that does not exist. Regression test:
+  `parser::tests::setting_helpers`.
+
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
 semantics).

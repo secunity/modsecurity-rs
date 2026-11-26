@@ -1118,6 +1118,14 @@ fn setting_helpers() {
     let (ok, d) = parsed("SecArgumentsLimit 99999999999999999999\n");
     assert!(!ok);
     assert!(d.rules.properties.parser_error.contains("Failed to parse SecArgumentsLimit: "));
+    // The directive's own name, not `SecRequestsBodyNoFilesLimit` (C++).
+    let (ok, d) = parsed("SecRequestBodyNoFilesLimit 99999999999999999999\n");
+    assert!(!ok);
+    assert!(
+        d.rules.properties.parser_error.contains("Failed to parse SecRequestBodyNoFilesLimit: "),
+        "{}",
+        d.rules.properties.parser_error
+    );
     // A switch that can only be off.
     assert!(parsed("SecHashEngine Off\n").0);
     let (ok, d) = parsed("SecHashEngine On\n");

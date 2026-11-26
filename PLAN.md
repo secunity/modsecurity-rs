@@ -23,10 +23,6 @@ When a step here is done, move its record to `REFACTORING.md` (or
   own step: keep the old function in the step's tests, compare old and
   new on generated inputs, run the fuzz targets, and benchmark (they are
   on the request path).
-- **The `SecRequestBodyNoFilesLimit` error message.** When the value does
-  not parse, the message names `SecRequestsBodyNoFilesLimit` (an extra
-  `s`, from C++; `src/parser/settings.rs`). The fix changes an error
-  message, so it is its own commit with an entry in `MIGRATION.md`.
 
 ## Open questions
 
