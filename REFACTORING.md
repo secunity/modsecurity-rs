@@ -1814,3 +1814,17 @@ the length of its collection part; `name()` and `collection_name()` are
 slices of it. Compared with the previous split on 200,000 generated
 names (`:`, `.`, case, multi-byte characters): identical.
 
+
+
+## Decoders without C-style indices
+
+Four transformations walked their input as their C originals did. Each
+was rewritten and compared with the previous code on every string over
+a small alphabet up to a length, plus millions of random ones; the
+outputs are identical.
+
+- `base64.rs` (`t:base64Decode`): the strict decoder made two passes
+  (validate and count, then decode) with a cursor and flags. It reads
+  the input once, line by line, and decodes as it goes. 14 million inputs
+  (alphabet `Az0+/= \r\n-` to 7 bytes, every byte at every position of
+  a valid input).

@@ -40,109 +40,51 @@ fn forgiving_digit(c: u8) -> Option<u8> {
 
 /// Decodes `src` as `mbedtls_base64_decode` does: `None` on
 /// `MBEDTLS_ERR_BASE64_INVALID_CHARACTER`.
+///
+/// What it accepts, line by line (lines end with `\n` or `\r\n`):
+/// digits, then at most two `=` in all, which only line breaks and
+/// spaces may follow; spaces only at the end of a line. The digits and
+/// the `=` together are a multiple of 4.
 fn mbedtls_decode(src: &[u8]) -> Option<Vec<u8>> {
-    let slen = src.len();
-    let mut equals = 0usize;
-    let mut n = 0usize; // the number of digits and trailing `=` in `src`
-
-    // First pass: check for validity and get output length.
-    let mut i = 0usize;
-    while i < slen {
-        // Skip spaces before checking for EOL.
-        let mut spaces_present = false;
-        while i < slen && src[i] == b' ' {
-            i += 1;
-            spaces_present = true;
-        }
-
-        // Spaces at end of buffer are OK.
-        if i == slen {
-            break;
-        }
-
-        if (slen - i) >= 2 && src[i] == b'\r' && src[i + 1] == b'\n' {
-            i += 1;
-            continue;
-        }
-
-        if src[i] == b'\n' {
-            i += 1;
-            continue;
-        }
-
-        // Space inside a line is an error.
-        if spaces_present {
-            return None;
-        }
-
-        if src[i] > 127 {
-            return None;
-        }
-
-        if src[i] == b'=' {
-            equals += 1;
-            if equals > 2 {
-                return None;
-            }
-        } else {
-            if equals != 0 {
-                return None;
-            }
-            // Anything else must be a digit.
-            mbedtls_dec_value(src[i])?;
-        }
-        n += 1;
-        i += 1;
-    }
-
-    // In valid base64, the number of digits (n - equals) is always of the
-    // form 4*k, 4*k+2 or 4*k+3, and n (the digits and the equal signs at
-    // the end) is a multiple of 4.
-    if (n - equals) % 4 == 1 {
-        return None;
-    }
-    if !n.is_multiple_of(4) {
-        return None;
-    }
-
-    let olen = (n / 4) * 3 - equals;
-    let mut out = Vec::with_capacity(olen);
-
-    // Second pass over the `i` bytes examined by the first one.
-    let mut x: u32 = 0;
-    let mut accumulated_digits = 0u32;
-    for &c in &src[..i] {
-        if c == b'=' {
-            // We already know from the first loop that equal signs are
-            // only at the end.
-            break;
-        }
-        // The first pass let only digits and line breaks through.
-        let Some(value) = mbedtls_dec_value(c) else {
-            continue;
+    let mut out = Vec::with_capacity(src.len() / 4 * 3);
+    // The last digits read, 6 bits each; a full group of 4 is written out.
+    let mut group: u32 = 0;
+    let mut digits = 0usize;
+    let mut padding = 0usize;
+    for line in src.split_inclusive(|&c| c == b'\n') {
+        let line = match line.strip_suffix(b"\n") {
+            Some(line) => line.strip_suffix(b"\r").unwrap_or(line),
+            None => line,
         };
-        x = (x << 6) | u32::from(value);
-        accumulated_digits += 1;
-        if accumulated_digits == 4 {
-            accumulated_digits = 0;
-            out.push((x >> 16) as u8);
-            out.push((x >> 8) as u8);
-            out.push(x as u8);
+        // Spaces at the end of a line are allowed (and only there).
+        let digits_end = line.iter().rposition(|&c| c != b' ').map_or(0, |last| last + 1);
+        for &c in &line[..digits_end] {
+            if c == b'=' {
+                padding += 1;
+                if padding > 2 {
+                    return None;
+                }
+                continue;
+            }
+            if padding > 0 {
+                return None;
+            }
+            group = group << 6 | u32::from(mbedtls_dec_value(c)?);
+            digits += 1;
+            if digits.is_multiple_of(4) {
+                out.extend_from_slice(&group.to_be_bytes()[1..]);
+            }
         }
     }
-    if accumulated_digits == 3 {
-        let x = x << 6;
-        out.push((x >> 16) as u8);
-        out.push((x >> 8) as u8);
-    } else if accumulated_digits == 2 {
-        let x = x << 12;
-        out.push((x >> 16) as u8);
-    }
-
-    // mbedtls returns MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED here; it cannot
-    // happen once the first pass validated the input.
-    if out.len() != olen {
+    if !(digits + padding).is_multiple_of(4) {
         return None;
+    }
+    // With at most two `=`, an incomplete group has 2 or 3 digits: 1 or 2
+    // bytes.
+    match digits % 4 {
+        2 => out.push((group << 12).to_be_bytes()[1]),
+        3 => out.extend_from_slice(&(group << 6).to_be_bytes()[1..3]),
+        _ => {}
     }
     Some(out)
 }
