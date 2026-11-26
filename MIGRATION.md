@@ -999,6 +999,21 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   directive that does not exist. Regression test:
   `parser::tests::setting_helpers`.
 
+- **`t:normalisePathWin` treats every backslash as a separator.** *C++:*
+  only the byte being read and the next one were converted from `\` to
+  `/`. A backslash that the skipping of repeated separators or of a self
+  reference reached was copied as it was, and then did not separate
+  segments: `..\\\..\\\windows` gave `..\..\windows`, `/./\` gave `\`,
+  and `\a\\\b\..\c` gave `/c` (the back reference removed `a\b` as one
+  segment). *Here:* every backslash becomes `/` first, then the path is
+  normalised as by `t:normalisePath`: `../../windows`, `/`, `/a/c`. Every
+  path up to 12 bytes over `/`, `\`, `.` and a letter was compared: a
+  third of them differ (7.2 million kept a backslash, 0.2 million lost a
+  segment), and none keeps a backslash now. `t:normalisePath` is
+  unchanged. *Why:* the transformation exists so that rules see one form
+  of a Windows path. Regression test:
+  `normalise_path::tests::every_backslash_is_a_separator_on_windows`.
+
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
 semantics).

@@ -33,14 +33,6 @@ then a commit of its own with a test and an entry in `MIGRATION.md`.
   `\r` and `\n` of a header line, except when the line has nothing else
   (as C++'s `chomp` does). So a header `Name:\r\n` keeps the `\r\n` in
   its value.
-- **`t:normalisePathWin` keeps a backslash in a run of three or more.**
-  Only the byte being read and the next one are converted to `/`, and
-  of a run of separators the last one is copied: `a\\\b` gives `a\b`.
-  That backslash no longer separates segments: `\a\\\b\..\c` gives `/c`
-  (`a\b` is removed as one segment), `..\\\..\\\windows` gives
-  `..\..\windows`
-  (`crates/modsecurity-transformations/src/normalise_path.rs`).
-  Converting every backslash first would normalise these paths fully.
 
 ## On hold
 

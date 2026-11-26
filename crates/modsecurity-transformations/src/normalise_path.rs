@@ -2,8 +2,8 @@
 //! self references, back references and repeated slashes from a path.
 
 /// Normalises a path in place (removes self references, back references
-/// and repeated slashes). With `win`, backslashes are separators too, and
-/// become forward slashes.
+/// and repeated slashes). With `win`, backslashes are separators too: they
+/// become forward slashes first.
 ///
 /// The path is rewritten byte by byte: `val[..dst]` is the normalised path
 /// so far, `val[src..]` what is left of the input (`dst <= src`). A segment
@@ -11,20 +11,21 @@
 /// cases, kept as they are:
 /// - A segment that ends in `..` is a back reference, `a..` too: `/xa../b`
 ///   becomes `/b`. A segment `.` is a self reference.
-/// - Only the byte being read and the next one are converted from `\` to
-///   `/`. In a run of three or more backslashes the copy keeps the last
-///   one, which was not converted: `a\\\b` becomes `a\b`.
 /// - An absolute path that ends in a back reference to its root keeps the
 ///   root slash, but then loses it as a trailing slash: `/a/..` becomes an
 ///   empty path, `/a/../` becomes `/`.
 pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
+    if win {
+        for c in val.iter_mut().filter(|c| **c == b'\\') {
+            *c = b'/';
+        }
+    }
     let Some(&last) = val.last() else {
         return;
     };
-    let is_separator = |c: u8| c == b'/' || (win && c == b'\\');
     let end = val.len() - 1;
-    let relative = !is_separator(val[0]);
-    let trailing = is_separator(last);
+    let relative = val[0] != b'/';
+    let trailing = last == b'/';
     // Whether the back references reached the start of the path: in a
     // relative path, more of them are then kept as they are.
     let mut hit_root = false;
@@ -32,13 +33,6 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
     let mut dst = 0;
 
     while src <= end {
-        if win {
-            for c in &mut val[src..(src + 2).min(end + 1)] {
-                if *c == b'\\' {
-                    *c = b'/';
-                }
-            }
-        }
         let at_end = src == end;
 
         // The last byte of a segment.
@@ -91,7 +85,7 @@ pub fn normalize_path_inplace(val: &mut Vec<u8>, win: bool) {
 
         if val[src] == b'/' {
             // Repeated slashes: only the last one is copied.
-            while src < end && is_separator(val[src + 1]) {
+            while src < end && val[src + 1] == b'/' {
                 src += 1;
             }
             // A relative path does not start with a slash.
@@ -162,9 +156,14 @@ mod tests {
     }
 
     #[test]
-    fn a_run_of_backslashes_keeps_its_last_one() {
+    fn every_backslash_is_a_separator_on_windows() {
         assert_eq!(run(b"a\\\\b", true), b"a/b");
-        assert_eq!(run(b"a\\\\\\b", true), b"a\\b");
+        // Runs of three or more separators used to keep their last
+        // backslash, which then did not separate segments.
+        assert_eq!(run(b"a\\\\\\b", true), b"a/b");
+        assert_eq!(run(b"a//\\b", true), b"a/b");
+        assert_eq!(run(b"..\\\\\\..\\\\\\windows", true), b"../../windows");
+        assert_eq!(run(b"\\a\\\\\\b\\..\\c", true), b"/a/c");
     }
 
     #[test]
