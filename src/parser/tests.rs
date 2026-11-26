@@ -1161,3 +1161,43 @@ fn a_setvar_key_may_hold_a_single_quote() {
                  SecRule &TX:a \"@eq 0\" \"id:3,phase:1,deny,status:403\"";
     assert_eq!(status_of(rules, "/"), Some(403));
 }
+
+#[test]
+fn a_key_in_single_quotes_is_inside_them() {
+    let deny = "phase:1,deny,status:403";
+    let target = |t: &str, uri: &str| status_of(&format!("SecRule {t} \"@rx .\" \"id:1,{deny}\""), uri);
+    assert_eq!(target("ARGS:'foo'", "/?foo=x"), Some(403));
+    assert_eq!(target("ARGS:'foo'", "/?%27foo%27=x"), None);
+    assert_eq!(target("\"ARGS:'foo'|ARGS:bar\"", "/?foo=x"), Some(403));
+    assert_eq!(target("REQUEST_HEADERS:'User-Agent'", "/"), Some(403));
+    // Spaces, commas and pipes may be inside the quotes.
+    assert_eq!(target("ARGS:'a b'", "/?a%20b=x"), Some(403));
+    assert_eq!(target("\"ARGS:'a b'\"", "/?a%20b=x"), Some(403));
+    assert_eq!(target("ARGS:'a,b|c'", "/?a,b%7Cc=x"), Some(403));
+    // Quotes that do not enclose the whole key are part of it.
+    assert_eq!(target("ARGS:foo'bar", "/?foo%27bar=x"), Some(403));
+    assert_eq!(target("ARGS:'foo'bar", "/?%27foo%27bar=x"), Some(403));
+    assert_eq!(target("ARGS:'foo'bar", "/?foobar=x"), None);
+    // A regular expression in quotes is unchanged: it may not hold a
+    // space, and is then not a key either.
+    assert_eq!(target("ARGS:'/^a.b$/'", "/?a%20b=x"), Some(403));
+    assert!(
+        crate::rules_set::RulesSet::new().load(&format!("SecRule ARGS:'/^a b$/' \"@rx .\" \"id:1,{deny}\"")).is_err()
+    );
+
+    // Exclusions and counts read it the same way.
+    assert_eq!(target("ARGS|!ARGS:'foo'", "/?foo=x"), None);
+    assert_eq!(status_of(&format!("SecRule &ARGS:'foo' \"@eq 1\" \"id:1,{deny}\""), "/?foo=x"), Some(403));
+    let updated = format!("SecRule ARGS \"@rx .\" \"id:1,{deny}\"\nSecRuleUpdateTargetById 1 \"!ARGS:'foo'\"");
+    assert_eq!(status_of(&updated, "/?foo=x"), None);
+    let removed = |ctl: &str| {
+        status_of(
+            &format!("SecAction \"id:2,phase:1,pass,nolog,ctl:{ctl}\"\nSecRule ARGS \"@rx .\" \"id:1,{deny},tag:t\""),
+            "/?foo=x",
+        )
+    };
+    assert_eq!(removed("ruleRemoveTargetById=1;ARGS:'foo'"), None);
+    assert_eq!(removed("ruleRemoveTargetByTag=t;ARGS:'foo'"), None);
+    assert_eq!(removed("ruleRemoveTargetById=1;ARGS:foo"), None);
+    assert_eq!(removed("ruleRemoveTargetById=1;ARGS:'bar'"), Some(403));
+}

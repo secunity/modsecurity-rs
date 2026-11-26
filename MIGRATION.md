@@ -1014,6 +1014,23 @@ to the `extern "C"` API; every block carries a `SAFETY` comment.
   of a Windows path. Regression test:
   `normalise_path::tests::every_backslash_is_a_separator_on_windows`.
 
+- **A key in single quotes is inside them.** *C++:* the quotes were part
+  of the key: `ARGS:'foo'` inspected an argument named `'foo'` (with the
+  quotes) and never `foo`, `REQUEST_HEADERS:'User-Agent'` matched
+  nothing, and `!ARGS:'foo'`, `SecRuleUpdateTargetById 1 "!ARGS:'foo'"`
+  and `ctl:ruleRemoveTargetById=1;ARGS:'foo'` excluded nothing, all
+  without an error; a quoted key with a space did not load. A quoted
+  regular expression (`ARGS:'/^a/'`) already lost its quotes. *Here:*
+  `'...'` around the whole key quotes it, in rule targets, exclusions,
+  counts, `SecRuleUpdateTarget*` and `ctl:ruleRemoveTarget*`, and the key
+  may hold spaces, `,` and `|` (`ARGS:'a b'`). Quotes that do not enclose
+  the whole key are part of it (`ARGS:foo'bar`), as before, and an
+  argument whose name has quotes is still reached with a regular
+  expression (`ARGS:/^'foo'$/`). No CRS rule or regression test writes a
+  quoted key. *Why:* a quoted key looked like it worked and inspected
+  nothing. Regression test:
+  `parser::tests::a_key_in_single_quotes_is_inside_them`.
+
 Faithfully *kept* C++ quirks are documented at their site (e.g.
 `SecRuleRemoveById` compares range bounds as strings, setvar/`stoi`
 semantics).

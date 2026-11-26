@@ -329,6 +329,7 @@ fn var_ref(pair: Pair<'_, Rule>) -> VarRef<'_> {
             Rule::regex | Rule::regex_quoted | Rule::macro_regex => {
                 Selector::Regex(p.into_inner().next().expect("regex text").as_str())
             }
+            Rule::key_quoted => Selector::Key(p.into_inner().next().expect("key text").as_str()),
             _ => Selector::Key(p.as_str()),
         },
     };

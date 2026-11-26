@@ -33,6 +33,15 @@ then a commit of its own with a test and an entry in `MIGRATION.md`.
   `\r` and `\n` of a header line, except when the line has nothing else
   (as C++'s `chomp` does). So a header `Name:\r\n` keeps the `\r\n` in
   its value.
+- **A backslash before a quote stays.** `setvar:'tx.a=it\'s'` stores
+  `it\'s`, and `"ARGS:foo\"bar"` is the key `foo\"bar`, as in C++. The
+  regression tests need the backslash kept in `msg` and `logdata`
+  (`misc-escaped-quote-after-macro-expansion.json`), so removing it in
+  `setvar` and keys alone would make them disagree.
+- **Values that cannot be written.** A comma in a quoted `setvar` value
+  (`setvar:'tx.a=x,y'`), a double quote in an unquoted one
+  (`setvar:tx.a=a\"b`) and a space in a `ctl:ruleRemoveTarget*` key are
+  refused, as in C++.
 
 ## On hold
 

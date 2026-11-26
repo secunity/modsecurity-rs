@@ -22,7 +22,7 @@ impl RuleRemoveTargetByTag {
         let (Some(tag), Some(target)) = (param.next(), param.next()) else {
             return Err(format!("{} is not a valid 'TAG;VARIABLE'", what));
         };
-        Ok(RuleRemoveTargetByTag { name: name.to_string(), tag, target })
+        Ok(RuleRemoveTargetByTag { name: name.to_string(), tag, target: super::target_name(target) })
     }
 }
 

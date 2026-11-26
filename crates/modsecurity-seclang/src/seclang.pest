@@ -133,7 +133,12 @@ target    = { modifier? ~ var_ref }
 modifier  = { "!" | "&" }
 var_ref   = ${ var_name ~ (("." | ":") ~ selector)? }
 var_name  = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
-selector  = _{ regex_quoted | regex | key }
+selector  = _{ regex_quoted | key_quoted | regex | key }
+// A key in single quotes is inside them, and may hold spaces, `,` and `|`:
+// `ARGS:'a b'` is the argument `a b`. Text in the form of a regular
+// expression is not a key, also when `regex_quoted` refused it (`'/a b/'`).
+key_quoted = ${ "'" ~ !("/" ~ (!("/'" | "'" | nl) ~ ANY)* ~ "/'") ~ key_quoted_text ~ "'" ~ &var_end }
+key_quoted_text = @{ (!("'" | "\"" | nl) ~ ANY)+ }
 // A key ends where the variable ends.
 key       = @{ (!("\"" | "|" | "," | ws | nl | "}") ~ ("\\\"" | ANY))+ }
 var_end   = _{ ws | nl | "|" | "," | "\"" | EOI }

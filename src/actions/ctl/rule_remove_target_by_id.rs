@@ -26,7 +26,7 @@ impl RuleRemoveTargetById {
         let Some(id) = crate::rule::id::parse(&id) else {
             return Err(format!("Not able to convert '{}' into a number", id));
         };
-        Ok(RuleRemoveTargetById { name: name.to_string(), id, target })
+        Ok(RuleRemoveTargetById { name: name.to_string(), id, target: super::target_name(target) })
     }
 }
 
