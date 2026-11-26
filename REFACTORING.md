@@ -1828,3 +1828,10 @@ outputs are identical.
   the input once, line by line, and decodes as it goes. 14 million inputs
   (alphabet `Az0+/= \r\n-` to 7 bytes, every byte at every position of
   a valid input).
+- `html_entity_decode.rs` and `js_decode.rs`: each was a loop with read
+  and write cursors, labelled breaks (HTML) and a count of bytes to copy.
+  The loop is now `in_place::decode`, shared; each decoder only says
+  which escape starts at a position, what it decodes to and how long it
+  is (`entity`, `escape`). 113 million inputs for HTML (entities,
+  numbers, names), 42 million for JavaScript, and every byte after each
+  escape prefix.

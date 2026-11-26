@@ -1,6 +1,7 @@
 //! The `t:htmlEntityDecode` transformation: decodes numeric and named HTML
 //! entities.
 
+use crate::in_place;
 use modsecurity_compat::cnum::strtoll;
 
 /// The non-breaking space of ISO 8859-1 (`&nbsp;`).
@@ -88,102 +89,34 @@ fn lookup_named_entity(name: &[u8]) -> Option<u8> {
     NAMED_ENTITIES.iter().find(|(n, _)| n.len() == name.len() && n.eq_ignore_ascii_case(name)).map(|&(_, ch)| ch)
 }
 
-fn inplace(input: &mut Vec<u8>) {
-    let input_len = input.len();
-    let mut d = 0usize;
-    let mut i = 0usize;
-
-    'outer: while i < input_len {
-        let mut copy = 1usize;
-
-        // Require an ampersand and at least one character to start
-        // looking into the entity.
-        'entity: {
-            if input[i] == b'&' && i + 1 < input_len {
-                let mut j = i + 1;
-
-                if input[j] == b'#' {
-                    // Numerical entity.
-                    copy += 1;
-
-                    if j + 1 >= input_len {
-                        break 'entity; // Not enough bytes.
-                    }
-                    j += 1;
-
-                    let (base, k) = if input[j] == b'x' || input[j] == b'X' {
-                        // Hexadecimal entity.
-                        copy += 1;
-
-                        if j + 1 >= input_len {
-                            break 'entity; // Not enough bytes.
-                        }
-                        j += 1; // j is the position of the first digit now.
-
-                        let k = j;
-                        while j < input_len && input[j].is_ascii_hexdigit() {
-                            j += 1;
-                        }
-                        (16, k)
-                    } else {
-                        // Decimal entity.
-                        let k = j;
-                        while j < input_len && input[j].is_ascii_digit() {
-                            j += 1;
-                        }
-                        (10, k)
-                    };
-
-                    if j > k {
-                        // At least one digit: decode the entity as
-                        // `(unsigned char) strtol(digits, nullptr, base)`,
-                        // the low byte of the value, which saturates at
-                        // LONG_MAX on overflow.
-                        input[d] = strtoll(&input[k..j], base) as u8;
-                        d += 1;
-
-                        // Skip over the semicolon if it's there.
-                        i = if j < input_len && input[j] == b';' { j + 1 } else { j };
-                        continue 'outer;
-                    }
-                    break 'entity;
-                } else {
-                    // Text entity.
-                    let k = j;
-                    while j < input_len && input[j].is_ascii_alphanumeric() {
-                        j += 1;
-                    }
-                    if j > k {
-                        let Some(decoded) = lookup_named_entity(&input[k..j]) else {
-                            // Unknown entity: copy the raw data over.
-                            copy = j - k + 1;
-                            break 'entity;
-                        };
-                        input[d] = decoded;
-                        d += 1;
-
-                        // Skip over the semicolon if it's there.
-                        i = if j < input_len && input[j] == b';' { j + 1 } else { j };
-                        continue 'outer;
-                    }
-                }
-            }
+/// The entity `s` starts with: the byte it decodes to and its length. The
+/// `;` that ends an entity is optional. Unknown entities are kept as they
+/// are.
+fn entity(s: &[u8]) -> Option<(u8, usize)> {
+    let (byte, len) = match s {
+        [b'&', b'#', b'x' | b'X', digits @ ..] => number(digits, 16).map(|(byte, len)| (byte, 3 + len))?,
+        [b'&', b'#', digits @ ..] => number(digits, 10).map(|(byte, len)| (byte, 2 + len))?,
+        [b'&', name @ ..] => {
+            let len = name.iter().take_while(|c| c.is_ascii_alphanumeric()).count();
+            (lookup_named_entity(&name[..len])?, 1 + len)
         }
+        _ => return None,
+    };
+    Some((byte, if s.get(len) == Some(&b';') { len + 1 } else { len }))
+}
 
-        // Not an entity, or an unknown one: copy `copy` bytes as they are.
-        for _ in 0..copy {
-            input[d] = input[i];
-            d += 1;
-            i += 1;
-        }
-    }
-
-    input.truncate(d);
+/// The number at the start of `s`, in `radix` (10 or 16): the byte it
+/// decodes to and its length. The byte is `(unsigned char) strtol(digits,
+/// nullptr, radix)`, the low byte of the value, which saturates at
+/// LONG_MAX on overflow.
+fn number(s: &[u8], radix: u32) -> Option<(u8, usize)> {
+    let len = s.iter().take_while(|&&c| char::from(c).is_digit(radix)).count();
+    (len > 0).then(|| (strtoll(&s[..len], radix) as u8, len))
 }
 
 /// Transforms `value` in place.
 pub fn transform(value: &mut Vec<u8>) {
-    inplace(value);
+    in_place::decode(value, entity);
 }
 
 #[cfg(test)]
@@ -192,7 +125,7 @@ mod tests {
 
     fn run(input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        inplace(&mut v);
+        transform(&mut v);
         v
     }
 

@@ -33,6 +33,7 @@ mod escape_seq_decode;
 mod hex_decode;
 mod hex_encode;
 mod html_entity_decode;
+mod in_place;
 mod js_decode;
 mod normalise_path;
 mod parity_7bit;

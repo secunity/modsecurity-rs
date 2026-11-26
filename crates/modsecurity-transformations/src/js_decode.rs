@@ -1,6 +1,7 @@
 //! The `t:jsDecode` transformation: decodes JavaScript escape sequences.
 
 use crate::chars::{hex_pair, isodigit};
+use crate::in_place;
 
 /// The byte `\uHHHH` decodes to: the low byte of the code point, plus
 /// 0x20 for the full width forms of ASCII (U+FF01 to U+FF5E).
@@ -8,99 +9,52 @@ pub(crate) fn low_byte_of_code_point(high: u8, low: u8) -> u8 {
     if high == 0xff && (0x01..0x5f).contains(&low) { low + 0x20 } else { low }
 }
 
-fn inplace(input: &mut Vec<u8>) {
-    let input_len = input.len();
-    // A read at `input_len` (one past the last byte) sees 0.
-    let at = |input: &[u8], k: usize| input.get(k).copied().unwrap_or(0);
-    // The byte of the two hex digits at `k`.
-    let hex_at = |input: &[u8], k: usize| input.get(k..).and_then(hex_pair);
-    let mut d = 0usize;
-    let mut i = 0usize;
-
-    while i < input_len {
-        if input[i] == b'\\' {
-            // Character is an escape.
-            let escape = input.get(i + 1).copied();
-
-            if escape == Some(b'u')
-                && let Some(high) = hex_at(input, i + 2)
-                && let Some(low) = hex_at(input, i + 4)
-            {
-                // \uHHHH
-                input[d] = low_byte_of_code_point(high, low);
-                d += 1;
-                i += 6;
-            } else if escape == Some(b'x')
-                && let Some(byte) = hex_at(input, i + 2)
-            {
-                // \xHH
-                input[d] = byte;
-                d += 1;
-                i += 4;
-            } else if i + 1 < input_len && isodigit(input[i + 1]) {
-                // \OOO (only one byte, \000 - \377)
-                let mut buf = [0u8; 3];
-                let mut j = 0usize;
-
-                while i + 1 + j < input_len && j < 3 {
-                    buf[j] = input[i + 1 + j];
-                    j += 1;
-                    if !isodigit(at(input, i + 1 + j)) {
-                        break;
-                    }
-                }
-
-                if j > 0 {
-                    // Three digits only when their value fits a byte
-                    // (up to `\377`).
-                    if j == 3 && buf[0] > b'3' {
-                        j = 2;
-                    }
-                    // strtol(buf, NULL, 8) of at most "377": fits a byte.
-                    let v = buf[..j].iter().fold(0u32, |acc, &c| acc * 8 + u32::from(c - b'0'));
-                    input[d] = v as u8;
-                    d += 1;
-                    i += 1 + j;
-                }
-            } else if i + 1 < input_len {
-                // \C
-                let c = match input[i + 1] {
-                    b'a' => 0x07,
-                    b'b' => 0x08,
-                    b'f' => 0x0c,
-                    b'n' => b'\n',
-                    b'r' => b'\r',
-                    b't' => b'\t',
-                    b'v' => 0x0b,
-                    // Any other character (`\?`, `\\`, `\'`, `\"`, ...)
-                    // is kept, without its backslash.
-                    other => other,
-                };
-
-                input[d] = c;
-                d += 1;
-                i += 2;
-            } else {
-                // A backslash at the end is kept.
-                while i < input_len {
-                    input[d] = input[i];
-                    d += 1;
-                    i += 1;
-                }
-            }
-        } else {
-            input[d] = input[i];
-            d += 1;
-            i += 1;
-        }
+/// The escape `s` starts with: the byte it decodes to and its length.
+fn escape(s: &[u8]) -> Option<(u8, usize)> {
+    // A backslash at the end is kept.
+    let [b'\\', escape, rest @ ..] = s else {
+        return None;
+    };
+    // The byte of the two hex digits at `at` in `rest`.
+    let hex = |at: usize| rest.get(at..).and_then(hex_pair);
+    if *escape == b'u'
+        && let Some(high) = hex(0)
+        && let Some(low) = hex(2)
+    {
+        return Some((low_byte_of_code_point(high, low), 6));
     }
-
-    input.truncate(d);
+    if *escape == b'x'
+        && let Some(byte) = hex(0)
+    {
+        return Some((byte, 4));
+    }
+    if isodigit(*escape) {
+        // \OOO: up to three digits, three only when their value fits a
+        // byte (up to `\377`).
+        let max = if *escape <= b'3' { 3 } else { 2 };
+        let len = 1 + rest.iter().take(max - 1).take_while(|&&c| isodigit(c)).count();
+        let value = s[1..=len].iter().fold(0u32, |acc, &c| acc * 8 + u32::from(c - b'0'));
+        return Some((value as u8, 1 + len));
+    }
+    // \C. `\u` and `\x` without their hex digits are here too.
+    let byte = match escape {
+        b'a' => 0x07,
+        b'b' => 0x08,
+        b'f' => 0x0c,
+        b'n' => b'\n',
+        b'r' => b'\r',
+        b't' => b'\t',
+        b'v' => 0x0b,
+        // Any other character (`\?`, `\\`, `\'`, `\"`, `\u`, ...) is kept,
+        // without its backslash.
+        &other => other,
+    };
+    Some((byte, 2))
 }
 
 /// Transforms `value` in place.
 pub fn transform(value: &mut Vec<u8>) {
-    inplace(value);
+    in_place::decode(value, escape);
 }
 
 #[cfg(test)]
@@ -109,7 +63,7 @@ mod tests {
 
     fn run(input: &[u8]) -> Vec<u8> {
         let mut v = input.to_vec();
-        inplace(&mut v);
+        transform(&mut v);
         v
     }
 
